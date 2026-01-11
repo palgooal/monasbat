@@ -11,6 +11,10 @@ if (!defined('ABSPATH')) exit;
 require_once plugin_dir_path(__FILE__) . 'includes/class-comments.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-invites.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-rsvp.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-buddypress.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-admin.php';
+
+
 
 
 
@@ -27,6 +31,12 @@ class Mon_Events_MVP
     private $invites;
     /** @var Mon_Events_RSVP */
     private $rsvp;
+    /** @var Mon_Events_BuddyPress */
+    private $bp;
+    /** @var Mon_Events_Admin */
+    private $admin;
+
+
 
 
     public function __construct()
@@ -37,16 +47,16 @@ class Mon_Events_MVP
         $this->invites->register();
         $this->rsvp = new Mon_Events_RSVP($this);
         $this->rsvp->register();
+        $this->bp = new Mon_Events_BuddyPress($this);
+        $this->bp->register();
+        $this->admin = new Mon_Events_Admin($this);
+        $this->admin->register();
+
+
         // CPT + Tax
         add_action('init', [$this, 'register_cpt_tax'], 0);
 
-        // Meta boxes
-        add_action('add_meta_boxes', [$this, 'register_metaboxes']);
-
-        // Save event meta
-        add_action('save_post_event', [$this, 'save_event_meta'], 10, 2);
-
-        // BuddyPress Tabs (MVP)
+         // BuddyPress Tabs (MVP)
         add_action('bp_setup_nav', [$this, 'bp_add_my_events_tab'], 100);
         add_action('bp_setup_nav', [$this, 'bp_add_my_invites_tab'], 101);
 
@@ -67,6 +77,11 @@ class Mon_Events_MVP
     {
         return $this->invites ? (string) $this->invites->gate_phone((int)$event_id) : '';
     }
+    public function rsvp(): Mon_Events_RSVP
+    {
+        return $this->rsvp;
+    }
+
 
 
     /* --------------------------------------------------------------------------
@@ -158,206 +173,6 @@ class Mon_Events_MVP
     }
 
     /* --------------------------------------------------------------------------
-     * Meta Boxes
-     * -------------------------------------------------------------------------- */
-
-    public function register_metaboxes()
-    {
-        add_meta_box('mon_event_details', 'إعدادات المناسبة', [$this, 'render_event_details_box'], 'event', 'normal', 'high');
-        add_meta_box('mon_event_rsvps', 'تأكيدات الحضور (RSVP)', [$this, 'render_event_rsvps_box'], 'event', 'side', 'default');
-
-    }
-
-    public function render_event_details_box($post)
-    {
-        // Nonce عام لحفظ بيانات المناسبة
-        wp_nonce_field('mon_event_save', 'mon_event_nonce');
-
-        $date = get_post_meta($post->ID, '_mon_event_date', true);
-        $time = get_post_meta($post->ID, '_mon_event_time', true);
-        $location = get_post_meta($post->ID, '_mon_event_location', true);
-        $maps = get_post_meta($post->ID, '_mon_event_maps', true);
-
-        $hide_gallery = (int) get_post_meta($post->ID, '_mon_hide_gallery', true);
-        $hide_visitors = (int) get_post_meta($post->ID, '_mon_hide_visitors', true);
-        $close_comments_after = (int) get_post_meta($post->ID, '_mon_close_comments_after', true);
-        $hide_public_comments = (int) get_post_meta($post->ID, '_mon_hide_public_comments', true);
-?>
-        <style>
-            .mon-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 12px
-            }
-
-            .mon-field label {
-                display: block;
-                font-weight: 600;
-                margin-bottom: 6px
-            }
-
-            .mon-field input[type="text"],
-            .mon-field input[type="date"],
-            .mon-field input[type="time"] {
-                width: 100%
-            }
-
-            .mon-toggles {
-                margin-top: 14px
-            }
-
-            .mon-toggles label {
-                display: block;
-                margin: 6px 0
-            }
-        </style>
-
-        <div class="mon-grid">
-            <div class="mon-field">
-                <label>تاريخ المناسبة</label>
-                <input type="date" name="mon_event_date" value="<?php echo esc_attr($date); ?>">
-            </div>
-            <div class="mon-field">
-                <label>وقت المناسبة</label>
-                <input type="time" name="mon_event_time" value="<?php echo esc_attr($time); ?>">
-            </div>
-            <div class="mon-field">
-                <label>الموقع (نص)</label>
-                <input type="text" name="mon_event_location" value="<?php echo esc_attr($location); ?>" placeholder="مثال: قاعة الورد - الرياض">
-            </div>
-            <div class="mon-field">
-                <label>رابط خرائط Google (اختياري)</label>
-                <input type="text" name="mon_event_maps" value="<?php echo esc_attr($maps); ?>" placeholder="https://maps.google.com/...">
-            </div>
-        </div>
-
-        <div class="mon-toggles">
-            <label><input type="checkbox" name="mon_hide_visitors" value="1" <?php checked($hide_visitors, 1); ?>> إخفاء عدد الزوار</label>
-            <label><input type="checkbox" name="mon_hide_gallery" value="1" <?php checked($hide_gallery, 1); ?>> إخفاء ألبوم الصور</label>
-            <label><input type="checkbox" name="mon_hide_public_comments" value="1" <?php checked($hide_public_comments, 1); ?>> إخفاء التعليقات العامة</label>
-            <label><input type="checkbox" name="mon_close_comments_after" value="1" <?php checked($close_comments_after, 1); ?>> إغلاق التعليقات بعد تاريخ المناسبة</label>
-        </div>
-    <?php
-    }
-
-    public function render_event_rsvps_box($post)
-    {
-        $rsvps = get_post_meta($post->ID, self::RSVP_META_KEY, true);
-        $count = is_array($rsvps) ? count($rsvps) : 0;
-
-        echo '<p>عدد الردود: <strong>' . esc_html($count) . '</strong></p>';
-        echo '<p style="font-size:12px;color:#666">عرض التفاصيل سيتم في المرحلة القادمة داخل لوحة “إدارة المدعوين”.</p>';
-    }
-
-
-    /* --------------------------------------------------------------------------
-     * Saving Event Meta
-     * -------------------------------------------------------------------------- */
-
-    public function save_event_meta($post_id, $post)
-    {
-        // =========================================================
-        // 0) Basic security checks
-        // =========================================================
-        if (!isset($_POST['mon_event_nonce']) || !wp_verify_nonce($_POST['mon_event_nonce'], 'mon_event_save')) {
-            return;
-        }
-
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
-            return;
-        }
-
-        if (!current_user_can('edit_post', $post_id)) {
-            return;
-        }
-
-        // =========================================================
-        // 1) Basic Event Fields (always save)
-        // =========================================================
-        $date     = sanitize_text_field($_POST['mon_event_date'] ?? '');
-        $time     = sanitize_text_field($_POST['mon_event_time'] ?? '');
-        $location = sanitize_text_field($_POST['mon_event_location'] ?? '');
-        $maps     = esc_url_raw($_POST['mon_event_maps'] ?? '');
-
-        update_post_meta($post_id, '_mon_event_date', $date);
-        update_post_meta($post_id, '_mon_event_time', $time);
-        update_post_meta($post_id, '_mon_event_location', $location);
-        update_post_meta($post_id, '_mon_event_maps', $maps);
-
-        update_post_meta($post_id, '_mon_hide_gallery', isset($_POST['mon_hide_gallery']) ? 1 : 0);
-        update_post_meta($post_id, '_mon_hide_visitors', isset($_POST['mon_hide_visitors']) ? 1 : 0);
-        update_post_meta($post_id, '_mon_hide_public_comments', isset($_POST['mon_hide_public_comments']) ? 1 : 0);
-        update_post_meta($post_id, '_mon_close_comments_after', isset($_POST['mon_close_comments_after']) ? 1 : 0);
-
-        // =========================================================
-        // 2) Invites (manual + paste CSV + upload CSV)
-        // =========================================================
-        // مهم: لا نكسر حفظ باقي الحقول إذا nonce المدعوين ناقص.
-        $invites_nonce_ok = (
-            isset($_POST['mon_event_invites_nonce']) &&
-            wp_verify_nonce($_POST['mon_event_invites_nonce'], 'mon_event_invites_save')
-        );
-
-        if (!$invites_nonce_ok) {
-            return;
-        }
-
-        // (A) manual textarea
-        $manual_raw = sanitize_textarea_field($_POST['mon_invited_phones'] ?? '');
-
-        // (B) pasted CSV textarea
-        $csv_raw = sanitize_textarea_field($_POST['mon_invited_csv'] ?? '');
-
-        // (C) uploaded CSV file from Excel
-        if (!empty($_FILES['mon_invited_file']) && !empty($_FILES['mon_invited_file']['tmp_name'])) {
-            $file = $_FILES['mon_invited_file'];
-
-            // Ignore if upload error
-            if (empty($file['error'])) {
-                $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
-                if ($ext === 'csv') {
-                    // read file content safely
-                    $csv_from_file = $this->mon_read_csv_file_content($file['tmp_name']);
-                    if ($csv_from_file !== '') {
-                        // merge file content with pasted content
-                        $csv_raw = trim($csv_raw . "\n" . $csv_from_file);
-                    }
-                }
-            }
-        }
-
-        // Parse sources into structured arrays: phone => ['name' => ...]
-        $manual = $this->mon_parse_invites_from_raw_list($manual_raw);
-        $csv    = $this->mon_parse_invites_from_csv($csv_raw);
-
-        // Merge: CSV name wins if provided
-        $merged = $manual;
-        foreach ($csv as $phone => $row) {
-            if (!isset($merged[$phone])) {
-                $merged[$phone] = $row;
-            } else {
-                if (!empty($row['name'])) {
-                    $merged[$phone]['name'] = $row['name'];
-                }
-            }
-        }
-
-        // Final sanitize + ensure structure
-        foreach ($merged as $phone => $row) {
-            $merged[$phone] = [
-                'name' => sanitize_text_field($row['name'] ?? ''),
-            ];
-        }
-
-        // Save structured list (future use)
-        update_post_meta($post_id, '_mon_invites', $merged);
-
-        // Save raw phones list (used by Gate in single-event.php)
-        $raw_lines = implode("\n", array_keys($merged));
-        update_post_meta($post_id, '_mon_invited_phones', $raw_lines);
-    }
-
-    /* --------------------------------------------------------------------------
      * RSVP Shortcode (unchanged)
      * -------------------------------------------------------------------------- */
 
@@ -438,22 +253,6 @@ class Mon_Events_MVP
         return ob_get_clean();
     }
 
-
-    /* --------------------------------------------------------------------------
-     * Revisions
-     * -------------------------------------------------------------------------- */
-
-    public function exclude_rsvp_from_revisions($keys)
-    {
-        if (!is_array($keys)) $keys = [];
-        $keys[] = self::RSVP_META_KEY;
-        return array_values(array_unique($keys));
-    }
-
-
-
-
-
     public function event_comments_open_filter($open, $post_id)
     {
         $post_id = (int) $post_id;
@@ -495,7 +294,7 @@ class Mon_Events_MVP
         $user_id = bp_displayed_user_id();
         if (!$user_id) return;
 
-        $events = $this->get_events_by_user_rsvp($user_id);
+        $events = $this->rsvp->get_events_by_user_rsvp((int)$user_id);
 
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">';
         echo $this->render_events_list_card('سأحضر', $events['attending']);
@@ -564,47 +363,7 @@ class Mon_Events_MVP
         ];
     }
 
-    /**
-     * Export RSVP CSV: user_id,user_name,status,updated_at
-     */
-    public function handle_export_rsvps_csv()
-    {
-        $event_id = isset($_GET['event_id']) ? (int) $_GET['event_id'] : 0;
-        $nonce    = isset($_GET['_wpnonce']) ? (string) $_GET['_wpnonce'] : '';
 
-        if ($event_id <= 0 || !wp_verify_nonce($nonce, 'mon_export_rsvps_csv|' . $event_id)) {
-            wp_die('Nonce غير صالح.');
-        }
-        if (!current_user_can('edit_post', $event_id)) {
-            wp_die('غير مسموح.');
-        }
-
-        $rsvps = get_post_meta($event_id, self::RSVP_META_KEY, true);
-        if (!is_array($rsvps)) $rsvps = [];
-
-        nocache_headers();
-        header('Content-Type: text/csv; charset=UTF-8');
-        header('Content-Disposition: attachment; filename="event-' . $event_id . '-rsvps.csv"');
-
-        // UTF-8 BOM for Excel
-        echo "\xEF\xBB\xBF";
-
-        $out = fopen('php://output', 'w');
-        fputcsv($out, ['user_id', 'user_name', 'status', 'updated_at']);
-
-        foreach ($rsvps as $uid => $row) {
-            $uid = (int)$uid;
-            $user = get_user_by('id', $uid);
-            $name = $user ? $user->display_name : '';
-            $status_raw = $row['status'] ?? '';
-            $status = ($status_raw === 'attending') ? 'attending' : 'declined';
-            $updated = $row['updated_at'] ?? '';
-            fputcsv($out, [$uid, $name, $status, $updated]);
-        }
-
-        fclose($out);
-        exit;
-    }
     /**
      * Check if current visitor passed the invite gate for this event.
      * - Host/Admin bypass
