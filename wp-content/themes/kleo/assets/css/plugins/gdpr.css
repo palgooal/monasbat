@@ -1,0 +1,170 @@
+.gdpr-reconsent-modal .gdpr-reconsent-modal-content .gdpr-consent-buttons a.gdpr-agree {
+  background: #1ECD65;
+  border: 0;
+  border-radius: 100px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-block;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  overflow: hidden;
+  padding: 16px 30px;
+  position: relative;
+  text-decoration: none;
+  transition: .3s;
+  vertical-align: middle;
+  outline: none;
+  min-width: 150px;
+  text-align: center;
+}
+.gdpr.gdpr-privacy-bar {
+  background: rgba(44, 46, 45, 0.9);
+}
+.gdpr.gdpr-privacy-bar .gdpr-wrapper .gdpr-content p {
+  font-weight: 300;
+}
+.gdpr.gdpr-privacy-bar .gdpr-wrapper .gdpr-content p a {
+  color: #60C2FB;
+  transition: .3s;
+  text-decoration: none;
+}
+.gdpr.gdpr-privacy-bar .gdpr-wrapper .gdpr-content p a:hover {
+  color: #E9F6FD;
+}
+.gdpr.gdpr-privacy-bar .gdpr-agreement {
+  border-radius: 3px;
+  padding: 2px 20px;
+  box-shadow: none;
+  border: 0;
+  transition: .3s;
+  background: #00AAE1;
+}
+.gdpr.gdpr-privacy-bar .gdpr-agreement:before {
+  font-size: 16px;
+  color: #fff;
+  background: transparent;
+  border: 0;
+  left: 10px;
+  box-shadow: none;
+}
+.gdpr.gdpr-privacy-bar .gdpr-agreement:hover:before {
+  font-size: 16px;
+  background: transparent;
+  border: 0;
+  color: #fff;
+}
+.gdpr.gdpr-privacy-bar .gdpr-preferences {
+  text-decoration: none;
+  color: #60C2FB;
+  transition: .3s;
+}
+.gdpr.gdpr-privacy-bar .gdpr-preferences:hover {
+  color: #E9F6FD;
+}
+.gdpr.gdpr-privacy-bar .gdpr-preferences:before {
+  display: none;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper form > header .gdpr-box-title {
+  background: #F7FCFF;
+  border-radius: 5px 5px 0 0;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper form > header .gdpr-box-title h3 {
+  color: #1C2525 !important;
+  font-weight: 400 !important;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper form > header .gdpr-box-title .gdpr-close,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper form > header .gdpr-box-title .gdpr-close {
+  color: #1C2525;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper form > header .gdpr-box-title .gdpr-close:hover:before,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper form > header .gdpr-box-title .gdpr-close:hover:before {
+  transform: none;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content {
+  background: #fff;
+  border-radius: 0 0 5px 5px;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content .gdpr-tabs {
+  background-color: #ade0ff;
+  border-radius: 0 5px 0 5px;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs.gdpr-mobile-expanded,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content .gdpr-tabs.gdpr-mobile-expanded {
+  border-radius: 0 0 5px 5px;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li button.gdpr-active:after,
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li a.gdpr-active:after,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content .gdpr-tabs li button.gdpr-active:after,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content .gdpr-tabs li a.gdpr-active:after {
+  border-right-color: #fff;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li button {
+  background: #60C2FB;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li button:hover {
+  background: #229FE7;
+  color: #fff;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li .gdpr-subtabs,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content .gdpr-tabs li .gdpr-subtabs {
+  background-color: #7bcdfd;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li .gdpr-subtabs li button.gdpr-active,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content .gdpr-tabs li .gdpr-subtabs li button.gdpr-active {
+  font-weight: normal;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li button.gdpr-active {
+  background: #229FE7;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tab-content > div header h4,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content .gdpr-tab-content > div header h4 {
+  font-weight: 400 !important;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper form > footer input[type="submit"],
+.gdpr.gdpr-general-confirmation .gdpr-wrapper form > footer input[type="submit"] {
+  background: #00AAE1;
+  border: 0;
+  border-radius: 100px;
+  color: #fff;
+  box-shadow: none;
+  padding-left: 15px;
+  padding-right: 15px;
+  text-shadow: none;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper form > footer span a,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper form > footer span a {
+  text-decoration: none;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-mobile-menu button,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-mobile-menu button {
+  background-color: #229FE7;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-mobile-menu button:hover,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-mobile-menu button:hover {
+  color: #fff;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tab-content > div .gdpr-info .gdpr-cookies-used .gdpr-cookie-title .gdpr-always-active,
+.gdpr.gdpr-general-confirmation .gdpr-wrapper .gdpr-content .gdpr-tab-content > div .gdpr-info .gdpr-cookies-used .gdpr-cookie-title .gdpr-always-active {
+  background-color: #00AAE1;
+}
+ul.gdpr-subtabs {
+  padding-left: 14px !important;
+}
+ul.gdpr-subtabs button.gdpr-active {
+  color: #186367 !important;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li .gdpr-subtabs li button:hover {
+  color: #186367 !important;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li a {
+  background: #7bcdfd;
+  color: #fff !important;
+  transition: .3s;
+}
+.gdpr.gdpr-privacy-preferences .gdpr-wrapper .gdpr-content .gdpr-tabs li a:hover {
+  background: #229FE7;
+}

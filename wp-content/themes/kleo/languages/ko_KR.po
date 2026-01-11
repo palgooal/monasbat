@@ -1,0 +1,2669 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Kleo v3.0.4\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2019-11-13 10:36+0000\n"
+"PO-Revision-Date: 2019-11-13 10:45+0000\n"
+"Last-Translator: Gabriel Fratica <gabriel@seventhqueen.com>\n"
+"Language-Team: Korean\n"
+"Language: ko_KR\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Poedit-SourceCharset: utf-8\n"
+"X-Generator: Loco https://localise.biz/\n"
+"X-Poedit-Language: \n"
+"X-Poedit-Country: \n"
+"X-Poedit-KeywordsList: _:1;gettext:1;dgettext:2;ngettext:1,2;dngettext:2,3;"
+"__:1;_e:1;_c:1;_n:1,2;_n_noop:1,2;_nc:1,2;__ngettext:1,2;__ngettext_noop:1,2;"
+"_x:1,2c;_ex:1,2c;_nx:1,2,4c;_nx_noop:1,2,3c;_n_js:1,2;_nx_js:1,2,3c;"
+"esc_attr__:1;esc_html__:1;esc_attr_e:1;esc_html_e:1;esc_attr_x:1,2c;"
+"esc_html_x:1,2c;comments_number_link:2,3;t:1;st:1;trans:1;transChoice:1,2\n"
+"X-Poedit-Basepath: ../../../\n"
+"X-Poedit-Bookmarks: \n"
+"X-Poedit-SearchPath-0: .\n"
+"X-Textdomain-Support: yes\n"
+"X-Loco-Target-Locale: ko_KR\n"
+"X-Loco-Version: 2.3.1; wp-5.2.3"
+
+#: functions.php:80 dist/functions.php:80
+msgid "Primary Menu"
+msgstr ""
+
+#: functions.php:81 dist/functions.php:81
+msgid "Secondary Menu"
+msgstr ""
+
+#: functions.php:82 dist/functions.php:82
+msgid "Top Menu"
+msgstr ""
+
+#: functions.php:83 dist/functions.php:83
+msgid "Side Menu"
+msgstr ""
+
+#. Translators: %s is the page number.
+#: functions.php:193 dist/functions.php:193
+#: kleo-framework/lib/function-breadcrumb.php:222
+#: dist/kleo-framework/lib/function-breadcrumb.php:222
+#, php-format
+msgid "Page %s"
+msgstr "페이지 %s"
+
+#: functions.php:266 dist/functions.php:266
+msgid "Main Sidebar"
+msgstr ""
+
+#: functions.php:268 dist/functions.php:268
+msgid "Default sidebar"
+msgstr ""
+
+#. used between list items, there is a space after the comma.
+#: functions.php:346 dist/functions.php:346
+msgctxt "Categories separator"
+msgid ", "
+msgstr ""
+
+#. used between list items, there is a space after the comma.
+#: functions.php:351 dist/functions.php:351
+msgctxt "Tags separator"
+msgid ", "
+msgstr ""
+
+#: functions.php:372 dist/functions.php:372
+#, php-format
+msgid "View %s's profile"
+msgstr ""
+
+#: functions.php:375 dist/functions.php:375
+#, php-format
+msgid "View all POSTS by %s"
+msgstr ""
+
+#: functions.php:392 dist/functions.php:392
+msgid "View profile"
+msgstr ""
+
+#: functions.php:402 dist/functions.php:402
+#, php-format
+msgid "Contact %s"
+msgstr ""
+
+#: functions.php:413 dist/functions.php:413
+#, php-format
+msgid "View all posts by %s"
+msgstr "%s님의 최근 글"
+
+#: functions.php:445 dist/functions.php:445
+#, php-format
+msgid "This article has one comment"
+msgid_plural "This article has %1$s comments"
+msgstr[0] ""
+msgstr[1] ""
+
+#: functions.php:490 dist/functions.php:490
+msgid "Author"
+msgstr ""
+
+#: functions.php:498 dist/functions.php:498
+msgid "ago"
+msgstr " 전"
+
+#: functions.php:504 dist/functions.php:504
+msgid ""
+"<span class='unapproved'>Your comment is awaiting moderation.</span>\n"
+msgstr ""
+
+#: functions.php:512 content-gallery.php:46 content.php:48 content-aside.php:36
+#: content-audio.php:46 content-video.php:47 content-quote.php:31
+#: content-link.php:26 content-image.php:44 dist/functions.php:512
+#: dist/content-gallery.php:46 dist/content.php:48 dist/content-aside.php:36
+#: dist/content-audio.php:46 dist/content-video.php:47
+#: dist/content-quote.php:31 dist/content-link.php:26 dist/content-image.php:44
+#: kleo-framework/lib/function-breadcrumb.php:1229
+#: kleo-framework/lib/function-breadcrumb.php:1261
+#: kleo-framework/lib/function-breadcrumb.php:1277
+#: kleo-framework/lib/function-breadcrumb.php:1307
+#: dist/kleo-framework/lib/function-breadcrumb.php:1229
+#: dist/kleo-framework/lib/function-breadcrumb.php:1261
+#: dist/kleo-framework/lib/function-breadcrumb.php:1277
+#: dist/kleo-framework/lib/function-breadcrumb.php:1307
+msgid "Edit"
+msgstr "수정"
+
+#: functions.php:516 dist/functions.php:516
+msgid "Reply"
+msgstr "답글"
+
+#: functions.php:517 dist/functions.php:517
+msgid "Log in to reply."
+msgstr "답글을 남기려면 로그인해주세요."
+
+#: functions.php:569 dist/functions.php:569
+msgid "Name"
+msgstr "이름"
+
+#: functions.php:575 dist/functions.php:575
+msgid "Email"
+msgstr "이메일"
+
+#: functions.php:581 dist/functions.php:581
+msgid "Website"
+msgstr ""
+
+#: functions.php:589 dist/functions.php:589
+msgid ""
+"Save my name, email, and website in this browser for the next time I comment."
+msgstr ""
+
+#: functions.php:603 dist/functions.php:603
+#, php-format
+msgid ""
+"Logged in as <a href=\"%1$s\">%2$s</a>. <a href=\"%3$s\" title=\"Log out of "
+"this account\">Log out?</a>"
+msgstr ""
+"현재 <a href=\"%1$s\">%2$s</a>으로 로그인 <a href=\"%3$s\" title=\"Log out of this "
+"account\">로그아웃 하시겠습니까?</a>"
+
+#: functions.php:609 dist/functions.php:609
+msgid "Leave a reply"
+msgstr "댓글 남기기"
+
+#: functions.php:610 dist/functions.php:610
+#, php-format
+msgid "Leave a reply to %s"
+msgstr "%s 에 댓글 달기"
+
+#: functions.php:611 dist/functions.php:611
+msgid "Click here to cancel the reply"
+msgstr "댓글을 취소하려면 여기를 눌러주세요."
+
+#: functions.php:612 dist/functions.php:612
+msgid "Post comment"
+msgstr "댓글 달기"
+
+#: functions.php:613 dist/functions.php:613
+msgid "Comment"
+msgstr "댓글"
+
+#: functions.php:615 dist/functions.php:615
+#, php-format
+msgid "You must be <a href=\"%s\">logged in</a> to post a comment."
+msgstr "댓글을 달려면 <a href=\"%s\">로그인 </a> 해주세요."
+
+#: functions.php:1270 dist/functions.php:1270
+msgid "Sending info, please wait..."
+msgstr "로그인 중....."
+
+#: functions.php:1273 dist/functions.php:1273
+msgid "Sorry, an error occurred"
+msgstr ""
+
+#: content-gallery.php:104 content-page.php:111 content.php:78
+#: content-aside.php:55 content-audio.php:74 content-video.php:121
+#: content-quote.php:41 content-link.php:36 content-image.php:75 image.php:51
+#: dist/content-gallery.php:104 dist/content-page.php:111 dist/content.php:78
+#: dist/content-aside.php:55 dist/content-audio.php:74
+#: dist/content-video.php:121 dist/content-quote.php:41
+#: dist/content-link.php:36 dist/content-image.php:75 dist/image.php:51
+msgid "Pages:"
+msgstr "페이지:"
+
+#: 404.php:37 dist/404.php:37 page-templates/404-page.php:32
+#: dist/page-templates/404-page.php:32
+msgid "This is somewhat embarrassing, isn&rsquo;t it?"
+msgstr ""
+
+#: 404.php:39 dist/404.php:39 page-templates/404-page.php:34
+#: dist/page-templates/404-page.php:34
+msgid "It looks like nothing was found at this location. Maybe try a search?"
+msgstr "페이지에 아무런 내용이 없습니다. 다른 검색을 시도해보세요."
+
+#: content-none.php:14 dist/content-none.php:14
+#, php-format
+msgid ""
+"Ready to publish your first post? <a href=\"%1$s\">Get started here</a>."
+msgstr ""
+
+#: content-none.php:18 dist/content-none.php:18
+msgid ""
+"Sorry, but nothing matched your search terms. Please try again with some "
+"different keywords."
+msgstr ""
+
+#: content-none.php:23 dist/content-none.php:23
+msgid ""
+"It seems we can&rsquo;t find what you&rsquo;re looking for. Perhaps "
+"searching can help."
+msgstr ""
+
+#: comments.php:50 dist/comments.php:50
+msgid "0 Comments"
+msgstr "댓글"
+
+#: comments.php:50 dist/comments.php:50
+msgid "1 Comment"
+msgstr "댓글"
+
+#: comments.php:50 dist/comments.php:50
+msgid "% Comments"
+msgstr "% 댓글"
+
+#: comments.php:53 dist/comments.php:53
+msgid "Comments are closed."
+msgstr ""
+
+#: comments.php:67 comments.php:85 dist/comments.php:67 dist/comments.php:85
+#: kleo-framework/lib/function-core.php:312
+#: dist/kleo-framework/lib/function-core.php:312
+msgid "&laquo;"
+msgstr ""
+
+#: comments.php:68 comments.php:86 dist/comments.php:68 dist/comments.php:86
+#: kleo-framework/lib/function-core.php:313
+#: dist/kleo-framework/lib/function-core.php:313
+msgid "&raquo;"
+msgstr ""
+
+#: single-portfolio.php:172 dist/single-portfolio.php:172
+#, php-format
+msgid "Back to %s"
+msgstr "%s로 돌아가기"
+
+#: content.php:34 content-video.php:32 dist/content.php:34
+#: dist/content-video.php:32
+#, php-format
+msgid "Permalink to %s"
+msgstr ""
+
+#: image.php:58 dist/image.php:58
+msgid "Previous Image"
+msgstr "이전 이미지"
+
+#: image.php:59 dist/image.php:59
+msgid "Next Image"
+msgstr "다음 이미지"
+
+#: page-parts/post-content-masonry.php:212
+#: page-parts/post-content-masonry.php:216 page-parts/posts-layout-kb.php:85
+#: page-parts/post-content-small.php:208 page-parts/post-content-small.php:212
+#: dist/page-parts/post-content-masonry.php:212
+#: dist/page-parts/post-content-masonry.php:216
+#: dist/page-parts/posts-layout-kb.php:85
+#: dist/page-parts/post-content-small.php:208
+#: dist/page-parts/post-content-small.php:212
+msgid "Read more"
+msgstr "더 보기"
+
+#: page-parts/posts-related.php:15 dist/page-parts/posts-related.php:15
+msgid "Related Articles"
+msgstr "관련된 글"
+
+#: page-parts/posts-related.php:32 dist/page-parts/posts-related.php:32
+msgid "Related"
+msgstr ""
+
+#: page-parts/posts-layout-kb.php:59 dist/page-parts/posts-layout-kb.php:59
+msgid "+ More from"
+msgstr ""
+
+#: page-parts/posts-layout-kb.php:91 dist/page-parts/posts-layout-kb.php:91
+msgid "Sorry, there are no articles here yet."
+msgstr ""
+
+#: page-parts/general-popups.php:9 dist/page-parts/general-popups.php:9
+msgid "Log in with your credentials"
+msgstr "로그인하세요."
+
+#: page-parts/general-popups.php:14 dist/page-parts/general-popups.php:14
+#: lib/inc/strings.php:21 lib/inc/strings.php:23 dist/lib/inc/strings.php:21
+#: dist/lib/inc/strings.php:23
+msgid "or"
+msgstr "또는"
+
+#: page-parts/general-popups.php:20 dist/page-parts/general-popups.php:20
+msgid "Create an account"
+msgstr "계정 만들기"
+
+#: page-parts/general-popups.php:41 page-parts/general-popups.php:120
+#: page-parts/general-popups.php:147 dist/page-parts/general-popups.php:41
+#: dist/page-parts/general-popups.php:120
+#: dist/page-parts/general-popups.php:147
+msgid "Username"
+msgstr "사용자명"
+
+#: page-parts/general-popups.php:43 dist/page-parts/general-popups.php:43
+msgid "Password"
+msgstr "비밀번호"
+
+#: page-parts/general-popups.php:46 dist/page-parts/general-popups.php:46
+msgid "Sign in"
+msgstr "로그인"
+
+#: page-parts/general-popups.php:49 dist/page-parts/general-popups.php:49
+msgid "Remember me"
+msgstr "기억하기"
+
+#: page-parts/general-popups.php:52 dist/page-parts/general-popups.php:52
+msgid "Lost your password?"
+msgstr ""
+
+#: page-parts/general-popups.php:76 dist/page-parts/general-popups.php:76
+msgid "Forgot your details?"
+msgstr "계정 내용을 잊으셨나요 ?"
+
+#: page-parts/general-popups.php:84 dist/page-parts/general-popups.php:84
+msgid "Username or Email"
+msgstr "사용자명 또는 이메일"
+
+#: page-parts/general-popups.php:87 dist/page-parts/general-popups.php:87
+msgid "Reset Password"
+msgstr "비밀번호 재설정"
+
+#: page-parts/general-popups.php:89 dist/page-parts/general-popups.php:89
+msgid "I remember my details"
+msgstr ""
+
+#: page-parts/general-popups.php:107 dist/page-parts/general-popups.php:107
+msgid "Create Account"
+msgstr ""
+
+#: page-parts/general-popups.php:124 dist/page-parts/general-popups.php:124
+msgid "Your full name"
+msgstr ""
+
+#: page-parts/general-popups.php:129 page-parts/general-popups.php:151
+#: dist/page-parts/general-popups.php:129
+#: dist/page-parts/general-popups.php:151
+msgid "Your email"
+msgstr ""
+
+#: page-parts/general-popups.php:134 dist/page-parts/general-popups.php:134
+msgid "Desired password"
+msgstr ""
+
+#: page-parts/general-popups.php:139 dist/page-parts/general-popups.php:139
+msgid "Confirm password"
+msgstr ""
+
+#: page-parts/general-popups.php:156 lib/menu-items.php:47
+#: dist/page-parts/general-popups.php:156 dist/lib/menu-items.php:47
+msgid "Register"
+msgstr "회원가입"
+
+#: page-parts/posts-social-share.php:52
+#: dist/page-parts/posts-social-share.php:52 lib/inc/strings.php:47
+#: dist/lib/inc/strings.php:47
+msgid "Share this"
+msgstr "공유하기"
+
+#: page-parts/general-header-section.php:130
+#: dist/page-parts/general-header-section.php:131
+msgid "Toggle navigation"
+msgstr ""
+
+#: kleo-framework/kleo.php:292 dist/kleo-framework/kleo.php:292
+msgid "Install Required Plugins"
+msgstr ""
+
+#: kleo-framework/kleo.php:293 dist/kleo-framework/kleo.php:293
+msgid "Install Plugins"
+msgstr ""
+
+#: kleo-framework/kleo.php:294 dist/kleo-framework/kleo.php:294
+#, php-format
+msgid "Installing Plugin: %s"
+msgstr ""
+
+#: kleo-framework/kleo.php:296 dist/kleo-framework/kleo.php:296
+msgid "Something went wrong with the plugin API."
+msgstr ""
+
+#: kleo-framework/kleo.php:297 dist/kleo-framework/kleo.php:297
+#, php-format
+msgid "This theme requires the following plugin: %1$s."
+msgid_plural "This theme requires the following plugins: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:299 dist/kleo-framework/kleo.php:299
+#, php-format
+msgid "This theme recommends the following plugin: %1$s."
+msgid_plural "This theme recommends the following plugins: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:301 dist/kleo-framework/kleo.php:301
+#, php-format
+msgid ""
+"Sorry, but you do not have the correct permissions to install the %s plugin. "
+"Contact the administrator of this site for help on getting the plugin "
+"installed."
+msgid_plural ""
+"Sorry, but you do not have the correct permissions to install the %s plugins."
+" Contact the administrator of this site for help on getting the plugins "
+"installed."
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:303 dist/kleo-framework/kleo.php:303
+#, php-format
+msgid "The following required plugin is currently inactive: %1$s."
+msgid_plural "The following required plugins are currently inactive: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:305 dist/kleo-framework/kleo.php:305
+#, php-format
+msgid "The following recommended plugin is currently inactive: %1$s."
+msgid_plural "The following recommended plugins are currently inactive: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:307 dist/kleo-framework/kleo.php:307
+#, php-format
+msgid ""
+"Sorry, but you do not have the correct permissions to activate the %s plugin."
+" Contact the administrator of this site for help on getting the plugin "
+"activated."
+msgid_plural ""
+"Sorry, but you do not have the correct permissions to activate the %s "
+"plugins. Contact the administrator of this site for help on getting the "
+"plugins activated."
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:309 dist/kleo-framework/kleo.php:309
+#, php-format
+msgid ""
+"The following plugin needs to be updated to its latest version to ensure "
+"maximum compatibility with this theme: %1$s."
+msgid_plural ""
+"The following plugins need to be updated to their latest version to ensure "
+"maximum compatibility with this theme: %1$s."
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:311 dist/kleo-framework/kleo.php:311
+#, php-format
+msgid ""
+"Sorry, but you do not have the correct permissions to update the %s plugin. "
+"Contact the administrator of this site for help on getting the plugin "
+"updated."
+msgid_plural ""
+"Sorry, but you do not have the correct permissions to update the %s plugins. "
+"Contact the administrator of this site for help on getting the plugins "
+"updated."
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:313 dist/kleo-framework/kleo.php:313
+msgid "Begin installing plugin"
+msgid_plural "Begin installing plugins"
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:314 dist/kleo-framework/kleo.php:314
+msgid "Activate installed plugin"
+msgid_plural "Activate installed plugins"
+msgstr[0] ""
+msgstr[1] ""
+
+#: kleo-framework/kleo.php:315 dist/kleo-framework/kleo.php:315
+msgid "Return to Required Plugins Installer"
+msgstr ""
+
+#: kleo-framework/kleo.php:316 dist/kleo-framework/kleo.php:316
+msgid "Plugin activated successfully."
+msgstr ""
+
+#: kleo-framework/kleo.php:317 dist/kleo-framework/kleo.php:317
+#, php-format
+msgid "All plugins installed and activated successfully. %s"
+msgstr ""
+
+#: buddypress/buddypress-functions.php:1985
+#: dist/buddypress/buddypress-functions.php:1985
+msgid "show less"
+msgstr "줄이기"
+
+#: buddypress/buddypress-functions.php:1986
+#: dist/buddypress/buddypress-functions.php:1986
+msgid "show more"
+msgstr "크게"
+
+#. Name of the template
+msgid "Full-width"
+msgstr ""
+
+#. Name of the template
+msgid "Right Sidebar Page Template"
+msgstr ""
+
+#. Name of the template
+msgid "3 Columns - Left and Right sidebars"
+msgstr ""
+
+#. Name of the template
+msgid "3 Columns - Two Right Sidebars"
+msgstr ""
+
+#. Name of the template
+msgid "Left Sidebar Page Template"
+msgstr ""
+
+#. Name of the template
+msgid "3 Columns - Two Left Sidebars"
+msgstr ""
+
+#. Name of the template
+msgid "404 Page"
+msgstr ""
+
+#. Name of the template
+msgid "Full-width No Container"
+msgstr ""
+
+#: bbpress/feedback-no-search.php:12 dist/bbpress/feedback-no-search.php:12
+msgid "No search results were found here!"
+msgstr ""
+
+#: bbpress/feedback-no-search.php:14 dist/bbpress/feedback-no-search.php:14
+msgid "Go back"
+msgstr "돌아가기"
+
+#: lib/menu-items.php:14 dist/lib/menu-items.php:14
+msgid "KLEO"
+msgstr ""
+
+#: lib/menu-items.php:37 dist/lib/menu-items.php:37
+msgid "Login"
+msgstr "로그인"
+
+#: lib/menu-items.php:42 dist/lib/menu-items.php:42
+msgid "Logout"
+msgstr "로그아웃"
+
+#: lib/menu-items.php:76 dist/lib/menu-items.php:76
+msgid "No items available here for the moment"
+msgstr ""
+
+#: lib/menu-items.php:84 dist/lib/menu-items.php:84
+msgid ""
+"Some links are relative to the current user, and are not visible to visitors "
+"who are not logged in."
+msgstr ""
+
+#: lib/menu-items.php:102 dist/lib/menu-items.php:102
+msgid "Add to Menu"
+msgstr ""
+
+#: lib/notices.php:28 dist/lib/notices.php:28
+msgid ""
+"Kleo needs to update your translation files saved under wp-"
+"content/languages/themes to match the new translation domain. Please create "
+"a backup of your files and database first."
+msgstr ""
+
+#: lib/notices.php:33 dist/lib/notices.php:33
+msgid "Update"
+msgstr ""
+
+#: lib/notices.php:38 lib/notices.php:141 lib/notices.php:162
+#: dist/lib/notices.php:38 dist/lib/notices.php:141 dist/lib/notices.php:162
+msgid "Dismiss"
+msgstr ""
+
+#: lib/notices.php:133 dist/lib/notices.php:133
+#, php-format
+msgid ""
+"K Elements plugin must be enabled to take full advantage of KLEO theme. <a "
+"href=\"%s\">Activate plugin</a>"
+msgstr ""
+
+#: lib/notices.php:154 dist/lib/notices.php:154
+#, php-format
+msgid ""
+"K Elements plugin must be updated to take full advantage of KLEO theme. <a "
+"href=\"%s\">Update plugin</a>"
+msgstr ""
+
+#: lib/metaboxes.php:22 dist/lib/metaboxes.php:22
+msgid "Theme General settings"
+msgstr ""
+
+#: lib/metaboxes.php:35 dist/lib/metaboxes.php:35
+msgid "Site Layout"
+msgstr ""
+
+#: lib/metaboxes.php:36 dist/lib/metaboxes.php:36
+msgid "Override default site layout"
+msgstr ""
+
+#: lib/metaboxes.php:47 dist/lib/metaboxes.php:47
+msgid "Centered text"
+msgstr ""
+
+#: lib/metaboxes.php:48 dist/lib/metaboxes.php:48
+msgid "Check to have centered text on this page"
+msgstr ""
+
+#: lib/metaboxes.php:54 dist/lib/metaboxes.php:54
+msgid "Top bar status"
+msgstr ""
+
+#: lib/metaboxes.php:55 dist/lib/metaboxes.php:55
+msgid "Enable/disable site top bar"
+msgstr ""
+
+#: lib/metaboxes.php:66 dist/lib/metaboxes.php:66
+#: lib/plugin-elementor/config.php:241 dist/lib/plugin-elementor/config.php:241
+msgid "Hide Header"
+msgstr ""
+
+#: lib/metaboxes.php:67 dist/lib/metaboxes.php:67
+msgid "Check to hide whole header area"
+msgstr ""
+
+#: lib/metaboxes.php:73 dist/lib/metaboxes.php:73
+msgid "Hide Footer"
+msgstr ""
+
+#: lib/metaboxes.php:74 dist/lib/metaboxes.php:74
+msgid "Check to hide whole footer area"
+msgstr ""
+
+#: lib/metaboxes.php:80 dist/lib/metaboxes.php:80
+msgid "Hide Socket area"
+msgstr ""
+
+#: lib/metaboxes.php:81 dist/lib/metaboxes.php:81
+msgid "Check to hide the area after footer that contains copyright info."
+msgstr ""
+
+#: lib/metaboxes.php:87 dist/lib/metaboxes.php:87
+msgid "Custom Logo"
+msgstr ""
+
+#: lib/metaboxes.php:88 dist/lib/metaboxes.php:88
+msgid "Use a custom logo for this page only"
+msgstr ""
+
+#: lib/metaboxes.php:93 dist/lib/metaboxes.php:93
+msgid "Custom Logo Retina"
+msgstr ""
+
+#: lib/metaboxes.php:94 dist/lib/metaboxes.php:94
+msgid "Use a custom retina logo for this page only"
+msgstr ""
+
+#: lib/metaboxes.php:99 dist/lib/metaboxes.php:99
+msgid "Custom Mobile Logo"
+msgstr ""
+
+#: lib/metaboxes.php:100 dist/lib/metaboxes.php:100
+msgid "Use a custom mobile logo for this page and mobile devices only "
+msgstr ""
+
+#: lib/metaboxes.php:104 dist/lib/metaboxes.php:104
+msgid "Custom Retina Mobile Logo"
+msgstr ""
+
+#: lib/metaboxes.php:105 dist/lib/metaboxes.php:105
+msgid "Use a custom retina mobile logo for this page and mobile devices only "
+msgstr ""
+
+#: lib/metaboxes.php:110 dist/lib/metaboxes.php:110
+msgid "Main Menu Full Width"
+msgstr ""
+
+#: lib/metaboxes.php:111 dist/lib/metaboxes.php:111
+msgid "Check to enable full browser width menu style."
+msgstr ""
+
+#: lib/metaboxes.php:117 dist/lib/metaboxes.php:117
+#: lib/plugin-elementor/config.php:256 dist/lib/plugin-elementor/config.php:256
+msgid "Transparent Header"
+msgstr ""
+
+#: lib/metaboxes.php:118 dist/lib/metaboxes.php:118
+msgid "Check to have Main Header with transparent background."
+msgstr ""
+
+#: lib/metaboxes.php:124 dist/lib/metaboxes.php:124
+msgid "Transparent Header - Menu color"
+msgstr ""
+
+#: lib/metaboxes.php:129 dist/lib/metaboxes.php:129
+msgid "White Text"
+msgstr ""
+
+#: lib/metaboxes.php:130 dist/lib/metaboxes.php:130
+msgid "Black Text"
+msgstr ""
+
+#: lib/metaboxes.php:135 dist/lib/metaboxes.php:135
+#: lib/plugin-woocommerce/config.php:753 lib/plugin-woocommerce/config.php:836
+#: dist/lib/plugin-woocommerce/config.php:753
+#: dist/lib/plugin-woocommerce/config.php:836
+msgid "Social share"
+msgstr ""
+
+#: lib/metaboxes.php:136 dist/lib/metaboxes.php:136
+msgid "Display social share at bottom of the single page."
+msgstr ""
+
+#: lib/metaboxes.php:140 lib/metaboxes.php:160 lib/metaboxes.php:186
+#: lib/metaboxes.php:245 lib/metaboxes.php:321 lib/metaboxes.php:346
+#: lib/menu-custom.php:306 dist/lib/metaboxes.php:140
+#: dist/lib/metaboxes.php:160 dist/lib/metaboxes.php:186
+#: dist/lib/metaboxes.php:245 dist/lib/metaboxes.php:321
+#: dist/lib/metaboxes.php:346 dist/lib/menu-custom.php:306
+msgid "Default"
+msgstr ""
+
+#: lib/metaboxes.php:141 lib/metaboxes.php:187 lib/metaboxes.php:322
+#: dist/lib/metaboxes.php:141 dist/lib/metaboxes.php:187
+#: dist/lib/metaboxes.php:322
+msgid "Visible"
+msgstr ""
+
+#: lib/metaboxes.php:142 lib/metaboxes.php:188 lib/metaboxes.php:323
+#: dist/lib/metaboxes.php:142 dist/lib/metaboxes.php:188
+#: dist/lib/metaboxes.php:323
+msgid "Hidden"
+msgstr ""
+
+#: lib/metaboxes.php:149 dist/lib/metaboxes.php:149
+msgid "Title section"
+msgstr ""
+
+#: lib/metaboxes.php:155 dist/lib/metaboxes.php:155
+msgid "Section Layout"
+msgstr ""
+
+#: lib/metaboxes.php:161 dist/lib/metaboxes.php:161
+msgid "Regular"
+msgstr ""
+
+#: lib/metaboxes.php:162 dist/lib/metaboxes.php:162
+msgid "Centered"
+msgstr ""
+
+#: lib/metaboxes.php:163 dist/lib/metaboxes.php:163
+msgid "Right Breadcrumb"
+msgstr ""
+
+#: lib/metaboxes.php:168 dist/lib/metaboxes.php:168
+msgid "Custom page title"
+msgstr ""
+
+#: lib/metaboxes.php:169 dist/lib/metaboxes.php:169
+msgid "Set a custom page title here if you need."
+msgstr ""
+
+#: lib/metaboxes.php:174 dist/lib/metaboxes.php:174
+msgid "Hide the title"
+msgstr ""
+
+#: lib/metaboxes.php:175 dist/lib/metaboxes.php:175
+msgid "Check to hide the title when displaying the post/page"
+msgstr ""
+
+#: lib/metaboxes.php:181 dist/lib/metaboxes.php:181
+msgid "Breadcrumb"
+msgstr ""
+
+#: lib/metaboxes.php:193 dist/lib/metaboxes.php:193
+msgid "Hide information"
+msgstr ""
+
+#: lib/metaboxes.php:194 dist/lib/metaboxes.php:194
+msgid "Check to hide contact info in title section"
+msgstr ""
+
+#: lib/metaboxes.php:200 dist/lib/metaboxes.php:200
+msgid "Top Padding"
+msgstr ""
+
+#: lib/metaboxes.php:206 dist/lib/metaboxes.php:206
+msgid "Bottom Padding"
+msgstr ""
+
+#: lib/metaboxes.php:212 dist/lib/metaboxes.php:212
+msgid "Text Color"
+msgstr ""
+
+#: lib/metaboxes.php:213 dist/lib/metaboxes.php:213
+msgid ""
+"Override the default text color as set in Theme options - Styling options - "
+"Title"
+msgstr ""
+
+#: lib/metaboxes.php:219 dist/lib/metaboxes.php:219
+msgid "Background Image"
+msgstr ""
+
+#: lib/metaboxes.php:220 dist/lib/metaboxes.php:220
+msgid "Choose a background image for the section."
+msgstr ""
+
+#: lib/metaboxes.php:226 dist/lib/metaboxes.php:226
+msgid "Background Color"
+msgstr ""
+
+#: lib/metaboxes.php:227 dist/lib/metaboxes.php:227
+msgid "If an image is not set the color will be used"
+msgstr ""
+
+#: lib/metaboxes.php:234 dist/lib/metaboxes.php:234
+msgid "Media"
+msgstr ""
+
+#: lib/metaboxes.php:240 dist/lib/metaboxes.php:240
+msgid "Show media on post page"
+msgstr ""
+
+#: lib/metaboxes.php:241 dist/lib/metaboxes.php:241
+msgid ""
+"If you want to show image/gallery/video/audio before the post on single page"
+msgstr ""
+
+#: lib/metaboxes.php:246 dist/lib/metaboxes.php:246
+msgid "Yes"
+msgstr ""
+
+#: lib/metaboxes.php:247 dist/lib/metaboxes.php:247 lib/inc/strings.php:63
+#: dist/lib/inc/strings.php:63
+msgid "No"
+msgstr ""
+
+#: lib/metaboxes.php:252 dist/lib/metaboxes.php:252
+msgid "Slider"
+msgstr ""
+
+#: lib/metaboxes.php:253 dist/lib/metaboxes.php:253
+msgid ""
+"Used when you select the Gallery format. Upload an image or enter an URL."
+msgstr ""
+
+#: lib/metaboxes.php:259 dist/lib/metaboxes.php:259
+msgid "Video oEmbed URL"
+msgstr ""
+
+#: lib/metaboxes.php:266 dist/lib/metaboxes.php:266
+msgid "Video Self hosted(mp4)"
+msgstr ""
+
+#: lib/metaboxes.php:272 dist/lib/metaboxes.php:272
+msgid "Video Self hosted(ogv)"
+msgstr ""
+
+#: lib/metaboxes.php:278 dist/lib/metaboxes.php:278
+msgid "Video Self hosted(webm)"
+msgstr ""
+
+#: lib/metaboxes.php:284 dist/lib/metaboxes.php:284
+msgid "Video Self hosted Poster"
+msgstr ""
+
+#: lib/metaboxes.php:291 dist/lib/metaboxes.php:291
+msgid "Audio"
+msgstr ""
+
+#: lib/metaboxes.php:309 dist/lib/metaboxes.php:309
+msgid "Hide post meta"
+msgstr ""
+
+#: lib/metaboxes.php:316 dist/lib/metaboxes.php:316
+msgid "Related posts"
+msgstr ""
+
+#: lib/metaboxes.php:333 dist/lib/metaboxes.php:333
+msgid "Post Layout"
+msgstr ""
+
+#: lib/metaboxes.php:341 dist/lib/metaboxes.php:341
+msgid "Post layout"
+msgstr ""
+
+#: lib/metaboxes.php:347 dist/lib/metaboxes.php:347
+msgid "Right Sidebar"
+msgstr ""
+
+#: lib/metaboxes.php:348 dist/lib/metaboxes.php:348
+msgid "Left sidebar"
+msgstr ""
+
+#: lib/metaboxes.php:349 dist/lib/metaboxes.php:349
+msgid "Full width, no sidebar"
+msgstr ""
+
+#: lib/metaboxes.php:352 dist/lib/metaboxes.php:352
+msgid "3 columns, Right and Left sidebars"
+msgstr ""
+
+#: lib/metaboxes.php:354 dist/lib/metaboxes.php:354
+msgid "3 columns, 2 Left sidebars"
+msgstr ""
+
+#: lib/metaboxes.php:355 dist/lib/metaboxes.php:355
+msgid "3 columns, 2 Right sidebars"
+msgstr ""
+
+#: lib/metaboxes.php:366 dist/lib/metaboxes.php:366
+msgid "Header content(optional)"
+msgstr ""
+
+#: lib/metaboxes.php:374 dist/lib/metaboxes.php:374
+msgid "Header content"
+msgstr ""
+
+#: lib/metaboxes.php:375 dist/lib/metaboxes.php:375
+msgid "This will be displayed right after the menu. Shortcodes are allowed"
+msgstr ""
+
+#: lib/metaboxes.php:385 dist/lib/metaboxes.php:385
+msgid "Bottom content(optional)"
+msgstr ""
+
+#: lib/metaboxes.php:393 dist/lib/metaboxes.php:393
+msgid "Bottom content"
+msgstr ""
+
+#: lib/metaboxes.php:394 dist/lib/metaboxes.php:394
+msgid ""
+"This will be displayed right after the generated page content ends. "
+"Shortcodes are allowed"
+msgstr ""
+
+#: lib/metaboxes.php:404 dist/lib/metaboxes.php:404
+msgid "Clients - link"
+msgstr ""
+
+#: lib/metaboxes.php:421 dist/lib/metaboxes.php:421
+msgid "Testimonial - Author description"
+msgstr ""
+
+#: lib/metaboxes.php:428 dist/lib/metaboxes.php:428
+msgid "Author description"
+msgstr ""
+
+#: lib/metaboxes.php:446 dist/lib/metaboxes.php:446
+msgid "Main menu options"
+msgstr ""
+
+#: lib/metaboxes.php:454 dist/lib/metaboxes.php:454
+msgid "Header Layout"
+msgstr ""
+
+#: lib/metaboxes.php:472 dist/lib/metaboxes.php:472
+msgid "Primary menu"
+msgstr ""
+
+#: lib/metaboxes.php:480 dist/lib/metaboxes.php:480
+msgid "Secondary menu"
+msgstr ""
+
+#: lib/metaboxes.php:488 dist/lib/metaboxes.php:488
+msgid "Hide Shop"
+msgstr ""
+
+#: lib/metaboxes.php:489 dist/lib/metaboxes.php:489
+msgid "Check to hide the Shop icon in the main menu"
+msgstr ""
+
+#: lib/metaboxes.php:495 dist/lib/metaboxes.php:495
+msgid "Hide Search"
+msgstr ""
+
+#: lib/menu-walker.php:252 dist/lib/menu-walker.php:252
+msgid "Add a menu"
+msgstr ""
+
+#: lib/menu-custom.php:286 dist/lib/menu-custom.php:286
+msgid "Choose icon"
+msgstr ""
+
+#: lib/menu-custom.php:289 dist/lib/menu-custom.php:289
+msgid "Remove icon"
+msgstr ""
+
+#: lib/menu-custom.php:293 dist/lib/menu-custom.php:293
+msgid "Before title"
+msgstr ""
+
+#: lib/menu-custom.php:294 dist/lib/menu-custom.php:294
+msgid "After title"
+msgstr ""
+
+#: lib/menu-custom.php:295 dist/lib/menu-custom.php:295
+msgid "Just the icon"
+msgstr ""
+
+#: lib/menu-custom.php:304 dist/lib/menu-custom.php:304
+msgid "Menu style"
+msgstr ""
+
+#: lib/menu-custom.php:307 dist/lib/menu-custom.php:307
+msgid "Buy button"
+msgstr ""
+
+#: lib/menu-custom.php:308 dist/lib/menu-custom.php:308
+msgid "See through"
+msgstr ""
+
+#: lib/menu-custom.php:309 dist/lib/menu-custom.php:309
+msgid "Highlight"
+msgstr ""
+
+#: lib/menu-custom.php:317 dist/lib/menu-custom.php:317
+#: lib/plugin-menu-items-visibility-control/config.php:40
+#: dist/lib/plugin-menu-items-visibility-control/config.php:40
+msgid "Enable Mega Menu for child items."
+msgstr ""
+
+#: lib/theme-functions.php:225 dist/lib/theme-functions.php:225
+msgid "Permanent Link:"
+msgstr ""
+
+#: lib/theme-functions.php:233 dist/lib/theme-functions.php:233
+#: kleo-framework/lib/function-breadcrumb.php:216
+#: lib/plugin-sensei/config.php:71
+#: dist/kleo-framework/lib/function-breadcrumb.php:216
+#: dist/lib/plugin-sensei/config.php:71
+msgid "Home"
+msgstr ""
+
+#: lib/theme-functions.php:512 dist/lib/theme-functions.php:512
+msgid "Start typing to search..."
+msgstr ""
+
+#: lib/theme-functions.php:620 dist/lib/theme-functions.php:620
+msgid "Sorry, we haven't found anything based on your criteria."
+msgstr "관련된 내용이 검색되지 않습니다."
+
+#: lib/theme-functions.php:622 dist/lib/theme-functions.php:622
+msgid "Please try searching by different terms."
+msgstr ""
+
+#: lib/theme-functions.php:633 dist/lib/theme-functions.php:633
+msgid "Members"
+msgstr "회원"
+
+#: lib/theme-functions.php:658 dist/lib/theme-functions.php:658
+msgid "View member results"
+msgstr "회원 결과 보기"
+
+#: lib/theme-functions.php:666 dist/lib/theme-functions.php:666
+msgid "Groups"
+msgstr ""
+
+#: lib/theme-functions.php:684 dist/lib/theme-functions.php:684
+msgid "View group results"
+msgstr ""
+
+#: lib/theme-functions.php:772 dist/lib/theme-functions.php:772
+msgid "View all results"
+msgstr "모든 결과 보기"
+
+#: lib/theme-functions.php:778 dist/lib/theme-functions.php:778
+msgid "Forums"
+msgstr "게시글"
+
+#: lib/theme-functions.php:801 dist/lib/theme-functions.php:801
+msgid "View forum results"
+msgstr ""
+
+#: lib/theme-functions.php:1146 dist/lib/theme-functions.php:1146
+msgid "<span id=\"older-nav\">Go to article</span>"
+msgstr ""
+
+#: lib/theme-functions.php:1339 dist/lib/theme-functions.php:1339
+msgid "Top Content"
+msgstr ""
+
+#: lib/theme-functions.php:1344 dist/lib/theme-functions.php:1344
+msgid ""
+"This will be displayed at top of the category page. Shortcodes are allowed."
+msgstr ""
+
+#: lib/theme-functions.php:2185 dist/lib/theme-functions.php:2185
+msgid "Display type"
+msgstr ""
+
+#: lib/theme-functions.php:2189 dist/lib/theme-functions.php:2189
+msgid "Use default display type"
+msgstr ""
+
+#: lib/theme-functions.php:2195 dist/lib/theme-functions.php:2195
+msgid ""
+"The \"Display type\" will override the default display layout for each "
+"category in part."
+msgstr ""
+
+#: lib/theme-functions.php:2293 dist/lib/theme-functions.php:2293
+msgid "Tags: "
+msgstr ""
+
+#: lib/theme-functions.php:2502 dist/lib/theme-functions.php:2502
+#: lib/inc/strings.php:54 dist/lib/inc/strings.php:54
+msgid "Something went wrong. Please reload page."
+msgstr ""
+
+#: lib/theme-functions.php:2537 dist/lib/theme-functions.php:2537
+msgid "Search here.."
+msgstr ""
+
+#: lib/theme-functions.php:2589 dist/lib/theme-functions.php:2589
+msgid "Continue reading"
+msgstr ""
+
+#: vc_templates/vc_tabs.php:110 dist/vc_templates/vc_tabs.php:110
+#: dist/vc_templates/vc_tabs.php:110
+msgid "Previous section"
+msgstr "이전"
+
+#: vc_templates/vc_tabs.php:113 dist/vc_templates/vc_tabs.php:113
+#: dist/vc_templates/vc_tabs.php:113
+msgid "Next section"
+msgstr "다음 "
+
+#: vc_templates/vc_wp_tagcloud.php:4 dist/vc_templates/vc_wp_tagcloud.php:4
+msgid "Tags"
+msgstr ""
+
+#: vc_templates/vc_wp_tagcloud.php:37 dist/vc_templates/vc_wp_tagcloud.php:37
+msgid "No tags defined"
+msgstr ""
+
+#: vc_templates/vc_posts_grid.php:165 dist/vc_templates/vc_posts_grid.php:165
+msgid "Load more"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:215
+#: dist/kleo-framework/lib/function-breadcrumb.php:215
+msgid "Browse:"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:217
+#: dist/kleo-framework/lib/function-breadcrumb.php:217
+msgid "404 Not Found"
+msgstr "관련된 페이지가 없습니다."
+
+#: kleo-framework/lib/function-breadcrumb.php:218
+#: dist/kleo-framework/lib/function-breadcrumb.php:218
+msgid "Archives"
+msgstr ""
+
+#. Translators: %s is the search query. The HTML entities are opening and closing curly quotes.
+#: kleo-framework/lib/function-breadcrumb.php:220
+#: dist/kleo-framework/lib/function-breadcrumb.php:220
+#, php-format
+msgid "Search results for &#8220;%s&#8221;"
+msgstr ""
+
+#. Translators: Minute archive title. %s is the minute time format.
+#: kleo-framework/lib/function-breadcrumb.php:224
+#: dist/kleo-framework/lib/function-breadcrumb.php:224
+#, php-format
+msgid "Minute %s"
+msgstr "분 %s"
+
+#. Translators: Weekly archive title. %s is the week date format.
+#: kleo-framework/lib/function-breadcrumb.php:226
+#: dist/kleo-framework/lib/function-breadcrumb.php:226
+#, php-format
+msgid "Week %s"
+msgstr "주 %s"
+
+#: kleo-framework/lib/function-breadcrumb.php:798
+#: dist/kleo-framework/lib/function-breadcrumb.php:798
+msgctxt "minute and hour archives time format"
+msgid "g:i a"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:816
+#: dist/kleo-framework/lib/function-breadcrumb.php:816
+msgctxt "minute archives time format"
+msgid "i"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:834
+#: dist/kleo-framework/lib/function-breadcrumb.php:834
+msgctxt "hour archives time format"
+msgid "g a"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:851
+#: kleo-framework/lib/function-breadcrumb.php:880
+#: kleo-framework/lib/function-breadcrumb.php:910
+#: kleo-framework/lib/function-breadcrumb.php:937
+#: kleo-framework/lib/function-breadcrumb.php:1135
+#: dist/kleo-framework/lib/function-breadcrumb.php:851
+#: dist/kleo-framework/lib/function-breadcrumb.php:880
+#: dist/kleo-framework/lib/function-breadcrumb.php:910
+#: dist/kleo-framework/lib/function-breadcrumb.php:937
+#: dist/kleo-framework/lib/function-breadcrumb.php:1135
+msgctxt "yearly archives date format"
+msgid "Y"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:852
+#: kleo-framework/lib/function-breadcrumb.php:911
+#: kleo-framework/lib/function-breadcrumb.php:1138
+#: dist/kleo-framework/lib/function-breadcrumb.php:852
+#: dist/kleo-framework/lib/function-breadcrumb.php:911
+#: dist/kleo-framework/lib/function-breadcrumb.php:1138
+msgctxt "monthly archives date format"
+msgid "F"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:853
+#: kleo-framework/lib/function-breadcrumb.php:1141
+#: dist/kleo-framework/lib/function-breadcrumb.php:853
+#: dist/kleo-framework/lib/function-breadcrumb.php:1141
+msgctxt "daily archives date format"
+msgid "j"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:881
+#: dist/kleo-framework/lib/function-breadcrumb.php:881
+msgctxt "weekly archives date format"
+msgid "W"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:1255
+#: dist/kleo-framework/lib/function-breadcrumb.php:1255
+msgid "Split"
+msgstr ""
+
+#: kleo-framework/lib/function-breadcrumb.php:1258
+#: dist/kleo-framework/lib/function-breadcrumb.php:1258
+msgid "Merge"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:355
+#: dist/kleo-framework/lib/function-core.php:355
+msgid "Tag Archive for:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:360
+#: dist/kleo-framework/lib/function-core.php:360
+msgid "Archive for category:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:362
+#: dist/kleo-framework/lib/function-core.php:362
+msgid "Archive for date:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:364
+#: dist/kleo-framework/lib/function-core.php:364
+msgid "Archive for month:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:366
+#: dist/kleo-framework/lib/function-core.php:366
+msgid "Archive for year:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:369
+#: dist/kleo-framework/lib/function-core.php:369
+msgid "Author Archive"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:372
+#: dist/kleo-framework/lib/function-core.php:372
+msgid "for:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:380
+#: dist/kleo-framework/lib/function-core.php:380
+msgid "search results for:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:382
+#: dist/kleo-framework/lib/function-core.php:382
+msgid "search result for:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:386
+#: dist/kleo-framework/lib/function-core.php:386
+msgid "Search results for:"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:388
+#: dist/kleo-framework/lib/function-core.php:388
+msgid "To search the site please enter a valid term"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:399
+#: dist/kleo-framework/lib/function-core.php:399
+msgid "Blog"
+msgstr ""
+
+#: kleo-framework/lib/function-core.php:403
+#: dist/kleo-framework/lib/function-core.php:403
+msgid "Error 404 - Page not found"
+msgstr "관련된 내용의 페이지가 없습니다."
+
+#: kleo-framework/lib/function-core.php:409
+#: dist/kleo-framework/lib/function-core.php:409
+msgid "Page"
+msgstr ""
+
+#: buddypress/members/bps-form-legacy.php:50
+#: buddypress/members/bps-form-inline.php:50
+#: buddypress/members/bps-form-with-labels.php:50
+#: dist/buddypress/members/bps-form-legacy.php:50
+#: dist/buddypress/members/bps-form-inline.php:50
+#: dist/buddypress/members/bps-form-with-labels.php:50
+msgid "Toggle filters"
+msgstr ""
+
+#: buddypress/members/bps-form-legacy.php:108
+#: buddypress/members/bps-form-legacy.php:117
+#: buddypress/members/bps-form-legacy.php:126
+#: buddypress/members/bps-form-inline.php:110
+#: buddypress/members/bps-form-inline.php:118
+#: buddypress/members/bps-form-inline.php:126
+#: dist/buddypress/members/bps-form-legacy.php:108
+#: dist/buddypress/members/bps-form-legacy.php:117
+#: dist/buddypress/members/bps-form-legacy.php:126
+#: dist/buddypress/members/bps-form-inline.php:110
+#: dist/buddypress/members/bps-form-inline.php:118
+#: dist/buddypress/members/bps-form-inline.php:126
+msgid "From"
+msgstr ""
+
+#: buddypress/members/bps-form-legacy.php:110
+#: buddypress/members/bps-form-legacy.php:119
+#: buddypress/members/bps-form-legacy.php:128
+#: buddypress/members/bps-form-inline.php:112
+#: buddypress/members/bps-form-inline.php:120
+#: buddypress/members/bps-form-inline.php:128
+#: dist/buddypress/members/bps-form-legacy.php:110
+#: dist/buddypress/members/bps-form-legacy.php:119
+#: dist/buddypress/members/bps-form-legacy.php:128
+#: dist/buddypress/members/bps-form-inline.php:112
+#: dist/buddypress/members/bps-form-inline.php:120
+#: dist/buddypress/members/bps-form-inline.php:128
+msgid "To"
+msgstr ""
+
+#: buddypress/members/index.php:68 dist/buddypress/members/index.php:68
+#, php-format
+msgid "All %s %s"
+msgstr ""
+
+#: lib/inc/strings.php:6 lib/inc/strings.php:99 dist/lib/inc/strings.php:6
+#: dist/lib/inc/strings.php:99
+#, php-format
+msgctxt "post type general name"
+msgid "%s"
+msgstr ""
+
+#: lib/inc/strings.php:7 dist/lib/inc/strings.php:7
+msgctxt "tag label"
+msgid "Client Tags"
+msgstr ""
+
+#: lib/inc/strings.php:8 dist/lib/inc/strings.php:8
+msgctxt "tag singular label"
+msgid "Client Tag"
+msgstr ""
+
+#: lib/inc/strings.php:11 dist/lib/inc/strings.php:11
+msgid "You are already logged in."
+msgstr "이미 로그인 상태입니다."
+
+#: lib/inc/strings.php:12 dist/lib/inc/strings.php:12
+msgid "Authentication required."
+msgstr ""
+
+#: lib/inc/strings.php:13 dist/lib/inc/strings.php:13
+msgid "Please connect your facebook account."
+msgstr ""
+
+#: lib/inc/strings.php:14 dist/lib/inc/strings.php:14
+msgid "Registration is not open at this time. Please come back later."
+msgstr ""
+
+#: lib/inc/strings.php:15 dist/lib/inc/strings.php:15
+msgid ""
+"Registration using Facebook is not currently allowed. Please use our "
+"Register page"
+msgstr ""
+
+#: lib/inc/strings.php:16 dist/lib/inc/strings.php:16
+msgid ""
+"Please click again to login with Facebook and allow the application to use "
+"your email address"
+msgstr "페이스북 로그인을 다시 클릭해주세요."
+
+#: lib/inc/strings.php:17 dist/lib/inc/strings.php:17
+msgid ""
+"We didn't find your name. Please complete your facebook account before "
+"proceeding."
+msgstr ""
+
+#: lib/inc/strings.php:18 lib/inc/strings.php:29 dist/lib/inc/strings.php:18
+#: dist/lib/inc/strings.php:29
+msgid "Login successful, redirecting..."
+msgstr "로그인 성공! 페이지로 이동 합니다..."
+
+#: lib/inc/strings.php:19 dist/lib/inc/strings.php:19
+msgid ""
+"Thank you for registering. Please make sure to complete your profile fields "
+"below."
+msgstr "아이바이에 회원가입을 축하드립니다. 프로필 필수 입력란을 꼭 채워주세요."
+
+#: lib/inc/strings.php:20 lib/inc/strings.php:22 lib/inc/strings.php:24
+#: dist/lib/inc/strings.php:20 dist/lib/inc/strings.php:22
+#: dist/lib/inc/strings.php:24
+msgid "Log in with Facebook"
+msgstr "페이스북으로 로그인"
+
+#: lib/inc/strings.php:25 dist/lib/inc/strings.php:25
+msgid "Please Try Again"
+msgstr ""
+
+#: lib/inc/strings.php:28 dist/lib/inc/strings.php:28
+#, php-format
+msgid ""
+"You are already logged in. Please <a href=\"#\" onclick=\"%s\">refresh</a> "
+"page"
+msgstr ""
+
+#: lib/inc/strings.php:30 dist/lib/inc/strings.php:30
+msgid "<strong>ERROR</strong>: Invalid username or e-mail."
+msgstr ""
+
+#: lib/inc/strings.php:31 dist/lib/inc/strings.php:31
+msgid "Failure!"
+msgstr "실패 !"
+
+#: lib/inc/strings.php:32 dist/lib/inc/strings.php:32
+msgid "Email successfully sent!"
+msgstr "메일이 성공적으로 전송됨"
+
+#: lib/inc/strings.php:35 dist/lib/inc/strings.php:35
+msgid "Remove Embed"
+msgstr ""
+
+#: lib/inc/strings.php:36 dist/lib/inc/strings.php:36
+#, php-format
+msgid "No oEmbed Results Found for %s. View more info at"
+msgstr ""
+
+#: lib/inc/strings.php:39 dist/lib/inc/strings.php:39
+msgid "Displays your most popular posts sorted by most liked"
+msgstr ""
+
+#: lib/inc/strings.php:40 dist/lib/inc/strings.php:40
+msgid "Popular Posts"
+msgstr ""
+
+#: lib/inc/strings.php:41 lib/inc/strings.php:60 dist/lib/inc/strings.php:41
+#: dist/lib/inc/strings.php:60
+msgid "Title:"
+msgstr "제목 :"
+
+#: lib/inc/strings.php:42 dist/lib/inc/strings.php:42
+msgid "Description:"
+msgstr ""
+
+#: lib/inc/strings.php:43 dist/lib/inc/strings.php:43
+msgid "Posts:"
+msgstr ""
+
+#: lib/inc/strings.php:44 dist/lib/inc/strings.php:44
+msgid "Display like counts"
+msgstr ""
+
+#: lib/inc/strings.php:46 dist/lib/inc/strings.php:46
+msgid "View Profile"
+msgstr ""
+
+#: lib/inc/strings.php:50 dist/lib/inc/strings.php:50
+msgid "Portfolio item"
+msgstr ""
+
+#: lib/inc/strings.php:51 dist/lib/inc/strings.php:51
+msgid "Portfolio"
+msgstr ""
+
+#: lib/inc/strings.php:52 dist/lib/inc/strings.php:52
+msgctxt "category label"
+msgid "Portfolio Categories"
+msgstr ""
+
+#: lib/inc/strings.php:53 dist/lib/inc/strings.php:53
+msgctxt "category singular label"
+msgid "Portfolio Category"
+msgstr ""
+
+#: lib/inc/strings.php:55 dist/lib/inc/strings.php:55
+msgid "All"
+msgstr "모두"
+
+#: lib/inc/strings.php:58 dist/lib/inc/strings.php:58
+msgid "Recent posts with thumbnails widget."
+msgstr ""
+
+#: lib/inc/strings.php:59 dist/lib/inc/strings.php:59
+msgid "(Kleo) Recent posts"
+msgstr ""
+
+#: lib/inc/strings.php:61 dist/lib/inc/strings.php:61
+msgid "Limit:"
+msgstr ""
+
+#: lib/inc/strings.php:62 dist/lib/inc/strings.php:62
+msgid "Display excerpt?"
+msgstr ""
+
+#: lib/inc/strings.php:64 dist/lib/inc/strings.php:64
+msgid "Excerpt length(characters):"
+msgstr ""
+
+#: lib/inc/strings.php:65 dist/lib/inc/strings.php:65
+msgid "Display Thumbnail?"
+msgstr ""
+
+#: lib/inc/strings.php:66 dist/lib/inc/strings.php:66
+msgid "Author Image"
+msgstr ""
+
+#: lib/inc/strings.php:67 dist/lib/inc/strings.php:67
+msgid "Featured Image"
+msgstr ""
+
+#: lib/inc/strings.php:68 dist/lib/inc/strings.php:68
+msgid "Show from category: "
+msgstr ""
+
+#: lib/inc/strings.php:69 dist/lib/inc/strings.php:69
+msgid "All categories"
+msgstr ""
+
+#: lib/inc/strings.php:70 dist/lib/inc/strings.php:70
+msgid "Choose the Post Type: "
+msgstr ""
+
+#: lib/inc/strings.php:73 dist/lib/inc/strings.php:73
+msgid "Testimonial"
+msgstr ""
+
+#: lib/inc/strings.php:74 lib/inc/strings.php:75 dist/lib/inc/strings.php:74
+#: dist/lib/inc/strings.php:75
+#: lib/plugin-elementor/templates/testimonials.php:16
+#: dist/lib/plugin-elementor/templates/testimonials.php:16
+msgid "Testimonials"
+msgstr ""
+
+#: lib/inc/strings.php:76 dist/lib/inc/strings.php:76
+msgctxt "tag label"
+msgid "Testimonial Tags"
+msgstr ""
+
+#: lib/inc/strings.php:77 dist/lib/inc/strings.php:77
+msgctxt "tag singular label"
+msgid "Testimonial Tag"
+msgstr ""
+
+#: lib/inc/strings.php:80 dist/lib/inc/strings.php:80
+msgid "Your Name"
+msgstr "이름"
+
+#: lib/inc/strings.php:81 dist/lib/inc/strings.php:81
+msgid "Your Email"
+msgstr "이메일"
+
+#: lib/inc/strings.php:82 dist/lib/inc/strings.php:82
+msgid "Type your message..."
+msgstr "메시지를 입력해주세요..."
+
+#: lib/inc/strings.php:83 dist/lib/inc/strings.php:83
+msgid "Send"
+msgstr "보내기"
+
+#: lib/inc/strings.php:84 dist/lib/inc/strings.php:84
+msgid "Sending"
+msgstr "보내는 중입니다.."
+
+#: lib/inc/strings.php:85 dist/lib/inc/strings.php:85
+msgid "Please enter your name."
+msgstr "이름을 입력해주세요."
+
+#: lib/inc/strings.php:86 dist/lib/inc/strings.php:86
+msgid "Please enter your email address."
+msgstr "이메일 주소를 입력해주세요."
+
+#: lib/inc/strings.php:87 dist/lib/inc/strings.php:87
+msgid "You entered an invalid email address."
+msgstr "유효하지 않은 이메일 주소입니다..."
+
+#: lib/inc/strings.php:88 dist/lib/inc/strings.php:88
+msgid "Please enter a message."
+msgstr "메시지를 입력해주세요."
+
+#: lib/inc/strings.php:89 dist/lib/inc/strings.php:89
+msgid "Contact Form Message"
+msgstr "문의사항 메시지 "
+
+#: lib/inc/strings.php:90 dist/lib/inc/strings.php:90
+msgid "You received a new contact form message:"
+msgstr "새로운 문의사항을 받았습니다."
+
+#: lib/inc/strings.php:91 dist/lib/inc/strings.php:91
+msgid "Name: "
+msgstr "이름:"
+
+#: lib/inc/strings.php:92 dist/lib/inc/strings.php:92
+msgid "Email: "
+msgstr "이메일:"
+
+#: lib/inc/strings.php:93 dist/lib/inc/strings.php:93
+msgid "Message: "
+msgstr "메시지:"
+
+#: lib/inc/strings.php:94 dist/lib/inc/strings.php:94
+msgid "Thank you. Your message has been sent."
+msgstr "감사합니다. 메시지가 전송되었습니다."
+
+#: lib/inc/strings.php:95 dist/lib/inc/strings.php:95
+msgid "Mail couldn't be sent. Please try again!"
+msgstr ""
+
+#: lib/inc/strings.php:96 dist/lib/inc/strings.php:96
+msgid "Unknown error occurred. Please try again!"
+msgstr ""
+
+#: lib/inc/strings.php:100 dist/lib/inc/strings.php:100
+#, php-format
+msgctxt "post type singular name"
+msgid "%s"
+msgstr ""
+
+#: lib/inc/strings.php:101 lib/inc/strings.php:102 dist/lib/inc/strings.php:101
+#: dist/lib/inc/strings.php:102
+#, php-format
+msgid "Add New %s"
+msgstr ""
+
+#: lib/inc/strings.php:103 dist/lib/inc/strings.php:103
+#, php-format
+msgid "Edit %s"
+msgstr ""
+
+#: lib/inc/strings.php:104 dist/lib/inc/strings.php:104
+#, php-format
+msgid "New %s"
+msgstr ""
+
+#: lib/inc/strings.php:105 dist/lib/inc/strings.php:105
+#, php-format
+msgid "All %s"
+msgstr ""
+
+#: lib/inc/strings.php:106 dist/lib/inc/strings.php:106
+#, php-format
+msgid "View %s"
+msgstr ""
+
+#: lib/inc/strings.php:107 dist/lib/inc/strings.php:107
+#, php-format
+msgid "Search %s"
+msgstr ""
+
+#: lib/inc/strings.php:108 dist/lib/inc/strings.php:108
+#, php-format
+msgid "No %s found"
+msgstr ""
+
+#: lib/inc/strings.php:109 dist/lib/inc/strings.php:109
+#, php-format
+msgid "No %s found in Trash"
+msgstr ""
+
+#: lib/inc/strings.php:110 dist/lib/inc/strings.php:110
+#, php-format
+msgctxt "post type menu name"
+msgid "%s"
+msgstr ""
+
+#: lib/inc/strings.php:113 dist/lib/inc/strings.php:113
+msgid "Theme options"
+msgstr ""
+
+#: lib/plugin-vc/config.php:32 dist/lib/plugin-vc/config.php:32
+msgid "MailChimp 4 WP Form"
+msgstr ""
+
+#: lib/plugin-vc/config.php:35 dist/lib/plugin-vc/config.php:35
+msgid "Content"
+msgstr ""
+
+#: lib/plugin-vc/config.php:37 dist/lib/plugin-vc/config.php:37
+msgid "Displays a mailchimp signup form"
+msgstr ""
+
+#: lib/plugin-vc/config.php:43 dist/lib/plugin-vc/config.php:43
+msgid "Form"
+msgstr ""
+
+#: lib/plugin-vc/config.php:46 dist/lib/plugin-vc/config.php:46
+msgid "What form to show"
+msgstr ""
+
+#: lib/plugin-vc/config.php:284 lib/plugin-vc/config.php:293
+#: dist/lib/plugin-vc/config.php:284 dist/lib/plugin-vc/config.php:293
+msgid "1/5 Column"
+msgstr ""
+
+#: lib/plugin-vc/config.php:285 lib/plugin-vc/config.php:294
+#: dist/lib/plugin-vc/config.php:285 dist/lib/plugin-vc/config.php:294
+msgid "2/5 Column"
+msgstr ""
+
+#: lib/plugin-vc/config.php:286 lib/plugin-vc/config.php:295
+#: dist/lib/plugin-vc/config.php:286 dist/lib/plugin-vc/config.php:295
+msgid "3/5 Column"
+msgstr ""
+
+#: lib/plugin-vc/config.php:287 lib/plugin-vc/config.php:296
+#: dist/lib/plugin-vc/config.php:287 dist/lib/plugin-vc/config.php:296
+msgid "4/5 Column"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:15 dist/lib/plugin-pmpro/config.php:15
+msgid "Members directory restriction"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:16 dist/lib/plugin-pmpro/config.php:16
+msgid "View members directory"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:20 dist/lib/plugin-pmpro/config.php:20
+msgid "Restrict viewing other profiles"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:21 dist/lib/plugin-pmpro/config.php:21
+msgid "View members profile"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:25 dist/lib/plugin-pmpro/config.php:25
+msgid "Groups directory restriction"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:26 dist/lib/plugin-pmpro/config.php:26
+msgid "Access group directory"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:30 dist/lib/plugin-pmpro/config.php:30
+msgid "Group page restriction"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:31 dist/lib/plugin-pmpro/config.php:31
+msgid "Access to groups"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:35 dist/lib/plugin-pmpro/config.php:35
+msgid "Site activity restriction"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:36 dist/lib/plugin-pmpro/config.php:36
+msgid "View site activity"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:40 dist/lib/plugin-pmpro/config.php:40
+msgid "Sending private messages restriction"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:41 dist/lib/plugin-pmpro/config.php:41
+msgid "Send Private messages"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:45 dist/lib/plugin-pmpro/config.php:45
+msgid "Restrict users from adding media to their profile using rtMedia"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:46 dist/lib/plugin-pmpro/config.php:46
+msgid "Add media to your profile"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:346 dist/lib/plugin-pmpro/config.php:346
+msgid "Upgrade account"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:366 dist/lib/plugin-pmpro/config.php:366
+msgid "You aren't allowed to perform this action"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:426 dist/lib/plugin-pmpro/config.php:426
+msgid "Not logged in"
+msgstr "로그인 하지 않았습니다."
+
+#: lib/plugin-pmpro/config.php:432 dist/lib/plugin-pmpro/config.php:432
+msgid "Not members"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:461 dist/lib/plugin-pmpro/config.php:461
+msgid "Show field in memberships table"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:494 dist/lib/plugin-pmpro/config.php:494
+msgid "Popular level"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:514 dist/lib/plugin-pmpro/config.php:514
+msgid "Order in Membership table"
+msgstr ""
+
+#: lib/plugin-pmpro/config.php:529 dist/lib/plugin-pmpro/config.php:529
+msgid "No levels added to apply sorting."
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:316
+#: dist/lib/plugin-woocommerce/config.php:316
+msgid "Shop"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:561
+#: dist/lib/plugin-woocommerce/config.php:561
+msgid "SAVE NOW"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:590
+#: dist/lib/plugin-woocommerce/config.php:590
+msgid "New"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:803 lib/plugin-woocommerce/config.php:808
+#: dist/lib/plugin-woocommerce/config.php:803
+#: dist/lib/plugin-woocommerce/config.php:808
+msgid "Quick View"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:949
+#: dist/lib/plugin-woocommerce/config.php:949
+msgid "<span id=\"older-nav\">Go back</span>"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1068
+#: dist/lib/plugin-woocommerce/config.php:1068
+msgid "in the shopping cart"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1115
+#: dist/lib/plugin-woocommerce/config.php:1115
+msgid "Cart Subtotal"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1135
+#: dist/lib/plugin-woocommerce/config.php:1135
+msgid "Your shopping bag is empty."
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1146
+#: dist/lib/plugin-woocommerce/config.php:1146
+msgid "Go to the shop"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1170
+#: dist/lib/plugin-woocommerce/config.php:1170
+msgid "% items"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1172
+#: dist/lib/plugin-woocommerce/config.php:1172
+msgid "0 items"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1174
+#: dist/lib/plugin-woocommerce/config.php:1174
+msgid "1 item"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1254
+#: dist/lib/plugin-woocommerce/config.php:1254
+msgid "Shopping Cart"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1256
+#: dist/lib/plugin-woocommerce/config.php:1256
+msgid "Checkout details"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1258
+#: dist/lib/plugin-woocommerce/config.php:1258
+msgid "Order Complete"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1651
+#: dist/lib/plugin-woocommerce/config.php:1651
+msgid "My Orders"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1662
+#: dist/lib/plugin-woocommerce/config.php:1662
+msgid "My Downloads"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1783
+#: dist/lib/plugin-woocommerce/config.php:1783
+msgid "Account"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1827
+#: lib/plugin-woocommerce/config.php:1828
+#: lib/plugin-woocommerce/config.php:1837
+#: dist/lib/plugin-woocommerce/config.php:1827
+#: dist/lib/plugin-woocommerce/config.php:1828
+#: dist/lib/plugin-woocommerce/config.php:1837
+msgid "View All Orders"
+msgstr ""
+
+#: lib/plugin-woocommerce/config.php:1838 lib/plugin-buddypress/config.php:50
+#: dist/lib/plugin-woocommerce/config.php:1838
+#: dist/lib/plugin-buddypress/config.php:50
+msgid "My Account"
+msgstr ""
+
+#: lib/plugin-buddypress/config.php:542
+#: dist/lib/plugin-buddypress/config.php:542
+msgid "Change Cover"
+msgstr ""
+
+#: lib/plugin-buddypress/menu-notifications.php:7
+#: dist/lib/plugin-buddypress/menu-notifications.php:7
+msgid "Live Notifications"
+msgstr "실시간 알림 "
+
+#: lib/plugin-buddypress/menu-notifications.php:52
+#: dist/lib/plugin-buddypress/menu-notifications.php:52
+msgid "View Notifications"
+msgstr "알림 보기"
+
+#: lib/plugin-buddypress/menu-notifications.php:127
+#: lib/plugin-buddypress/menu-notifications.php:161
+#: lib/plugin-buddypress/menu-notifications.php:196
+#: dist/lib/plugin-buddypress/menu-notifications.php:127
+#: dist/lib/plugin-buddypress/menu-notifications.php:161
+#: dist/lib/plugin-buddypress/menu-notifications.php:196
+msgid "No new notifications"
+msgstr "새로운 알림이 없습니다.."
+
+#: lib/plugin-buddypress/menu-notifications.php:136
+#: dist/lib/plugin-buddypress/menu-notifications.php:136
+msgid "Mark all as read"
+msgstr "읽었다고 표시"
+
+#: lib/plugin-buddypress/menu-messages.php:8
+#: dist/lib/plugin-buddypress/menu-messages.php:8
+msgid "Live Messages"
+msgstr ""
+
+#: lib/plugin-buddypress/menu-messages.php:52
+#: dist/lib/plugin-buddypress/menu-messages.php:52
+msgid "View Messages"
+msgstr ""
+
+#: lib/plugin-buddypress/menu-messages.php:60
+#: lib/plugin-buddypress/menu-messages.php:61
+#: dist/lib/plugin-buddypress/menu-messages.php:60
+#: dist/lib/plugin-buddypress/menu-messages.php:61
+msgid "Messages"
+msgstr ""
+
+#: lib/plugin-buddypress/menu-messages.php:131
+#: lib/plugin-buddypress/menu-messages.php:164
+#: dist/lib/plugin-buddypress/menu-messages.php:131
+#: dist/lib/plugin-buddypress/menu-messages.php:164
+msgid "There are no new messages."
+msgstr ""
+
+#: lib/plugin-buddypress/menu-messages.php:135
+#: dist/lib/plugin-buddypress/menu-messages.php:135
+msgid "See all"
+msgstr ""
+
+#: lib/featured-content/featured-content.php:415
+#: dist/lib/featured-content/featured-content.php:415
+msgid "Featured Content"
+msgstr ""
+
+#: lib/featured-content/featured-content.php:417
+#: dist/lib/featured-content/featured-content.php:417
+#, php-format
+msgid ""
+"Use the <a href=\"%1$s\">\"featured\" tag</a> to feature your posts. You can "
+"change this to a tag of your choice; if no posts match the tag, <a "
+"href=\"%2$s\">sticky posts</a> will be displayed instead."
+msgstr ""
+
+#: lib/featured-content/featured-content.php:439
+#: dist/lib/featured-content/featured-content.php:439
+msgid "Tag Name"
+msgstr ""
+
+#: lib/featured-content/featured-content.php:444
+#: dist/lib/featured-content/featured-content.php:444
+msgid "Don&rsquo;t display tag on front end."
+msgstr ""
+
+#: lib/plugin-geodirectory/config.php:305
+#: dist/lib/plugin-geodirectory/config.php:305
+msgid "Default primary menu for all GeoDirectory pages"
+msgstr ""
+
+#: lib/plugin-geodirectory/config.php:314
+#: dist/lib/plugin-geodirectory/config.php:314
+msgid "Default sidebar for all GeoDirectory pages"
+msgstr ""
+
+#: lib/plugin-geodirectory/config.php:327
+#: dist/lib/plugin-geodirectory/config.php:327
+#, php-format
+msgid "Override primary menu for %s."
+msgstr ""
+
+#: lib/plugin-geodirectory/config.php:336
+#: dist/lib/plugin-geodirectory/config.php:336
+#, php-format
+msgid "Override sidebar for %s."
+msgstr ""
+
+#: lib/plugin-geodirectory/config.php:346
+#: dist/lib/plugin-geodirectory/config.php:346
+msgid "GeoDirectory"
+msgstr ""
+
+#: lib/plugin-geodirectory/config.php:348
+#: dist/lib/plugin-geodirectory/config.php:348
+msgid "GeoDirectory plugin settings"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:89 dist/lib/plugin-elementor/config.php:89
+msgid "Section default colors"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:234 dist/lib/plugin-elementor/config.php:234
+msgid "Kleo Settings"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:243 lib/plugin-elementor/config.php:258
+#: lib/plugin-elementor/config.php:283 lib/plugin-elementor/config.php:298
+#: lib/plugin-elementor/config.php:314 lib/plugin-elementor/config.php:328
+#: dist/lib/plugin-elementor/config.php:243
+#: dist/lib/plugin-elementor/config.php:258
+#: dist/lib/plugin-elementor/config.php:283
+#: dist/lib/plugin-elementor/config.php:298
+#: dist/lib/plugin-elementor/config.php:314
+#: dist/lib/plugin-elementor/config.php:328
+#: lib/plugin-elementor/templates/tabs.php:182
+#: dist/lib/plugin-elementor/templates/tabs.php:182
+msgid "Off"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:244 lib/plugin-elementor/config.php:259
+#: lib/plugin-elementor/config.php:284 lib/plugin-elementor/config.php:299
+#: lib/plugin-elementor/config.php:315 lib/plugin-elementor/config.php:329
+#: dist/lib/plugin-elementor/config.php:244
+#: dist/lib/plugin-elementor/config.php:259
+#: dist/lib/plugin-elementor/config.php:284
+#: dist/lib/plugin-elementor/config.php:299
+#: dist/lib/plugin-elementor/config.php:315
+#: dist/lib/plugin-elementor/config.php:329
+#: lib/plugin-elementor/templates/tabs.php:183
+#: dist/lib/plugin-elementor/templates/tabs.php:183
+msgid "On"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:268 dist/lib/plugin-elementor/config.php:268
+msgid "Transparent Menu Color"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:271 dist/lib/plugin-elementor/config.php:271
+msgid "White text"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:272 dist/lib/plugin-elementor/config.php:272
+msgid "Black text"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:281 dist/lib/plugin-elementor/config.php:281
+msgid "Hide Top Header"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:296 dist/lib/plugin-elementor/config.php:296
+msgid "Hide Title/Breadcrumb section"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:312 dist/lib/plugin-elementor/config.php:312
+msgid "Hide Breadcrumb"
+msgstr ""
+
+#: lib/plugin-elementor/config.php:326 dist/lib/plugin-elementor/config.php:326
+msgid "Hide Extra Info"
+msgstr ""
+
+#: lib/plugin-elementor/templates/tabs.php:44
+#: dist/lib/plugin-elementor/templates/tabs.php:44
+msgid "Tabs (Kleo)"
+msgstr ""
+
+#: lib/plugin-elementor/templates/tabs.php:111
+#: dist/lib/plugin-elementor/templates/tabs.php:111
+msgid "Type"
+msgstr ""
+
+#: lib/plugin-elementor/templates/tabs.php:124
+#: lib/plugin-elementor/templates/tabs.php:142
+#: dist/lib/plugin-elementor/templates/tabs.php:124
+#: dist/lib/plugin-elementor/templates/tabs.php:142
+msgid "Style"
+msgstr ""
+
+#: lib/plugin-elementor/templates/tabs.php:158
+#: dist/lib/plugin-elementor/templates/tabs.php:158
+msgid "Align"
+msgstr ""
+
+#: lib/plugin-elementor/templates/tabs.php:171
+#: dist/lib/plugin-elementor/templates/tabs.php:171
+msgid "Active tab number"
+msgstr ""
+
+#: lib/plugin-elementor/templates/tabs.php:180
+#: dist/lib/plugin-elementor/templates/tabs.php:180
+msgid "Disable tab drop"
+msgstr ""
+
+#: lib/plugin-elementor/templates/divider.php:12
+#: dist/lib/plugin-elementor/templates/divider.php:12
+msgid "Divider"
+msgstr ""
+
+#: lib/plugin-elementor/templates/divider.php:27
+#: lib/plugin-elementor/templates/bp-members-grid.php:41
+#: lib/plugin-elementor/templates/testimonials.php:48
+#: lib/plugin-elementor/templates/bp-members-carousel.php:34
+#: dist/lib/plugin-elementor/templates/divider.php:27
+#: dist/lib/plugin-elementor/templates/bp-members-grid.php:41
+#: dist/lib/plugin-elementor/templates/testimonials.php:48
+#: dist/lib/plugin-elementor/templates/bp-members-carousel.php:34
+msgid "Settings"
+msgstr ""
+
+#: lib/plugin-elementor/templates/bp-members-grid.php:16
+#: dist/lib/plugin-elementor/templates/bp-members-grid.php:16
+msgid "Members Grid"
+msgstr ""
+
+#: lib/plugin-elementor/templates/bp-members-carousel.php:12
+#: dist/lib/plugin-elementor/templates/bp-members-carousel.php:12
+msgid "Members Carousel"
+msgstr ""
+
+#: lib/plugin-elementor/templates/revslider.php:12
+#: dist/lib/plugin-elementor/templates/revslider.php:12
+msgid "Revolution Slider"
+msgstr ""
+
+#: lib/plugin-elementor/templates/revslider.php:35
+#: dist/lib/plugin-elementor/templates/revslider.php:35
+msgid "Select slider"
+msgstr ""
+
+#: lib/plugin-elementor/templates/revslider.php:45
+#: dist/lib/plugin-elementor/templates/revslider.php:45
+msgid "You need to install Revolution Slider plugin first"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:176
+#: kleo-framework/lib/panel/inc/Importer.php:177
+#: dist/kleo-framework/lib/panel/inc/Importer.php:176
+#: dist/kleo-framework/lib/panel/inc/Importer.php:177
+#, php-format
+msgid "%s Demo Data"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:211
+#: dist/kleo-framework/lib/panel/inc/Importer.php:211
+msgid "We&apos;re sorry, something went wrong."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:223
+#: dist/kleo-framework/lib/panel/inc/Importer.php:223
+msgid "Successfully set as homepage!"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:230
+#: dist/kleo-framework/lib/panel/inc/Importer.php:230
+msgid "An error occurred setting the page as home!!!"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:245
+#: dist/kleo-framework/lib/panel/inc/Importer.php:245
+msgid "We&apos;re sorry, the demo failed to import."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:252
+#: dist/kleo-framework/lib/panel/inc/Importer.php:252
+msgid "Something went wrong. Please try again."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:263
+#: kleo-framework/lib/panel/inc/Importer.php:273
+#: dist/kleo-framework/lib/panel/inc/Importer.php:263
+#: dist/kleo-framework/lib/panel/inc/Importer.php:273
+msgid "Something went wrong with the data sent. Please try again."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:297
+#: dist/kleo-framework/lib/panel/inc/Importer.php:297
+msgid ""
+"There was an error in the import process. Try to do the import once again!"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:539
+#: dist/kleo-framework/lib/panel/inc/Importer.php:539
+msgid "Imported widgets"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:545
+#: dist/kleo-framework/lib/panel/inc/Importer.php:545
+msgid "Imported widgets..."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:558
+#: dist/kleo-framework/lib/panel/inc/Importer.php:558
+msgid "Imported Theme options"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:562
+#: dist/kleo-framework/lib/panel/inc/Importer.php:562
+msgid "Imported Theme Options..."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:585
+#: dist/kleo-framework/lib/panel/inc/Importer.php:585
+#, php-format
+msgid "Imported Revslider %s"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:629
+#: dist/kleo-framework/lib/panel/inc/Importer.php:629
+#, php-format
+msgid "%s complete"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:661
+#: dist/kleo-framework/lib/panel/inc/Importer.php:661
+msgid "Imported BuddyPress profile fields"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:677
+#: dist/kleo-framework/lib/panel/inc/Importer.php:677
+msgid "Imported PMPRO Levels"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:694
+#: dist/kleo-framework/lib/panel/inc/Importer.php:694
+msgid "Awesome. Your import is ready!!!"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:701
+#: dist/kleo-framework/lib/panel/inc/Importer.php:701
+msgid "Set as HomePage"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:704
+#: dist/kleo-framework/lib/panel/inc/Importer.php:704
+msgid "View Page"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:707
+#: dist/kleo-framework/lib/panel/inc/Importer.php:707
+msgid "Edit Page"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:713
+#: dist/kleo-framework/lib/panel/inc/Importer.php:713
+msgid "Your selected page already exists. Please check also Trash!"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:719
+#: dist/kleo-framework/lib/panel/inc/Importer.php:719
+msgid "Imported Pages:"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:725
+#: dist/kleo-framework/lib/panel/inc/Importer.php:725
+msgid "Nothing was selected for import!!!"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:791
+#: dist/kleo-framework/lib/panel/inc/Importer.php:791
+#, php-format
+msgid "Installed %s plugin"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:800
+#: dist/kleo-framework/lib/panel/inc/Importer.php:800
+#, php-format
+msgid "Activated %s plugin"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:820
+#: dist/kleo-framework/lib/panel/inc/Importer.php:820
+msgid "Plugins installed. Starting content import."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:944
+#: dist/kleo-framework/lib/panel/inc/Importer.php:944
+msgid "SQ Import Helper plugin needs to be active. Please try again."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:1503
+#: dist/kleo-framework/lib/panel/inc/Importer.php:1503
+msgid "Reading images for the import"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2070
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2070
+msgid "Import successful. Have fun!"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2099
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2099
+msgid "PREVIEW"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2110
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2110
+msgid "Import Page"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2136
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2136
+msgid "Import Widgets"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2143
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2143
+msgid "Import Stax Templates"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2150
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2150
+msgid "Import Revolution Slider"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2157
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2157
+msgid "Import Dummy Profile fields"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2164
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2164
+msgid "Import Sample Membership Levels"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2171
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2171
+msgid "Import Theme options"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2174
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2174
+msgid ""
+"This will change some of your theme options. Make sure to export them first."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Importer.php:2184
+#: dist/kleo-framework/lib/panel/inc/Importer.php:2184
+msgid "Activate required plugins"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Plugin.php:44
+#: kleo-framework/lib/panel/inc/Plugin.php:57
+#: dist/kleo-framework/lib/panel/inc/Plugin.php:44
+#: dist/kleo-framework/lib/panel/inc/Plugin.php:57
+msgid "Something went wrong."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Plugin.php:185
+#: kleo-framework/lib/panel/inc/Plugin.php:186
+#: dist/kleo-framework/lib/panel/inc/Plugin.php:185
+#: dist/kleo-framework/lib/panel/inc/Plugin.php:186
+#, php-format
+msgid "%s Panel"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Plugin.php:247
+#: dist/kleo-framework/lib/panel/inc/Plugin.php:247
+msgid "License successfully activated. Please refresh page."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Plugin.php:249
+#: dist/kleo-framework/lib/panel/inc/Plugin.php:249
+msgid "Purchase code is not valid. Please check the license provided!"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Plugin.php:254
+#: dist/kleo-framework/lib/panel/inc/Plugin.php:254
+msgid "Please enter your purchase code."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Plugin.php:283
+#: dist/kleo-framework/lib/panel/inc/Plugin.php:283
+#, php-format
+msgid ""
+"Always activate the child theme to safely update %s and for better "
+"customization. <a href=\"%s\" target=\"_blank\">More on Child Themes</a>."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:293
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:324
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:293
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:324
+msgid "Active"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:294
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:294
+msgid "Child theme installed and active"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:298
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:329
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:298
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:329
+msgid "Inactive"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:299
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:299
+msgid "Activate child theme"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:304
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:304
+msgid "Not installed"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:305
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:305
+msgid "Install child theme"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:310
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:310
+msgid "Permissions needed to install child themes. Contact site administrator."
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:319
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:319
+msgid "Needs update"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:320
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:320
+msgid "Update plugin"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:325
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:325
+msgid "Deactivate plugin"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:330
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:330
+msgid "Activate plugin"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:335
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:335
+msgid "Not Installed"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:336
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:336
+msgid "Install plugin"
+msgstr ""
+
+#: kleo-framework/lib/panel/inc/Addons_Manager.php:341
+#: dist/kleo-framework/lib/panel/inc/Addons_Manager.php:341
+msgid ""
+"You don't have permission to install plugins. Contact site administrator."
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:10
+#: dist/kleo-framework/lib/panel/templates/welcome.php:10
+msgid "Version"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:19
+#: dist/kleo-framework/lib/panel/templates/welcome.php:19
+msgid "Dashboard"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:21
+#: dist/kleo-framework/lib/panel/templates/welcome.php:21
+msgid "Import Demo Data"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:23
+#: dist/kleo-framework/lib/panel/templates/welcome.php:23
+msgid "Theme Add-ons"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:25
+#: dist/kleo-framework/lib/panel/templates/welcome.php:25
+msgid "Status/Extras"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:35
+#: dist/kleo-framework/lib/panel/templates/welcome.php:35
+msgid "Welcome to KLEO theme"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:38
+#: dist/kleo-framework/lib/panel/templates/welcome.php:38
+msgid "Initial setup steps"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:44
+#: dist/kleo-framework/lib/panel/templates/welcome.php:44
+msgid "Child theme is active, awesome."
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:47
+#: dist/kleo-framework/lib/panel/templates/welcome.php:47
+msgid "Child theme is inactive. Enable it from Theme Add-ons tab."
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:51
+#: dist/kleo-framework/lib/panel/templates/welcome.php:51
+msgid "It is a good practice to keep main theme files intact."
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:55
+#: dist/kleo-framework/lib/panel/templates/welcome.php:55
+msgid "Import pre-made layouts to get started right away."
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:59
+#: dist/kleo-framework/lib/panel/templates/welcome.php:59
+msgid "Check out useful add-ons that work well with KLEO."
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:66
+#: dist/kleo-framework/lib/panel/templates/welcome.php:66
+msgid "Automatic Updates"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:68
+#: dist/kleo-framework/lib/panel/templates/welcome.php:68
+msgid ""
+"You can receive automatic updates from Themeforest, where our theme is "
+"exclusively sold.\n"
+"\t\t\t\t\t\t\t\t\t\t<br>Just enter your Marketplace token at the link below."
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:71
+#: dist/kleo-framework/lib/panel/templates/welcome.php:71
+msgid "Check updates"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:79
+#: dist/kleo-framework/lib/panel/templates/welcome.php:79
+msgid "Automatic Updates are OFF"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:81
+#: dist/kleo-framework/lib/panel/templates/welcome.php:81
+msgid ""
+"Automatic updates are disabled. Please enable Envato market plugin to "
+"receive automatic updates."
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:82
+#: dist/kleo-framework/lib/panel/templates/welcome.php:82
+msgid "Enable auto updates"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:117
+#: dist/kleo-framework/lib/panel/templates/welcome.php:117
+msgid "Theme License Activation"
+msgstr ""
+
+#: kleo-framework/lib/panel/templates/welcome.php:137
+#: dist/kleo-framework/lib/panel/templates/welcome.php:137
+msgid "Congratulations, theme license is active on your site!"
+msgstr ""
+
+#. Name of the theme
+msgid "Kleo"
+msgstr ""
+
+#. Description of the theme
+msgid "Community Site Builder &amp; Multipurpose WordPress Theme"
+msgstr ""
+
+#. URI of the theme
+msgid "https://seventhqueen.com/themes/kleo"
+msgstr ""
+
+#. Author of the theme
+msgid "SeventhQueen"
+msgstr ""
+
+#. Author URI of the theme
+msgid "https://themeforest.net/user/SeventhQueen"
+msgstr ""

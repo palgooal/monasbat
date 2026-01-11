@@ -1,0 +1,2269 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: K Elements\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2019-04-01 08:29+0000\n"
+"PO-Revision-Date: 2019-04-01 08:29+0000\n"
+"Last-Translator: radu@seventhqueen.com\n"
+"Language-Team: Turkish\n"
+"Language: tr_TR\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-Basepath: .\n"
+"X-Poedit-SearchPath-0: .\n"
+"X-Poedit-KeywordsList: _:1;gettext:1;dgettext:2;ngettext:1,2;dngettext:2,3;"
+"__:1;_e:1;_c:1;_n:1,2;_n_noop:1,2;_nc:1,2;__ngettext:1,2;__ngettext_noop:1,2;"
+"_x:1,2c;_ex:1,2c;_nx:1,2,4c;_nx_noop:1,2,3c;_n_js:1,2;_nx_js:1,2,3c;"
+"esc_attr__:1;esc_html__:1;esc_attr_e:1;esc_html_e:1;esc_attr_x:1,2c;"
+"esc_html_x:1,2c;comments_number_link:2,3;t:1;st:1;trans:1;transChoice:1,2\n"
+"X-Generator: Loco https://localise.biz/\n"
+"X-Loco-Target-Locale: tr_TR\n"
+"X-Loco-Version: 2.2.1; wp-5.1.1"
+
+#: shortcodes/shortcodes.php:1268
+msgid "Members statistics"
+msgstr ""
+
+#: shortcodes/shortcodes.php:1287
+msgid "Total members"
+msgstr ""
+
+#: shortcodes/shortcodes.php:1323
+msgid "bbPress stats"
+msgstr ""
+
+#: shortcodes/shortcodes.php:1353 compat/plugin-js-composer/config.php:2921
+msgid "Content by user type"
+msgstr "Kullanıcı türüne göre içerik"
+
+#: shortcodes/shortcodes.php:1505
+msgid "You need to install bbPress plugin to enable this shortcode!"
+msgstr "Bu önizlemeyi etkinleştirmek için bbPress eklenti yüklemeniz gerekir."
+
+#: shortcodes/shortcodes.php:1560
+msgid "Post count"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:139
+#: compat/plugin-js-composer/config.php:1765
+#: compat/plugin-js-composer/config.php:2489
+#: compat/plugin-js-composer/config.php:6045
+msgid "Animation"
+msgstr "Animasyon"
+
+#: compat/plugin-js-composer/config.php:153
+#: compat/plugin-js-composer/config.php:3390
+msgid "Animation type"
+msgstr "Animasyon türü"
+
+#: compat/plugin-js-composer/config.php:174
+#: compat/plugin-js-composer/config.php:190
+msgid "Responsive Visibility"
+msgstr "Duyarlı Görünürlük"
+
+#: compat/plugin-js-composer/config.php:175
+#: compat/plugin-js-composer/config.php:2894
+msgid "Hide/Show content by screen size."
+msgstr "İçeriği ekran boyutuna göre gizle / göster."
+
+#: compat/plugin-js-composer/config.php:195
+msgid "Letter spacing"
+msgstr "Harf boşluğu"
+
+#: compat/plugin-js-composer/config.php:196
+msgid "Set a custom letter spacing."
+msgstr "Özel harf aralığı ayarlayın."
+
+#: compat/plugin-js-composer/config.php:212
+#: compat/plugin-js-composer/config.php:222
+msgid "Vertical separator"
+msgstr "Dikey ayırıcı"
+
+#: compat/plugin-js-composer/config.php:213
+msgid "Set a fancy vertical line separator to the left side."
+msgstr "Sol tarafa fantezi bir dikey çizgi ayırıcı koyun."
+
+#: compat/plugin-js-composer/config.php:228
+#: compat/plugin-js-composer/config.php:1441
+#: compat/plugin-js-composer/config.php:2722
+#: compat/plugin-js-composer/config.php:5584
+#: compat/plugin-js-composer/config.php:5600
+#: compat/plugin-js-composer/config.php:5615
+#: compat/plugin-js-composer/config.php:5630
+#: compat/plugin-js-composer/config.php:5645
+#: compat/plugin-js-composer/config.php:5659
+#: compat/plugin-js-composer/config.php:5674
+msgid "Icon"
+msgstr "Simge"
+
+#: compat/plugin-js-composer/config.php:237
+#: compat/plugin-js-composer/config.php:1453
+#: compat/plugin-js-composer/config.php:1562
+#: compat/plugin-js-composer/config.php:1575
+#: compat/plugin-js-composer/config.php:2282
+#: compat/plugin-js-composer/config.php:2294
+#: compat/plugin-js-composer/config.php:5596
+#: compat/plugin-js-composer/config.php:5611
+#: compat/plugin-js-composer/config.php:5626
+#: compat/plugin-js-composer/config.php:5641
+#: compat/plugin-js-composer/config.php:5670
+#: compat/plugin-js-composer/config.php:5685
+msgid "Select icon from library."
+msgstr "Kitaplıktan simgesini seçin."
+
+#: compat/plugin-js-composer/config.php:244
+#: compat/plugin-js-composer/config.php:3063
+msgid "Icon size"
+msgstr "simge boyutu"
+
+#: compat/plugin-js-composer/config.php:259
+msgid "Extra class name"
+msgstr "Ekstra sınıf adı"
+
+#: compat/plugin-js-composer/config.php:262
+msgid ""
+"If you wish to style particular content element differently, then use this "
+"field to add a class name and then refer to it in your css file."
+msgstr ""
+"Belirli bir içerik öğesini farklı şekilde stil etmek isterseniz, bu alanı "
+"bir sınıf adı eklemek için kullanın ve daha sonra css dosyanıza bakın."
+
+#: compat/plugin-js-composer/config.php:269
+msgid "Show Tooltip/Popover"
+msgstr "Araç İpucu / Popover'ı Göster"
+
+#: compat/plugin-js-composer/config.php:282
+msgid "Tip position"
+msgstr "İpucu konumu"
+
+#: compat/plugin-js-composer/config.php:300
+msgid "Tip/Popover Title"
+msgstr "İpucu / Popover Başlığı"
+
+#: compat/plugin-js-composer/config.php:312
+msgid "Popover text"
+msgstr "Popover metni"
+
+#: compat/plugin-js-composer/config.php:324
+msgid "Tip/Popover action"
+msgstr "İpucu / Popover eylemi"
+
+#: compat/plugin-js-composer/config.php:343
+#: compat/plugin-js-composer/config.php:3883
+msgid "Title"
+msgstr "Başlık"
+
+#: compat/plugin-js-composer/config.php:344
+msgid "Text on the button"
+msgstr "Düğme metni"
+
+#: compat/plugin-js-composer/config.php:352
+msgid "URL(Link)"
+msgstr "URL(Link)"
+
+#: compat/plugin-js-composer/config.php:360
+msgid "Target"
+msgstr "Hedef"
+
+#: compat/plugin-js-composer/config.php:373
+#: compat/plugin-js-composer/config.php:1801
+#: compat/plugin-js-composer/config.php:2125
+#: compat/plugin-js-composer/config.php:2143
+#: compat/plugin-js-composer/config.php:2439
+#: compat/plugin-js-composer/config.php:4059
+#: compat/plugin-js-composer/config.php:4388
+msgid "Style"
+msgstr "Stil"
+
+#: compat/plugin-js-composer/config.php:387
+#: compat/plugin-js-composer/config.php:927
+msgid "Background color"
+msgstr "Arka plan rengi"
+
+#: compat/plugin-js-composer/config.php:389
+#: compat/plugin-js-composer/config.php:487
+msgid "Select custom background color."
+msgstr "Özel arka plan rengini seçin."
+
+#: compat/plugin-js-composer/config.php:391
+#: compat/plugin-js-composer/config.php:403
+#: compat/plugin-js-composer/config.php:415
+#: compat/plugin-js-composer/config.php:427
+#: compat/plugin-js-composer/config.php:439
+#: compat/plugin-js-composer/config.php:451
+#: compat/plugin-js-composer/config.php:477
+#: compat/plugin-js-composer/config.php:489
+#: compat/plugin-js-composer/config.php:501
+msgid "Custom button"
+msgstr "Özel arka plan rengi"
+
+#: compat/plugin-js-composer/config.php:399
+msgid "Hover Background color"
+msgstr "Fareyle arka plan rengini"
+
+#: compat/plugin-js-composer/config.php:401
+msgid "Select custom background color on hover."
+msgstr "Fareyle üzerine gelinken özel arka plan rengi seçin."
+
+#: compat/plugin-js-composer/config.php:411
+#: compat/plugin-js-composer/config.php:880
+#: compat/plugin-js-composer/config.php:1484
+msgid "Text color"
+msgstr "Metin rengi"
+
+#: compat/plugin-js-composer/config.php:413
+#: compat/plugin-js-composer/config.php:499
+msgid "Select custom text color."
+msgstr "Özel metin rengi seçin."
+
+#: compat/plugin-js-composer/config.php:423
+msgid "Hover Text color"
+msgstr "Fareyle üzerine gelin Metin rengi"
+
+#: compat/plugin-js-composer/config.php:425
+msgid "Select custom text color on hover."
+msgstr "Fareyle üzerine gelin özel metin rengi seçin."
+
+#: compat/plugin-js-composer/config.php:435
+msgid "Border color"
+msgstr "Sınır rengi"
+
+#: compat/plugin-js-composer/config.php:437
+msgid "Select custom border color."
+msgstr "Özel kenarlık rengi seçin."
+
+#: compat/plugin-js-composer/config.php:447
+msgid "Hover border color"
+msgstr "Fareyle kenarlık rengi"
+
+#: compat/plugin-js-composer/config.php:449
+msgid "Select custom border color on hover."
+msgstr "Fareyle üzerine gelinken özel kenarlık rengi seçin."
+
+#: compat/plugin-js-composer/config.php:462
+msgid "Border width"
+msgstr "Sınır genişliği"
+
+#: compat/plugin-js-composer/config.php:485
+msgid "Boxed Icon Type - Icon Background"
+msgstr "Kutulu Simge Türü - Simge Arka Planı"
+
+#: compat/plugin-js-composer/config.php:497
+msgid "Boxed Icon Type - Icon Text color"
+msgstr "Kutulu Simge Türü - Simge Metin rengi"
+
+#: compat/plugin-js-composer/config.php:512
+#: compat/plugin-js-composer/config.php:3043
+msgid "Position"
+msgstr "Pozisyon"
+
+#: compat/plugin-js-composer/config.php:526
+#: compat/plugin-js-composer/config.php:2965
+msgid "Size"
+msgstr "Boyut"
+
+#: compat/plugin-js-composer/config.php:542
+#: compat/plugin-js-composer/config.php:1751
+#: compat/plugin-js-composer/config.php:1957
+#: compat/plugin-js-composer/config.php:2113
+#: compat/plugin-js-composer/config.php:2566
+#: compat/plugin-js-composer/config.php:2710
+#: compat/plugin-js-composer/config.php:3017
+#: compat/plugin-js-composer/config.php:4718
+#: compat/plugin-js-composer/config.php:4832
+#: compat/plugin-js-composer/config.php:4920
+msgid "Type"
+msgstr "Tip"
+
+#: compat/plugin-js-composer/config.php:559
+msgid "Second title"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:573
+msgid "Rounded button"
+msgstr "Yuvarlak düğme"
+
+#: compat/plugin-js-composer/config.php:587
+#: compat/plugin-js-composer/config.php:1253
+msgid "Border"
+msgstr "Sınır"
+
+#: compat/plugin-js-composer/config.php:606
+msgid "Font size. Use px|em|pt"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:617
+#: compat/plugin-js-composer/config.php:1516
+msgid "Font weight"
+msgstr "Yazı tipi ağırlığı"
+
+#: compat/plugin-js-composer/config.php:633
+msgid "Make text uppercase"
+msgstr "Metni büyük harf yapın"
+
+#: compat/plugin-js-composer/config.php:648
+msgid "Shadow color"
+msgstr "Gölge rengi"
+
+#: compat/plugin-js-composer/config.php:651
+#: compat/plugin-js-composer/config.php:662
+#: compat/plugin-js-composer/config.php:673
+#: compat/plugin-js-composer/config.php:684
+#: compat/plugin-js-composer/config.php:695
+msgid "Box shadow"
+msgstr "Kutu gölge"
+
+#: compat/plugin-js-composer/config.php:657
+msgid "Horizontal Length"
+msgstr "Yatay Uzunluk"
+
+#: compat/plugin-js-composer/config.php:668
+msgid "Vertical Length"
+msgstr "Dikey Uzunluk"
+
+#: compat/plugin-js-composer/config.php:679
+msgid "Blur Radius"
+msgstr "Blur Yarıçapı"
+
+#: compat/plugin-js-composer/config.php:690
+msgid "Spread Radius"
+msgstr "Yayılma Yarıçapı"
+
+#: compat/plugin-js-composer/config.php:705
+msgid "Query offset"
+msgstr "sorgu ofset"
+
+#: compat/plugin-js-composer/config.php:715
+msgid "Enable responsive font size settings"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:726
+msgid "Font size - Mobile"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:731
+#: compat/plugin-js-composer/config.php:747
+#: compat/plugin-js-composer/config.php:763
+#: compat/plugin-js-composer/config.php:779
+#: compat/plugin-js-composer/config.php:795
+#: compat/plugin-js-composer/config.php:811
+msgid "Responsive Font"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:742
+msgid "Line Height - Mobile"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:758
+msgid "Font size - Tablet"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:774
+msgid "Line Height - Tablet"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:790
+msgid "Font size - Desktop"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:806
+msgid "Line Height - Desktop"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:837
+msgid "Status"
+msgstr "Durum"
+
+#: compat/plugin-js-composer/config.php:838
+msgid ""
+"Select front-end visibility status. If set to Draft it will not show on your "
+"page."
+msgstr ""
+"Ön uç görünürlük durumunu seçin. Taslak olarak ayarlanırsa, sayfanızda "
+"gösterilmez."
+
+#: compat/plugin-js-composer/config.php:850
+#: compat/plugin-js-composer/config.php:1313
+msgid "Inner Container"
+msgstr "İç Konteyner"
+
+#: compat/plugin-js-composer/config.php:851
+#: compat/plugin-js-composer/config.php:1314
+msgid ""
+"Select whether to insert a container to the section. This will keep the "
+"content from going full with."
+msgstr ""
+"Bölüme bir kap eklenip eklenmeyeceğini seçin. Bu, içeriğin dolu kalmasını "
+"sağlar."
+
+#: compat/plugin-js-composer/config.php:863
+msgid "Text align"
+msgstr "Metin hizalama"
+
+#: compat/plugin-js-composer/config.php:864
+msgid "Align whole row content."
+msgstr "Satırdaki tüm içeriği hizalayın."
+
+#: compat/plugin-js-composer/config.php:884
+#: compat/plugin-js-composer/config.php:902
+#: compat/plugin-js-composer/config.php:919
+#: compat/plugin-js-composer/config.php:935
+#: compat/plugin-js-composer/config.php:948
+#: compat/plugin-js-composer/config.php:964
+#: compat/plugin-js-composer/config.php:984
+#: compat/plugin-js-composer/config.php:1003
+#: compat/plugin-js-composer/config.php:1023
+#: compat/plugin-js-composer/config.php:1041
+#: compat/plugin-js-composer/config.php:1058
+#: compat/plugin-js-composer/config.php:1074
+#: compat/plugin-js-composer/config.php:1087
+#: compat/plugin-js-composer/config.php:1101
+#: compat/plugin-js-composer/config.php:1114
+#: compat/plugin-js-composer/config.php:1127
+#: compat/plugin-js-composer/config.php:1140
+#: compat/plugin-js-composer/config.php:5148
+#: compat/plugin-js-composer/config.php:5154
+#: compat/plugin-js-composer/config.php:5160
+#: compat/plugin-js-composer/config.php:5166
+msgid "Text & Background"
+msgstr "Metin ve Arka Plan"
+
+#: compat/plugin-js-composer/config.php:891
+msgid "Section style"
+msgstr "Bölüm stili"
+
+#: compat/plugin-js-composer/config.php:909
+msgid "Background style"
+msgstr "Arka plan stili"
+
+#: compat/plugin-js-composer/config.php:941
+msgid "Background image"
+msgstr "Arka plan görüntüsü"
+
+#: compat/plugin-js-composer/config.php:954
+#: compat/plugin-js-composer/config.php:1383
+#: compat/plugin-js-composer/config.php:1402
+#: compat/plugin-js-composer/config.php:1415
+msgid "Enable dark gradient"
+msgstr "Koyu renk degradeyi etkinleştir"
+
+#: compat/plugin-js-composer/config.php:971
+msgid "BG vertical position"
+msgstr "BG dikey konumu"
+
+#: compat/plugin-js-composer/config.php:990
+msgid "BG horizontal position"
+msgstr "BG yatay konumu"
+
+#: compat/plugin-js-composer/config.php:1009
+msgid "Background repeat"
+msgstr "arka plan tekrar"
+
+#: compat/plugin-js-composer/config.php:1029
+msgid "Full-width background"
+msgstr "Tam genişlikte arka plan"
+
+#: compat/plugin-js-composer/config.php:1047
+msgid "Fixed background"
+msgstr "Sabit arkaplan"
+
+#: compat/plugin-js-composer/config.php:1065
+msgid "Enable parallax"
+msgstr "paralaksı etkinleştir"
+
+#: compat/plugin-js-composer/config.php:1080
+msgid "Parallax speed"
+msgstr "paralaks hızı"
+
+#: compat/plugin-js-composer/config.php:1094
+msgid "Video background (mp4)"
+msgstr "Video arka planı (mp4)"
+
+#: compat/plugin-js-composer/config.php:1107
+msgid "Video background (ogv)"
+msgstr "Video arka planı (ogv)"
+
+#: compat/plugin-js-composer/config.php:1120
+msgid "Video background (webm)"
+msgstr "Video arka planı (webm)"
+
+#: compat/plugin-js-composer/config.php:1133
+msgid "Image cover"
+msgstr "resim kapağı"
+
+#: compat/plugin-js-composer/config.php:1147
+msgid "Vertical Aligned Content"
+msgstr "Dikey Hizalanmış İçerik"
+
+#: compat/plugin-js-composer/config.php:1159
+msgid "Between Columns Gap"
+msgstr "Sütunlar Arası Arasında"
+
+#: compat/plugin-js-composer/config.php:1172
+msgid "Top padding"
+msgstr "Üst dolgu"
+
+#: compat/plugin-js-composer/config.php:1182
+msgid "Bottom padding"
+msgstr "Alt dolgu"
+
+#: compat/plugin-js-composer/config.php:1192
+msgid "Left padding"
+msgstr "Sol dolgu"
+
+#: compat/plugin-js-composer/config.php:1202
+msgid "Right padding"
+msgstr "Sağ dolgu"
+
+#: compat/plugin-js-composer/config.php:1214
+msgid "Top margin"
+msgstr "Üst boşluk"
+
+#: compat/plugin-js-composer/config.php:1224
+msgid "Bottom margin"
+msgstr "alt sınır"
+
+#: compat/plugin-js-composer/config.php:1234
+msgid "Minim height"
+msgstr "Minimum yükseklik"
+
+#: compat/plugin-js-composer/config.php:1244
+#: compat/plugin-js-composer/config.php:1339
+msgid "Fixed height"
+msgstr "Sabit yükseklik"
+
+#: compat/plugin-js-composer/config.php:1254
+msgid "Select whether or not to display a border on this section."
+msgstr "Bu bölümde bir kenarlık gösterilip gösterilmeyeceğini seçin."
+
+#: compat/plugin-js-composer/config.php:1275
+msgid "Overflow hidden"
+msgstr "taşma gizlendi"
+
+#: compat/plugin-js-composer/config.php:1277
+msgid "Check if you want to hide section overflow"
+msgstr "Bölüm taşmasını gizlemek isteyip istemediğinizi kontrol edin"
+
+#: compat/plugin-js-composer/config.php:1292
+#: compat/plugin-js-composer/config.php:2992
+#: compat/plugin-js-composer/config.php:3102
+msgid "Custom inline style"
+msgstr "Satır içi stil"
+
+#: compat/plugin-js-composer/config.php:1303
+msgid "Element ID"
+msgstr "Öğe Kimliği"
+
+#: compat/plugin-js-composer/config.php:1328
+#: compat/plugin-js-composer/config.php:4223
+msgid "Min. height"
+msgstr "Min. yükseklik"
+
+#: compat/plugin-js-composer/config.php:1349
+#: compat/plugin-js-composer/config.php:4325
+msgid "Background horizontal position"
+msgstr "Arka plan yatay konumu"
+
+#: compat/plugin-js-composer/config.php:1359
+#: compat/plugin-js-composer/config.php:1376
+#: compat/plugin-js-composer/config.php:1389
+#: compat/plugin-js-composer/config.php:1408
+#: compat/plugin-js-composer/config.php:1421
+#: compat/plugin-js-composer/config.php:4319
+#: compat/plugin-js-composer/config.php:4335
+#: compat/plugin-js-composer/config.php:4352
+msgid "Design Options"
+msgstr "Tasarım Seçenekleri"
+
+#: compat/plugin-js-composer/config.php:1366
+#: compat/plugin-js-composer/config.php:4342
+msgid "Background vertical position"
+msgstr "Arka plan dikey konumu"
+
+#: compat/plugin-js-composer/config.php:1471
+msgid "Lead Content"
+msgstr "Kurşun İçeriği"
+
+#: compat/plugin-js-composer/config.php:1494
+#: compat/plugin-js-composer/config.php:2369
+msgid "Font size"
+msgstr "Yazı Boyutu"
+
+#: compat/plugin-js-composer/config.php:1504
+msgid "Line Height"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1623
+msgid "Image effects"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1660
+msgid "Enable Fading animation"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1672
+msgid "Thumbnail over image"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1739
+msgid "Feature Items Grid"
+msgstr "Özellik Öğeleri Izgarası"
+
+#: compat/plugin-js-composer/config.php:1744
+msgid "Easily include elements into a Grid container"
+msgstr "Öğeleri bir Izgara konteynerine kolayca ekleyin"
+
+#: compat/plugin-js-composer/config.php:1752
+msgid "Select how many items you want per row."
+msgstr "Her satıra kaç öğe seçeceğinizi seçin."
+
+#: compat/plugin-js-composer/config.php:1766
+msgid "Animate elements inside the grid one by one"
+msgstr "Izgaranın içindeki öğeleri birer birer canlandırın"
+
+#: compat/plugin-js-composer/config.php:1777
+msgid "Colored icons"
+msgstr "renkli simgeler"
+
+#: compat/plugin-js-composer/config.php:1778
+msgid ""
+"Show colored icons. Color will be taken from the Highlight color from Theme "
+"options"
+msgstr ""
+"Renkli simgeleri göster. Renk, Tema seçeneklerinden Vurgulama renginden "
+"alınır"
+
+#: compat/plugin-js-composer/config.php:1789
+msgid "Bordered icons"
+msgstr "Kenarlanmış simgeler"
+
+#: compat/plugin-js-composer/config.php:1790
+msgid "Show bordered icons"
+msgstr "Kenarlanmış simgeleri göster"
+
+#: compat/plugin-js-composer/config.php:1802
+msgid "Choose a different style"
+msgstr "Farklı bir stil seçin"
+
+#: compat/plugin-js-composer/config.php:1813
+msgid "Divided Items"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1814
+msgid "Apply border between items"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1825
+msgid "Title only"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1826
+msgid "Just the Title visible by default. Content is visible on item hover"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1846
+msgid "Enable box shadow."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:1867
+msgid "Feature Item"
+msgstr "Özellik Ögesi"
+
+#: compat/plugin-js-composer/config.php:1872
+msgid "Include a feature item in your block grid"
+msgstr "Blok ızgaraya bir özellik öğesi ekleyin"
+
+#: compat/plugin-js-composer/config.php:1945
+msgid "Fancy List"
+msgstr "fantezi liste"
+
+#: compat/plugin-js-composer/config.php:1958
+msgid "Select the list type."
+msgstr "Liste türünü seçin."
+
+#: compat/plugin-js-composer/config.php:1972
+#: compat/plugin-js-composer/config.php:2320
+msgid "Icon color"
+msgstr "simge rengi"
+
+#: compat/plugin-js-composer/config.php:1988
+msgid "Icon shadow"
+msgstr "simge gölgesi"
+
+#: compat/plugin-js-composer/config.php:2004
+msgid "Large icon"
+msgstr "Büyük ikon"
+
+#: compat/plugin-js-composer/config.php:2020
+msgid "Inline"
+msgstr "Çizgide"
+
+#: compat/plugin-js-composer/config.php:2037
+msgid "Divider"
+msgstr "bölücü"
+
+#: compat/plugin-js-composer/config.php:2050
+#: compat/plugin-js-composer/config.php:2169
+msgid "Align"
+msgstr "Hizala"
+
+#: compat/plugin-js-composer/config.php:2051
+msgid "Align the list"
+msgstr "Listeyi hizalayın"
+
+#: compat/plugin-js-composer/config.php:2075
+msgid "List Item"
+msgstr "Liste Öğesi"
+
+#: compat/plugin-js-composer/config.php:2100
+#: compat/plugin-js-composer/config.php:2215
+#: compat/plugin-js-composer/config.php:2239
+#: compat/plugin-js-composer/config.php:2312
+#: compat/plugin-js-composer/config.php:2472
+#: compat/plugin-js-composer/config.php:2560
+#: compat/plugin-js-composer/config.php:2705
+#: compat/plugin-js-composer/config.php:2790
+#: compat/plugin-js-composer/config.php:2810
+#: compat/plugin-js-composer/config.php:2960
+#: compat/plugin-js-composer/config.php:3010
+#: compat/plugin-js-composer/config.php:3113
+#: compat/plugin-js-composer/config.php:3471
+#: compat/plugin-js-composer/config.php:3637
+#: compat/plugin-js-composer/config.php:3749
+#: compat/plugin-js-composer/config.php:3772
+msgid "Content"
+msgstr "İçerik"
+
+#: compat/plugin-js-composer/config.php:2225
+msgid "Tabs Position"
+msgstr "Sekmeler Konumu"
+
+#: compat/plugin-js-composer/config.php:2274
+msgid "Icon when accordion item is opened"
+msgstr "Akordeon madde açıldığında simgesi"
+
+#: compat/plugin-js-composer/config.php:2286
+msgid "Icon when accordion item is closed"
+msgstr "Akordeon madde kapatıldığında simge"
+
+#: compat/plugin-js-composer/config.php:2313
+msgid "Insert an icon into your content"
+msgstr "İçeriğinize bir simge ekleyin"
+
+#: compat/plugin-js-composer/config.php:2322
+msgid "Select custom icon color."
+msgstr "Özel simge rengi seçin."
+
+#: compat/plugin-js-composer/config.php:2345
+msgid "Add a text to the icon"
+msgstr "Simgeye metin ekleme"
+
+#: compat/plugin-js-composer/config.php:2353
+msgid "Text position"
+msgstr "metin konumu"
+
+#: compat/plugin-js-composer/config.php:2382
+msgid "Add a link"
+msgstr "Bağlantı ekle"
+
+#: compat/plugin-js-composer/config.php:2383
+msgid "Type a http:// address"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2391
+msgid "Target window"
+msgstr "Hedef pencere"
+
+#: compat/plugin-js-composer/config.php:2407
+msgid "Enable smooth scroll to page section."
+msgstr "Sayfaya düzgün kaydırma bölümünü etkinleştirin."
+
+#: compat/plugin-js-composer/config.php:2440
+msgid "Choose the bar appearance"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2473
+msgid "Showcase clients logos"
+msgstr "Vitrin müşteri logoları"
+
+#: compat/plugin-js-composer/config.php:2477
+msgid "Animated"
+msgstr "Hareketli"
+
+#: compat/plugin-js-composer/config.php:2478
+msgid "Animate the icons when you first view them"
+msgstr "Simgeleri ilk görüntülediğinizde canlandırın"
+
+#: compat/plugin-js-composer/config.php:2505
+msgid "Number of logos"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2514
+msgid "Open links in new window"
+msgstr "Bağlantıları yeni pencerede aç"
+
+#: compat/plugin-js-composer/config.php:2526
+#: compat/plugin-js-composer/config.php:2631
+msgid "Filter by Tags"
+msgstr "Etiketlere göre filtrele"
+
+#: compat/plugin-js-composer/config.php:2561
+msgid "Showcase client testimonials"
+msgstr "Vitrin müşteri referansları"
+
+#: compat/plugin-js-composer/config.php:2579
+msgid "By IDs"
+msgstr "Kimliklere göre"
+
+#: compat/plugin-js-composer/config.php:2591
+msgid "Testimonials IDs to show."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2592
+msgid "Comma separated list of ids to display. "
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2604
+msgid "Number of testimonials"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2617
+msgid "Testimonials offset"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2646
+#: compat/plugin-js-composer/config.php:3337
+#: compat/plugin-js-composer/config.php:3409
+msgid "Minimum items to show"
+msgstr "Gösterilecek minimum öğe sayısı"
+
+#: compat/plugin-js-composer/config.php:2659
+#: compat/plugin-js-composer/config.php:3346
+#: compat/plugin-js-composer/config.php:3418
+msgid "Maximum items to show"
+msgstr "Gösterilecek maksimum öğe sayısı"
+
+#: compat/plugin-js-composer/config.php:2672
+msgid "Speed between slides"
+msgstr "Slaytlar arasındaki hız"
+
+#: compat/plugin-js-composer/config.php:2685
+#: compat/plugin-js-composer/config.php:3355
+msgid "Elements height"
+msgstr "Elemanlar yüksekliği"
+
+#: compat/plugin-js-composer/config.php:2706
+msgid "Add pins with info"
+msgstr "Bilgi ile iğneler ekleme"
+
+#: compat/plugin-js-composer/config.php:2711
+msgid "Type of pin"
+msgstr "İğne tipi"
+
+#: compat/plugin-js-composer/config.php:2731
+msgid "Choose the icon to display"
+msgstr "Görüntülenecek simgeyi seçin"
+
+#: compat/plugin-js-composer/config.php:2739
+msgid "Top position"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2747
+msgid "Left position"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2755
+msgid "Right position"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2763
+msgid "Bottom position"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2791
+msgid "Insert a button in your content"
+msgstr "İçeriğinize bir düğme ekleyin"
+
+#: compat/plugin-js-composer/config.php:2811
+msgid "Insert an animated number"
+msgstr "Hareketli bir sayı ekle"
+
+#: compat/plugin-js-composer/config.php:2816
+#: compat/plugin-js-composer/config.php:5065
+msgid "Number"
+msgstr "Numara"
+
+#: compat/plugin-js-composer/config.php:2824
+msgid "Timer"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2833
+msgid "HTML Element"
+msgstr "HTML Öğesi"
+
+#: compat/plugin-js-composer/config.php:2834
+msgid "What type of HTML tag to render. Default if span"
+msgstr "İşaretlenecek HTML etiketi türü. Aralık halinde varsayılan"
+
+#: compat/plugin-js-composer/config.php:2859
+msgid "Font Weight"
+msgstr "Yazı tipi Ağırlığı"
+
+#: compat/plugin-js-composer/config.php:2881
+msgid "Visibility"
+msgstr "Görünürlük"
+
+#: compat/plugin-js-composer/config.php:2886
+msgid "Alter content based on screen size"
+msgstr "İçeriği ekran boyutuna göre değiştirin"
+
+#: compat/plugin-js-composer/config.php:2893
+msgid "Visibility Type"
+msgstr "Görüş Türü"
+
+#: compat/plugin-js-composer/config.php:2926
+msgid "Restrict content based on user type"
+msgstr "İçeriği kullanıcı türüne göre sınırla"
+
+#: compat/plugin-js-composer/config.php:2934
+msgid "User Type"
+msgstr "Kullanıcı tipi"
+
+#: compat/plugin-js-composer/config.php:2935
+msgid "Show content for user type."
+msgstr "Kullanıcı türünün içeriğini göster."
+
+#: compat/plugin-js-composer/config.php:2961
+msgid "Insert a vertical gap in your content"
+msgstr "İçeriğinize dikey bir boşluk ekleyin"
+
+#: compat/plugin-js-composer/config.php:2966
+msgid ""
+"Enter in the size of your gap. Pixels, ems, and percentages are all valid "
+"units of measurement."
+msgstr ""
+"Boşluğunuzun boyutunu girin. Pikseller, ems ve yüzdeler, hepsi geçerli ölçüm "
+"birimleridir."
+
+#: compat/plugin-js-composer/config.php:2976
+#: compat/plugin-js-composer/config.php:3093
+#: compat/plugin-js-composer/config.php:4807
+#: compat/plugin-js-composer/config.php:5018
+#: compat/plugin-js-composer/config.php:5819
+#: compat/plugin-js-composer/config.php:5927
+#: compat/plugin-js-composer/config.php:6058
+msgid "Class"
+msgstr "Sınıf"
+
+#: compat/plugin-js-composer/config.php:2978
+#: compat/plugin-js-composer/config.php:3095
+#: compat/plugin-js-composer/config.php:4810
+#: compat/plugin-js-composer/config.php:4898
+#: compat/plugin-js-composer/config.php:5021
+#: compat/plugin-js-composer/config.php:5822
+#: compat/plugin-js-composer/config.php:5930
+#: compat/plugin-js-composer/config.php:6061
+msgid "A class to add to the element for CSS referrences."
+msgstr "CSS referansları için elemana eklenecek bir sınıf."
+
+#: compat/plugin-js-composer/config.php:2982
+#: compat/plugin-js-composer/config.php:3083
+msgid "Id"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:2983
+#: compat/plugin-js-composer/config.php:3084
+msgid "Unique id to add to the element for CSS referrences"
+msgstr "CSS başvuruları için öğeye eklenecek benzersiz kimlik"
+
+#: compat/plugin-js-composer/config.php:3011
+msgid "Insert a vertical divider in your content"
+msgstr "İçeriğinize dikey bölücü ekleyin"
+
+#: compat/plugin-js-composer/config.php:3025
+msgid "The type of the divider."
+msgstr "Bölücünün türü."
+
+#: compat/plugin-js-composer/config.php:3031
+msgid "Double border"
+msgstr "Çift sınır"
+
+#: compat/plugin-js-composer/config.php:3037
+msgid "Have the divider double lined."
+msgstr "Bölücüye iki katlı astar koyun."
+
+#: compat/plugin-js-composer/config.php:3076
+msgid "Text"
+msgstr "Metin"
+
+#: compat/plugin-js-composer/config.php:3134
+#: compat/plugin-js-composer/config.php:3325
+msgid "Layout"
+msgstr "yerleşim planı"
+
+#: compat/plugin-js-composer/config.php:3148
+#: compat/plugin-js-composer/config.php:3507
+msgid "Number of items per row"
+msgstr "Satır başına öğe sayısı"
+
+#: compat/plugin-js-composer/config.php:3150
+#: compat/plugin-js-composer/config.php:3509
+msgid "A number between 2 and 6"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3163
+msgid "Show Layout Switcher"
+msgstr "Düzen Şalterini Göster"
+
+#: compat/plugin-js-composer/config.php:3169
+msgid "This allows the visitor to change posts layout."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3176
+msgid "Switcher Layouts"
+msgstr "Anahtarlayıcı Düzeni"
+
+#: compat/plugin-js-composer/config.php:3180
+msgid "What layouts are available for the user to switch."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3192
+msgid "Show Thumbnail image"
+msgstr "Küçük resmi göster"
+
+#: compat/plugin-js-composer/config.php:3212
+msgid "Show post meta"
+msgstr "Gönderi meta'sını göster"
+
+#: compat/plugin-js-composer/config.php:3225
+msgid "Inline post meta"
+msgstr "Satır içi meta meta"
+
+#: compat/plugin-js-composer/config.php:3242
+msgid "Show post excerpt"
+msgstr "Gönderi alıntısı göster"
+
+#: compat/plugin-js-composer/config.php:3255
+msgid "Show post footer"
+msgstr "Posta altbilgisini göster"
+
+#: compat/plugin-js-composer/config.php:3266
+msgid "Enable Load More"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3267
+msgid "Enable Load more posts via AJAX."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3358
+msgid ""
+"Force a height on all elements. Expressed in pixels, eq: 300 will represent "
+"300px"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3377
+msgid "Scroll effect"
+msgstr "Kaydırma efekti"
+
+#: compat/plugin-js-composer/config.php:3412
+msgid "Default value: 1"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3421
+msgid "Default value: 1."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3427
+msgid "Custom width for the carousel items"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3430
+msgid ""
+"Set a custom width for the items. It is optional since they are "
+"automatically calculated. Expressed in pixels. Example: If you want to have "
+"one item per row on mobile you need to set a 360 value."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3444
+msgid "Context"
+msgstr "Bağlam"
+
+#: compat/plugin-js-composer/config.php:3472
+msgid "Insert portfolio items"
+msgstr "Portföy öğelerini yerleştirin"
+
+#: compat/plugin-js-composer/config.php:3478
+msgid "Display type"
+msgstr "Ekran tipi"
+
+#: compat/plugin-js-composer/config.php:3490
+msgid "Title style"
+msgstr "Başlık stili"
+
+#: compat/plugin-js-composer/config.php:3516
+msgid "Items to show"
+msgstr "Gösterilecek öğeler"
+
+#: compat/plugin-js-composer/config.php:3518
+msgid "Leave blank for default value as in Settings - Reading"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3525
+msgid "Display pagination. Only if is the case it will be shown"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3537
+msgid "Show filter on top with categories"
+msgstr "Filtreleri kategoriler ile göster"
+
+#: compat/plugin-js-composer/config.php:3546
+msgid "Enable AJAX on filter or pagination."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3547
+msgid ""
+"When clicking filters will send an AJAX request to get specific category "
+"items.Same goes for pagination"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3560
+msgid "Display Subtitle for each item"
+msgstr "Her bir öğe için Altyazı görüntüle"
+
+#: compat/plugin-js-composer/config.php:3572
+msgid "Images size"
+msgstr "Görüntülerin boyutu"
+
+#: compat/plugin-js-composer/config.php:3574
+msgid ""
+"Leave blank to use default value 480x270. Expressed in pixels. Insert like: "
+"400x400"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3581
+msgid "Show from Category"
+msgstr "Kategoriden Göster"
+
+#: compat/plugin-js-composer/config.php:3583
+msgid "It will get also any subcategories"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3590
+msgid "Exclude categories"
+msgstr "kategorileri hariç tut"
+
+#: compat/plugin-js-composer/config.php:3638
+msgid "Insert search form"
+msgstr "Arama formunu ekle"
+
+#: compat/plugin-js-composer/config.php:3645
+msgid "Form Style"
+msgstr "Form Stili"
+
+#: compat/plugin-js-composer/config.php:3650
+msgid ""
+"This affects the look of the form. Default has a border and works for white "
+"backgrounds."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3657
+msgid "Form Type"
+msgstr "Form Türü"
+
+#: compat/plugin-js-composer/config.php:3663
+msgid "Here you can disable Form Submit or AJAX results."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3670
+msgid "Search context"
+msgstr "Arama bağlamı"
+
+#: compat/plugin-js-composer/config.php:3673
+msgid ""
+"Leave unchecked to search in all content. What content do you want to search "
+"for. For example if you select just Members then the form submit will go to "
+"members directory. Same applies for Forums and Products."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3679
+#: compat/plugin-js-composer/config.php:3714
+msgid "Placeholder"
+msgstr "Yer tutucu"
+
+#: compat/plugin-js-composer/config.php:3682
+#: compat/plugin-js-composer/config.php:3717
+msgid "Placeholder to show when the input is empty"
+msgstr "Girdi boş olduğunda göstermek için yer tutucu"
+
+#: compat/plugin-js-composer/config.php:3705
+msgid "Forum ID"
+msgstr "Forum Kimliği"
+
+#: compat/plugin-js-composer/config.php:3708
+msgid ""
+"Enter a Forum ID to search just in that forum. Leave blank to search in all "
+"forums"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:3723
+msgid "Button text color"
+msgstr "Düğme metni rengi"
+
+#: compat/plugin-js-composer/config.php:3732
+msgid "Button background color"
+msgstr "Düğme arka plan rengi"
+
+#: compat/plugin-js-composer/config.php:3746
+msgid "Count Posts"
+msgstr "Mesajları Say"
+
+#: compat/plugin-js-composer/config.php:3756
+msgid "Post type"
+msgstr "Yazı tipi"
+
+#: compat/plugin-js-composer/config.php:3759
+msgid ""
+"Enter a post type to count for. This should be something like: post, page or "
+"portfolio "
+msgstr ""
+"Saymak için yazılan bir yazı girin. Bu, posta, sayfa veya portföy gibi bir "
+"şey olmalıdır."
+
+#: compat/plugin-js-composer/config.php:3769
+msgid "Let it Snow"
+msgstr "Bırak kar yağsın"
+
+#: compat/plugin-js-composer/config.php:3779
+msgid "Where the snowing effect should happen"
+msgstr "Kar yağması ihtimalinin nerede olacağı"
+
+#: compat/plugin-js-composer/config.php:3785
+msgid ""
+"Add beautiful snow effect. Let it snow only in the container column element "
+"or activate it for the whole site. "
+msgstr ""
+"Güzel kar etkisi ekleyin. Sadece konteynır sütun öğesinde kar yağsın ya da "
+"bütün site için etkinleştirin."
+
+#: compat/plugin-js-composer/config.php:3796
+msgid "Pricing Table"
+msgstr "Fiyatlandırma Tablosu"
+
+#: compat/plugin-js-composer/config.php:3801
+msgid "Easy to add pricing tables"
+msgstr "Fiyatlandırma tabloları eklemek kolaydır"
+
+#: compat/plugin-js-composer/config.php:3819
+msgid "Number of pricing table columns."
+msgstr "Fiyatlandırma tablosu sütunlarının sayısı."
+
+#: compat/plugin-js-composer/config.php:3831
+msgid "Choose a different style."
+msgstr "Farklı bir stil seçin."
+
+#: compat/plugin-js-composer/config.php:3838
+msgid "Custom Heading background"
+msgstr "Özel Başlık arka planı"
+
+#: compat/plugin-js-composer/config.php:3847
+msgid "Custom Price background"
+msgstr "Özel Fiyat arka planı"
+
+#: compat/plugin-js-composer/config.php:3856
+msgid "Custom Text color"
+msgstr "Özel Metin rengi"
+
+#: compat/plugin-js-composer/config.php:3892
+msgid "Price"
+msgstr "Fiyat"
+
+#: compat/plugin-js-composer/config.php:3901
+msgid "Popular column?"
+msgstr "Popüler sütun?"
+
+#: compat/plugin-js-composer/config.php:3907
+msgid "Shows this column with a different style"
+msgstr "Bu sütunu farklı bir stille gösterir"
+
+#: compat/plugin-js-composer/config.php:3922
+msgid "Features list"
+msgstr "Özellikler listesi"
+
+#: compat/plugin-js-composer/config.php:3930
+msgid "Button label"
+msgstr "Düğme etiketi"
+
+#: compat/plugin-js-composer/config.php:3936
+msgid "URL (Link)"
+msgstr "URL (Bağlantı)"
+
+#: compat/plugin-js-composer/config.php:3938
+msgid "Add link to button"
+msgstr "Düğmeye bağlantı ekle"
+
+#: compat/plugin-js-composer/config.php:3961
+msgid "Particles number"
+msgstr "Parçacıkların numarası"
+
+#: compat/plugin-js-composer/config.php:3970
+msgid "Particles size"
+msgstr "Partiküllerin boyutu"
+
+#: compat/plugin-js-composer/config.php:3979
+msgid "Particles color"
+msgstr "Parçacık rengi"
+
+#: compat/plugin-js-composer/config.php:3995
+msgid "Login / Lost Password Forms (Hidden from logged in users.)"
+msgstr "Giriş / Kayıp Parola Formları (Oturum açan kullanıcılardan gizlidir.)"
+
+#: compat/plugin-js-composer/config.php:4001
+msgid "Show"
+msgstr "göstermek"
+
+#: compat/plugin-js-composer/config.php:4007
+msgid "Initial form to show."
+msgstr "İlk formu göstermek."
+
+#: compat/plugin-js-composer/config.php:4013
+msgid "Login Title"
+msgstr "Giriş Başlığı"
+
+#: compat/plugin-js-composer/config.php:4016
+#: compat/plugin-js-composer/config.php:4025
+msgid "Enter the login title."
+msgstr "Oturum açma başlığını girin."
+
+#: compat/plugin-js-composer/config.php:4022
+msgid "Lost Password Title"
+msgstr "Kayıp Parola Başlığı"
+
+#: compat/plugin-js-composer/config.php:4031
+msgid "Login Link"
+msgstr "Giriş Bağlantısı"
+
+#: compat/plugin-js-composer/config.php:4034
+#: compat/plugin-js-composer/config.php:4043
+msgid ""
+"Use # or custom url. Using # will allow inline switching between login and "
+"lost password boxes."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4040
+msgid "Lost Password Link"
+msgstr "Kayıp Parola Bağlantısı"
+
+#: compat/plugin-js-composer/config.php:4049
+msgid "Register Link"
+msgstr "Kayıt Linki"
+
+#: compat/plugin-js-composer/config.php:4052
+msgid ""
+"Leave empty for WordPress or BuddyPress default url. Use 'hide' or custom "
+"url. Using 'hide will allow you to hide any registration information."
+msgstr ""
+"WordPress veya BuddyPress varsayılan url'si için boş bırakın. 'Gizle' veya "
+"özel url'yi kullanın. 'Gizle'yi kullanmak kayıt bilgilerini gizlemenize izin "
+"verir."
+
+#: compat/plugin-js-composer/config.php:4066
+#: compat/plugin-js-composer/config.php:4395
+msgid ""
+"Form style. If you don't use this form with a background behind then you "
+"should set the form style to 'Theme Default'"
+msgstr ""
+"Biçim stili. Bu formu bir arkaplan ile birlikte kullanmazsan, form stilini "
+"'Tema Varsayılanı' olarak ayarlamalısın."
+
+#: compat/plugin-js-composer/config.php:4072
+#: compat/plugin-js-composer/config.php:4401
+msgid "Input Size"
+msgstr "Girdi Boyutu"
+
+#: compat/plugin-js-composer/config.php:4085
+#: compat/plugin-js-composer/config.php:4414
+msgid "Show for logged in users too"
+msgstr "Giriş yapan kullanıcılar için de göster"
+
+#: compat/plugin-js-composer/config.php:4099
+msgid "Autofocus to the input field"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4105
+msgid ""
+"Will focus to the input to type directly and if the form isn't on page view "
+"will scroll direcly where the form it's placed. "
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4115
+msgid "Kleo Social Sharing"
+msgstr "Kleo Sosyal Paylaşım"
+
+#: compat/plugin-js-composer/config.php:4120
+msgid "Adds Kleo Likes and social sharing.)"
+msgstr "Kleo Beğenilenleri ve sosyal paylaşımı ekliyor.)"
+
+#: compat/plugin-js-composer/config.php:4130
+msgid "Kleo Magic Container"
+msgstr "Kleo Sihirli Konteyner"
+
+#: compat/plugin-js-composer/config.php:4135
+msgid "Very customizable container element"
+msgstr "Çok özelleştirilebilir konteyner elemanı"
+
+#: compat/plugin-js-composer/config.php:4144
+msgid "CSS Position"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4152
+#: compat/plugin-js-composer/config.php:4166
+msgid "Set the content position."
+msgstr "İçerik konumunu ayarlayın."
+
+#: compat/plugin-js-composer/config.php:4159
+msgid "CSS Float"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4173
+msgid "CSS Top"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4176
+msgid "Css Top value. Use px|em|%|pt|cm"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4186
+msgid "Css RIGHT value. Use px|em|%|pt|cm"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4193
+msgid "CSS Bottom"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4196
+msgid "Css BOTTOM value. Use px|em|%|pt|cm"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4203
+msgid "CSS Left"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4213
+msgid "Min. width"
+msgstr "Min. genişlik"
+
+#: compat/plugin-js-composer/config.php:4216
+msgid "Force a minimum width. Use px|em|%|pt|cm"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4226
+msgid "Force a minimum height. Use px|em|%|pt|cm"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4233
+msgid "Fixed width"
+msgstr "Sabit genişlik"
+
+#: compat/plugin-js-composer/config.php:4236
+msgid "Force a fixed width. Use px|em|%|pt|cm"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4246
+msgid "Force a fixed height. Use px|em|%|pt|cm"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4253
+msgid "Content vertical position in container"
+msgstr "Konteynerdeki içerik dikey konumu"
+
+#: compat/plugin-js-composer/config.php:4260
+msgid ""
+"Set the content position related to the container. Works when you set a "
+"custom container height."
+msgstr ""
+"Konteynerle ilgili içerik konumunu ayarlayın. Özel bir konteyner yüksekliği "
+"ayarladığınızda çalışır."
+
+#: compat/plugin-js-composer/config.php:4267
+msgid "Center text horizontally"
+msgstr "Metni yatay olarak ortala"
+
+#: compat/plugin-js-composer/config.php:4272
+msgid "Enabling this option will center any text inside the container"
+msgstr ""
+"Bu seçeneğin etkinleştirilmesi, kabın içindeki tüm metnin merkezlenmesini "
+"sağlayacaktır"
+
+#: compat/plugin-js-composer/config.php:4279
+msgid "Center the container box horizontally"
+msgstr "Konteyner kutusunu yatay olarak ortalayın"
+
+#: compat/plugin-js-composer/config.php:4284
+msgid "Works when you set a custom container width."
+msgstr "Özel bir konteyner genişliği ayarladığınızda çalışır."
+
+#: compat/plugin-js-composer/config.php:4290
+msgid "Full height content"
+msgstr "Tam yükseklik içeriği"
+
+#: compat/plugin-js-composer/config.php:4295
+msgid ""
+"Stretch the content to the container height. Works when you set a custom "
+"container height."
+msgstr ""
+"İçeriği kabın yüksekliğine kadar gerin. Özel bir konteyner yüksekliği "
+"ayarladığınızda çalışır."
+
+#: compat/plugin-js-composer/config.php:4301
+msgid "Border Radius"
+msgstr "Kenarlık Yarıçapı"
+
+#: compat/plugin-js-composer/config.php:4304
+msgid "Set container border radius. Use px|em|%|pt|cm"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4310
+msgid "Z-index"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4313
+msgid "Stack order for overlapping elements. Use integer value."
+msgstr "Çakışan öğeler için istif sırası. Tamsayı değeri kullanın."
+
+#: compat/plugin-js-composer/config.php:4317
+msgid "Css"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4378
+msgid "Register Title"
+msgstr "Kayıt Başlığı"
+
+#: compat/plugin-js-composer/config.php:4381
+msgid "Enter the register title."
+msgstr "Kayıt başlığını girin."
+
+#: compat/plugin-js-composer/config.php:4428
+msgid "Allow BuddyPress plugin hook before submit"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4434
+msgid ""
+"Allow plugins to hook into the form using "
+"bp_before_registration_submit_buttons"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4447
+msgid "NEWS Focus"
+msgstr "HABERLER Odaklan"
+
+#: compat/plugin-js-composer/config.php:4452
+msgid "News Posts with big left image"
+msgstr "Büyük sol resimli haber postaları"
+
+#: compat/plugin-js-composer/config.php:4458
+msgid "Section name"
+msgstr "Bölüm adı"
+
+#: compat/plugin-js-composer/config.php:4461
+msgid "Enter a section name."
+msgstr "Bir bölüm adı girin."
+
+#: compat/plugin-js-composer/config.php:4467
+msgid "Featured posts on left side"
+msgstr "Sol taraftaki öne çıkan yayınlar"
+
+#: compat/plugin-js-composer/config.php:4470
+msgid "Enter the number of post to highlight and show big on the left column."
+msgstr "Sol sütunda vurgulamak ve büyük göstermek için yayın sayısını girin."
+
+#: compat/plugin-js-composer/config.php:4476
+#: compat/plugin-js-composer/config.php:4525
+#: compat/plugin-js-composer/config.php:4575
+#: compat/plugin-js-composer/config.php:4631
+msgid "Open links in new tab ?"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4478
+#: compat/plugin-js-composer/config.php:4527
+#: compat/plugin-js-composer/config.php:4577
+#: compat/plugin-js-composer/config.php:4633
+msgid "Check box if you want to open links in new tab"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4486
+#: compat/plugin-js-composer/config.php:4535
+#: compat/plugin-js-composer/config.php:4563
+#: compat/plugin-js-composer/config.php:4604
+msgid "Build your query"
+msgstr "Sorgunuzu oluşturun"
+
+#: compat/plugin-js-composer/config.php:4492
+msgid ""
+"If you refine your posts by category then they will show as tabbed content "
+"in the shortcode"
+msgstr ""
+"Yayınlarınızı kategoriye göre hassaslaştırırsanız, kısa kodda sekmeli içerik "
+"olarak gösterilirler"
+
+#: compat/plugin-js-composer/config.php:4510
+msgid "News Posts with first post big image"
+msgstr "Haberler İlk yayın sonrası mesajlar büyük resim"
+
+#: compat/plugin-js-composer/config.php:4516
+msgid "Featured posts to show big"
+msgstr "Özel mesajlar büyük göstermek için"
+
+#: compat/plugin-js-composer/config.php:4519
+msgid "Enter the number of post to highlight and show with bigger thumb."
+msgstr ""
+"Daha büyük başparmakla vurgulamak ve göstermek için yayın sayısını girin."
+
+#: compat/plugin-js-composer/config.php:4541
+msgid ""
+"If you refine your posts by category then the first category will show as a "
+"label on first post image"
+msgstr ""
+"Yayınlarınızı kategoriye göre hassaslaştırırsanız, ilk kategori ilk yayın "
+"görüntüsünde bir etiket olarak gösterilir"
+
+#: compat/plugin-js-composer/config.php:4554
+msgid "NEWS Ticker"
+msgstr "HABERLER"
+
+#: compat/plugin-js-composer/config.php:4569
+msgid "Refine your posts by specific filters"
+msgstr "Yayınlarınızı belirli filtreler ile hassaslaştırın"
+
+#: compat/plugin-js-composer/config.php:4610
+msgid ""
+"Refine your posts by specific filters. This will get only image and gallery "
+"post formats"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4617
+msgid "Posts per Row"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4625
+msgid "How many posts to show on one line."
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4649
+msgid "Members Count"
+msgstr "Üye Sayısı"
+
+#: compat/plugin-js-composer/config.php:4654
+msgid "Show the total member count."
+msgstr "Toplam üye sayısını göster."
+
+#: compat/plugin-js-composer/config.php:4663
+msgid "Members Statistics"
+msgstr "Üyeler İstatistikleri"
+
+#: compat/plugin-js-composer/config.php:4666
+msgid "BuddyPress"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4673
+msgid "Field Name"
+msgstr "Alan adı"
+
+#: compat/plugin-js-composer/config.php:4676
+msgid "Profile field name."
+msgstr "Alan adı profili."
+
+#: compat/plugin-js-composer/config.php:4685
+msgid "Profile field value."
+msgstr "Alan profili değeri."
+
+#: compat/plugin-js-composer/config.php:4691
+msgid "Online?"
+msgstr "İnternet üzerinden?"
+
+#: compat/plugin-js-composer/config.php:4696
+msgid "Only include online members."
+msgstr "Sadece çevrimiçi üyeleri dahil et."
+
+#: compat/plugin-js-composer/config.php:4699
+msgid "Show the member count by profile field value."
+msgstr "Üye sayısını profil alanına göre göster."
+
+#: compat/plugin-js-composer/config.php:4729
+#: compat/plugin-js-composer/config.php:4843
+msgid "The type of groups to display."
+msgstr "Görüntülenecek grupların türü."
+
+#: compat/plugin-js-composer/config.php:4735
+#: compat/plugin-js-composer/config.php:4849
+msgid "Number of groups"
+msgstr "Grup sayısı"
+
+#: compat/plugin-js-composer/config.php:4738
+#: compat/plugin-js-composer/config.php:4852
+msgid "How many groups to get."
+msgstr "Kaç grup alacak."
+
+#: compat/plugin-js-composer/config.php:4744
+#: compat/plugin-js-composer/config.php:5744
+msgid "Minimum Items"
+msgstr "Minimum Kalemler"
+
+#: compat/plugin-js-composer/config.php:4747
+#: compat/plugin-js-composer/config.php:5747
+msgid "Minimum number of items to show on the screen"
+msgstr "Ekranda gösterilecek minimum öğe sayısı"
+
+#: compat/plugin-js-composer/config.php:4753
+#: compat/plugin-js-composer/config.php:5753
+msgid "Maximum Items"
+msgstr "Maksimum Öğeler"
+
+#: compat/plugin-js-composer/config.php:4756
+#: compat/plugin-js-composer/config.php:5756
+msgid "Maximum number of items to show on the screen"
+msgstr "Ekranda gösterilecek maksimum öğe sayısı"
+
+#: compat/plugin-js-composer/config.php:4762
+#: compat/plugin-js-composer/config.php:5762
+msgid "Image Type"
+msgstr "Resim Türü"
+
+#: compat/plugin-js-composer/config.php:4768
+#: compat/plugin-js-composer/config.php:5768
+msgid "The size to get from buddypress"
+msgstr "Buddypress'den almak için gereken boyut"
+
+#: compat/plugin-js-composer/config.php:4774
+#: compat/plugin-js-composer/config.php:5795
+msgid "Auto play"
+msgstr "Otomatik oynatma"
+
+#: compat/plugin-js-composer/config.php:4780
+#: compat/plugin-js-composer/config.php:5801
+msgid "If the carousel should play automatically"
+msgstr "Atlı araba otomatik olarak çalmalı"
+
+#: compat/plugin-js-composer/config.php:4786
+#: compat/plugin-js-composer/config.php:4858
+#: compat/plugin-js-composer/config.php:4968
+#: compat/plugin-js-composer/config.php:5774
+#: compat/plugin-js-composer/config.php:5878
+#: compat/plugin-js-composer/config.php:6008
+msgid "Avatar type"
+msgstr "Avatar türü"
+
+#: compat/plugin-js-composer/config.php:4792
+#: compat/plugin-js-composer/config.php:4864
+#: compat/plugin-js-composer/config.php:4974
+#: compat/plugin-js-composer/config.php:5780
+#: compat/plugin-js-composer/config.php:5884
+#: compat/plugin-js-composer/config.php:6014
+msgid "Rounded or square avatar"
+msgstr "Yuvarlak veya kare avatar"
+
+#: compat/plugin-js-composer/config.php:4798
+msgid "Image Width"
+msgstr "Görüntü Genişliği"
+
+#: compat/plugin-js-composer/config.php:4801
+msgid "The size of the group image"
+msgstr "Grup resminin boyutu"
+
+#: compat/plugin-js-composer/config.php:4870
+#: compat/plugin-js-composer/config.php:4980
+#: compat/plugin-js-composer/config.php:5890
+#: compat/plugin-js-composer/config.php:6020
+msgid "Avatar size"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4876
+#: compat/plugin-js-composer/config.php:4986
+#: compat/plugin-js-composer/config.php:5896
+#: compat/plugin-js-composer/config.php:6026
+msgid "Small or large avatar"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4882
+#: compat/plugin-js-composer/config.php:4992
+#: compat/plugin-js-composer/config.php:5902
+#: compat/plugin-js-composer/config.php:6032
+msgid "Width & Height"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4889
+#: compat/plugin-js-composer/config.php:4999
+#: compat/plugin-js-composer/config.php:5909
+#: compat/plugin-js-composer/config.php:6039
+msgid "Example: 200x200"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:4910
+msgid "Groups Grid"
+msgstr "Grup Izgaraları"
+
+#: compat/plugin-js-composer/config.php:4937
+#: compat/plugin-js-composer/config.php:5977
+msgid "Maximum members"
+msgstr "Maksimum üye"
+
+#: compat/plugin-js-composer/config.php:4940
+msgid "How many groups you want to display."
+msgstr "Kaç grup görüntülemek istiyorsunuz."
+
+#: compat/plugin-js-composer/config.php:4946
+msgid "Groups per line"
+msgstr "Her hat için gruplar"
+
+#: compat/plugin-js-composer/config.php:4962
+msgid "How many groups to show per line"
+msgstr "Her satırda kaç grup gösterilecek?"
+
+#: compat/plugin-js-composer/config.php:5005
+msgid "Animatione"
+msgstr "Canlandırma"
+
+#: compat/plugin-js-composer/config.php:5012
+#: compat/plugin-js-composer/config.php:6052
+msgid "Elements will appear animated"
+msgstr "Elemanlar animasyonlu görünür"
+
+#: compat/plugin-js-composer/config.php:5030
+msgid "Activity Stream"
+msgstr "Etkinlik Akışı"
+
+#: compat/plugin-js-composer/config.php:5040
+msgid "Display"
+msgstr "Görüntüle"
+
+#: compat/plugin-js-composer/config.php:5050
+msgid ""
+"The type of activity to show. It adds the 'object' parameter as in https:"
+"//codex.buddypress.org/developer/loops-reference/the-activity-stream-loop/"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:5056
+msgid "Filter action"
+msgstr "filtreleme eylemi"
+
+#: compat/plugin-js-composer/config.php:5059
+msgid ""
+"Example: activity_update<br> See action parameter from the filters section "
+"from https://codex.buddypress.org/developer/loops-reference/the-activity-"
+"stream-loop/"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:5068
+msgid "How many activity streams to show"
+msgstr "Gösterilecek kaç tane etkinlik akışı var"
+
+#: compat/plugin-js-composer/config.php:5074
+msgid "Show post update form"
+msgstr "Son güncelleme formunu göster"
+
+#: compat/plugin-js-composer/config.php:5080
+msgid "Shows the form to post a new update"
+msgstr "Yeni bir güncelleme yayınlamak için formu gösterir"
+
+#: compat/plugin-js-composer/config.php:5086
+msgid "Bottom button"
+msgstr "Alt düğme"
+
+#: compat/plugin-js-composer/config.php:5092
+msgid "Show a button with link to the activity page"
+msgstr "Etkinlik sayfasına bağlantı veren bir düğme gösterin"
+
+#: compat/plugin-js-composer/config.php:5098
+msgid "Activity Button Label"
+msgstr "Etkinlik Düğmesi Etiketi"
+
+#: compat/plugin-js-composer/config.php:5111
+msgid "Activity Button Link"
+msgstr "Etkinlik Düğmesi Bağlantısı"
+
+#: compat/plugin-js-composer/config.php:5118
+msgid "Put here the link to your activity page"
+msgstr "Buraya aktivite sayfanızın bağlantısını koyun"
+
+#: compat/plugin-js-composer/config.php:5127
+msgid "Activity Page"
+msgstr "Etkinlik Sayfası"
+
+#: compat/plugin-js-composer/config.php:5465
+#: compat/plugin-js-composer/config.php:5571
+msgid "Fontello(theme default)"
+msgstr "Fontello (tema varsayılanı)"
+
+#: compat/plugin-js-composer/config.php:5521
+msgid "Alert"
+msgstr ""
+"\n"
+"uyarı"
+
+#: compat/plugin-js-composer/config.php:5522
+msgid "Info"
+msgstr "Bilgi"
+
+#: compat/plugin-js-composer/config.php:5523
+msgid "Tick"
+msgstr "doğrulama işareti"
+
+#: compat/plugin-js-composer/config.php:5524
+msgid "Explanation"
+msgstr "açıklama"
+
+#: compat/plugin-js-composer/config.php:5525
+msgid "Address book"
+msgstr "Adres defteri"
+
+#: compat/plugin-js-composer/config.php:5526
+msgid "Alarm clock"
+msgstr "Alarm saati"
+
+#: compat/plugin-js-composer/config.php:5527
+msgid "Anchor"
+msgstr "Demir"
+
+#: compat/plugin-js-composer/config.php:5528
+msgid "Application Image"
+msgstr "Uygulama Resmi"
+
+#: compat/plugin-js-composer/config.php:5529
+msgid "Arrow"
+msgstr "Ok"
+
+#: compat/plugin-js-composer/config.php:5530
+msgid "Asterisk"
+msgstr "Yıldız işareti"
+
+#: compat/plugin-js-composer/config.php:5531
+msgid "Hammer"
+msgstr ""
+"\n"
+"Çekiç"
+
+#: compat/plugin-js-composer/config.php:5532
+msgid "Balloon"
+msgstr "Balon"
+
+#: compat/plugin-js-composer/config.php:5533
+msgid "Balloon Buzz"
+msgstr "Balon Buzz"
+
+#: compat/plugin-js-composer/config.php:5534
+msgid "Balloon Facebook"
+msgstr "Balon Facebook"
+
+#: compat/plugin-js-composer/config.php:5535
+msgid "Balloon Twitter"
+msgstr "Balon Twitter"
+
+#: compat/plugin-js-composer/config.php:5536
+msgid "Battery"
+msgstr "pil"
+
+#: compat/plugin-js-composer/config.php:5537
+msgid "Binocular"
+msgstr ""
+"iki gözlü\n"
+
+#: compat/plugin-js-composer/config.php:5538
+msgid "Document Excel"
+msgstr "Belge Excel"
+
+#: compat/plugin-js-composer/config.php:5539
+msgid "Document Image"
+msgstr "Belge Resmi"
+
+#: compat/plugin-js-composer/config.php:5540
+msgid "Document Music"
+msgstr "Doküman Müzik"
+
+#: compat/plugin-js-composer/config.php:5541
+msgid "Document Office"
+msgstr "Belge Ofisi"
+
+#: compat/plugin-js-composer/config.php:5542
+msgid "Document PDF"
+msgstr "Belge PDF"
+
+#: compat/plugin-js-composer/config.php:5543
+msgid "Document Powerpoint"
+msgstr "Belge Powerpoint'i"
+
+#: compat/plugin-js-composer/config.php:5544
+msgid "Document Word"
+msgstr "Belge Sözcüğü"
+
+#: compat/plugin-js-composer/config.php:5545
+msgid "Bookmark"
+msgstr "Yer imi"
+
+#: compat/plugin-js-composer/config.php:5546
+msgid "Camcorder"
+msgstr "video kamera"
+
+#: compat/plugin-js-composer/config.php:5547
+msgid "Camera"
+msgstr "Kamera"
+
+#: compat/plugin-js-composer/config.php:5548
+msgid "Chart"
+msgstr "Grafik"
+
+#: compat/plugin-js-composer/config.php:5549
+msgid "Chart pie"
+msgstr "grafik pasta"
+
+#: compat/plugin-js-composer/config.php:5550
+msgid "Clock"
+msgstr "Saat"
+
+#: compat/plugin-js-composer/config.php:5551
+msgid "Fire"
+msgstr "Ateş"
+
+#: compat/plugin-js-composer/config.php:5552
+msgid "Heart"
+msgstr ""
+"kalp\n"
+
+#: compat/plugin-js-composer/config.php:5553
+msgid "Mail"
+msgstr "Posta"
+
+#: compat/plugin-js-composer/config.php:5554
+msgid "Play"
+msgstr "Oyun"
+
+#: compat/plugin-js-composer/config.php:5555
+msgid "Shield"
+msgstr "kalkan"
+
+#: compat/plugin-js-composer/config.php:5556
+msgid "Video"
+msgstr "Video"
+
+#: compat/plugin-js-composer/config.php:5569
+msgid "Icon library"
+msgstr "simge kütüphanesi"
+
+#: compat/plugin-js-composer/config.php:5572
+msgid "Font Awesome"
+msgstr "Yazı tipi harika"
+
+#: compat/plugin-js-composer/config.php:5573
+msgid "Open Iconic"
+msgstr "Açık icon"
+
+#: compat/plugin-js-composer/config.php:5574
+msgid "Typicons"
+msgstr ""
+
+#: compat/plugin-js-composer/config.php:5575
+msgid "Entypo"
+msgstr "basılı"
+
+#: compat/plugin-js-composer/config.php:5576
+msgid "Linecons"
+msgstr "Hat eksileri"
+
+#: compat/plugin-js-composer/config.php:5577
+msgid "Pixel"
+msgstr "Pixel"
+
+#: compat/plugin-js-composer/config.php:5580
+msgid "Select icon library."
+msgstr "Simge kitaplığını seçin."
+
+#: compat/plugin-js-composer/config.php:5700
+msgid "Members Carousel"
+msgstr "Üyeler Topluluğu"
+
+#: compat/plugin-js-composer/config.php:5710
+#: compat/plugin-js-composer/config.php:5844
+#: compat/plugin-js-composer/config.php:5952
+msgid "Member Type"
+msgstr "Üye Türü"
+
+#: compat/plugin-js-composer/config.php:5719
+#: compat/plugin-js-composer/config.php:5853
+#: compat/plugin-js-composer/config.php:5961
+msgid "Filter"
+msgstr "filtre"
+
+#: compat/plugin-js-composer/config.php:5729
+#: compat/plugin-js-composer/config.php:5863
+#: compat/plugin-js-composer/config.php:5971
+msgid "Filter the members by."
+msgstr "Üyeleri şuna göre filtreleyin."
+
+#: compat/plugin-js-composer/config.php:5735
+#: compat/plugin-js-composer/config.php:5869
+msgid "Number of members"
+msgstr "Üye sayısı"
+
+#: compat/plugin-js-composer/config.php:5738
+#: compat/plugin-js-composer/config.php:5872
+msgid "How many members to get."
+msgstr "Kaç üye alacak."
+
+#: compat/plugin-js-composer/config.php:5789
+msgid "The size of the member image"
+msgstr "Üye resmin büyüklüğü"
+
+#: compat/plugin-js-composer/config.php:5807
+#: compat/plugin-js-composer/config.php:5915
+msgid "Online status"
+msgstr "Çevrimiçi durum"
+
+#: compat/plugin-js-composer/config.php:5813
+#: compat/plugin-js-composer/config.php:5921
+msgid "Show online status"
+msgstr "Çevrimiçi durumu göster"
+
+#: compat/plugin-js-composer/config.php:5847
+#: compat/plugin-js-composer/config.php:5955
+msgid "The type of members to display."
+msgstr "Görüntülenecek üyelerin türü."
+
+#: compat/plugin-js-composer/config.php:5942
+msgid "Members Grid"
+msgstr "Üyeler Izgara"
+
+#: compat/plugin-js-composer/config.php:5980
+msgid "How many members you want to display."
+msgstr "Kaç tane üye görüntülemek istiyorsunuz."
+
+#: compat/plugin-js-composer/config.php:5986
+msgid "Members per line"
+msgstr "Her satıra üye"
+
+#: compat/plugin-js-composer/config.php:6002
+msgid "How many members to show per line"
+msgstr "Her satıra kaç üye gösterecek"
+
+#: shortcodes/templates/kleo_login.php:16
+msgid "Log in with your credentials"
+msgstr "Kullanıcı bilgileri ile giriş yapın"
+
+#: shortcodes/templates/kleo_login.php:17
+msgid "Forgot your details?"
+msgstr "Bilgilerinizi mi unuttunuz?"
+
+#: shortcodes/templates/kleo_login.php:74
+msgid "or"
+msgstr "veya"
+
+#: shortcodes/templates/kleo_login.php:76
+msgid "Create an account"
+msgstr "Bir hesap oluşturun"
+
+#: shortcodes/templates/kleo_login.php:83
+#: shortcodes/templates/kleo_register.php:65
+#: shortcodes/templates/kleo_register.php:91
+msgid "Username"
+msgstr "Kullanıcı Adınız"
+
+#: shortcodes/templates/kleo_login.php:84
+msgid "Password"
+msgstr "Parola"
+
+#: shortcodes/templates/kleo_login.php:86
+msgid "Sign in"
+msgstr "Oturum Aç"
+
+#: shortcodes/templates/kleo_login.php:88
+msgid "Remember me"
+msgstr "Beni hatırla"
+
+#: shortcodes/templates/kleo_login.php:105
+msgid "Username or Email"
+msgstr "Kullanıcı adı veya e-Posta"
+
+#: shortcodes/templates/kleo_login.php:107
+msgid "Reset Password"
+msgstr "Parola Sıfırlama"
+
+#: shortcodes/templates/kleo_login.php:108
+msgid "I remember my details"
+msgstr "Ayrıntılarımı hatırlıyorum"
+
+#: shortcodes/templates/kleo_news_puzzle.php:13
+#: shortcodes/templates/kleo_news_ticker.php:13
+msgid "Visual composer must be installed"
+msgstr "Görsel besteci yüklü olmalıdır"
+
+#: shortcodes/templates/kleo_register.php:15
+msgid "Create Account"
+msgstr "Hesap Oluştur"
+
+#: shortcodes/templates/kleo_register.php:69
+msgid "Your full name"
+msgstr "İsminiz"
+
+#: shortcodes/templates/kleo_register.php:74
+#: shortcodes/templates/kleo_register.php:95
+msgid "Your email"
+msgstr "E-posta Adresiniz"
+
+#: shortcodes/templates/kleo_register.php:79
+msgid "Desired password"
+msgstr "Parolanız"
+
+#: shortcodes/templates/kleo_register.php:84
+msgid "Confirm password"
+msgstr "Parolanızı Doğrulayın"
+
+#: shortcodes/templates/kleo_register.php:107
+msgid "Register"
+msgstr "Kayıt Ol"
+
+#: shortcodes/templates/buddypress/kleo_bp_groups_carousel.php:72
+#: shortcodes/templates/buddypress/kleo_bp_groups_masonry.php:102
+msgid "There are no groups to display. Please try again soon."
+msgstr "Görüntülenecek hiçbir grup yok. Lütfen kısa süre sonra tekrar deneyin."
+
+#: shortcodes/templates/buddypress/kleo_bp_groups_carousel.php:78
+#: shortcodes/templates/buddypress/kleo_bp_members_masonry.php:99
+#: shortcodes/templates/buddypress/kleo_bp_groups_masonry.php:108
+#: shortcodes/templates/buddypress/kleo_bp_groups_grid.php:83
+#: shortcodes/templates/buddypress/kleo_bp_members_carousel.php:79
+#: shortcodes/templates/buddypress/kleo_bp_members_grid.php:81
+msgid "This shortcode must have Buddypress installed to work."
+msgstr "Bu kısa kodun çalışması için Buddypress kurulu olmalıdır."
+
+#: shortcodes/templates/buddypress/kleo_bp_groups_grid.php:78
+msgid "No groups were found at the moment. Please come back later."
+msgstr "Şu anda grup bulunamadı. Lütfen daha sonra tekrar gelin."
+
+#: shortcodes/templates/buddypress/kleo_bp_activity_stream.php:111
+msgid "Right now there is no activity to show"
+msgstr "Şu anda göstermek için herhangi bir etkinlik yok"
+
+#: shortcodes/templates/buddypress/kleo_bp_activity_stream.php:124
+#: shortcodes/templates/buddypress/kleo_bp_activity_page.php:37
+msgid ""
+"This shortcode must have Buddypress installed and activity component "
+"activated."
+msgstr ""
+"Bu kısa kod Buddypress'in yüklenmiş olması ve etkinlik bileşeni "
+"etkinleştirilmelidir."
+
+#. Name of the plugin
+msgid "K Elements"
+msgstr "K Elemanları"
+
+#. Description of the plugin
+msgid "WordPress elements using easy to add shortcodes"
+msgstr "WordPress elemanları kullanarak kısa kod ekleme kolaylığı"
+
+#. Author of the plugin
+msgid "SeventhQueen"
+msgstr ""
+
+#. Author URI of the plugin
+msgid "http://seventhqueen.com/"
+msgstr ""

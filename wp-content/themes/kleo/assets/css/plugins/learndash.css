@@ -1,0 +1,7 @@
+/* --------------------------------------------------
+	Learndash Plugin - KLEO Compatibility
+----------------------------------------------------- */
+.kleo-page .wpProQuiz_content .wpProQuiz_questionListItem input {
+  visibility: visible !important;
+  opacity: 1 !important;
+}

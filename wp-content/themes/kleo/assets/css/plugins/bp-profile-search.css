@@ -1,0 +1,143 @@
+/* --------------------------------------------------
+   BP Profile search - KLEO Compatibility
+----------------------------------------------------- */
+.bps-form input.form-control {
+  margin-bottom: 0;
+}
+/* Large form */
+.bps-form-large {
+  text-align: center;
+}
+.bps-form-large .form-group {
+  margin-right: 10px;
+  margin-bottom: 10px;
+}
+.bps-form-large .form-control {
+  font-size: 16px;
+  line-height: normal;
+}
+.bps-form-large .radio input[type="radio"],
+.bps-form-large .checkbox input[type="checkbox"] {
+  margin-right: 5px;
+}
+.bps-form-large p.description {
+  font-style: italic;
+  color: #fff;
+}
+.bps-form .btn-lg {
+  height: 45px;
+  line-height: 15px;
+  margin-top: 0;
+  vertical-align: top;
+}
+html.js .bps-form select.multi-js {
+  display: none;
+}
+.bps-form.form-collapsible {
+  display: none;
+}
+.bps-form .input-range {
+  width: 130px;
+}
+.bps-form .multiselect-container li {
+  text-align: left;
+}
+.bps-form button:not(.multiselect) {
+  padding: 3px 6px;
+}
+.bps-form button.multiselect {
+  margin-bottom: 0;
+  padding-left: 10px;
+  padding-right: 20px;
+  text-align: left;
+}
+.bps-form button.multiselect .caret {
+  float: right;
+}
+.bps-form button.multiselect .caret {
+  line-height: 20px;
+}
+.bps-form button.multiselect.btn-lg .caret {
+  line-height: initial;
+  float: right;
+}
+.bps-form ul.multiselect-container {
+  z-index: 3;
+}
+.bps-form .multiselect-container label.checkbox {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.bps-form-legacy button.multiselect,
+.bps-form-legacy .btn-group {
+  width: 100%;
+}
+@media (max-width: 767px) {
+  .bps-form .btn-group,
+  .bps-form .btn-group button,
+  .bps-form .input-range {
+    width: 100%;
+  }
+}
+.bps-distance-units {
+  margin-top: 1px;
+}
+.form-inline .bps-distance-units {
+  width: 7em;
+}
+.form-inline .bps-distance-input {
+  width: 80px;
+}
+.bps-form-labels .bps-distance-group .col-sm-12 {
+  max-width: 400px;
+}
+#buddypress .item-list-tabs.bps_header {
+  margin: 0 0 10px 0;
+}
+#buddypress .item-list-tabs.bps_header > ul {
+  list-style: none;
+  padding-left: 0;
+}
+#buddypress .item-list-tabs.bps_header li {
+  float: left;
+}
+#buddypress .item-list-tabs.bps_header li.last {
+  margin: -8px 0 0 0;
+  float: right;
+}
+.form-inline .bps-location-selector {
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  background: #fff !important;
+}
+#buddypress .bps-form-labels .bps-location-selector,
+#buddypress .bps-form-legacy .bps-location-selector {
+  padding: 0;
+  height: auto;
+  line-height: initial;
+  border: 0;
+}
+#buddypress .bps-form-labels .bps-location-selector span,
+#buddypress .bps-form-legacy .bps-location-selector span {
+  font-size: 20px;
+}
+.bps-distance.form-group {
+  position: relative;
+}
+.bps-distance input[type="text"].bps-distance-location {
+  padding-right: 35px;
+}
+@media screen and (max-width: 768px) {
+  input.form-control.input-lg.bps-distance-input,
+  select.form-control.input-lg.bps-distance-units {
+    width: 49.9%;
+    float: left;
+  }
+}
+/* fix multiselect on mobile */
+@media (max-width: 991px) {
+  .multiselect-native-select .dropdown-backdrop {
+    display: none;
+  }
+}

@@ -1,0 +1,56 @@
+/* --------------------------------------------------
+	Youzer Plugin - KLEO Compatibility
+----------------------------------------------------- */
+.youzer .callout-blockquote blockquote {
+  border: none;
+}
+.youzer .widget_bps_widget {
+  padding: 10px 20px;
+}
+.youzer .widget_bps_widget .widget-title {
+  margin-bottom: 15px;
+  padding: 10px 5px;
+}
+.youzer .widget_bps_widget .description {
+  margin-top: 7px;
+}
+.youzer .widget_bps_widget .form-submit {
+  border: 1px solid;
+}
+.youzer .widget_bps_widget .form-submit:hover {
+  background: none;
+}
+.youzer .yz-wall-attachments input[type="file"].yz-upload-attachments {
+  display: none;
+}
+.youzer .bps_header {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.youzer .bps_header > ul > li {
+  display: inline-block;
+}
+.youzer .bps_header > ul > li.last {
+  float: right;
+}
+.youzer .bps-form {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.groups #youzer .activity-content .yz-embed-wrapper iframe {
+  opacity: 1 !important;
+  height: auto;
+  min-height: 400px;
+}
+.youzer-sidebar .widget-content.widget_categories ul li,
+.youzer-sidebar .widget-content.widget_archive ul li {
+  padding-left: 25px;
+}
+.youzer-sidebar .widget-content.widget_categories li:first-child,
+.youzer-sidebar .widget-content.widget_archive li:first-child {
+  border: none;
+  padding-top: 20px;
+}
+#youzer .bps-form select.multi-js {
+  display: none;
+}

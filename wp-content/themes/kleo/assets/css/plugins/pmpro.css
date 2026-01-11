@@ -1,0 +1,105 @@
+/* --------------------------------------------------
+    Paid memberships Pro - KLEO compatibility
+----------------------------------------------------- */
+form.pmpro_form .pmpro_submit {
+  margin-left: 0;
+}
+.pmpro_message {
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
+}
+.pmpro_checkout thead th,
+.pmpro_checkout tbody td {
+  padding-left: 0;
+  padding-right: 0;
+}
+#pmpro_account .pmpro_box {
+  border-top-style: solid;
+  border-top-width: 1px;
+}
+#pmpro_account ul {
+  list-style: none;
+  padding-left: 0;
+}
+#pmpro_tos_fields label {
+  float: none;
+  font-weight: bold;
+  text-align: left;
+  width: auto;
+  margin: 3px 0 0;
+}
+#pmpro_tos_fields textarea {
+  border: 1px solid #e5e5e5;
+}
+.pmpro_checkout tr.odd td {
+  background: none;
+}
+form.pmpro_form .input,
+form.pmpro_form textarea,
+.input,
+form.pmpro_form select {
+  border: 1px solid #e5e5e5;
+}
+.pmpro_checkout .theme-select {
+  width: auto;
+}
+.pmpro-expiration-selects .theme-select {
+  width: 70px;
+}
+#pmpro_payment_information_fields .theme-select {
+  min-width: 70px;
+}
+.pmpro-invoice ul,
+.pmpro-billing ul {
+  list-style: none;
+  padding-left: 0;
+  margin-left: 0;
+}
+/*Fix on IE 11 card details*/
+.pmpro_checkout_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_checkout-fields,
+.pmpro_billing_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_checkout-fields {
+  display: -ms-grid;
+  display: grid;
+  -ms-grid-rows: auto;
+  grid-template-areas: "AccountNumber AccountNumber" "Expiry CVV";
+  grid-gap: 1em;
+  -ms-grid-columns: 1fr 1em 1fr;
+  grid-template-columns: 1fr 1fr;
+}
+.pmpro_checkout_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_payment-account-number,
+.pmpro_billing_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_payment-account-number {
+  grid-area: AccountNumber;
+  -ms-grid-row: 1;
+  -ms-grid-column: 1;
+  -ms-grid-column-span: 3;
+}
+.pmpro_checkout_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_payment-expiration,
+.pmpro_billing_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_payment-expiration {
+  grid-area: Expiry;
+  -ms-grid-row: 2;
+  -ms-grid-column: 1;
+}
+.pmpro_checkout_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_payment-cvv,
+.pmpro_billing_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_payment-cvv {
+  grid-area: CVV;
+  -ms-grid-row: 2;
+  -ms-grid-column: 3;
+}
+.pmpro_checkout_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_payment-discount-code,
+.pmpro_billing_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_payment-discount-code {
+  -ms-grid-row: 3;
+  -ms-grid-column: 1;
+}
+#pmpro_payment_information_fields .pmpro_checkout-fields-display-seal {
+  clear: both;
+  display: -ms-grid;
+  display: grid;
+  -ms-grid-columns: 3fr 1em 1fr;
+  grid-template-columns: 3fr 1fr;
+  grid-gap: 1em;
+}
+.pmpro_checkout_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_checkout-fields-rightcol,
+.pmpro_billing_gateway-stripe form.pmpro_form #pmpro_payment_information_fields .pmpro_checkout-fields-rightcol {
+  -ms-grid-column: 3;
+}
