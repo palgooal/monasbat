@@ -15,10 +15,14 @@ class Mon_Events_BuddyPress
 
     public function register(): void
     {
-        // BuddyPress Tabs (MVP)
+        if (!function_exists('bp_core_new_nav_item') || !function_exists('bp_setup_nav')) {
+            return;
+        }
+
         add_action('bp_setup_nav', [$this, 'add_my_events_tab'], 100);
         add_action('bp_setup_nav', [$this, 'add_my_invites_tab'], 101);
     }
+
 
     /* --------------------------------------------------------------------------
      * Tab: "مناسباتي"
@@ -97,7 +101,8 @@ class Mon_Events_BuddyPress
         if (!$user_id) return;
 
         // ✅ IMPORTANT: use RSVP module (keys are u:ID)
-        $events = $this->plugin->rsvp()->get_events_by_user_rsvp($user_id);
+        $rsvp = method_exists($this->plugin, 'rsvp') ? $this->plugin->rsvp() : null;
+        $events = $rsvp ? $rsvp->get_events_by_user_rsvp($user_id) : ['attending' => [], 'declined' => []];
 
         echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">';
         echo $this->render_events_list_card('سأحضر', $events['attending'] ?? []);

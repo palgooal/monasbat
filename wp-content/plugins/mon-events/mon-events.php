@@ -109,13 +109,28 @@ class Mon_Events_MVP
             'labels' => [
                 'name' => 'نوع المناسبة',
                 'singular_name' => 'نوع المناسبة',
+                'add_new_item' => 'إضافة نوع مناسبة',
+                'edit_item' => 'تعديل نوع المناسبة',
             ],
             'public' => true,
-            'hierarchical' => false,
+            'hierarchical' => true, // مثل الوسوم
+            'show_ui' => true,
+            'show_admin_column' => true,
             'show_in_rest' => true,
+            'meta_box_cb' => 'post_tags_meta_box', // ⭐ مهم جدًا
             'rewrite' => ['slug' => 'event-type'],
         ]);
     }
+    public function gate_passed($event_id): bool
+    {
+        return $this->gate ? $this->gate->gate_passed((int)$event_id) : false;
+    }
+
+    public function gate_phone($event_id): string
+    {
+        return $this->gate ? $this->gate->gate_phone((int)$event_id) : '';
+    }
+
 }
 
 new Mon_Events_MVP();

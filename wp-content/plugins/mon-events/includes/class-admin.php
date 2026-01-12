@@ -139,7 +139,7 @@ class Mon_Events_Admin
 
     public function render_event_rsvps_box($post)
     {
-        $rsvps = get_post_meta($post->ID, Mon_Events_MVP::RSVP_META_KEY, true);
+        $rsvps = get_post_meta($post->ID, Mon_Events_RSVP::RSVP_META_KEY, true);
         $count = is_array($rsvps) ? count($rsvps) : 0;
 
         echo '<p>عدد الردود: <strong>' . esc_html($count) . '</strong></p>';
@@ -324,8 +324,8 @@ class Mon_Events_Admin
 
         if ($event_id <= 0 && !empty($events)) $event_id = (int) $events[0]->ID;
 
-        $invites = $event_id ? $this->get_invites_structured($event_id) : [];
-        $rsvps   = $event_id ? get_post_meta($event_id, Mon_Events_MVP::RSVP_META_KEY, true) : [];
+    $invites = $event_id ? $this->plugin->invites()->get_invites_structured($event_id) : [];
+    $rsvps   = $event_id ? get_post_meta($event_id, Mon_Events_MVP::RSVP_META_KEY, true) : [];
         if (!is_array($rsvps)) $rsvps = [];
 
         $q = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
@@ -526,7 +526,7 @@ class Mon_Events_Admin
         if ($event_id <= 0 || !wp_verify_nonce($nonce, 'mon_export_rsvps_csv|' . $event_id)) wp_die('Nonce غير صالح.');
         if (!current_user_can('edit_post', $event_id)) wp_die('غير مسموح.');
 
-        $rsvps = get_post_meta($event_id, Mon_Events_MVP::RSVP_META_KEY, true);
+        $rsvps = get_post_meta($event_id, Mon_Events_RSVP::RSVP_META_KEY, true);
         if (!is_array($rsvps)) $rsvps = [];
 
         nocache_headers();

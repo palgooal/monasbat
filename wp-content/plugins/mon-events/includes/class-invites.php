@@ -483,12 +483,8 @@ class Mon_Events_Invites
             <?php else: ?>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
                     <a class="button button-secondary"
-                        href="<?php echo esc_url(admin_url('admin-post.php?' . http_build_query([
-                                    'action' => 'mon_export_rsvps_csv',
-                                    'event_id' => (int)$event_id,
-                                    '_wpnonce' => wp_create_nonce('mon_export_rsvps_csv|' . (int)$event_id),
-                                ]))); ?>">
-                        تصدير RSVP CSV
+                        href="<?php echo esc_url($this->admin_export_url((int)$event_id)); ?>">
+                        تصدير المدعوين CSV
                     </a>
                 </div>
 

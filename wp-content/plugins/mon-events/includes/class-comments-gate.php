@@ -187,7 +187,7 @@ class Mon_Events_Comments_Gate
         [$ok, $cid, $phone_norm] = $this->verify_invite_cookie_value($_COOKIE[$cookie_name]);
         if (!$ok || (int)$cid !== $event_id) return false;
 
-        return $this->is_phone_invited($event_id, $phone_norm);
+        return $this->plugin->invites()->is_phone_invited($event_id, $phone_norm);
     }
 
     public function gate_phone($event_id): string
@@ -292,12 +292,15 @@ class Mon_Events_Comments_Gate
 
     private function is_phone_invited(int $event_id, string $phone_norm): bool
     {
-        $event_id = (int) $event_id;
-        $phone_norm = $this->normalize_phone($phone_norm);
+        if (!$this->plugin || !method_exists($this->plugin, 'invites')) {
+            return false;
+        }
 
-        if ($event_id <= 0 || $phone_norm === '') return false;
+        $invites = $this->plugin->invites();
+        if (!$invites || !method_exists($invites, 'is_phone_invited')) {
+            return false;
+        }
 
-        $invites = $this->get_invites_structured($event_id);
-        return isset($invites[$phone_norm]);
+        return (bool) $invites->is_phone_invited((int)$event_id, (string)$phone_norm);
     }
 }
