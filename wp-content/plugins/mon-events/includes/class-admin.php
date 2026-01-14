@@ -31,6 +31,7 @@ class Mon_Events_Admin
         add_action('admin_post_mon_export_invites_csv', [$this, 'handle_export_invites_csv']);
         add_action('admin_post_mon_export_rsvps_csv',   [$this, 'handle_export_rsvps_csv']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_gallery_uploader_assets']);
     }
 
     /* --------------------------------------------------------------------------
@@ -744,5 +745,24 @@ class Mon_Events_Admin
             </p>
         </div>
 <?php
+    }
+    public function enqueue_gallery_uploader_assets($hook): void
+    {
+        // فقط في صفحة add/edit للـ event
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen || $screen->post_type !== 'event') return;
+        if (!in_array($hook, ['post.php', 'post-new.php'], true)) return;
+
+        // ✅ مهم: يحمّل wp.media
+        wp_enqueue_media();
+
+        // سكربت إدارة الجاليري
+        wp_enqueue_script(
+            'mon-events-gallery-uploader',
+            plugins_url('../assets/admin-gallery.js', __FILE__), // انتبه لمسار ../ لأننا داخل includes
+            ['jquery'],
+            '0.2.0',
+            true
+        );
     }
 }

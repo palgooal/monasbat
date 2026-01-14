@@ -13,6 +13,8 @@ require_once plugin_dir_path(__FILE__) . 'includes/class-rsvp.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-buddypress.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-admin.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-comments-gate.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-gallery.php';
+
 
 class Mon_Events_MVP
 {
@@ -30,6 +32,9 @@ class Mon_Events_MVP
 
     /** @var Mon_Events_Comments_Gate */
     private $gate;
+    /** @var Mon_Events_Gallery */
+    private $gallery;
+
 
     public function __construct()
     {
@@ -49,6 +54,9 @@ class Mon_Events_MVP
         $this->gate = new Mon_Events_Comments_Gate($this);
         $this->gate->register();
         $this->register_frontend();
+        $this->gallery = new Mon_Events_Gallery($this);
+        $this->gallery->register();
+
 
         // CPT + Tax
         add_action('init', [$this, 'register_cpt_tax'], 0);
