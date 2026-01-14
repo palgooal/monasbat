@@ -159,36 +159,36 @@ while (have_posts()) : the_post();
                     </div>
                 </section>
 
-                <section class="mon-card mon-card--gallery" id="gallery">
-                    <div class="mon-card__head">
-                        <h2 class="mon-h2">ألبوم الصور</h2>
-                        <div class="mon-sub">صور خاصة بالمناسبة</div>
-                    </div>
+                <?php if (!$hide_gallery && !empty($gallery_ids)): ?>
+                    <section class="mon-card mon-card--dark">
+                        <div class="mon-card__head">
+                            <h2 class="mon-h2">ألبوم الصور</h2>
+                            <p class="mon-sub">اضغط على أي صورة للتكبير والتنقل بين الصور.</p>
+                        </div>
 
-                    <?php if ($hide_gallery): ?>
-                        <p class="mon-muted">تم إخفاء الألبوم من إعدادات المناسبة.</p>
-
-                    <?php elseif (!$can_see_gallery): ?>
-                        <p class="mon-muted">الألبوم متاح فقط للمدعوين بعد التحقق من الدعوة.</p>
-                        <?php echo do_shortcode('[mon_event_gate]'); ?>
-
-                    <?php elseif (empty($gallery_ids)): ?>
-                        <p class="mon-muted">لا توجد صور بعد.</p>
-
-                    <?php else: ?>
-                        <div class="mon-gallery">
-                            <?php foreach ($gallery_ids as $img_id):
-                                $img_id = (int) $img_id;
-                                $full = wp_get_attachment_image_url($img_id, 'full');
-                                if (!$full) continue;
+                        <div class="mon-gallery" data-mon-lightbox="gallery">
+                            <?php foreach ($gallery_ids as $id):
+                                $thumb = wp_get_attachment_image_url((int)$id, 'medium');
+                                $full  = wp_get_attachment_image_url((int)$id, 'large');
+                                if (!$thumb || !$full) continue;
+                                $alt = get_post_meta((int)$id, '_wp_attachment_image_alt', true);
                             ?>
-                                <a class="mon-gallery__item" href="<?php echo esc_url($full); ?>" target="_blank" rel="noopener">
-                                    <?php echo wp_get_attachment_image($img_id, 'large'); ?>
-                                </a>
+                                <button type="button"
+                                    class="mon-gallery__item"
+                                    data-mon-lightbox="item"
+                                    data-full="<?php echo esc_url($full); ?>"
+                                    data-alt="<?php echo esc_attr($alt ?: get_the_title($event_id)); ?>">
+                                    <img src="<?php echo esc_url($thumb); ?>" alt="<?php echo esc_attr($alt); ?>">
+                                </button>
                             <?php endforeach; ?>
                         </div>
-                    <?php endif; ?>
-                </section>
+                    </section>
+                <?php endif; ?>
+
+
+
+
+
 
                 <section class="mon-card mon-card--rsvp" id="rsvp">
                     <div class="mon-card__head">

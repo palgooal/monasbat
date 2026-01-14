@@ -175,9 +175,16 @@ class Mon_Events_MVP
             '0.2.0'
         );
 
+        // wp_enqueue_script(
+        //     'mon-events-ui',
+        //     plugins_url('assets/mon-events.js', __FILE__),
+        //     [],
+        //     '0.2.0',
+        //     true
+        // );
         wp_enqueue_script(
-            'mon-events-ui',
-            plugins_url('assets/mon-events.js', __FILE__),
+            'mon-events-frontend',
+            plugins_url('assets/mon-events-frontend.js', __FILE__),
             [],
             '0.2.0',
             true
