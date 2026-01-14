@@ -30,6 +30,7 @@ class Mon_Events_Admin
         // Exports
         add_action('admin_post_mon_export_invites_csv', [$this, 'handle_export_invites_csv']);
         add_action('admin_post_mon_export_rsvps_csv',   [$this, 'handle_export_rsvps_csv']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
     }
 
     /* --------------------------------------------------------------------------
@@ -60,6 +61,15 @@ class Mon_Events_Admin
             'mon_event_invites',
             'قائمة المدعوين',
             [$this, 'render_event_invites_box'],
+            'event',
+            'normal',
+            'default'
+        );
+
+        add_meta_box(
+            'mon_event_gallery',
+            'ألبوم الصور',
+            [$this, 'render_event_gallery_box'],
             'event',
             'normal',
             'default'
@@ -271,6 +281,19 @@ class Mon_Events_Admin
 
         update_post_meta($post_id, '_mon_invites', $merged);
         update_post_meta($post_id, '_mon_invited_phones', implode("\n", array_keys($merged)));
+        // ✅ Save Gallery
+        $gallery_nonce_ok = (
+            isset($_POST['mon_event_gallery_nonce']) &&
+            wp_verify_nonce($_POST['mon_event_gallery_nonce'], 'mon_event_gallery_save')
+        );
+
+        if ($gallery_nonce_ok) {
+            $raw = sanitize_text_field($_POST['mon_gallery_ids'] ?? '');
+            $ids = array_filter(array_map('intval', explode(',', $raw)));
+            $ids = array_values(array_unique($ids));
+
+            update_post_meta($post_id, '_mon_gallery_ids', $ids);
+        }
     }
 
     private function read_csv_file_content($tmp_path): string
@@ -324,8 +347,8 @@ class Mon_Events_Admin
 
         if ($event_id <= 0 && !empty($events)) $event_id = (int) $events[0]->ID;
 
-    $invites = $event_id ? $this->plugin->invites()->get_invites_structured($event_id) : [];
-    $rsvps   = $event_id ? get_post_meta($event_id, Mon_Events_MVP::RSVP_META_KEY, true) : [];
+        $invites = $event_id ? $this->plugin->invites()->get_invites_structured($event_id) : [];
+        $rsvps   = $event_id ? get_post_meta($event_id, Mon_Events_MVP::RSVP_META_KEY, true) : [];
         if (!is_array($rsvps)) $rsvps = [];
 
         $q = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
@@ -477,7 +500,7 @@ class Mon_Events_Admin
                 </div>
             <?php endif; ?>
         </div>
-<?php
+    <?php
     }
 
     /* --------------------------------------------------------------------------
@@ -667,5 +690,59 @@ class Mon_Events_Admin
         $out = $this->parse_invites_from_raw_list($raw);
         ksort($out);
         return $out;
+    }
+    public function enqueue_admin_assets($hook): void
+    {
+        global $post;
+        if (!$post || $post->post_type !== 'event') return;
+
+        // نحتاج مكتبة ووردبريس للصور
+        wp_enqueue_media();
+
+        // سكربت بسيط لإدارة اختيار الصور وعرضها
+        wp_enqueue_script(
+            'mon-events-admin-gallery',
+            plugins_url('../assets/admin-gallery.js', __FILE__),
+            ['jquery'],
+            '0.2.0',
+            true
+        );
+    }
+    public function render_event_gallery_box($post): void
+    {
+        $ids = get_post_meta($post->ID, '_mon_gallery_ids', true);
+        if (!is_array($ids)) $ids = [];
+
+        wp_nonce_field('mon_event_gallery_save', 'mon_event_gallery_nonce');
+
+        $value = implode(',', array_map('intval', $ids));
+    ?>
+        <div style="display:flex;flex-direction:column;gap:12px">
+            <p style="margin:0;color:#6b7280;font-size:13px">
+                أضف صور الألبوم للمناسبة. يمكنك اختيار عدة صور دفعة واحدة.
+            </p>
+
+            <input type="hidden" id="mon_gallery_ids" name="mon_gallery_ids" value="<?php echo esc_attr($value); ?>">
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button type="button" class="button button-primary" id="mon_gallery_add">إضافة صور</button>
+                <button type="button" class="button" id="mon_gallery_clear">مسح الكل</button>
+            </div>
+
+            <div id="mon_gallery_preview" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:6px">
+                <?php
+                foreach ($ids as $id) {
+                    $thumb = wp_get_attachment_image($id, 'thumbnail');
+                    if (!$thumb) continue;
+                    echo '<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff">' . $thumb . '</div>';
+                }
+                ?>
+            </div>
+
+            <p style="margin:0;color:#6b7280;font-size:12px">
+                * سيتم حفظ الصور كـ IDs داخل <code>_mon_gallery_ids</code>
+            </p>
+        </div>
+<?php
     }
 }
