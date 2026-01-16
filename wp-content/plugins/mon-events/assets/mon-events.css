@@ -576,3 +576,16 @@ body{ background:#0b0b12; }
   color:#fff;
   font-size:13px;
 }
+
+.mon-form-wrap{max-width:980px;margin:0 auto;padding:16px}
+.mon-form{display:grid;gap:10px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px}
+.mon-form input,.mon-form textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb}
+.mon-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mon-terms{display:flex;flex-wrap:wrap;gap:10px}
+.mon-chip{display:inline-flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:999px}
+.mon-toggles{display:grid;gap:8px;margin-top:6px}
+.mon-gallery-tools{display:flex;gap:10px;flex-wrap:wrap}
+.mon-gallery-preview{display:flex;gap:10px;flex-wrap:wrap}
+.mon-thumb{width:68px;height:68px;border:1px solid #e5e7eb;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff;font-family:monospace}
+@media(max-width:700px){.mon-row{grid-template-columns:1fr}}
+

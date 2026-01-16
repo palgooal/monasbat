@@ -60,6 +60,18 @@ class Mon_Events_MVP
 
         // CPT + Tax
         add_action('init', [$this, 'register_cpt_tax'], 0);
+
+        add_action('wp_ajax_mon_events_attach_url', function () {
+            if (!is_user_logged_in()) wp_send_json_error(['msg' => 'not allowed'], 403);
+
+            $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+            if ($id <= 0) wp_send_json_error(['msg' => 'bad id'], 400);
+
+            $url = wp_get_attachment_image_url($id, 'thumbnail');
+            if (!$url) $url = wp_get_attachment_url($id);
+
+            wp_send_json_success(['url' => $url ?: '']);
+        });
     }
 
     // Keep old calls working (only one gate source)
@@ -284,3 +296,5 @@ function mon_events_mvp(): ?Mon_Events_MVP
         ? $GLOBALS['mon_events_mvp_instance']
         : null;
 }
+
+
