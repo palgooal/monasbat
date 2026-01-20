@@ -14,7 +14,9 @@ require_once plugin_dir_path(__FILE__) . 'includes/class-buddypress.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-admin.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-comments-gate.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-gallery.php';
-
+require_once plugin_dir_path(__FILE__) . 'includes/class-mon-packages.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-salla-handler.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-mon-limits.php';
 
 class Mon_Events_MVP
 {
@@ -296,5 +298,10 @@ function mon_events_mvp(): ?Mon_Events_MVP
         ? $GLOBALS['mon_events_mvp_instance']
         : null;
 }
+
+
+
+
+
 
 

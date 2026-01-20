@@ -589,3 +589,7 @@ body{ background:#0b0b12; }
 .mon-thumb{width:68px;height:68px;border:1px solid #e5e7eb;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#fff;font-family:monospace}
 @media(max-width:700px){.mon-row{grid-template-columns:1fr}}
 
+
+
+
+

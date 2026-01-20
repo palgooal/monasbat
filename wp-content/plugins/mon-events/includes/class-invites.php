@@ -30,6 +30,16 @@ class Mon_Events_Invites
         // Admin: Invites Manager page
         add_action('admin_menu', [$this, 'register_admin_pages']);
         add_action('admin_post_mon_export_invites_csv', [$this, 'handle_export_invites_csv']);
+
+        add_action('mon_events_manage_invites', [$this, 'render_invites_manager'], 10, 1);
+
+        // Frontend: Invites manager assets (single event + owner only)
+        add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_invites_assets'], 20);
+
+        // Frontend AJAX (owner only)
+        add_action('wp_ajax_mon_invite_add',    [$this, 'ajax_invite_add']);
+        add_action('wp_ajax_mon_invite_delete', [$this, 'ajax_invite_delete']);
+        add_action('wp_ajax_mon_invite_status', [$this, 'ajax_invite_status']);
     }
 
     /* --------------------------------------------------------------------------
@@ -523,7 +533,7 @@ class Mon_Events_Invites
                 </div>
             <?php endif; ?>
         </div>
-<?php
+    <?php
     }
 
     private function admin_export_url(int $event_id): string
@@ -565,5 +575,432 @@ class Mon_Events_Invites
 
         fclose($out);
         exit;
+    }
+
+    public function render_invites_manager(int $event_id): void
+    {
+        $event_id = (int)$event_id;
+
+        // ✅ Owner only
+        if (!$this->current_user_is_owner($event_id)) return;
+
+        $invites = get_post_meta($event_id, '_mon_invites', true);
+        if (!is_array($invites)) $invites = [];
+
+        // Normalize / ensure keys
+        $invites_norm = [];
+        foreach ($invites as $phone => $row) {
+            $p = $this->normalize_phone($phone);
+            if (!$p) continue;
+            $invites_norm[$p] = [
+                'name'   => sanitize_text_field($row['name'] ?? ''),
+                'status' => sanitize_text_field($row['status'] ?? 'pending'),
+            ];
+        }
+        ksort($invites_norm);
+
+        $count = count($invites_norm);
+
+        echo '<div class="mon-invites-box" data-mon-invites-manager>';
+        echo '  <div class="mon-inv-head">';
+        echo '    <div>';
+        echo '      <p class="mon-inv-title">إدارة المدعوين</p>';
+        echo '      <p class="mon-inv-sub">عدد المدعوين: <b>' . (int)$count . '</b> — إضافة/حذف/تحديث الحالة مباشرة.</p>';
+        echo '    </div>';
+        echo '  </div>';
+
+        // Add form
+        echo '  <div class="mon-inv-form">';
+        echo '    <input class="mon-inv-input" type="text" data-add-phone placeholder="رقم الهاتف (05.. أو 966..)" style="min-width:220px;direction:ltr">';
+        echo '    <input class="mon-inv-input" type="text" data-add-name  placeholder="الاسم (اختياري)" style="min-width:200px">';
+        echo '    <button type="button" class="mon-inv-btn mon-inv-btn--primary" data-add-btn>إضافة</button>';
+        echo '  </div>';
+
+        echo '  <div class="mon-inv-ok" data-msg-ok></div>';
+        echo '  <div class="mon-inv-err" data-msg-err></div>';
+
+        // Table
+        echo '  <table class="mon-inv-table">';
+        echo '    <thead><tr>';
+        echo '      <th>الاسم</th>';
+        echo '      <th>رقم الهاتف</th>';
+        echo '      <th>الحالة</th>';
+        echo '      <th style="width:110px">إجراءات</th>';
+        echo '    </tr></thead>';
+        echo '    <tbody>' . $this->invites_rows_html($invites_norm) . '</tbody>';
+        echo '  </table>';
+
+        echo '  <p class="mon-inv-note">* التعديلات هنا لا تظهر للمدعوين، فقط لإدارة قائمتك.</p>';
+        echo '</div>';
+    }
+
+    private function invite_status_label(string $status): string
+    {
+        return match ($status) {
+            'attending' => 'سيحضر',
+            'declined'  => 'لن يحضر',
+            default     => 'لم يرد',
+        };
+    }
+
+    private function current_user_is_owner(int $event_id): bool
+    {
+        if (!is_user_logged_in() || $event_id <= 0) return false;
+
+        $event = get_post($event_id);
+        if (!$event || $event->post_type !== 'event') return false;
+
+        return (int) $event->post_author === (int) get_current_user_id();
+    }
+
+    public function enqueue_frontend_invites_assets(): void
+    {
+        if (!is_singular('event')) return;
+
+        $event_id = get_queried_object_id();
+        if (!$this->current_user_is_owner((int)$event_id)) return;
+
+        $handle = 'mon-events-invites-fe';
+
+        wp_register_style($handle, false, [], '1.0.0');
+        wp_enqueue_style($handle);
+
+        // ✅ Light UI (no dark)
+        $css = '
+    .mon-invites-box{
+      margin-top:12px;
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-radius:16px;
+      padding:12px;
+      box-shadow:0 10px 30px rgba(15,23,42,.06);
+    }
+    .mon-inv-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+    .mon-inv-title{margin:0;font-size:14px;font-weight:900;color:#0f172a}
+    .mon-inv-sub{color:#64748b;font-size:12px;margin:0}
+    .mon-inv-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+    .mon-inv-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+    .mon-inv-input{
+      padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;background:#fff;
+      font-size:13px;outline:none;
+    }
+    .mon-inv-input:focus{border-color:#c7b3d6;box-shadow:0 0 0 4px rgba(36,11,54,.08)}
+    .mon-inv-btn{
+      padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;background:#fff;
+      font-size:13px;font-weight:900;cursor:pointer;
+      box-shadow:0 6px 14px rgba(2,6,23,.05);transition:.15s;
+    }
+    .mon-inv-btn:hover{transform:translateY(-1px);box-shadow:0 10px 20px rgba(2,6,23,.08)}
+    .mon-inv-btn--primary{background:#240B36;color:#fff;border-color:#240B36}
+    .mon-inv-btn--primary:hover{opacity:.95}
+
+    .mon-inv-table{width:100%;border-collapse:collapse;margin-top:10px}
+    .mon-inv-table th,.mon-inv-table td{padding:10px;border-top:1px solid #eef2f7;font-size:13px;text-align:right}
+    .mon-inv-table th{color:#64748b;font-weight:900;font-size:12px}
+    .mon-inv-phone{direction:ltr;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .mon-inv-badge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid #e5e7eb;font-size:12px;font-weight:900}
+    .mon-inv-badge--att{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+    .mon-inv-badge--dec{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+    .mon-inv-badge--pen{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+
+    .mon-inv-select{padding:8px 10px;border-radius:12px;border:1px solid #e5e7eb;background:#fff;font-size:13px}
+    .mon-inv-del{border:1px solid #fee2e2;background:#fff;color:#991b1b}
+    .mon-inv-del:hover{background:#fef2f2}
+    .mon-inv-note{color:#64748b;font-size:12px;margin:8px 0 0}
+    .mon-inv-err{color:#991b1b;font-size:12px;margin:8px 0 0}
+    .mon-inv-ok{color:#166534;font-size:12px;margin:8px 0 0}
+    ';
+        wp_add_inline_style($handle, $css);
+
+        wp_register_script($handle, false, [], '1.0.0', true);
+        wp_enqueue_script($handle);
+
+        $nonce = wp_create_nonce('mon_invites_fe|' . (int)$event_id);
+
+        $js = "window.MON_INVITES_FE = " . wp_json_encode([
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce'   => $nonce,
+            'eventId' => (int)$event_id,
+        ]) . ";";
+
+        wp_add_inline_script($handle, $js, 'before');
+
+        // JS behavior
+        $js2 = <<<JS
+(function(){
+  const cfg = window.MON_INVITES_FE;
+  if(!cfg) return;
+
+  const root = document.querySelector('[data-mon-invites-manager]');
+  if(!root) return;
+
+  const msgOk  = root.querySelector('[data-msg-ok]');
+  const msgErr = root.querySelector('[data-msg-err]');
+
+  const phoneInput = root.querySelector('[data-add-phone]');
+  const nameInput  = root.querySelector('[data-add-name]');
+  const addBtn     = root.querySelector('[data-add-btn]');
+
+  function setMsg(ok, text){
+    if(msgOk)  msgOk.textContent  = ok ? (text || '') : '';
+    if(msgErr) msgErr.textContent = ok ? '' : (text || '');
+  }
+
+  async function post(action, payload){
+    const fd = new FormData();
+    fd.append('action', action);
+    fd.append('_ajax_nonce', cfg.nonce);
+    fd.append('event_id', String(cfg.eventId));
+    Object.keys(payload||{}).forEach(k => fd.append(k, payload[k]));
+
+    const res = await fetch(cfg.ajaxUrl, { method:'POST', credentials:'same-origin', body: fd });
+    const json = await res.json().catch(()=>null);
+    return json;
+  }
+
+  // Add invite
+  addBtn && addBtn.addEventListener('click', async function(){
+    setMsg(true,'');
+    const phone = (phoneInput?.value || '').trim();
+    const name  = (nameInput?.value || '').trim();
+
+    if(!phone){ setMsg(false,'أدخل رقم هاتف'); return; }
+
+    addBtn.disabled = true;
+    const r = await post('mon_invite_add', { phone, name });
+    addBtn.disabled = false;
+
+    if(!r || !r.success){ setMsg(false, (r && r.data && r.data.message) ? r.data.message : 'فشل الإضافة'); return; }
+
+    // refresh row list (simple strategy)
+    const tbody = root.querySelector('tbody');
+    if(tbody && r.data && r.data.rows_html){
+      tbody.innerHTML = r.data.rows_html;
+    }
+    if(phoneInput) phoneInput.value = '';
+    if(nameInput) nameInput.value = '';
+    setMsg(true,'تمت الإضافة ✅');
+  });
+
+  // Delegate: delete + status
+  root.addEventListener('click', async function(e){
+    const delBtn = e.target.closest('[data-del]');
+    if(!delBtn) return;
+
+    const phone = delBtn.getAttribute('data-phone') || '';
+    if(!phone) return;
+
+    if(!confirm('حذف هذا المدعو؟')) return;
+
+    setMsg(true,'');
+    delBtn.disabled = true;
+
+    const r = await post('mon_invite_delete', { phone });
+    delBtn.disabled = false;
+
+    if(!r || !r.success){ setMsg(false, (r && r.data && r.data.message) ? r.data.message : 'فشل الحذف'); return; }
+
+    const tbody = root.querySelector('tbody');
+    if(tbody && r.data && r.data.rows_html){
+      tbody.innerHTML = r.data.rows_html;
+    }
+    setMsg(true,'تم الحذف ✅');
+  });
+
+  root.addEventListener('change', async function(e){
+    const sel = e.target.closest('[data-status]');
+    if(!sel) return;
+
+    const phone = sel.getAttribute('data-phone') || '';
+    const status = sel.value || 'pending';
+    if(!phone) return;
+
+    setMsg(true,'');
+    sel.disabled = true;
+
+    const r = await post('mon_invite_status', { phone, status });
+    sel.disabled = false;
+
+    if(!r || !r.success){ setMsg(false, (r && r.data && r.data.message) ? r.data.message : 'فشل تحديث الحالة'); return; }
+
+    const tbody = root.querySelector('tbody');
+    if(tbody && r.data && r.data.rows_html){
+      tbody.innerHTML = r.data.rows_html;
+    }
+    setMsg(true,'تم التحديث ✅');
+  });
+})();
+JS;
+
+        wp_add_inline_script($handle, $js2, 'after');
+    }
+
+    private function invites_rows_html(array $invites_norm): string
+    {
+        if (empty($invites_norm)) {
+            return '<tr><td colspan="4" style="padding:14px;color:#64748b">لا يوجد مدعوون بعد.</td></tr>';
+        }
+
+        $html = '';
+        foreach ($invites_norm as $phone => $row) {
+            $name   = (string)($row['name'] ?? '');
+            $status = (string)($row['status'] ?? 'pending');
+
+            $badgeClass = 'mon-inv-badge--pen';
+            if ($status === 'attending') $badgeClass = 'mon-inv-badge--att';
+            elseif ($status === 'declined') $badgeClass = 'mon-inv-badge--dec';
+
+            $html .= '<tr>';
+            $html .= '<td>' . esc_html($name ?: '—') . '</td>';
+            $html .= '<td class="mon-inv-phone">' . esc_html($phone) . '</td>';
+
+            $html .= '<td>';
+            $html .= '  <span class="mon-inv-badge ' . esc_attr($badgeClass) . '">' . esc_html($this->invite_status_label($status)) . '</span>';
+            $html .= '  <div style="margin-top:6px">';
+            $html .= '    <select class="mon-inv-select" data-status data-phone="' . esc_attr($phone) . '">';
+            $html .= '      <option value="pending" '   . selected($status, 'pending', false)   . '>لم يرد</option>';
+            $html .= '      <option value="attending" ' . selected($status, 'attending', false) . '>سيحضر</option>';
+            $html .= '      <option value="declined" '  . selected($status, 'declined', false)  . '>لن يحضر</option>';
+            $html .= '    </select>';
+            $html .= '  </div>';
+            $html .= '</td>';
+
+            $html .= '<td>';
+            $html .= '  <button type="button" class="mon-inv-btn mon-inv-del" data-del data-phone="' . esc_attr($phone) . '">حذف</button>';
+            $html .= '</td>';
+
+            $html .= '</tr>';
+        }
+
+        return $html;
+    }
+
+    public function ajax_invite_add(): void
+    {
+        $event_id = isset($_POST['event_id']) ? (int)$_POST['event_id'] : 0;
+        check_ajax_referer('mon_invites_fe|' . $event_id);
+
+        if (!$this->current_user_is_owner($event_id)) {
+            wp_send_json_error(['message' => 'غير مسموح.']);
+        }
+
+        $phone_raw = sanitize_text_field($_POST['phone'] ?? '');
+        $name_raw  = sanitize_text_field($_POST['name'] ?? '');
+
+        $phone = $this->normalize_phone($phone_raw);
+        if (!$phone) wp_send_json_error(['message' => 'رقم الهاتف غير صالح.']);
+
+        $invites = get_post_meta($event_id, '_mon_invites', true);
+        if (!is_array($invites)) $invites = [];
+
+        // merge / upsert
+        $invites[$phone] = [
+            'name'   => $name_raw,
+            'status' => $invites[$phone]['status'] ?? 'pending',
+        ];
+
+        // normalize + save
+        $inv_norm = [];
+        foreach ($invites as $p => $row) {
+            $pp = $this->normalize_phone($p);
+            if (!$pp) continue;
+            $inv_norm[$pp] = [
+                'name'   => sanitize_text_field($row['name'] ?? ''),
+                'status' => sanitize_text_field($row['status'] ?? 'pending'),
+            ];
+        }
+        ksort($inv_norm);
+
+        update_post_meta($event_id, '_mon_invites', $inv_norm);
+        update_post_meta($event_id, '_mon_invited_phones', implode("\n", array_keys($inv_norm)));
+
+        wp_send_json_success([
+            'rows_html' => $this->invites_rows_html($inv_norm),
+        ]);
+    }
+
+    public function ajax_invite_delete(): void
+    {
+        $event_id = isset($_POST['event_id']) ? (int)$_POST['event_id'] : 0;
+        check_ajax_referer('mon_invites_fe|' . $event_id);
+
+        if (!$this->current_user_is_owner($event_id)) {
+            wp_send_json_error(['message' => 'غير مسموح.']);
+        }
+
+        $phone_raw = sanitize_text_field($_POST['phone'] ?? '');
+        $phone = $this->normalize_phone($phone_raw);
+        if (!$phone) wp_send_json_error(['message' => 'رقم غير صالح.']);
+
+        $invites = get_post_meta($event_id, '_mon_invites', true);
+        if (!is_array($invites)) $invites = [];
+
+        unset($invites[$phone]);
+
+        // normalize + save
+        $inv_norm = [];
+        foreach ($invites as $p => $row) {
+            $pp = $this->normalize_phone($p);
+            if (!$pp) continue;
+            $inv_norm[$pp] = [
+                'name'   => sanitize_text_field($row['name'] ?? ''),
+                'status' => sanitize_text_field($row['status'] ?? 'pending'),
+            ];
+        }
+        ksort($inv_norm);
+
+        update_post_meta($event_id, '_mon_invites', $inv_norm);
+        update_post_meta($event_id, '_mon_invited_phones', implode("\n", array_keys($inv_norm)));
+
+        wp_send_json_success([
+            'rows_html' => $this->invites_rows_html($inv_norm),
+        ]);
+    }
+
+    public function ajax_invite_status(): void
+    {
+        $event_id = isset($_POST['event_id']) ? (int)$_POST['event_id'] : 0;
+        check_ajax_referer('mon_invites_fe|' . $event_id);
+
+        if (!$this->current_user_is_owner($event_id)) {
+            wp_send_json_error(['message' => 'غير مسموح.']);
+        }
+
+        $phone_raw = sanitize_text_field($_POST['phone'] ?? '');
+        $status    = sanitize_text_field($_POST['status'] ?? 'pending');
+
+        $allowed = ['pending', 'attending', 'declined'];
+        if (!in_array($status, $allowed, true)) $status = 'pending';
+
+        $phone = $this->normalize_phone($phone_raw);
+        if (!$phone) wp_send_json_error(['message' => 'رقم غير صالح.']);
+
+        $invites = get_post_meta($event_id, '_mon_invites', true);
+        if (!is_array($invites)) $invites = [];
+
+        if (!isset($invites[$phone])) {
+            wp_send_json_error(['message' => 'هذا الرقم غير موجود بالقائمة.']);
+        }
+
+        $invites[$phone]['status'] = $status;
+
+        // normalize + save
+        $inv_norm = [];
+        foreach ($invites as $p => $row) {
+            $pp = $this->normalize_phone($p);
+            if (!$pp) continue;
+            $inv_norm[$pp] = [
+                'name'   => sanitize_text_field($row['name'] ?? ''),
+                'status' => sanitize_text_field($row['status'] ?? 'pending'),
+            ];
+        }
+        ksort($inv_norm);
+
+        update_post_meta($event_id, '_mon_invites', $inv_norm);
+
+        wp_send_json_success([
+            'rows_html' => $this->invites_rows_html($inv_norm),
+        ]);
     }
 }

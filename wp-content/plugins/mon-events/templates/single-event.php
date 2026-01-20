@@ -90,6 +90,12 @@ while (have_posts()) : the_post();
                                 <div class="mon-countdown__value" data-role="countdownValue">—</div>
                             </div>
                         <?php endif; ?>
+                        <?php
+                        // إدارة المدعوين - فقط لصاحب المناسبة
+                        if (is_user_logged_in() && get_current_user_id() === (int) get_post_field('post_author', get_the_ID())) {
+                            do_action('mon_events_manage_invites', get_the_ID());
+                        }
+                        ?>
 
                     </div>
 
@@ -137,7 +143,6 @@ while (have_posts()) : the_post();
                                 </div>
                             <?php endif; ?>
                         </div>
-
                     </div>
 
                 </div>
