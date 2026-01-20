@@ -26,11 +26,21 @@ class Mon_Salla_Handler
         $payload = $request->get_body();
         $signature = $request->get_header('x-salla-signature');
 
+        // --- كود الطباعة للتأكد من التواصل ---
+        $log_entry = "--- محاولة اتصال جديدة (" . date('Y-m-d H:i:s') . ") ---\n";
+        $log_entry .= "التوقيع المستلم: " . ($signature ?: 'لا يوجد') . "\n";
+        $log_entry .= "البيانات (Payload): " . $payload . "\n";
+        $log_entry .= "------------------------------------------\n\n";
+
+        // سيتم إنشاء ملف باسم salla_debug_log.txt في مجلد الإضافة (includes)
+        file_put_contents(dirname(__FILE__) . '/salla_debug_log.txt', $log_entry, FILE_APPEND);
+        // ---------------------------------------
+
         // إذا تم فتح الرابط يدوياً في المتصفح
         if (empty($signature)) {
             return new WP_REST_Response([
                 'status' => 'active',
-                'message' => 'الرابط يعمل بنجاح وبانتظار بيانات سلة.'
+                'message' => 'تم تسجيل المحاولة في ملف salla_debug_log.txt'
             ], 200);
         }
 
@@ -40,7 +50,8 @@ class Mon_Salla_Handler
 
         $data = json_decode($payload, true);
         if (isset($data['event']) && $data['event'] === 'order.status.updated') {
-            if ($data['data']['status']['id'] === 'completed') {
+            // ملاحظة: تأكد أن الحالة في سلة هي 'completed' أو 'delivered' حسب إعدادات متجرك
+            if ($data['data']['status']['id'] === 'completed' || $data['data']['status']['id'] === 'delivered') {
                 $this->process_upgrade($data['data']);
             }
         }
