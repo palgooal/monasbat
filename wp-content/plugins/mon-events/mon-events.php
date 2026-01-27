@@ -17,6 +17,7 @@ require_once plugin_dir_path(__FILE__) . 'includes/class-gallery.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-mon-packages.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-salla-handler.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-mon-limits.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-salla-sso.php';
 
 class Mon_Events_MVP
 {
