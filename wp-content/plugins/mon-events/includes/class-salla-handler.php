@@ -3,26 +3,18 @@ if (!defined('ABSPATH')) exit;
 
 /**
  * Class Mon_Salla_Handler
- * معالجة طلبات الربط مع منصة سلة وتحديث باقات الأعضاء تلقائياً
+ * معالجة طلبات سلة: تفعيل الباقات للمشتركين الحاليين وإنشاء حسابات للمشتركين الجدد.
  */
 class Mon_Salla_Handler
 {
-    // مفتاح التنبيهات السري (Webhook Secret) الموضح في صورتك
     private $webhook_secret = 'c76c9b516b18bf41ed71475c926e5d59feb006a3609e9053b942c04c06bdc8a3';
 
     public function __construct()
     {
-        // تسجيل مسار الـ API الخاص بـ Webhook سلة
         add_action('rest_api_init', [$this, 'register_webhook_route']);
-
-        // تسجيل وظائف العرض في لوحة تحكم ووردبريس
         $this->init_admin_hooks();
     }
 
-    /**
-     * تسجيل مسار الـ Webhook
-     * يتطابق مع الرابط في صورتك: https://mon.wpgoals.com/wp-json/mon/v1/salla-callback
-     */
     public function register_webhook_route()
     {
         register_rest_route('mon/v1', '/salla-callback', [
@@ -32,24 +24,18 @@ class Mon_Salla_Handler
         ]);
     }
 
-    /**
-     * معالجة الإشارة القادمة من سلة
-     */
     public function handle_salla_notification($request)
     {
         $payload   = $request->get_body();
         $signature = $request->get_header('x-salla-signature');
         $data      = json_decode($payload, true);
 
-        // 1. تسجيل المحاولة للديبيج (يمكنك مراجعته في مجلد includes)
         $this->log_request($payload, $signature);
 
-        // 2. التحقق من التوقيع الرقمي (لأنك اخترت Signature في الإعدادات)
         if (!$this->is_valid_signature($payload, $signature)) {
             return new WP_REST_Response(['message' => 'Unauthorized Signature'], 401);
         }
 
-        // 3. استخراج البيانات (دعم الهيكلية المباشرة أو المتداخلة في order)
         $order_data = isset($data['data']['items']) ? $data['data'] : ($data['data']['order'] ?? null);
         
         if (!$order_data) {
@@ -59,7 +45,7 @@ class Mon_Salla_Handler
         $event = $data['event'] ?? '';
         $status_slug = $order_data['status']['slug'] ?? '';
         
-        // الحالات المسموح بها للتفعيل
+        // تفعيل عند الدفع أو البدء في التنفيذ
         $allowed_statuses = ['completed', 'delivered', 'in_progress'];
 
         if (in_array($status_slug, $allowed_statuses) || $event === 'order.created') {
@@ -69,47 +55,64 @@ class Mon_Salla_Handler
         return new WP_REST_Response(['status' => 'success'], 200);
     }
 
-    /**
-     * التحقق من التوقيع الرقمي لمنع التلاعب
-     */
     private function is_valid_signature($payload, $signature)
     {
         $computed_signature = hash_hmac('sha256', $payload, $this->webhook_secret);
         return hash_equals((string)$signature, (string)$computed_signature);
     }
 
-    /**
-     * معالجة تحديث باقة المستخدم وتفعيل الصلاحيات
-     */
     private function process_upgrade($order_data)
     {
         $customer_email = $order_data['customer']['email'] ?? '';
+        if (!$customer_email) return;
+
         $user = get_user_by('email', $customer_email);
 
+        // --- ميزة الإنشاء التلقائي للمستخدم الجديد ---
+        if (!$user) {
+            $random_password = wp_generate_password(12, false);
+            // استخدام الإيميل كاسم مستخدم لضمان التفرد
+            $user_id = wp_create_user($customer_email, $random_password, $customer_email);
+            
+            if (is_wp_error($user_id)) {
+                error_log("Salla Webhook Error: Could not create user " . $user_id->get_error_message());
+                return;
+            }
+
+            $user = get_user_by('id', $user_id);
+            
+            // تحديث بيانات الملف الشخصي من سلة
+            wp_update_user([
+                'ID'           => $user_id,
+                'first_name'   => $order_data['customer']['first_name'] ?? '',
+                'last_name'    => $order_data['customer']['last_name'] ?? '',
+                'display_name' => $order_data['customer']['full_name'] ?? $customer_email,
+            ]);
+            
+            update_user_meta($user_id, '_created_via_salla', 'yes');
+            update_user_meta($user_id, '_mon_salla_customer_id', $order_data['customer']['id'] ?? '');
+        }
+
+        // --- تفعيل الباقة (للمستخدم الجديد والقديم) ---
         if ($user) {
             foreach ($order_data['items'] as $item) {
-                // استخراج معرف المنتج
                 $salla_product_id = (string)($item['product_id'] ?? ($item['product']['id'] ?? ''));
                 $plan_id = $this->map_product_to_plan($salla_product_id);
 
                 if ($plan_id) {
-                    // تحديث الميتا الموحدة للموقع
                     update_user_meta($user->ID, 'mon_current_plan', $plan_id);
                     update_user_meta($user->ID, '_mon_package_status', 'active');
                     update_user_meta($user->ID, '_mon_package_id', $plan_id);
                     update_user_meta($user->ID, 'mon_plan_updated_at', current_time('mysql'));
-
-                    // تسجيل نجاح العملية لعرض تنبيه للمدير
-                    set_transient('mon_salla_success_' . $user->ID, "تمت ترقية العميل إلى " . strtoupper($plan_id), 60);
+                    
+                    // تنبيه نجاح للمسؤول
+                    set_transient('mon_salla_success_' . $user->ID, "تم تفعيل باقة لعميل جديد: " . $customer_email, 60);
                     break;
                 }
             }
         }
     }
 
-    /**
-     * ربط معرفات منتجات سلة بأسماء الباقات
-     */
     private function map_product_to_plan($salla_product_id)
     {
         $mapping = [
@@ -121,21 +124,15 @@ class Mon_Salla_Handler
         return $mapping[$salla_product_id] ?? false;
     }
 
-    /**
-     * سجل العمليات (Debug Log)
-     */
     private function log_request($payload, $signature)
     {
-        $log_entry = "--- محاولة استقبال (" . date('Y-m-d H:i:s') . ") ---\n";
+        $log_entry = "--- استقبال إشارة (" . date('Y-m-d H:i:s') . ") ---\n";
         $log_entry .= "Signature: " . ($signature ?: 'NONE') . "\n";
         $log_entry .= "Payload: " . $payload . "\n";
         $log_entry .= "------------------------------------------\n\n";
         file_put_contents(dirname(__FILE__) . '/salla_debug_log.txt', $log_entry, FILE_APPEND);
     }
 
-    /**
-     * إعدادات العرض في لوحة التحكم
-     */
     private function init_admin_hooks()
     {
         add_action('admin_notices', function () {
@@ -147,14 +144,19 @@ class Mon_Salla_Handler
         });
 
         add_filter('manage_users_columns', function ($cols) {
-            $cols['mon_plan'] = 'الباقة الحالية';
+            $cols['mon_plan'] = 'الباقة';
+            $cols['mon_source'] = 'المصدر';
             return $cols;
         });
 
         add_filter('manage_users_custom_column', function ($val, $col, $user_id) {
             if ($col === 'mon_plan') {
                 $p = get_user_meta($user_id, 'mon_current_plan', true);
-                return $p ? "<strong style='color:#2271b1;'>" . strtoupper($p) . "</strong>" : '<span style="color:#999;">لا توجد باقة</span>';
+                return $p ? "<strong>" . strtoupper($p) . "</strong>" : '--';
+            }
+            if ($col === 'mon_source') {
+                $source = get_user_meta($user_id, '_created_via_salla', true);
+                return ($source === 'yes') ? '<span class="dashicons dashicons-cart" title="من سلة"></span> سلة' : 'يدوي';
             }
             return $val;
         }, 10, 3);
