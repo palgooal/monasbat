@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) exit;
  */
 class Mon_Salla_Handler
 {
-    // الإعدادات الخاصة بمتجرك في سلة
+    // مفتاح التنبيهات السري (Webhook Secret) الموضح في صورتك
     private $webhook_secret = 'c76c9b516b18bf41ed71475c926e5d59feb006a3609e9053b942c04c06bdc8a3';
 
     public function __construct()
@@ -21,6 +21,7 @@ class Mon_Salla_Handler
 
     /**
      * تسجيل مسار الـ Webhook
+     * يتطابق مع الرابط في صورتك: https://mon.wpgoals.com/wp-json/mon/v1/salla-callback
      */
     public function register_webhook_route()
     {
@@ -40,32 +41,36 @@ class Mon_Salla_Handler
         $signature = $request->get_header('x-salla-signature');
         $data      = json_decode($payload, true);
 
-        // 1. تسجيل المحاولة في ملف السجل للديبيج
+        // 1. تسجيل المحاولة للديبيج (يمكنك مراجعته في مجلد includes)
         $this->log_request($payload, $signature);
 
-        // 2. التحقق من التوقيع (الأمان)
+        // 2. التحقق من التوقيع الرقمي (لأنك اخترت Signature في الإعدادات)
         if (!$this->is_valid_signature($payload, $signature)) {
             return new WP_REST_Response(['message' => 'Unauthorized Signature'], 401);
         }
 
-        // 3. التحقق من نوع الحدث والحالة
+        // 3. استخراج البيانات (دعم الهيكلية المباشرة أو المتداخلة في order)
+        $order_data = isset($data['data']['items']) ? $data['data'] : ($data['data']['order'] ?? null);
+        
+        if (!$order_data) {
+            return new WP_REST_Response(['message' => 'Invalid Data'], 200);
+        }
+
         $event = $data['event'] ?? '';
-        if ($event === 'order.status.updated' || $event === 'order.created' || $event === 'order.updated') {
+        $status_slug = $order_data['status']['slug'] ?? '';
+        
+        // الحالات المسموح بها للتفعيل
+        $allowed_statuses = ['completed', 'delivered', 'in_progress'];
 
-            $status_slug = $data['data']['status']['slug'] ?? '';
-            $allowed_statuses = ['completed', 'delivered', 'in_progress'];
-
-            // الترقية إذا كانت الحالة مكتملة أو الحدث هو إنشاء طلب جديد
-            if (in_array($status_slug, $allowed_statuses) || $event === 'order.created') {
-                $this->process_upgrade($data['data']);
-            }
+        if (in_array($status_slug, $allowed_statuses) || $event === 'order.created') {
+            $this->process_upgrade($order_data);
         }
 
         return new WP_REST_Response(['status' => 'success'], 200);
     }
 
     /**
-     * التحقق من التوقيع الرقمي لمنع التلاعب بالبيانات
+     * التحقق من التوقيع الرقمي لمنع التلاعب
      */
     private function is_valid_signature($payload, $signature)
     {
@@ -74,7 +79,7 @@ class Mon_Salla_Handler
     }
 
     /**
-     * معالجة تحديث باقة المستخدم
+     * معالجة تحديث باقة المستخدم وتفعيل الصلاحيات
      */
     private function process_upgrade($order_data)
     {
@@ -83,23 +88,27 @@ class Mon_Salla_Handler
 
         if ($user) {
             foreach ($order_data['items'] as $item) {
-                $salla_product_id = (string)$item['product']['id'];
+                // استخراج معرف المنتج
+                $salla_product_id = (string)($item['product_id'] ?? ($item['product']['id'] ?? ''));
                 $plan_id = $this->map_product_to_plan($salla_product_id);
 
                 if ($plan_id) {
-                    // تحديث بيانات المستخدم
+                    // تحديث الميتا الموحدة للموقع
                     update_user_meta($user->ID, 'mon_current_plan', $plan_id);
+                    update_user_meta($user->ID, '_mon_package_status', 'active');
+                    update_user_meta($user->ID, '_mon_package_id', $plan_id);
                     update_user_meta($user->ID, 'mon_plan_updated_at', current_time('mysql'));
 
-                    // تعيين تنبيه نجاح يظهر في الإدارة
-                    set_transient('mon_salla_success_' . get_current_user_id(), "تمت ترقية {$user->display_name} إلى " . strtoupper($plan_id), 60);
+                    // تسجيل نجاح العملية لعرض تنبيه للمدير
+                    set_transient('mon_salla_success_' . $user->ID, "تمت ترقية العميل إلى " . strtoupper($plan_id), 60);
+                    break;
                 }
             }
         }
     }
 
     /**
-     * ربط معرفات منتجات سلة بأسماء الباقات في الموقع
+     * ربط معرفات منتجات سلة بأسماء الباقات
      */
     private function map_product_to_plan($salla_product_id)
     {
@@ -113,11 +122,11 @@ class Mon_Salla_Handler
     }
 
     /**
-     * تسجيل العمليات في ملف نصي للرجوع إليها
+     * سجل العمليات (Debug Log)
      */
     private function log_request($payload, $signature)
     {
-        $log_entry = "--- إشارة مستلمة (" . date('Y-m-d H:i:s') . ") ---\n";
+        $log_entry = "--- محاولة استقبال (" . date('Y-m-d H:i:s') . ") ---\n";
         $log_entry .= "Signature: " . ($signature ?: 'NONE') . "\n";
         $log_entry .= "Payload: " . $payload . "\n";
         $log_entry .= "------------------------------------------\n\n";
@@ -125,11 +134,10 @@ class Mon_Salla_Handler
     }
 
     /**
-     * تهيئة وظائف لوحة التحكم (العرض والإشعارات)
+     * إعدادات العرض في لوحة التحكم
      */
     private function init_admin_hooks()
     {
-        // إشعار النجاح الأخضر
         add_action('admin_notices', function () {
             $msg = get_transient('mon_salla_success_' . get_current_user_id());
             if ($msg) {
@@ -138,21 +146,19 @@ class Mon_Salla_Handler
             }
         });
 
-        // إضافة عمود الباقة لجدول الأعضاء
         add_filter('manage_users_columns', function ($cols) {
-            $cols['mon_plan'] = 'الباقة المشترك بها';
+            $cols['mon_plan'] = 'الباقة الحالية';
             return $cols;
         });
 
         add_filter('manage_users_custom_column', function ($val, $col, $user_id) {
             if ($col === 'mon_plan') {
                 $p = get_user_meta($user_id, 'mon_current_plan', true);
-                return $p ? "<span style='color:#2271b1; font-weight:bold;'>" . strtoupper($p) . "</span>" : '<span style="color:#999;">لا يوجد باقة</span>';
+                return $p ? "<strong style='color:#2271b1;'>" . strtoupper($p) . "</strong>" : '<span style="color:#999;">لا توجد باقة</span>';
             }
             return $val;
         }, 10, 3);
     }
 }
 
-// تشغيل الكلاس
 new Mon_Salla_Handler();

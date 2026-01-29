@@ -14,28 +14,29 @@ class Mon_Salla_SSO
     }
 
     // إخبار ووردبريس بأن هذا الرابط يخصنا
-    public function add_custom_rewrite_rule()
-    {
+    public function add_custom_rewrite_rule() {
         add_rewrite_rule('^salla-callback-sso/?$', 'index.php?salla_callback=1', 'top');
     }
 
-    public function get_login_url()
-    {
-        $url = "https://accounts.salla.sa/oauth2/auth?";
-        $params = [
-            'client_id'     => $this->client_id,
-            'redirect_uri'  => $this->redirect_uri,
-            'response_type' => 'code',
-            'scope'         => 'profile read_customers offline_access', // الصلاحيات الكاملة
-            'state'         => wp_create_nonce('salla_sso_state')
-        ];
-        return $url . http_build_query($params);
-    }
+public function get_login_url() {
+    $url = "https://accounts.salla.sa/oauth2/auth?";
+    $params = [
+        'client_id'     => $this->client_id,
+        'redirect_uri'  => $this->redirect_uri,
+        'response_type' => 'code',
+        'scope'         => 'offline_access', 
+        'state'         => wp_create_nonce('salla_sso_state'),
+        'merchant'      => '306594679', // رقم متجرك التجريبي
+        // هذا السطر هو الأهم لإخفاء الباسورد
+        'user_type'     => 'customer' 
+    ];
+    return $url . http_build_query($params);
+}
 
     public function handle_salla_response()
     {
         if (strpos($_SERVER['REQUEST_URI'], 'salla-callback-sso') !== false && isset($_GET['code'])) {
-
+            
             $access_token = $this->exchange_code_for_token($_GET['code']);
 
             if ($access_token) {
@@ -104,7 +105,7 @@ class Mon_Salla_SSO
 
         wp_set_current_user($user->ID);
         wp_set_auth_cookie($user->ID);
-
+        
         // التوجيه للوحة التحكم
         wp_redirect(home_url('/dashboard'));
         exit;

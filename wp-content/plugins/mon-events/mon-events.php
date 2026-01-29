@@ -3,41 +3,39 @@
 /**
  * Plugin Name: Mon Events (MVP)
  * Description: Custom Events CPT + RSVP (MVP) for KLEO setup.
- * Version: 0.2.0
+ * Version: 0.2.1
  */
 
 if (!defined('ABSPATH')) exit;
 
-require_once plugin_dir_path(__FILE__) . 'includes/class-invites.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-rsvp.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-buddypress.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-admin.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-comments-gate.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-gallery.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-mon-packages.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-salla-handler.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-mon-limits.php';
-require_once plugin_dir_path(__FILE__) . 'includes/class-salla-sso.php';
+if ( ! defined( 'MON_EVENTS_PATH' ) ) {
+    define( 'MON_EVENTS_PATH', plugin_dir_path( __FILE__ ) );
+}
+
+// 1. استدعاء الملفات الأساسية
+require_once MON_EVENTS_PATH . 'includes/class-invites.php';
+require_once MON_EVENTS_PATH . 'includes/class-rsvp.php';
+require_once MON_EVENTS_PATH . 'includes/class-buddypress.php';
+require_once MON_EVENTS_PATH . 'includes/class-admin.php';
+require_once MON_EVENTS_PATH . 'includes/class-comments-gate.php';
+require_once MON_EVENTS_PATH . 'includes/class-gallery.php';
+require_once MON_EVENTS_PATH . 'includes/class-mon-packages.php';
+require_once MON_EVENTS_PATH . 'includes/class-mon-limits.php';
+require_once MON_EVENTS_PATH . 'includes/class-salla-sso.php';
+
+// 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)
+require_once MON_EVENTS_PATH . 'includes/class-salla-handler.php';
 
 class Mon_Events_MVP
 {
-    /** @var Mon_Events_Invites */
     private $invites;
-
-    /** @var Mon_Events_RSVP */
     private $rsvp;
-
-    /** @var Mon_Events_BuddyPress */
     private $bp;
-
-    /** @var Mon_Events_Admin */
     private $admin;
-
-    /** @var Mon_Events_Comments_Gate */
     private $gate;
-    /** @var Mon_Events_Gallery */
     private $gallery;
-
+    
+    // تم حذف salla_api لأن كلاس Salla_Handler يعمل بشكل مستقل تلقائياً
 
     public function __construct()
     {
@@ -56,57 +54,28 @@ class Mon_Events_MVP
 
         $this->gate = new Mon_Events_Comments_Gate($this);
         $this->gate->register();
+
         $this->register_frontend();
+        
         $this->gallery = new Mon_Events_Gallery($this);
         $this->gallery->register();
-
 
         // CPT + Tax
         add_action('init', [$this, 'register_cpt_tax'], 0);
 
+        // Ajax handlers
         add_action('wp_ajax_mon_events_attach_url', function () {
             if (!is_user_logged_in()) wp_send_json_error(['msg' => 'not allowed'], 403);
-
             $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
             if ($id <= 0) wp_send_json_error(['msg' => 'bad id'], 400);
-
-            $url = wp_get_attachment_image_url($id, 'thumbnail');
-            if (!$url) $url = wp_get_attachment_url($id);
-
+            $url = wp_get_attachment_image_url($id, 'thumbnail') ?: wp_get_attachment_url($id);
             wp_send_json_success(['url' => $url ?: '']);
         });
     }
 
-    // Keep old calls working (only one gate source)
-    public function mon_gate_passed($event_id): bool
-    {
-        return $this->gate ? $this->gate->gate_passed((int)$event_id) : false;
-    }
-
-    public function mon_gate_phone($event_id): string
-    {
-        return $this->gate ? $this->gate->gate_phone((int)$event_id) : '';
-    }
-
-    public function mon_make_invite_cookie_value($event_id, $phone_norm): string
-    {
-        return $this->gate ? $this->gate->make_invite_cookie_value((int)$event_id, (string)$phone_norm) : '';
-    }
-
-    public function mon_verify_invite_cookie_value($cookie_value): array
-    {
-        return $this->gate ? $this->gate->verify_invite_cookie_value((string)$cookie_value) : [false, 0, ''];
-    }
-
-    public function rsvp(): Mon_Events_RSVP
-    {
-        return $this->rsvp;
-    }
-
-    public function invites(): Mon_Events_Invites
-    {
-        return $this->invites;
-    }
+    // --- Helpers ---
+    public function rsvp(): Mon_Events_RSVP { return $this->rsvp; }
+    public function invites(): Mon_Events_Invites { return $this->invites; }
 
     public function register_cpt_tax()
     {
@@ -117,9 +86,7 @@ class Mon_Events_MVP
                 'add_new' => 'إضافة مناسبة',
                 'add_new_item' => 'إضافة مناسبة جديدة',
                 'edit_item' => 'تعديل المناسبة',
-                'new_item' => 'مناسبة جديدة',
                 'view_item' => 'عرض المناسبة',
-                'search_items' => 'بحث في المناسبات',
             ],
             'public' => true,
             'has_archive' => true,
@@ -130,42 +97,21 @@ class Mon_Events_MVP
         ]);
 
         register_taxonomy('event_type', ['event'], [
-            'labels' => [
-                'name' => 'نوع المناسبة',
-                'singular_name' => 'نوع المناسبة',
-                'add_new_item' => 'إضافة نوع مناسبة',
-                'edit_item' => 'تعديل نوع المناسبة',
-            ],
+            'labels' => ['name' => 'نوع المناسبة'],
             'public' => true,
-            'hierarchical' => true, // مثل الوسوم
-            'show_ui' => true,
+            'hierarchical' => true, 
             'show_admin_column' => true,
             'show_in_rest' => true,
-            'meta_box_cb' => 'post_tags_meta_box', // ⭐ مهم جدًا
-            'rewrite' => ['slug' => 'event-type'],
         ]);
     }
-    public function gate_passed($event_id): bool
-    {
-        return $this->gate ? $this->gate->gate_passed((int)$event_id) : false;
-    }
 
-    public function gate_phone($event_id): string
-    {
-        return $this->gate ? $this->gate->gate_phone((int)$event_id) : '';
-    }
-
-    // داخل class Mon_Events_MVP
+    public function gate_passed($event_id): bool { return $this->gate ? $this->gate->gate_passed((int)$event_id) : false; }
+    public function gate_phone($event_id): string { return $this->gate ? $this->gate->gate_phone((int)$event_id) : ''; }
 
     public function register_frontend(): void
     {
-        // Template override for single event
         add_filter('single_template', [$this, 'load_single_event_template'], 99);
-
-        // Enqueue CSS only for event pages
         add_action('wp_enqueue_scripts', [$this, 'enqueue_assets'], 20);
-
-        // Gate shortcode
         add_shortcode('mon_event_gate', [$this, 'shortcode_gate']);
         add_action('template_redirect', [$this, 'handle_gate_submit']);
     }
@@ -173,7 +119,7 @@ class Mon_Events_MVP
     public function load_single_event_template($template)
     {
         if (is_singular('event')) {
-            $custom = plugin_dir_path(__FILE__) . 'templates/single-event.php';
+            $custom = MON_EVENTS_PATH . 'templates/single-event.php';
             if (file_exists($custom)) return $custom;
         }
         return $template;
@@ -182,77 +128,31 @@ class Mon_Events_MVP
     public function enqueue_assets(): void
     {
         if (!is_singular('event') && !is_post_type_archive('event')) return;
-
-        wp_enqueue_style(
-            'mon-events-ui',
-            plugins_url('assets/mon-events.css', __FILE__),
-            [],
-            '0.2.0'
-        );
-
-        // wp_enqueue_script(
-        //     'mon-events-ui',
-        //     plugins_url('assets/mon-events.js', __FILE__),
-        //     [],
-        //     '0.2.0',
-        //     true
-        // );
-        wp_enqueue_script(
-            'mon-events-frontend',
-            plugins_url('assets/mon-events-frontend.js', __FILE__),
-            [],
-            '0.2.0',
-            true
-        );
+        wp_enqueue_style('mon-events-ui', plugins_url('assets/mon-events.css', __FILE__), [], '0.2.1');
+        wp_enqueue_script('mon-events-frontend', plugins_url('assets/mon-events-frontend.js', __FILE__), [], '0.2.1', true);
     }
-
 
     public function shortcode_gate(): string
     {
         if (!is_singular('event')) return '';
         $event_id = (int) get_the_ID();
-
-        if (is_user_logged_in() || $this->gate_passed($event_id)) {
-            return '<div class="mon-note mon-ok">تم التحقق ✅</div>';
-        }
+        if (is_user_logged_in() || $this->gate_passed($event_id)) return '<div class="mon-note mon-ok">تم التحقق ✅</div>';
 
         $err = get_transient('mon_gate_err_' . $event_id);
         if ($err) delete_transient('mon_gate_err_' . $event_id);
+        $err_html = $err ? '<div class="mon-note" style="background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;border-radius:12px;padding:10px 12px;">' . esc_html($err) . '</div>' : '';
 
-        $err_html = $err ? '<div class="mon-note" style="background:#fff1f2;border:1px solid #fecdd3;color:#9f1239;border-radius:12px;padding:10px 12px;">'
-            . esc_html($err) . '</div>' : '';
-
-        return '
-    <div class="mon-gate">
-      ' . $err_html . '
-      <p class="mon-muted">أدخل رقم جوالك للتحقق من الدعوة.</p>
-      <form method="post" class="mon-gate-form">
-        <input type="text" name="mon_gate_phone" placeholder="05xxxxxxxx" class="mon-input" />
-        <button type="submit" name="mon_gate_submit" value="1" class="mon-btn">تحقق</button>
-      </form>
-    </div>';
+        return '<div class="mon-gate">' . $err_html . '<p class="mon-muted">أدخل رقم جوالك للتحقق من الدعوة.</p><form method="post" class="mon-gate-form"><input type="text" name="mon_gate_phone" placeholder="05xxxxxxxx" class="mon-input" /><button type="submit" name="mon_gate_submit" value="1" class="mon-btn">تحقق</button></form></div>';
     }
 
     public function handle_gate_submit(): void
     {
-        if (!is_singular('event')) return;
-        if (empty($_POST['mon_gate_submit'])) return;
-
+        if (!is_singular('event') || empty($_POST['mon_gate_submit'])) return;
         $event_id = (int) get_the_ID();
-        if ($event_id <= 0) return;
-
-        // رقم الجوال
         $raw_phone = sanitize_text_field($_POST['mon_gate_phone'] ?? '');
-        if ($raw_phone === '') {
-            wp_safe_redirect(get_permalink($event_id));
-            exit;
-        }
+        if ($raw_phone === '') { wp_safe_redirect(get_permalink($event_id)); exit; }
 
-        // ✅ طَبّع الرقم بنفس منطق الدعوات
         $phone_norm = $this->invites()->normalize_phone($raw_phone);
-
-        // (اختياري لكن مهم لو عندك فلسطين + السعودية)
-        // جرّب 970 أيضا لو 966 ما زبط
         $ok = $this->invites()->is_phone_invited($event_id, $phone_norm);
 
         if (!$ok) {
@@ -261,27 +161,17 @@ class Mon_Events_MVP
             if ($ok) $phone_norm = $phone_norm_970;
         }
 
-        // ❌ غير مدعو
         if (!$ok) {
-            // خزن رسالة بسيطة في transient (أو اعرضها مباشرة لاحقاً)
             set_transient('mon_gate_err_' . $event_id, 'هذا الرقم غير موجود ضمن قائمة المدعوين.', 30);
             wp_safe_redirect(get_permalink($event_id));
             exit;
         }
 
-        // ✅ مدعو: ضع Cookie موقّع
-        $cookie_name  = 'mon_inv_' . $event_id;
-        $cookie_value = $this->mon_make_invite_cookie_value($event_id, $phone_norm);
-
-        $secure = is_ssl();
-        $expire = time() + (DAY_IN_SECONDS * 30);
-
-        // PHP 7.3+ : SameSite
-        setcookie($cookie_name, $cookie_value, [
-            'expires'  => $expire,
-            'path'     => COOKIEPATH ?: '/',
-            'domain'   => COOKIE_DOMAIN,
-            'secure'   => $secure,
+        setcookie('mon_inv_' . $event_id, $this->gate->make_invite_cookie_value($event_id, $phone_norm), [
+            'expires' => time() + (DAY_IN_SECONDS * 30),
+            'path' => COOKIEPATH ?: '/',
+            'domain' => COOKIE_DOMAIN,
+            'secure' => is_ssl(),
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
@@ -293,16 +183,6 @@ class Mon_Events_MVP
 
 $GLOBALS['mon_events_mvp_instance'] = new Mon_Events_MVP();
 
-function mon_events_mvp(): ?Mon_Events_MVP
-{
-    return $GLOBALS['mon_events_mvp_instance'] instanceof Mon_Events_MVP
-        ? $GLOBALS['mon_events_mvp_instance']
-        : null;
+function mon_events_mvp() {
+    return $GLOBALS['mon_events_mvp_instance'] ?? null;
 }
-
-
-
-
-
-
-
