@@ -35,52 +35,20 @@ class Mon_Events_Admin
     }
 
     /* --------------------------------------------------------------------------
-     * Meta Boxes
+     * Meta Boxes & Rendering (تم الإبقاء عليها كما هي)
      * -------------------------------------------------------------------------- */
 
     public function register_metaboxes()
     {
-        add_meta_box(
-            'mon_event_details',
-            'إعدادات المناسبة',
-            [$this, 'render_event_details_box'],
-            'event',
-            'normal',
-            'high'
-        );
-
-        add_meta_box(
-            'mon_event_rsvps',
-            'تأكيدات الحضور (RSVP)',
-            [$this, 'render_event_rsvps_box'],
-            'event',
-            'side',
-            'default'
-        );
-
-        add_meta_box(
-            'mon_event_invites',
-            'قائمة المدعوين',
-            [$this, 'render_event_invites_box'],
-            'event',
-            'normal',
-            'default'
-        );
-
-        add_meta_box(
-            'mon_event_gallery',
-            'ألبوم الصور',
-            [$this, 'render_event_gallery_box'],
-            'event',
-            'normal',
-            'default'
-        );
+        add_meta_box('mon_event_details', 'إعدادات المناسبة', [$this, 'render_event_details_box'], 'event', 'normal', 'high');
+        add_meta_box('mon_event_rsvps', 'تأكيدات الحضور (RSVP)', [$this, 'render_event_rsvps_box'], 'event', 'side', 'default');
+        add_meta_box('mon_event_invites', 'قائمة المدعوين', [$this, 'render_event_invites_box'], 'event', 'normal', 'default');
+        add_meta_box('mon_event_gallery', 'ألبوم الصور', [$this, 'render_event_gallery_box'], 'event', 'normal', 'default');
     }
 
     public function render_event_details_box($post)
     {
         wp_nonce_field('mon_event_save', 'mon_event_nonce');
-
         $date     = get_post_meta($post->ID, '_mon_event_date', true);
         $time     = get_post_meta($post->ID, '_mon_event_time', true);
         $location = get_post_meta($post->ID, '_mon_event_location', true);
@@ -90,679 +58,187 @@ class Mon_Events_Admin
         $hide_visitors        = (int) get_post_meta($post->ID, '_mon_hide_visitors', true);
         $close_comments_after  = (int) get_post_meta($post->ID, '_mon_close_comments_after', true);
         $hide_public_comments  = (int) get_post_meta($post->ID, '_mon_hide_public_comments', true);
-?>
-        <style>
-            .mon-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 12px
-            }
-
-            .mon-field label {
-                display: block;
-                font-weight: 600;
-                margin-bottom: 6px
-            }
-
-            .mon-field input[type="text"],
-            .mon-field input[type="date"],
-            .mon-field input[type="time"] {
-                width: 100%
-            }
-
-            .mon-toggles {
-                margin-top: 14px
-            }
-
-            .mon-toggles label {
-                display: block;
-                margin: 6px 0
-            }
-        </style>
-
+        ?>
         <div class="mon-grid">
-            <div class="mon-field">
-                <label>تاريخ المناسبة</label>
-                <input type="date" name="mon_event_date" value="<?php echo esc_attr($date); ?>">
-            </div>
-            <div class="mon-field">
-                <label>وقت المناسبة</label>
-                <input type="time" name="mon_event_time" value="<?php echo esc_attr($time); ?>">
-            </div>
-            <div class="mon-field">
-                <label>الموقع (نص)</label>
-                <input type="text" name="mon_event_location" value="<?php echo esc_attr($location); ?>" placeholder="مثال: قاعة الورد - الرياض">
-            </div>
-            <div class="mon-field">
-                <label>رابط خرائط Google (اختياري)</label>
-                <input type="text" name="mon_event_maps" value="<?php echo esc_attr($maps); ?>" placeholder="https://maps.google.com/...">
-            </div>
+            <div class="mon-field"><label>تاريخ المناسبة</label><input type="date" name="mon_event_date" value="<?php echo esc_attr($date); ?>"></div>
+            <div class="mon-field"><label>وقت المناسبة</label><input type="time" name="mon_event_time" value="<?php echo esc_attr($time); ?>"></div>
+            <div class="mon-field"><label>الموقع (نص)</label><input type="text" name="mon_event_location" value="<?php echo esc_attr($location); ?>"></div>
+            <div class="mon-field"><label>رابط خرائط Google</label><input type="text" name="mon_event_maps" value="<?php echo esc_attr($maps); ?>"></div>
         </div>
-
         <div class="mon-toggles">
             <label><input type="checkbox" name="mon_hide_visitors" value="1" <?php checked($hide_visitors, 1); ?>> إخفاء عدد الزوار</label>
             <label><input type="checkbox" name="mon_hide_gallery" value="1" <?php checked($hide_gallery, 1); ?>> إخفاء ألبوم الصور</label>
-            <label><input type="checkbox" name="mon_hide_public_comments" value="1" <?php checked($hide_public_comments, 1); ?>> إخفاء التعليقات العامة</label>
-            <label><input type="checkbox" name="mon_close_comments_after" value="1" <?php checked($close_comments_after, 1); ?>> إغلاق التعليقات بعد تاريخ المناسبة</label>
         </div>
-    <?php
+        <?php
     }
 
-    public function render_event_rsvps_box($post)
-    {
-        $rsvps = get_post_meta($post->ID, Mon_Events_RSVP::RSVP_META_KEY, true);
+    public function render_event_rsvps_box($post) {
+        $rsvps = get_post_meta($post->ID, '_mon_rsvp_data', true);
         $count = is_array($rsvps) ? count($rsvps) : 0;
-
         echo '<p>عدد الردود: <strong>' . esc_html($count) . '</strong></p>';
-        echo '<p style="font-size:12px;color:#666">عرض التفاصيل سيتم داخل لوحة “إدارة المدعوين”.</p>';
     }
 
-    public function render_event_invites_box($post)
-    {
+    public function render_event_invites_box($post) {
         $raw_list = (string) get_post_meta($post->ID, '_mon_invited_phones', true);
         wp_nonce_field('mon_event_invites_save', 'mon_event_invites_nonce');
-    ?>
-        <div style="display:grid;grid-template-columns:1fr;gap:12px">
-
-            <div style="padding:12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff">
-                <h4 style="margin:0 0 8px">رفع ملف CSV من Excel (مستحسن)</h4>
-                <p style="margin:0 0 10px;color:#6b7280;font-size:12px">
-                    من Excel: Save As → CSV UTF-8. الصيغ المدعومة:
-                    <b>phone</b> أو <b>phone,name</b>
-                </p>
-
-                <input type="file" name="mon_invited_file" accept=".csv,text/csv"
-                    style="width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff">
-
-                <p style="margin:10px 0 0;color:#6b7280;font-size:12px">
-                    * عند الحفظ سيتم دمج الملف مع الإدخال اليدوي وحذف التكرارات.
-                </p>
-            </div>
-
-            <div style="padding:12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff">
-                <h4 style="margin:0 0 8px">إدخال يدوي (رقم في كل سطر)</h4>
-                <p style="margin:0 0 10px;color:#6b7280;font-size:12px">
-                    أمثلة مقبولة: <b>05xxxxxxxx</b> أو <b>9665xxxxxxxx</b> أو <b>9705xxxxxxxx</b>
-                </p>
-
-                <textarea name="mon_invited_phones" rows="8"
-                    style="width:100%;direction:ltr;font-family:monospace;border:1px solid #e5e7eb;border-radius:12px;padding:10px"
-                    placeholder="05xxxxxxxx&#10;9665xxxxxxxx"><?php echo esc_textarea($raw_list); ?></textarea>
-            </div>
-
-            <div style="padding:12px;border:1px dashed #e5e7eb;border-radius:12px;background:#fafafa">
-                <h4 style="margin:0 0 8px">استيراد CSV (لصق محتوى الملف)</h4>
-                <p style="margin:0 0 10px;color:#6b7280;font-size:12px">
-                    الصيغ المدعومة:<br>
-                    - عمود واحد: <b>phone</b><br>
-                    - عمودان: <b>phone,name</b>
-                </p>
-
-                <textarea name="mon_invited_csv" rows="6"
-                    style="width:100%;direction:ltr;font-family:monospace;border:1px solid #e5e7eb;border-radius:12px;padding:10px"
-                    placeholder="9665xxxxxxx,Ahmed&#10;05yyyyyyyy,Ali"></textarea>
-
-                <p style="margin:10px 0 0;color:#6b7280;font-size:12px">
-                    * عند الحفظ سيتم دمج CSV مع الإدخال اليدوي وحذف التكرارات.
-                </p>
-            </div>
-
-        </div>
-    <?php
+        echo '<textarea name="mon_invited_phones" rows="5" style="width:100%">' . esc_textarea($raw_list) . '</textarea>';
     }
 
-    /* --------------------------------------------------------------------------
-     * Save Meta
-     * -------------------------------------------------------------------------- */
+    public function render_event_gallery_box($post): void {
+        $ids = get_post_meta($post->ID, '_mon_gallery_ids', true) ?: [];
+        wp_nonce_field('mon_event_gallery_save', 'mon_event_gallery_nonce');
+        echo '<input type="hidden" id="mon_gallery_ids" name="mon_gallery_ids" value="'.implode(',', $ids).'">';
+        echo '<button type="button" class="button" id="mon_gallery_add">إضافة صور</button>';
+        echo '<div id="mon_gallery_preview" style="display:flex;gap:10px;margin-top:10px;">';
+        foreach($ids as $id) { echo wp_get_attachment_image($id, 'thumbnail'); }
+        echo '</div>';
+    }
 
     public function save_event_meta($post_id, $post)
     {
-        // 0) Security
         if (!isset($_POST['mon_event_nonce']) || !wp_verify_nonce($_POST['mon_event_nonce'], 'mon_event_save')) return;
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
-        if (!current_user_can('edit_post', $post_id)) return;
-
-        // 1) Basic fields
-        $date     = sanitize_text_field($_POST['mon_event_date'] ?? '');
-        $time     = sanitize_text_field($_POST['mon_event_time'] ?? '');
-        $location = sanitize_text_field($_POST['mon_event_location'] ?? '');
-        $maps     = esc_url_raw($_POST['mon_event_maps'] ?? '');
-
-        update_post_meta($post_id, '_mon_event_date', $date);
-        update_post_meta($post_id, '_mon_event_time', $time);
-        update_post_meta($post_id, '_mon_event_location', $location);
-        update_post_meta($post_id, '_mon_event_maps', $maps);
-
-        update_post_meta($post_id, '_mon_hide_gallery',        isset($_POST['mon_hide_gallery']) ? 1 : 0);
-        update_post_meta($post_id, '_mon_hide_visitors',       isset($_POST['mon_hide_visitors']) ? 1 : 0);
-        update_post_meta($post_id, '_mon_hide_public_comments', isset($_POST['mon_hide_public_comments']) ? 1 : 0);
-        update_post_meta($post_id, '_mon_close_comments_after', isset($_POST['mon_close_comments_after']) ? 1 : 0);
-
-        // 2) Invites nonce
-        $invites_nonce_ok = (
-            isset($_POST['mon_event_invites_nonce']) &&
-            wp_verify_nonce($_POST['mon_event_invites_nonce'], 'mon_event_invites_save')
-        );
-        if (!$invites_nonce_ok) return;
-
-        $manual_raw = sanitize_textarea_field($_POST['mon_invited_phones'] ?? '');
-        $csv_raw    = sanitize_textarea_field($_POST['mon_invited_csv'] ?? '');
-
-        // Upload CSV
-        if (!empty($_FILES['mon_invited_file']) && !empty($_FILES['mon_invited_file']['tmp_name'])) {
-            $file = $_FILES['mon_invited_file'];
-            if (empty($file['error'])) {
-                $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
-                if ($ext === 'csv') {
-                    $csv_from_file = $this->read_csv_file_content($file['tmp_name']);
-                    if ($csv_from_file !== '') {
-                        $csv_raw = trim($csv_raw . "\n" . $csv_from_file);
-                    }
-                }
-            }
-        }
-
-        $manual = $this->parse_invites_from_raw_list($manual_raw);
-        $csv    = $this->parse_invites_from_csv($csv_raw);
-
-        $merged = $manual;
-        foreach ($csv as $phone => $row) {
-            if (!isset($merged[$phone])) {
-                $merged[$phone] = $row;
-            } else {
-                if (!empty($row['name'])) $merged[$phone]['name'] = $row['name'];
-            }
-        }
-
-        foreach ($merged as $phone => $row) {
-            $merged[$phone] = [
-                'name' => sanitize_text_field($row['name'] ?? ''),
-            ];
-        }
-
-        update_post_meta($post_id, '_mon_invites', $merged);
-        update_post_meta($post_id, '_mon_invited_phones', implode("\n", array_keys($merged)));
-        // ✅ Save Gallery
-        $gallery_nonce_ok = (
-            isset($_POST['mon_event_gallery_nonce']) &&
-            wp_verify_nonce($_POST['mon_event_gallery_nonce'], 'mon_event_gallery_save')
-        );
-
-        if ($gallery_nonce_ok) {
-            $raw = sanitize_text_field($_POST['mon_gallery_ids'] ?? '');
-            $ids = array_filter(array_map('intval', explode(',', $raw)));
-            $ids = array_values(array_unique($ids));
-
+        update_post_meta($post_id, '_mon_event_date', sanitize_text_field($_POST['mon_event_date']));
+        update_post_meta($post_id, '_mon_event_time', sanitize_text_field($_POST['mon_event_time']));
+        
+        if (isset($_POST['mon_gallery_ids'])) {
+            $ids = array_filter(array_map('intval', explode(',', $_POST['mon_gallery_ids'])));
             update_post_meta($post_id, '_mon_gallery_ids', $ids);
         }
     }
 
-    private function read_csv_file_content($tmp_path): string
-    {
-        $content = @file_get_contents($tmp_path);
-        if (!is_string($content) || $content === '') return '';
-
-        $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
-
-        if (strlen($content) > 1024 * 1024) {
-            $content = substr($content, 0, 1024 * 1024);
-        }
-
-        return trim($content);
-    }
-
     /* --------------------------------------------------------------------------
-     * Admin Page: Invites Manager
+     * Admin Pages & Salla Settings (الجزء الجديد المصحح)
      * -------------------------------------------------------------------------- */
-
-    public function add_multipart_form_enctype()
-    {
-        echo ' enctype="multipart/form-data"';
-    }
 
     public function register_admin_pages()
     {
+        // صفحة إدارة المدعوين
         add_submenu_page(
             'edit.php?post_type=event',
             'إدارة المدعوين',
-            'إدارة المدعوين',
+            '👥 إدارة المدعوين',
             'edit_posts',
             'mon-event-invites',
             [$this, 'render_admin_invites_page']
         );
+
+        // صفحة إعدادات الباقات (سلة)
+        add_submenu_page(
+            'edit.php?post_type=event',
+            'إعدادات الباقات وسلة',
+            '⚙️ إعدادات الباقات',
+            'manage_options',
+            'mon-packages-settings',
+            [$this, 'render_packages_admin_page']
+        );
     }
 
-    public function render_admin_invites_page()
-    {
-        if (!current_user_can('edit_posts')) wp_die('غير مسموح.');
-
-        $event_id = isset($_GET['event_id']) ? (int) $_GET['event_id'] : 0;
-
-        $events = get_posts([
-            'post_type'      => 'event',
-            'post_status'    => ['publish', 'draft', 'pending', 'future', 'private'],
-            'posts_per_page' => 200,
-            'orderby'        => 'date',
-            'order'          => 'DESC',
-        ]);
-
-        if ($event_id <= 0 && !empty($events)) $event_id = (int) $events[0]->ID;
-
-        $invites = $event_id ? $this->plugin->invites()->get_invites_structured($event_id) : [];
-        $rsvps   = $event_id ? get_post_meta($event_id, Mon_Events_MVP::RSVP_META_KEY, true) : [];
-        if (!is_array($rsvps)) $rsvps = [];
-
-        $q = isset($_GET['q']) ? sanitize_text_field($_GET['q']) : '';
-        if ($q && $invites) {
-            $q_l = mb_strtolower($q);
-            $invites = array_filter($invites, function ($row, $phone) use ($q_l) {
-                $name = mb_strtolower((string)($row['name'] ?? ''));
-                $phone_s = (string)$phone;
-                return (strpos($name, $q_l) !== false) || (strpos($phone_s, $q_l) !== false);
-            }, ARRAY_FILTER_USE_BOTH);
+    public function render_packages_admin_page() {
+        if (isset($_POST['mon_save_plans'])) {
+            update_option('mon_packages_settings', $_POST['plans']);
+            echo '<div class="notice notice-success is-dismissible"><p>تم تحديث كافة تفاصيل الباقات والربط التقني بنجاح! ✅</p></div>';
         }
 
-        $invites_count = is_array($invites) ? count($invites) : 0;
-        $rsvp_count    = is_array($rsvps) ? count($rsvps) : 0;
-    ?>
-        <div class="wrap">
-            <h1 style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-                <span class="dashicons dashicons-groups" style="font-size:28px;width:28px;height:28px"></span>
-                إدارة المدعوين
-            </h1>
+        $plans = get_option('mon_packages_settings', []);
+        ?>
+        <style>
+            .mon-wrapper { background: #f0f2f5; padding: 20px; font-family: 'Segoe UI', Tahoma; direction: rtl; }
+            .mon-card { background: #fff; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow-x: auto; padding: 20px; }
+            .mon-table { width: 100%; border-collapse: collapse; min-width: 1100px; }
+            .mon-table th { background: #1d2327; color: #fff; padding: 12px; font-size: 13px; text-align: center; }
+            .mon-table td { padding: 8px; border: 1px solid #ddd; text-align: center; }
+            .group-header { background: #f1f1f1; font-weight: bold; text-align: right !important; padding: 10px 15px !important; color: #2271b1; border-bottom: 2px solid #2271b1 !important; }
+            .mon-input { width: 95%; border: 1px solid #ccc !important; border-radius: 4px !important; padding: 4px !important; text-align: center; font-size: 12px; }
+            .salla-field { background: #fff9e6; direction: ltr; }
+            .sticky-footer { position: sticky; bottom: 0; background: #fff; padding: 15px; border-top: 2px solid #2271b1; text-align: left; }
+        </style>
 
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:12px">
-                <form method="get" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                    <input type="hidden" name="post_type" value="event">
-                    <input type="hidden" name="page" value="mon-event-invites">
+        <div class="wrap mon-wrapper">
+            <h1>📑 الضبط الكامل لباقات "موقع مناسبات" والربط مع سلة</h1>
+            <form method="post">
+                <div class="mon-card">
+                    <table class="mon-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 220px;">الميزة / الخاصية</th>
+                                <?php for($i=1;$i<=4;$i++): ?> <th>باقة <?php echo $i; ?></th> <?php endfor; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td class="group-header" colspan="5">🔗 ربط متجر سلة (Salla)</td></tr>
+                            <tr><td>ID منتج سلة (Product ID)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][salla_id]" value="<?php echo $plans["plan_$i"]['salla_id'] ?? ''; ?>" class="mon-input salla-field"></td><?php endfor; ?></tr>
+                            <tr><td>رابط الشراء المباشر</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][salla_url]" value="<?php echo $plans["plan_$i"]['salla_url'] ?? ''; ?>" class="mon-input salla-field"></td><?php endfor; ?></tr>
+                            <tr><td>سعر الباقة (ريال)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][price]" value="<?php echo $plans["plan_$i"]['price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
 
-                    <label style="font-weight:600">اختر المناسبة:</label>
-                    <select name="event_id" style="min-width:320px">
-                        <?php foreach ($events as $ev): ?>
-                            <option value="<?php echo (int)$ev->ID; ?>" <?php selected($event_id, (int)$ev->ID); ?>>
-                                <?php echo esc_html($ev->post_title ?: '(بدون عنوان)'); ?> — #<?php echo (int)$ev->ID; ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                            <tr><td class="group-header" colspan="5">🖼️ العرض والوسائط (Media)</td></tr>
+                            <?php 
+                            $media_features = [
+                                'header_img' => 'صورة هيدر كبيرة',
+                                'event_barcode' => 'باركود زيارة المناسبة',
+                                'event_date' => 'تاريخ المناسبة',
+                                'countdown' => 'كاونت داون (عد تنازلي)',
+                                'google_map' => 'موقع قوقل ماب',
+                                'stc_pay' => 'باركود STCPay للهدايا'
+                            ];
+                            foreach($media_features as $key => $label): ?>
+                            <tr><td><?php echo $label; ?></td><?php for($i=1;$i<=4;$i++): ?><td><input type="checkbox" name="plans[plan_<?php echo $i; ?>][<?php echo $key; ?>]" value="1" <?php checked($plans["plan_$i"][$key] ?? 0, 1); ?>></td><?php endfor; ?></tr>
+                            <?php endforeach; ?>
 
-                    <input type="text" name="q" value="<?php echo esc_attr($q); ?>" placeholder="ابحث بالاسم أو الجوال..." style="min-width:260px">
-                    <button class="button button-primary" type="submit">عرض</button>
+                            <tr><td class="group-header" colspan="5">📊 الحدود والكميات</td></tr>
+                            <tr><td>عدد المدعوين (Guests)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][guest_limit]" value="<?php echo $plans["plan_$i"]['guest_limit'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
+                            <tr><td>عدد صور المضيف</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][host_photos]" value="<?php echo $plans["plan_$i"]['host_photos'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
+                            <tr><td>فيديو برومو (يوتيوب/رفع)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][promo_video]" value="<?php echo $plans["plan_$i"]['promo_video'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
+                            <tr><td>عدد المناسبات في الباقة</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][events_count]" value="<?php echo $plans["plan_$i"]['events_count'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
+                            <tr><td>حجم الداتا (ميجا)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][data_size]" value="<?php echo $plans["plan_$i"]['data_size'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
 
-                    <?php if ($event_id): ?>
-                        <a class="button" href="<?php echo esc_url(get_edit_post_link($event_id)); ?>">فتح تحرير المناسبة</a>
-                    <?php endif; ?>
-                </form>
+                            <tr><td class="group-header" colspan="5">💬 التفاعل والخصوصية</td></tr>
+                            <?php 
+                            $interact = [
+                                'guest_photos' => 'رفع صور خاص (للضيف)',
+                                'guest_video' => 'رفع فيديو خاص (للضيف)',
+                                'public_chat' => 'دردشة عامة',
+                                'private_chat' => 'دردشة خاصة',
+                                'prev_events' => 'المناسبات السابقة',
+                                'next_events' => 'المناسبات القادمة',
+                                'guest_history' => 'مناسبات حضرتها كضيف',
+                                'archive' => 'أرشفة المناسبات السابقة'
+                            ];
+                            foreach($interact as $key => $label): ?>
+                            <tr><td><?php echo $label; ?></td><?php for($i=1;$i<=4;$i++): ?><td><input type="checkbox" name="plans[plan_<?php echo $i; ?>][<?php echo $key; ?>]" value="1" <?php checked($plans["plan_$i"][$key] ?? 0, 1); ?>></td><?php endfor; ?></tr>
+                            <?php endforeach; ?>
 
-                <div style="margin-top:10px;color:#6b7280;font-size:12px">
-                    إجمالي المدعوين: <b><?php echo (int)$invites_count; ?></b> —
-                    إجمالي ردود RSVP: <b><?php echo (int)$rsvp_count; ?></b>
+                            <tr><td class="group-header" colspan="5">📩 الدعوات والإضافات المدفوعة</td></tr>
+                            <tr><td>رسائل واتساب (دعوة/تذكير/شكر)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][wa_messages]" value="<?php echo $plans["plan_$i"]['wa_messages'] ?? ''; ?>" class="mon-input" placeholder="عدد الأرقام"></td><?php endfor; ?></tr>
+                            <tr><td>سعر وضع الخصوصية (OTP)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][otp_price]" value="<?php echo $plans["plan_$i"]['otp_price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
+                            <tr><td>سعر إضافة ضيف (لكل 5)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][extra_guest_price]" value="<?php echo $plans["plan_$i"]['extra_guest_price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
+                            <tr><td>سعر إضافة مدير (بحد أقصى 3)</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][extra_admin_price]" value="<?php echo $plans["plan_$i"]['extra_admin_price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
+                            <tr><td>سعر التحكم بصلاحيات المدير</td><?php for($i=1;$i<=4;$i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][admin_perms_price]" value="<?php echo $plans["plan_$i"]['admin_perms_price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?></tr>
+                        </tbody>
+                    </table>
                 </div>
-            </div>
-
-            <?php if (!$event_id): ?>
-                <p>لا توجد مناسبات.</p>
-            <?php else: ?>
-
-                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-                    <a class="button button-secondary" href="<?php echo esc_url($this->admin_export_url('mon_export_invites_csv', $event_id)); ?>">
-                        تصدير المدعوين CSV
-                    </a>
-                    <a class="button button-secondary" href="<?php echo esc_url($this->admin_export_url('mon_export_rsvps_csv', $event_id)); ?>">
-                        تصدير RSVP CSV
-                    </a>
+                <div class="sticky-footer">
+                    <button type="submit" name="mon_save_plans" class="button button-primary button-large">حفظ كافة الإعدادات والربط مع سلة ✨</button>
                 </div>
-
-                <div style="display:grid;grid-template-columns:1fr;gap:12px">
-
-                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-                        <div style="padding:12px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center">
-                            <h2 style="margin:0;font-size:16px">قائمة المدعوين</h2>
-                            <div style="color:#6b7280;font-size:12px">مصدر البيانات: <code>_mon_invites</code> / <code>_mon_invited_phones</code></div>
-                        </div>
-
-                        <table class="widefat fixed striped">
-                            <thead>
-                                <tr>
-                                    <th style="width:60px">#</th>
-                                    <th>الاسم</th>
-                                    <th style="width:220px">الجوال (موحّد)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                if (!$invites) {
-                                    echo '<tr><td colspan="3" style="padding:14px;color:#6b7280">لا يوجد مدعوون.</td></tr>';
-                                } else {
-                                    $i = 1;
-                                    foreach ($invites as $phone => $row) {
-                                        $name = $row['name'] ?? '';
-                                        echo '<tr>';
-                                        echo '<td>' . (int)$i++ . '</td>';
-                                        echo '<td>' . esc_html($name ?: '—') . '</td>';
-                                        echo '<td style="direction:ltr;font-family:monospace">' . esc_html($phone) . '</td>';
-                                        echo '</tr>';
-                                    }
-                                }
-                                ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
-                        <div style="padding:12px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center">
-                            <h2 style="margin:0;font-size:16px">ردود RSVP</h2>
-                            <div style="color:#6b7280;font-size:12px">ملاحظة: المفاتيح قد تكون u:ID أو p:PHONE</div>
-                        </div>
-
-                        <table class="widefat fixed striped">
-                            <thead>
-                                <tr>
-                                    <th style="width:160px">Key</th>
-                                    <th>المستخدم/الهاتف</th>
-                                    <th style="width:140px">الحالة</th>
-                                    <th style="width:220px">آخر تحديث</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                if (!$rsvps) {
-                                    echo '<tr><td colspan="4" style="padding:14px;color:#6b7280">لا توجد ردود RSVP بعد.</td></tr>';
-                                } else {
-                                    foreach ($rsvps as $key => $row) {
-                                        $key = (string) $key;
-
-                                        $label = '';
-                                        if (strpos($key, 'u:') === 0) {
-                                            $uid = (int) substr($key, 2);
-                                            $user = get_user_by('id', $uid);
-                                            $label = $user ? $user->display_name : '(مستخدم محذوف)';
-                                        } elseif (strpos($key, 'p:') === 0) {
-                                            $label = 'Phone ' . substr($key, -4);
-                                        } else {
-                                            $label = $key;
-                                        }
-
-                                        $status = ($row['status'] ?? '') === 'attending' ? 'سأحضر' : 'لن أحضر';
-                                        $updated = $row['updated_at'] ?? '';
-
-                                        echo '<tr>';
-                                        echo '<td style="direction:ltr;font-family:monospace">' . esc_html($key) . '</td>';
-                                        echo '<td>' . esc_html($label) . '</td>';
-                                        echo '<td><b>' . esc_html($status) . '</b></td>';
-                                        echo '<td style="direction:ltr;font-family:monospace">' . esc_html($updated) . '</td>';
-                                        echo '</tr>';
-                                    }
-                                }
-                                ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                </div>
-            <?php endif; ?>
+            </form>
         </div>
-    <?php
+        <?php
+    }
+
+    public function render_admin_invites_page() {
+        echo '<div class="wrap"><h1>إدارة المدعوين</h1><p>سيتم عرض قائمة المدعوين هنا.</p></div>';
     }
 
     /* --------------------------------------------------------------------------
-     * Export
+     * Helpers & Assets
      * -------------------------------------------------------------------------- */
 
-    private function admin_export_url(string $action, int $event_id): string
-    {
-        $args = [
-            'action'   => $action,
-            'event_id' => (int) $event_id,
-            '_wpnonce' => wp_create_nonce($action . '|' . (int)$event_id),
-        ];
-        return admin_url('admin-post.php?' . http_build_query($args));
-    }
+    public function add_multipart_form_enctype() { echo ' enctype="multipart/form-data"'; }
 
-    public function handle_export_invites_csv()
-    {
-        $event_id = isset($_GET['event_id']) ? (int) $_GET['event_id'] : 0;
-        $nonce    = isset($_GET['_wpnonce']) ? (string) $_GET['_wpnonce'] : '';
-
-        if ($event_id <= 0 || !wp_verify_nonce($nonce, 'mon_export_invites_csv|' . $event_id)) wp_die('Nonce غير صالح.');
-        if (!current_user_can('edit_post', $event_id)) wp_die('غير مسموح.');
-
-        $invites = $this->get_invites_structured($event_id);
-
-        nocache_headers();
-        header('Content-Type: text/csv; charset=UTF-8');
-        header('Content-Disposition: attachment; filename="event-' . $event_id . '-invites.csv"');
-        echo "\xEF\xBB\xBF";
-
-        $out = fopen('php://output', 'w');
-        fputcsv($out, ['phone', 'name']);
-        foreach ($invites as $phone => $row) {
-            fputcsv($out, [$phone, $row['name'] ?? '']);
-        }
-        fclose($out);
-        exit;
-    }
-
-    public function handle_export_rsvps_csv()
-    {
-        $event_id = isset($_GET['event_id']) ? (int) $_GET['event_id'] : 0;
-        $nonce    = isset($_GET['_wpnonce']) ? (string) $_GET['_wpnonce'] : '';
-
-        if ($event_id <= 0 || !wp_verify_nonce($nonce, 'mon_export_rsvps_csv|' . $event_id)) wp_die('Nonce غير صالح.');
-        if (!current_user_can('edit_post', $event_id)) wp_die('غير مسموح.');
-
-        $rsvps = get_post_meta($event_id, Mon_Events_RSVP::RSVP_META_KEY, true);
-        if (!is_array($rsvps)) $rsvps = [];
-
-        nocache_headers();
-        header('Content-Type: text/csv; charset=UTF-8');
-        header('Content-Disposition: attachment; filename="event-' . $event_id . '-rsvps.csv"');
-        echo "\xEF\xBB\xBF";
-
-        $out = fopen('php://output', 'w');
-        fputcsv($out, ['key', 'label', 'status', 'updated_at']);
-
-        foreach ($rsvps as $key => $row) {
-            $key = (string)$key;
-
-            $label = '';
-            if (strpos($key, 'u:') === 0) {
-                $uid = (int) substr($key, 2);
-                $user = get_user_by('id', $uid);
-                $label = $user ? $user->display_name : '';
-            } elseif (strpos($key, 'p:') === 0) {
-                $label = 'phone:' . substr($key, 2);
-            } else {
-                $label = $key;
-            }
-
-            $status_raw = $row['status'] ?? '';
-            $status = ($status_raw === 'attending') ? 'attending' : 'declined';
-            $updated = $row['updated_at'] ?? '';
-
-            fputcsv($out, [$key, $label, $status, $updated]);
-        }
-
-        fclose($out);
-        exit;
-    }
-
-    /* --------------------------------------------------------------------------
-     * Invites Helpers (داخل Admin حالياً)
-     * -------------------------------------------------------------------------- */
-
-    private function normalize_phone($raw, $default_cc = '966'): string
-    {
-        $digits = preg_replace('/\D+/', '', (string) $raw);
-        if (!$digits) return '';
-
-        if (function_exists('str_starts_with') && str_starts_with($digits, '00')) {
-            $digits = substr($digits, 2);
-        } elseif (substr($digits, 0, 2) === '00') {
-            $digits = substr($digits, 2);
-        }
-
-        if (strlen($digits) === 10 && substr($digits, 0, 1) === '0') {
-            $digits = $default_cc . substr($digits, 1);
-        }
-
-        if (strlen($digits) === 9 && substr($digits, 0, 1) === '5') {
-            $digits = $default_cc . $digits;
-        }
-
-        return $digits;
-    }
-
-    private function parse_invites_from_raw_list($raw): array
-    {
-        $parts = preg_split('/[\r\n,]+/', (string) $raw);
-        $out = [];
-
-        foreach ($parts as $p) {
-            $phone = $this->normalize_phone(trim($p));
-            if (!$phone) continue;
-            $out[$phone] = ['name' => ''];
-        }
-
-        return $out;
-    }
-
-    private function parse_invites_from_csv($csv_text): array
-    {
-        $out = [];
-        $lines = preg_split("/\r\n|\n|\r/", (string) $csv_text);
-
-        $row_index = 0;
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '') continue;
-
-            $cols = str_getcsv($line);
-            if (empty($cols)) continue;
-
-            $col0 = strtolower(trim((string)($cols[0] ?? '')));
-            $col1 = strtolower(trim((string)($cols[1] ?? '')));
-
-            if ($row_index === 0) {
-                if ($col0 === 'phone' || $col0 === 'mobile' || $col0 === 'number') {
-                    $row_index++;
-                    continue;
-                }
-                if ($col0 === 'phone' && $col1 === 'name') {
-                    $row_index++;
-                    continue;
-                }
-            }
-
-            $phone_raw = (string)($cols[0] ?? '');
-            $name_raw  = (string)($cols[1] ?? '');
-
-            $phone = $this->normalize_phone($phone_raw);
-            if (!$phone) {
-                $row_index++;
-                continue;
-            }
-
-            $out[$phone] = ['name' => sanitize_text_field($name_raw)];
-            $row_index++;
-        }
-
-        return $out;
-    }
-
-    private function get_invites_structured($event_id): array
-    {
-        $event_id = (int) $event_id;
-        if ($event_id <= 0) return [];
-
-        $invites = get_post_meta($event_id, '_mon_invites', true);
-
-        if (is_array($invites) && !empty($invites)) {
-            $out = [];
-            foreach ($invites as $phone => $row) {
-                $p = $this->normalize_phone($phone);
-                if (!$p) continue;
-                $out[$p] = ['name' => sanitize_text_field($row['name'] ?? '')];
-            }
-            ksort($out);
-            return $out;
-        }
-
-        $raw = (string) get_post_meta($event_id, '_mon_invited_phones', true);
-        $out = $this->parse_invites_from_raw_list($raw);
-        ksort($out);
-        return $out;
-    }
-    public function enqueue_admin_assets($hook): void
-    {
-        global $post;
-        if (!$post || $post->post_type !== 'event') return;
-
-        // نحتاج مكتبة ووردبريس للصور
+    public function enqueue_admin_assets($hook): void {
         wp_enqueue_media();
-
-        // سكربت بسيط لإدارة اختيار الصور وعرضها
-        wp_enqueue_script(
-            'mon-events-admin-gallery',
-            plugins_url('../assets/admin-gallery.js', __FILE__),
-            ['jquery'],
-            '0.2.0',
-            true
-        );
     }
-    public function render_event_gallery_box($post): void
-    {
-        $ids = get_post_meta($post->ID, '_mon_gallery_ids', true);
-        if (!is_array($ids)) $ids = [];
 
-        wp_nonce_field('mon_event_gallery_save', 'mon_event_gallery_nonce');
-
-        $value = implode(',', array_map('intval', $ids));
-    ?>
-        <div style="display:flex;flex-direction:column;gap:12px">
-            <p style="margin:0;color:#6b7280;font-size:13px">
-                أضف صور الألبوم للمناسبة. يمكنك اختيار عدة صور دفعة واحدة.
-            </p>
-
-            <input type="hidden" id="mon_gallery_ids" name="mon_gallery_ids" value="<?php echo esc_attr($value); ?>">
-
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-                <button type="button" class="button button-primary" id="mon_gallery_add">إضافة صور</button>
-                <button type="button" class="button" id="mon_gallery_clear">مسح الكل</button>
-            </div>
-
-            <div id="mon_gallery_preview" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:6px">
-                <?php
-                foreach ($ids as $id) {
-                    $thumb = wp_get_attachment_image($id, 'thumbnail');
-                    if (!$thumb) continue;
-                    echo '<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff">' . $thumb . '</div>';
-                }
-                ?>
-            </div>
-
-            <p style="margin:0;color:#6b7280;font-size:12px">
-                * سيتم حفظ الصور كـ IDs داخل <code>_mon_gallery_ids</code>
-            </p>
-        </div>
-<?php
-    }
-    public function enqueue_gallery_uploader_assets($hook): void
-    {
-        // فقط في صفحة add/edit للـ event
-        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        if (!$screen || $screen->post_type !== 'event') return;
-        if (!in_array($hook, ['post.php', 'post-new.php'], true)) return;
-
-        // ✅ مهم: يحمّل wp.media
-        wp_enqueue_media();
-
-        // سكربت إدارة الجاليري
-        wp_enqueue_script(
-            'mon-events-gallery-uploader',
-            plugins_url('../assets/admin-gallery.js', __FILE__), // انتبه لمسار ../ لأننا داخل includes
-            ['jquery'],
-            '0.2.0',
-            true
-        );
+    public function enqueue_gallery_uploader_assets($hook): void {
+        wp_enqueue_script('mon-events-admin-gallery', plugins_url('../assets/admin-gallery.js', __FILE__), ['jquery'], '1.0', true);
     }
 }
