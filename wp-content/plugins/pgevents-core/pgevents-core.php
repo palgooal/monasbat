@@ -19,6 +19,13 @@ require_once PGE_PATH . 'includes/user-profiles.php';
 require_once PGE_PATH . 'includes/rsvp-handler.php';
 require_once PGE_PATH . 'includes/event-factory.php';
 require_once PGE_PATH . 'includes/admin-mods.php';
+require_once PGE_PATH . 'includes/class-pge-packages.php';
+
+// أضف هذا السطر هنا (مهم جداً لحل خطأ 500)
+require_once PGE_PATH . 'includes/class-mon-events-users.php';
+
+// 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)
+require_once PGE_PATH . 'includes/class-salla-handler.php';
 
 // 2. استدعاء نظام التوجيه (Routing) - بديل الصفحات التقليدية
 require_once PGE_PATH . 'includes/routing.php';
@@ -35,3 +42,7 @@ register_activation_hook(__FILE__, function () {
 
 // 4. تحديث الروابط عند التعطيل (تنظيف)
 register_deactivation_hook(__FILE__, 'flush_rewrite_rules');
+
+// add_action('init', function () {
+//     flush_rewrite_rules();
+// });
