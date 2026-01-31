@@ -1,9 +1,13 @@
 <?php
 
 /**
- * Plugin Name: Mon Events (MVP)
- * Description: Custom Events CPT + RSVP (MVP) for KLEO setup.
- * Version: 0.2.1
+ * Plugin Name: PgEvents Core11
+ * Plugin URI:  https://palgoals.com/
+ * Description: المحرك الأساسي لإدارة المناسبات، الباقات، والربط مع سلة. ملكية خاصة لشركة بال قول.
+ * Version:     1.5.0
+ * Author:      Pal Goals Team
+ * Author URI:  https://palgoal.com/
+ * License:     Proprietary
  */
 
 if (!defined('ABSPATH')) exit;

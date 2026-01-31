@@ -1,0 +1,37 @@
+<?php
+
+/**
+ * Plugin Name: PgEvents Core
+ * Description: المحرك البرمجي لنظام المناسبات - شركة بال قول.
+ * Version: 1.0.0
+ * Author: Pal Goal Team
+ */
+
+if (!defined('ABSPATH')) exit;
+
+define('PGE_URL', plugin_dir_url(__FILE__));
+define('PGE_PATH', plugin_dir_path(__FILE__));
+
+// 1. استدعاء المكونات الأساسية (Logic)
+require_once PGE_PATH . 'includes/cpts.php';
+require_once PGE_PATH . 'includes/metaboxes.php';
+require_once PGE_PATH . 'includes/user-profiles.php';
+require_once PGE_PATH . 'includes/rsvp-handler.php';
+require_once PGE_PATH . 'includes/event-factory.php';
+require_once PGE_PATH . 'includes/admin-mods.php';
+
+// 2. استدعاء نظام التوجيه (Routing) - بديل الصفحات التقليدية
+require_once PGE_PATH . 'includes/routing.php';
+
+// 3. تحديث الروابط عند التفعيل لضمان عمل الـ Endpoints
+register_activation_hook(__FILE__, function () {
+    // 1. تسجيل نوع المنشورات
+    pge_register_event_post_type();
+    add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
+    add_rewrite_rule('^create-event/?$', 'index.php?pge_action=create_event', 'top');
+    add_rewrite_rule('^edit-event/([0-9]+)/?$', 'index.php?pge_action=edit_event&event_id=$1', 'top');
+    flush_rewrite_rules();
+});
+
+// 4. تحديث الروابط عند التعطيل (تنظيف)
+register_deactivation_hook(__FILE__, 'flush_rewrite_rules');

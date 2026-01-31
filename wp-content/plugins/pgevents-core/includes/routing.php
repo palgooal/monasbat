@@ -1,0 +1,57 @@
+<?php
+if (!defined('ABSPATH')) exit;
+
+/**
+ * تسجيل المسارات البرمجية (Virtual Routes) للنظام
+ */
+add_action('init', function () {
+    // 1. مسار إنشاء مناسبة جديدة: monasbat.test/create-event/
+    add_rewrite_rule('^create-event/?$', 'index.php?pge_action=create_event', 'top');
+
+    // أضف هذه القاعدة داخل دالة init في ملف routing.php
+    add_rewrite_rule('edit-event/([0-9]+)/?$', 'index.php?pge_action=edit_event&event_id=$matches[1]', 'top');
+
+    // 2. مسار لوحة التحكم الرئيسية: monasbat.test/dashboard/
+    add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
+
+
+});
+
+/**
+ * تسجيل المتغيرات لكي يفهمها محرك ووردبريس
+ */
+add_filter('query_vars', function ($vars) {
+    $vars[] = 'pge_action';
+    $vars[] = 'event_id';
+    return $vars;
+});
+
+/**
+ * التوجيه الذكي للملفات (Template Loader)
+ */
+add_filter('template_include', function ($template) {
+    $action = get_query_var('pge_action');
+
+    // توجيه مسار إنشاء المناسبة
+    if ($action === 'create_event') {
+        $create_template = PGE_PATH . 'templates/dashboard-create.php';
+        if (file_exists($create_template)) {
+            return $create_template;
+        }
+    }
+
+    if (get_query_var('pge_action') === 'edit_event') {
+        $edit_template = PGE_PATH . 'templates/dashboard-edit.php';
+        if (file_exists($edit_template)) return $edit_template;
+    }
+
+    // توجيه مسار لوحة التحكم (التي كانت سابقاً page-profile.php)
+    if ($action === 'dashboard') {
+        $main_dashboard = PGE_PATH . 'templates/dashboard-main.php';
+        if (file_exists($main_dashboard)) {
+            return $main_dashboard;
+        }
+    }
+
+    return $template;
+});
