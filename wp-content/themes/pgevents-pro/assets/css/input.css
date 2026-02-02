@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+/* اختياري: تحسينات عامة */
+html { scroll-behavior: smooth; }
+

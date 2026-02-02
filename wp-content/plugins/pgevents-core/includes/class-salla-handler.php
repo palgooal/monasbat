@@ -35,20 +35,43 @@ class Mon_Salla_Handler
         if (!$order_data) return new WP_REST_Response(['message' => 'No Data'], 200);
 
         $status_slug = $order_data['status']['slug'] ?? '';
+        $customer_email = $order_data['customer']['email'] ?? '';
 
-        // 1. تحديد الحالات "الآمنة" فقط للتفعيل
-        // 'completed' للطلبات المدفوعة إلكترونياً
-        // 'delivered' أو 'in_progress' حسب سير عمل متجرك
-        $allowed_statuses = ['completed', 'delivered'];
+        // 1. حالات التفعيل (بمجرد وصول الطلب لهذه الحالات يتم منح الصلاحيات)
+        $activation_statuses = ['completed', 'delivered'];
 
-        // 2. التحقق: لن يتم التفعيل إلا إذا كانت الحالة ضمن المسموح
-        if (in_array($status_slug, $allowed_statuses)) {
+        // 2. حالات إلغاء التفعيل (إذا تحول الطلب لهذه الحالات يتم سحب الصلاحيات)
+        $deactivation_statuses = ['canceled', 'refunded', 'returned'];
+
+        if (in_array($status_slug, $activation_statuses)) {
+            // تفعيل الباقة
             $this->process_user_and_plan($order_data);
             return new WP_REST_Response(['status' => 'success', 'message' => 'Package Activated'], 200);
+        } elseif (in_array($status_slug, $deactivation_statuses)) {
+            // إلغاء تفعيل الباقة
+            $this->deactivate_user_package($customer_email);
+            return new WP_REST_Response(['status' => 'deactivated', 'message' => 'Package Revoked'], 200);
         } else {
-            // تسجيل لوج بسيط للحالات التي لم يتم تفعيلها (مثل under_review)
-            error_log("Salla Webhook: Order {$order_data['id']} skipped. Status: {$status_slug}");
-            return new WP_REST_Response(['status' => 'ignored', 'message' => 'Waiting for completed status'], 200);
+            // حالات أخرى (مثل قيد المراجعة أو قيد التنفيذ) - ننتظر التحديث القادم
+            return new WP_REST_Response(['status' => 'ignored', 'message' => 'Status: ' . $status_slug . ' - No action taken'], 200);
+        }
+    }
+
+    /**
+     * دالة إلغاء تفعيل الباقة
+     */
+    private function deactivate_user_package($email)
+    {
+        $user = get_user_by('email', $email);
+        if ($user) {
+            update_user_meta($user->ID, '_mon_package_status', 'expired'); // أو canceled
+            // تصفير الحدود لضمان عدم قدرته على استخدام النظام
+            update_user_meta($user->ID, '_mon_guest_limit', 0);
+            update_user_meta($user->ID, '_mon_host_photos_limit', 0);
+            update_user_meta($user->ID, '_mon_events_limit', 0);
+            update_user_meta($user->ID, '_mon_active_features', []); // مسح المميزات
+
+            error_log("❌ Salla Webhook: Package revoked for user: " . $email);
         }
     }
 
