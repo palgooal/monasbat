@@ -25,17 +25,53 @@ add_action('admin_notices', function () {
 // 3. استدعاء Tailwind v4 و FontAwesome والخطوط
 function pgevents_enqueue_assets()
 {
-    // خط Cairo للعربية و Inter للإنجليزية
-    wp_enqueue_style('pge-fonts', 'https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&family=Inter:wght@400;700&display=swap');
-    wp_enqueue_style('font-awesome', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
-    wp_enqueue_script('tailwind-v4', 'https://unpkg.com/@tailwindcss/browser@4', array(), null, false);
-
+    // خطوط
     wp_enqueue_style(
-        'pge-tailwind',
-        get_stylesheet_directory_uri() . '/assets/css/output.css',
+        'pge-fonts',
+        'https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&family=Inter:wght@400;700&display=swap',
         [],
-        filemtime(get_stylesheet_directory() . '/assets/css/output.css')
+        null
     );
+
+    // FontAwesome
+    wp_enqueue_style(
+        'font-awesome',
+        'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css',
+        [],
+        '6.0.0'
+    );
+
+    // ✅ الأفضل: اعتمد على Tailwind compiled (output.css) فقط
+    $css_path = get_stylesheet_directory() . '/assets/css/output.css';
+    $css_url  = get_stylesheet_directory_uri() . '/assets/css/output.css';
+
+    if (file_exists($css_path)) {
+        wp_enqueue_style(
+            'pge-tailwind',
+            $css_url,
+            [],
+            filemtime($css_path)
+        );
+    } else {
+        // احتياط: لو ما بنيت الملف بعد
+        wp_enqueue_style(
+            'pge-tailwind-missing',
+            $css_url,
+            [],
+            wp_get_theme()->get('Version')
+        );
+    }
+
+    // ✅ JS لصفحة الحدث فقط
+    if (is_singular('pge_event')) {
+        wp_enqueue_script(
+            'pge-event',
+            get_stylesheet_directory_uri() . '/assets/js/event.js',
+            [],
+            wp_get_theme()->get('Version'),
+            true
+        );
+    }
 }
 add_action('wp_enqueue_scripts', 'pgevents_enqueue_assets');
 

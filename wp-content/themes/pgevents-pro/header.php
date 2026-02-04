@@ -63,4 +63,4 @@
         </div>
     </header>
 
-    <body <?php body_class('min-h-screen bg-slate-50 text-slate-900 antialiased'); ?> dir="<?php echo is_rtl() ? 'rtl' : 'ltr'; ?>">
+    <body <?php body_class(); ?> dir="<?php echo is_rtl() ? 'rtl' : 'ltr'; ?>">

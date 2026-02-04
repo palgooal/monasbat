@@ -1,18 +1,38 @@
-<?php get_header(); ?>
+<?php
+defined('ABSPATH') || exit;
 
-<?php if (have_posts()) : while (have_posts()) : the_post(); ?>
+get_header();
 
-        <main class="bg-white min-h-screen">
-            <?php get_template_part('template-parts/event', 'hero'); ?>
+if (have_posts()) :
+    while (have_posts()) : the_post(); ?>
 
-            <?php get_template_part('template-parts/event', 'countdown'); ?>
+        <main id="primary" class="min-h-screen bg-slate-50 text-slate-900">
 
-            <?php get_template_part('template-parts/event', 'location'); ?>
+            <?php
+            // ✅ Access Gate must run FIRST and must STOP rendering
+            $allowed = include locate_template('template-parts/event/access-gate.php');
 
-            <?php get_template_part('template-parts/event', 'rsvp'); ?>
+            if (!$allowed) {
+                // تم عرض شاشة الدخول داخل access-gate.php
+                // ✅ نوقف الصفحة هنا
+                echo '</main>';
+                get_footer();
+                exit;
+            }
+
+            // ✅ Hero + Summary
+            get_template_part('template-parts/event/hero');
+
+            // ✅ Tabs (Details / Album / Chat)
+            get_template_part('template-parts/event/tabs');
+
+            // ✅ RSVP
+            get_template_part('template-parts/event/rsvp');
+            ?>
+
         </main>
 
 <?php endwhile;
-endif; ?>
+endif;
 
-<?php get_footer(); ?>
+get_footer();
