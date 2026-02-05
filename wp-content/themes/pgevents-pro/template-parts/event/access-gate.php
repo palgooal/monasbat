@@ -130,6 +130,13 @@ if (!$access_ok && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_ac
         setcookie($cookie_name, $token, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
         $_COOKIE[$cookie_name] = $token;
 
+        $phone_cookie = 'pge_event_phone_' . (int) $event_id;
+
+        // احفظ رقم الضيف (للاستخدام في RSVP)
+        setcookie($phone_cookie, $phone_n, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
+        $_COOKIE[$phone_cookie] = $phone_n;
+
+
         wp_safe_redirect(get_permalink($event_id));
         exit;
     }

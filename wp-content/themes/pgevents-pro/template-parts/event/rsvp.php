@@ -358,4 +358,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
         </script>
 
     </div>
+    <script>
+        (function() {
+            const form = document.querySelector('#rsvp form');
+            if (!form) return;
+
+            const yesBtn = form.querySelector('[data-rsvp="yes"]');
+            const noBtn = form.querySelector('[data-rsvp="no"]');
+            const replyInput = form.querySelector('#rsvpReply');
+
+            function setActive(btn, active) {
+                btn.classList.toggle('bg-slate-900', active);
+                btn.classList.toggle('text-white', active);
+            }
+
+            yesBtn?.addEventListener('click', () => {
+                replyInput.value = 'yes';
+            });
+            noBtn?.addEventListener('click', () => {
+                replyInput.value = 'no';
+            });
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const fd = new FormData(form);
+                fd.append('action', 'pge_rsvp_submit');
+
+                const res = await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>', {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin'
+                });
+
+                const json = await res.json();
+                alert(json?.data?.message || (json.success ? 'تم الحفظ' : 'حدث خطأ'));
+            });
+        })();
+    </script>
+
 </section>
