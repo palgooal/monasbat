@@ -15,6 +15,7 @@ add_action('init', function () {
     add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
     add_rewrite_rule('^login/?$', 'index.php?pge_action=login', 'top');
     add_rewrite_rule('^register/?$', 'index.php?pge_action=register', 'top');
+    add_rewrite_rule('^forgot-password/?$', 'index.php?pge_action=forgot_password', 'top');
 
 
 });
@@ -68,6 +69,18 @@ add_filter('template_include', function ($template) {
         $plugin_register_template = PGE_PATH . 'templates/register.php';
         if (file_exists($plugin_register_template)) {
             return $plugin_register_template;
+        }
+    }
+
+    if ($action === 'forgot_password') {
+        $theme_forgot_template = locate_template('page-forgot-password.php');
+        if ($theme_forgot_template && file_exists($theme_forgot_template)) {
+            return $theme_forgot_template;
+        }
+
+        $plugin_forgot_template = PGE_PATH . 'templates/forgot-password.php';
+        if (file_exists($plugin_forgot_template)) {
+            return $plugin_forgot_template;
         }
     }
 

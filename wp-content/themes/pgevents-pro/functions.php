@@ -135,6 +135,21 @@ add_filter('register_url', function ($register_url) {
     return home_url('/register/');
 }, 10, 1);
 
+// Redirect built-in lost password URLs to the custom /forgot-password/ route.
+add_filter('lostpassword_url', function ($lostpassword_url, $redirect) {
+    if (!defined('PGE_PATH')) {
+        return $lostpassword_url;
+    }
+
+    $custom_lost_url = home_url('/forgot-password/');
+
+    if (!empty($redirect)) {
+        $custom_lost_url = add_query_arg('redirect_to', $redirect, $custom_lost_url);
+    }
+
+    return $custom_lost_url;
+}, 10, 2);
+
 add_action('wp_ajax_pge_update_user_profile', function () {
     if (!is_user_logged_in()) wp_send_json_error();
     $user_id = get_current_user_id();
