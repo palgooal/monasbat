@@ -1,9 +1,8 @@
 <?php
 
 /**
- * Template: لوحة التحكم الرئيسية (SaaS Dashboard)
+ * Template: Host Dashboard (Modern)
  */
-
 if (!defined('ABSPATH')) exit;
 
 if (!is_user_logged_in()) {
@@ -11,154 +10,513 @@ if (!is_user_logged_in()) {
 }
 
 get_header();
+
 $current_user = wp_get_current_user();
+$user_id = $current_user->ID;
 
-// --- نظام الحصص (Quota Logic) ---
-$allowed_limit = 5; // يمكنك مستقبلاً ربط هذا بمتغير من قاعدة البيانات حسب الباقة
-$user_events_query = new WP_Query(array(
+/**
+ * Helpers
+ */
+if (!function_exists('pge_norm_phone')) {
+    function pge_norm_phone($v)
+    {
+        $v = (string) $v;
+        $v = trim($v);
+        return preg_replace('/\D+/', '', $v);
+    }
+}
+
+if (!function_exists('pge_get_invited_phones')) {
+    function pge_get_invited_phones($event_id)
+    {
+        $raw = get_post_meta($event_id, '_pge_invited_phones', true);
+
+        if (is_array($raw)) {
+            $phones = $raw;
+        } else {
+            $raw = (string) $raw;
+            $raw = str_replace(["\r\n", "\r"], "\n", $raw);
+            $lines = array_filter(array_map('trim', explode("\n", $raw)));
+            $phones = $lines;
+        }
+
+        $out = [];
+        foreach ($phones as $p) {
+            $n = pge_norm_phone($p);
+            if ($n !== '') $out[] = $n;
+        }
+        return array_values(array_unique($out));
+    }
+}
+
+/**
+ * Load events
+ */
+$events_q = new WP_Query([
     'post_type'      => 'pge_event',
-    'author'         => $current_user->ID,
-    'post_status'    => array('publish', 'private', 'draft', 'pending'),
-    'posts_per_page' => -1
-));
-$used_count = $user_events_query->found_posts;
-$percentage = ($used_count / $allowed_limit) * 100;
-$bar_color = ($percentage >= 100) ? 'bg-red-500' : 'bg-pg-primary';
-// --------------------------------
+    'author'         => $user_id,
+    'post_status'    => ['publish', 'private'],
+    'posts_per_page' => -1,
+    'meta_key'       => '_pge_event_date',
+    'orderby'        => 'meta_value',
+    'order'          => 'ASC',
+]);
 
-$user_bio = get_user_meta($current_user->ID, 'pge_bio', true);
-$cover_img = get_user_meta($current_user->ID, 'pge_cover_url', true) ?: 'https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=2070&auto=format&fit=crop';
+$events = $events_q->posts;
+
+// Pick selected event
+$selected_event_id = isset($_GET['event']) ? (int) $_GET['event'] : 0;
+if (!$selected_event_id && !empty($events)) {
+    $selected_event_id = (int) $events[0]->ID;
+}
+
+// Security: ensure selected event belongs to user
+if ($selected_event_id) {
+    $author_id = (int) get_post_field('post_author', $selected_event_id);
+    if ($author_id !== $user_id && !current_user_can('administrator')) {
+        $selected_event_id = 0;
+    }
+}
+
+/**
+ * Stats for selected event
+ */
+$invited_phones = $selected_event_id ? pge_get_invited_phones($selected_event_id) : [];
+$total_invited  = count($invited_phones);
+
+// RSVP counts (we will store RSVP in post meta array for now: _pge_rsvp_map)
+$rsvp_map = $selected_event_id ? (array) get_post_meta($selected_event_id, '_pge_rsvp_map', true) : [];
+$yes_count = 0;
+$no_count = 0;
+
+foreach ($invited_phones as $ph) {
+    $row = $rsvp_map[$ph] ?? null;
+    if (is_array($row) && ($row['reply'] ?? '') === 'yes') $yes_count++;
+    if (is_array($row) && ($row['reply'] ?? '') === 'no')  $no_count++;
+}
+$pending_count = max(0, $total_invited - ($yes_count + $no_count));
+
+// Check-ins counts (meta array: _pge_checkins => [phone => timestamp])
+$checkins = $selected_event_id ? (array) get_post_meta($selected_event_id, '_pge_checkins', true) : [];
+$checkins_count = is_array($checkins) ? count($checkins) : 0;
+
+// KPI across all events (simple)
+$all_invited_total = 0;
+$all_yes_total = 0;
+$all_no_total = 0;
+$all_checkins_total = 0;
+
+foreach ($events as $ev) {
+    $eid = (int) $ev->ID;
+    $inv = pge_get_invited_phones($eid);
+    $all_invited_total += count($inv);
+
+    $map = (array) get_post_meta($eid, '_pge_rsvp_map', true);
+    foreach ($inv as $ph) {
+        $row = $map[$ph] ?? null;
+        if (is_array($row) && ($row['reply'] ?? '') === 'yes') $all_yes_total++;
+        if (is_array($row) && ($row['reply'] ?? '') === 'no')  $all_no_total++;
+    }
+
+    $cks = (array) get_post_meta($eid, '_pge_checkins', true);
+    $all_checkins_total += is_array($cks) ? count($cks) : 0;
+}
+
 ?>
+<main class="min-h-screen bg-slate-50 text-slate-900" dir="rtl">
 
-<div class="min-h-screen bg-gray-50 pt-20 pb-20 text-right" id="pge-dashboard" dir="rtl">
-    <div class="container mx-auto px-4">
-
-        <div class="relative bg-white rounded-4xl shadow-sm overflow-hidden border border-gray-100 mb-8">
-            <div class="h-64 bg-cover bg-center" style="background-image: url('<?php echo esc_url($cover_img); ?>')">
-                <div class="w-full h-full bg-black/40 backdrop-blur-xs"></div>
+    <!-- Header -->
+    <header class="sticky top-0 z-50 border-b bg-white/80 backdrop-blur">
+        <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+            <div class="flex items-center gap-3">
+                <div class="h-9 w-9 rounded-2xl bg-slate-900"></div>
+                <div class="leading-tight">
+                    <div class="text-sm font-extrabold">لوحة المضيف</div>
+                    <div class="text-xs text-slate-500">إدارة المناسبات • المدعوين • الدعوات</div>
+                </div>
             </div>
 
-            <div class="p-8 flex flex-col md:flex-row items-center gap-6 -mt-24">
-                <div class="relative">
-                    <?php echo get_avatar($current_user->ID, 160, '', '', array('class' => 'rounded-4xl border-8 border-white shadow-2xl h-40 w-40 object-cover')); ?>
-                </div>
-
-                <div class="text-center md:text-right pt-12 md:pt-24 flex-1">
-                    <h1 class="text-4xl font-bold text-gray-900 mb-2"><?php echo esc_html($current_user->display_name); ?></h1>
-                    <p id="display-bio" class="text-pg-primary font-medium mb-3 italic">"<?php echo esc_html($user_bio ?: 'أضف نبذتك الشخصية هنا...'); ?>"</p>
-                </div>
-
-                <div class="pt-12 md:pt-24 flex gap-2">
-                    <button onclick="toggleEditModal()" class="bg-pg-primary text-white px-6 py-3 rounded-2xl font-bold hover:shadow-lg transition-all">
-                        <i class="fas fa-edit ml-2"></i> تعديل حسابي
-                    </button>
-                    <a href="<?php echo wp_logout_url(home_url()); ?>" class="bg-red-50 text-red-600 px-6 py-3 rounded-2xl font-bold hover:bg-red-100 transition-all">خروج</a>
-                </div>
+            <div class="flex items-center gap-2">
+                <a href="<?php echo esc_url(home_url('/create-event/')); ?>"
+                    class="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-slate-900 to-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:from-slate-800 hover:to-slate-700">
+                    إنشاء مناسبة جديدة
+                    <span class="text-white/80 transition group-hover:translate-x-0.5">➜</span>
+                </a>
             </div>
         </div>
+    </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div class="lg:col-span-1 space-y-6">
-                <div class="bg-white p-6 rounded-4xl shadow-sm border border-gray-100">
-                    <h3 class="font-bold text-lg mb-4 border-b pb-2">رصيد الباقة</h3>
+    <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
 
-                    <div class="mb-4">
-                        <div class="flex justify-between mb-2">
-                            <span class="text-sm text-gray-500">استهلاك المناسبات</span>
-                            <span class="text-sm font-bold text-gray-900"><?php echo $used_count; ?> من <?php echo $allowed_limit; ?></span>
-                        </div>
-                        <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                            <div class="<?php echo $bar_color; ?> h-2.5 rounded-full transition-all duration-1000" style="width: <?php echo min($percentage, 100); ?>%"></div>
-                        </div>
+        <!-- Top: Create + KPIs -->
+        <section class="grid gap-4 lg:grid-cols-12">
+            <div class="lg:col-span-5">
+                <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                        جاهز خلال دقائق
                     </div>
+                    <h1 class="mt-4 text-2xl font-extrabold tracking-tight">أنشئ دعوتك القادمة بسرعة</h1>
+                    <p class="mt-2 text-sm leading-6 text-slate-600">
+                        اختر القالب، أضف التفاصيل، فعّل RSVP، ثم شارك الرابط أو QR.
+                    </p>
 
-                    <?php if ($used_count >= $allowed_limit): ?>
-                        <div class="p-3 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold flex items-center gap-2">
-                            <i class="fas fa-exclamation-circle"></i>
-                            لقد استنفدت رصيدك، قم بالترقية الآن.
-                        </div>
-                    <?php endif; ?>
-
-                    <div class="grid grid-cols-2 gap-4 mt-6">
-                        <div class="bg-blue-50 p-4 rounded-3xl text-center border border-blue-100">
-                            <span class="block text-2xl font-bold text-blue-600">
-                                <?php echo $used_count; ?>
-                            </span>
-                            <span class="text-[10px] text-gray-500 font-bold uppercase">إجمالي المحاولات</span>
-                        </div>
-                        <div class="bg-green-50 p-4 rounded-3xl text-center border border-green-100">
-                            <span class="block text-2xl font-bold text-green-600">0</span>
-                            <span class="text-[10px] text-gray-500 font-bold uppercase">ضيوف أكدوا</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="lg:col-span-2 space-y-6">
-                <div class="bg-white p-8 rounded-4xl shadow-sm border border-gray-100">
-                    <div class="flex justify-between items-center mb-8">
-                        <h2 class="text-2xl font-bold text-gray-800 italic">إدارة المناسبات</h2>
-                        <a href="<?php echo home_url('/create-event/'); ?>" class="bg-pg-dark text-white px-5 py-2 rounded-xl text-sm font-bold shadow-md hover:bg-pg-primary transition-colors <?php echo ($used_count >= $allowed_limit) ? 'opacity-50 pointer-events-none' : ''; ?>">
-                            + إنشاء مناسبة جديدة
+                    <div class="mt-6 grid gap-3 sm:grid-cols-2">
+                        <a href="<?php echo esc_url(home_url('/create-event/')); ?>"
+                            class="text-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">
+                            إنشاء مناسبة
+                        </a>
+                        <a href="<?php echo esc_url(home_url('/packages/')); ?>"
+                            class="text-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+                            الباقات
                         </a>
                     </div>
 
-                    <div class="space-y-4">
-                        <?php
-                        $args = array(
-                            'post_type'      => 'pge_event',
-                            'author'         => $current_user->ID,
-                            'posts_per_page' => -1,
-                            'post_status'    => array('publish', 'private'), // عرض النشطة والمؤرشفة
-                            'meta_key'       => '_pge_event_date',
-                            'orderby'        => 'meta_value',
-                            'order'          => 'ASC'
-                        );
-                        $query = new WP_Query($args);
-
-                        if ($query->have_posts()) :
-                            while ($query->have_posts()) : $query->the_post();
-                                $event_date = get_post_meta(get_the_ID(), '_pge_event_date', true);
-                                $is_archived = (get_post_status() === 'private');
-                                $status_text = $is_archived ? 'مغلقة/مؤرشفة' : ((strtotime($event_date) < time()) ? 'سابقة' : 'قادمة');
-                                $status_color = $is_archived ? 'bg-red-100 text-red-600' : (($status_text == 'قادمة') ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500');
-                        ?>
-                                <div class="flex flex-col sm:flex-row items-center justify-between p-5 bg-gray-50 rounded-3xl border border-transparent hover:border-pg-primary/30 transition-all group <?php echo $is_archived ? 'opacity-70' : ''; ?>">
-                                    <div class="flex items-center gap-4 mb-4 sm:mb-0 w-full sm:w-auto text-right">
-                                        <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm text-pg-primary">
-                                            <i class="fas <?php echo $is_archived ? 'fa-archive' : 'fa-calendar-day'; ?> text-xl"></i>
-                                        </div>
-                                        <div>
-                                            <h3 class="font-bold text-gray-900 group-hover:text-pg-primary transition-colors"><?php the_title(); ?></h3>
-                                            <div class="flex items-center gap-2 mt-1">
-                                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full <?php echo $status_color; ?>"><?php echo $status_text; ?></span>
-                                                <span class="text-xs text-gray-400"><?php echo date_i18n('j F Y', strtotime($event_date)); ?></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="flex gap-2 mr-auto sm:mr-0">
-                                        <?php if (!$is_archived): ?>
-                                            <a href="<?php the_permalink(); ?>" class="p-3 bg-white rounded-xl text-gray-400 hover:text-pg-primary shadow-xs transition-all" title="عرض"><i class="fas fa-eye"></i></a>
-                                            <a href="<?php echo home_url('/edit-event/' . get_the_ID() . '/'); ?>" class="p-3 bg-white rounded-xl text-gray-400 hover:text-blue-500 shadow-xs transition-all" title="تعديل"><i class="fas fa-cog"></i></a>
-                                            <button onclick="archiveEvent(<?php echo get_the_ID(); ?>, '<?php echo wp_create_nonce('pge_archive_event_nonce'); ?>')" class="p-3 bg-white rounded-xl text-gray-400 hover:text-red-500 shadow-xs transition-all" title="إغلاق وأرشفة"><i class="fas fa-archive"></i></button>
-                                        <?php else: ?>
-                                            <span class="text-xs text-gray-400 italic ml-4">غير قابلة للتعديل</span>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-                            <?php endwhile;
-                            wp_reset_postdata();
-                        else: ?>
-                            <div class="text-center py-12">
-                                <i class="fas fa-calendar-times text-gray-200 text-5xl mb-4 block"></i>
-                                <p class="text-gray-400 italic">لا توجد مناسبات مسجلة حالياً</p>
-                            </div>
-                        <?php endif; ?>
+                    <div class="mt-5 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                        <div class="text-xs font-semibold text-slate-500">نصيحة</div>
+                        <div class="mt-1 text-sm text-slate-700">
+                            أرسل الدعوة مبكرًا مع تذكير تلقائي قبل المناسبة بـ 24 ساعة لرفع نسبة الحضور.
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+
+            <div class="lg:col-span-7">
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="text-xs font-semibold text-slate-500">إجمالي المدعوين</div>
+                        <div class="mt-2 text-3xl font-extrabold"><?php echo (int) $all_invited_total; ?></div>
+                    </div>
+                    <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="text-xs font-semibold text-slate-500">حضور مؤكد</div>
+                        <div class="mt-2 text-3xl font-extrabold text-emerald-700"><?php echo (int) $all_yes_total; ?></div>
+                    </div>
+                    <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="text-xs font-semibold text-slate-500">اعتذار</div>
+                        <div class="mt-2 text-3xl font-extrabold text-rose-700"><?php echo (int) $all_no_total; ?></div>
+                    </div>
+                    <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="text-xs font-semibold text-slate-500">تسجيل دخول</div>
+                        <div class="mt-2 text-3xl font-extrabold"><?php echo (int) $all_checkins_total; ?></div>
+                    </div>
+                </div>
+
+                <div class="mt-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <div class="text-sm font-extrabold">المناسبة الحالية</div>
+                            <div class="mt-1 text-sm text-slate-600">اختر مناسبة لإدارة المدعوين وRSVP والدخول</div>
+                        </div>
+
+                        <form method="get" class="flex gap-2">
+                            <select name="event" class="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm">
+                                <?php foreach ($events as $ev):
+                                    $eid = (int) $ev->ID;
+                                    $date = (string) get_post_meta($eid, '_pge_event_date', true);
+                                ?>
+                                    <option value="<?php echo $eid; ?>" <?php selected($eid, $selected_event_id); ?>>
+                                        <?php echo esc_html(get_the_title($eid)); ?>
+                                        <?php if ($date) echo ' — ' . esc_html(date_i18n('j F Y', strtotime($date))); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button class="h-11 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">
+                                عرض
+                            </button>
+                        </form>
+                    </div>
+
+                    <?php if ($selected_event_id): ?>
+                        <div class="mt-4 grid grid-cols-4 gap-2 text-center">
+                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                <div class="text-lg font-extrabold"><?php echo (int) $total_invited; ?></div>
+                                <div class="mt-1 text-[11px] text-slate-500">مدعو</div>
+                            </div>
+                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                <div class="text-lg font-extrabold text-emerald-700"><?php echo (int) $yes_count; ?></div>
+                                <div class="mt-1 text-[11px] text-slate-500">سيحضر</div>
+                            </div>
+                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                <div class="text-lg font-extrabold text-rose-700"><?php echo (int) $no_count; ?></div>
+                                <div class="mt-1 text-[11px] text-slate-500">اعتذر</div>
+                            </div>
+                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                <div class="text-lg font-extrabold"><?php echo (int) $checkins_count; ?></div>
+                                <div class="mt-1 text-[11px] text-slate-500">Check-in</div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </section>
+
+        <!-- Events list -->
+        <section class="mt-8">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="text-xl font-extrabold">مناسباتي</h2>
+                    <p class="mt-1 text-sm text-slate-600">عرض وفتح المناسبات</p>
+                </div>
+            </div>
+
+            <div class="mt-4 grid gap-4 lg:grid-cols-3">
+                <?php if (empty($events)): ?>
+                    <div class="rounded-3xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
+                        لا توجد مناسبات بعد — أنشئ أول مناسبة الآن.
+                    </div>
+                    <?php else: foreach ($events as $ev):
+                        $eid = (int) $ev->ID;
+                        $date = (string) get_post_meta($eid, '_pge_event_date', true);
+                        $is_archived = (get_post_status($eid) === 'private');
+                        $status = $is_archived ? 'past' : (($date && strtotime($date) >= strtotime('today')) ? 'upcoming' : 'active');
+                        $badge = $is_archived ? ['سابقة', 'bg-slate-100', 'text-slate-700', 'ring-slate-200'] : ($status === 'upcoming' ? ['قادمة', 'bg-indigo-50', 'text-indigo-700', 'ring-indigo-200'] :
+                            ['حالياً', 'bg-emerald-50', 'text-emerald-700', 'ring-emerald-200']);
+
+                        $inv = pge_get_invited_phones($eid);
+                        $map = (array) get_post_meta($eid, '_pge_rsvp_map', true);
+                        $yes = 0;
+                        $no = 0;
+                        foreach ($inv as $ph) {
+                            $row = $map[$ph] ?? null;
+                            if (is_array($row) && ($row['reply'] ?? '') === 'yes') $yes++;
+                            if (is_array($row) && ($row['reply'] ?? '') === 'no') $no++;
+                        }
+                        $cks = (array) get_post_meta($eid, '_pge_checkins', true);
+                        $ckc = is_array($cks) ? count($cks) : 0;
+                    ?>
+                        <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <div class="inline-flex items-center gap-2 rounded-full <?php echo esc_attr($badge[1]); ?> px-3 py-1 text-xs font-semibold <?php echo esc_attr($badge[2]); ?> ring-1 <?php echo esc_attr($badge[3]); ?>">
+                                        <?php echo esc_html($badge[0]); ?>
+                                    </div>
+                                    <div class="mt-3 text-lg font-extrabold"><?php echo esc_html(get_the_title($eid)); ?></div>
+                                    <div class="mt-1 text-sm text-slate-600">
+                                        <?php echo $date ? esc_html(date_i18n('j F Y', strtotime($date))) : '—'; ?>
+                                    </div>
+                                </div>
+                                <div class="h-10 w-10 rounded-2xl bg-slate-100 ring-1 ring-slate-200"></div>
+                            </div>
+
+                            <div class="mt-4 grid grid-cols-3 gap-3 text-center">
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                    <div class="text-lg font-extrabold"><?php echo (int) count($inv); ?></div>
+                                    <div class="mt-1 text-[11px] text-slate-500">مدعو</div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                    <div class="text-lg font-extrabold text-emerald-700"><?php echo (int) $yes; ?></div>
+                                    <div class="mt-1 text-[11px] text-slate-500">حضور</div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                    <div class="text-lg font-extrabold"><?php echo (int) $ckc; ?></div>
+                                    <div class="mt-1 text-[11px] text-slate-500">Check-in</div>
+                                </div>
+                            </div>
+
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                <a href="<?php echo esc_url(get_permalink($eid)); ?>"
+                                    class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">فتح</a>
+
+                                <a href="<?php echo esc_url(add_query_arg(['event' => $eid], home_url('/profile/'))); ?>"
+                                    class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">إدارة</a>
+
+                                <?php if (!$is_archived): ?>
+                                    <a href="<?php echo esc_url(home_url('/edit-event/' . $eid . '/')); ?>"
+                                        class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">تعديل</a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                <?php endforeach;
+                endif; ?>
+            </div>
+        </section>
+
+        <!-- Guests + Check-in -->
+        <section class="mt-8 grid gap-4 lg:grid-cols-12">
+            <!-- Guests -->
+            <div class="lg:col-span-8">
+                <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h3 class="text-lg font-extrabold">المدعوين</h3>
+                            <p class="mt-1 text-sm text-slate-600">بحث + فلترة (RSVP) — للمناسبة المختارة</p>
+                        </div>
+                    </div>
+
+                    <?php if (!$selected_event_id): ?>
+                        <div class="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700 ring-1 ring-slate-200">
+                            اختر مناسبة من الأعلى لعرض المدعوين.
+                        </div>
+                    <?php else: ?>
+                        <div class="mt-5 grid gap-3 sm:grid-cols-3">
+                            <div class="sm:col-span-2">
+                                <input id="guestSearch"
+                                    class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
+                                    placeholder="ابحث برقم الجوال..." />
+                            </div>
+                            <div class="flex flex-wrap gap-2 sm:justify-end">
+                                <button class="guest-filter rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white" data-status="all">الكل</button>
+                                <button class="guest-filter rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50" data-status="yes">سيحضر</button>
+                                <button class="guest-filter rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50" data-status="no">اعتذر</button>
+                                <button class="guest-filter rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50" data-status="pending">لم يرد</button>
+                            </div>
+                        </div>
+
+                        <div class="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-slate-50 text-slate-600">
+                                        <tr>
+                                            <th class="px-4 py-3 text-start font-semibold">الهاتف</th>
+                                            <th class="px-4 py-3 text-start font-semibold">الحالة</th>
+                                            <th class="px-4 py-3 text-start font-semibold">Check-in</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="guestTbody" class="divide-y divide-slate-100">
+                                        <?php foreach ($invited_phones as $ph):
+                                            $row = $rsvp_map[$ph] ?? null;
+                                            $reply = is_array($row) ? ($row['reply'] ?? '') : '';
+                                            $status = $reply === 'yes' ? 'yes' : ($reply === 'no' ? 'no' : 'pending');
+                                            $checked = isset($checkins[$ph]) ? 'yes' : 'no';
+                                        ?>
+                                            <tr class="guest-row" data-status="<?php echo esc_attr($status); ?>" data-phone="<?php echo esc_attr($ph); ?>">
+                                                <td class="px-4 py-3 font-semibold text-slate-900"><?php echo esc_html($ph); ?></td>
+                                                <td class="px-4 py-3">
+                                                    <?php if ($status === 'yes'): ?>
+                                                        <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">سيحضر</span>
+                                                    <?php elseif ($status === 'no'): ?>
+                                                        <span class="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">اعتذر</span>
+                                                    <?php else: ?>
+                                                        <span class="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">لم يرد</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <?php if ($checked === 'yes'): ?>
+                                                        <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200">تم</span>
+                                                    <?php else: ?>
+                                                        <span class="text-slate-400">—</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Check-in -->
+            <div class="lg:col-span-4">
+                <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-extrabold">إدارة الدخول</h3>
+                        <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200">QR</span>
+                    </div>
+                    <p class="mt-2 text-sm text-slate-600">أدخل رقم جوال الضيف لتسجيل دخوله (Check-in).</p>
+
+                    <?php if (!$selected_event_id): ?>
+                        <div class="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-700 ring-1 ring-slate-200">
+                            اختر مناسبة أولاً.
+                        </div>
+                    <?php else: ?>
+                        <div class="mt-5 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                            <label class="text-xs font-semibold text-slate-600">رقم الهاتف</label>
+                            <input id="checkinPhone"
+                                class="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
+                                placeholder="05xxxxxxxx" />
+                            <button id="checkinBtn"
+                                class="mt-3 w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-500">
+                                تسجيل دخول
+                            </button>
+                            <div id="checkinMsg" class="mt-3 text-sm text-slate-600"></div>
+                        </div>
+
+                        <script>
+                            window.PGE_CHECKIN = {
+                                ajax: "<?php echo esc_js(admin_url('admin-ajax.php')); ?>",
+                                nonce: "<?php echo esc_js(wp_create_nonce('pge_checkin_nonce')); ?>",
+                                event_id: "<?php echo (int) $selected_event_id; ?>"
+                            };
+                        </script>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </section>
+
     </div>
-</div>
+
+</main>
+
+<script>
+    // Guest search + status filter
+    const guestFilters = document.querySelectorAll('.guest-filter');
+    const guestRows = document.querySelectorAll('.guest-row');
+    const guestSearch = document.getElementById('guestSearch');
+
+    let activeGuestStatus = 'all';
+
+    function applyGuestFilters() {
+        if (!guestSearch) return;
+        const q = (guestSearch.value || '').toLowerCase().trim();
+
+        guestRows.forEach(row => {
+            const status = row.dataset.status;
+            const phone = (row.dataset.phone || '').toLowerCase();
+
+            const matchStatus = (activeGuestStatus === 'all' || activeGuestStatus === status);
+            const matchQuery = (!q || phone.includes(q));
+
+            row.style.display = (matchStatus && matchQuery) ? '' : 'none';
+        });
+    }
+
+    guestFilters.forEach(btn => {
+        btn.addEventListener('click', () => {
+            activeGuestStatus = btn.dataset.status;
+
+            guestFilters.forEach(b => {
+                b.classList.remove('bg-slate-900', 'text-white');
+                b.classList.add('border', 'border-slate-200', 'bg-white', 'text-slate-800');
+            });
+
+            btn.classList.add('bg-slate-900', 'text-white');
+            btn.classList.remove('border', 'border-slate-200', 'bg-white', 'text-slate-800');
+
+            applyGuestFilters();
+        });
+    });
+
+    if (guestSearch) guestSearch.addEventListener('input', applyGuestFilters);
+
+    // Check-in AJAX
+    const checkinBtn = document.getElementById('checkinBtn');
+    const checkinPhone = document.getElementById('checkinPhone');
+    const checkinMsg = document.getElementById('checkinMsg');
+
+    if (checkinBtn && checkinPhone && window.PGE_CHECKIN) {
+        checkinBtn.addEventListener('click', async () => {
+            checkinMsg.textContent = '...جاري الحفظ';
+            const fd = new FormData();
+            fd.append('action', 'pge_checkin_guest');
+            fd.append('nonce', window.PGE_CHECKIN.nonce);
+            fd.append('event_id', window.PGE_CHECKIN.event_id);
+            fd.append('phone', checkinPhone.value || '');
+
+            const res = await fetch(window.PGE_CHECKIN.ajax, {
+                method: 'POST',
+                body: fd
+            });
+            const json = await res.json();
+
+            if (json && json.success) {
+                checkinMsg.textContent = '✅ تم تسجيل الدخول بنجاح';
+                location.reload();
+            } else {
+                checkinMsg.textContent = (json && json.data) ? json.data : '❌ حدث خطأ';
+            }
+        });
+    }
+</script>
 
 <?php get_footer(); ?>
