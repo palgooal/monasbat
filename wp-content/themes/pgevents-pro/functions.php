@@ -107,6 +107,25 @@ function pge_align()
 /**
  * استقبال تحديثات الملف الشخصي عبر Ajax
  */
+// Redirect built-in login URLs to the custom /login/ route.
+add_filter('login_url', function ($login_url, $redirect, $force_reauth) {
+    if (!defined('PGE_PATH')) {
+        return $login_url;
+    }
+
+    $custom_login_url = home_url('/login/');
+
+    if (!empty($redirect)) {
+        $custom_login_url = add_query_arg('redirect_to', $redirect, $custom_login_url);
+    }
+
+    if ($force_reauth) {
+        $custom_login_url = add_query_arg('reauth', '1', $custom_login_url);
+    }
+
+    return $custom_login_url;
+}, 10, 3);
+
 add_action('wp_ajax_pge_update_user_profile', function () {
     if (!is_user_logged_in()) wp_send_json_error();
     $user_id = get_current_user_id();

@@ -13,6 +13,7 @@ add_action('init', function () {
 
     // 2. مسار لوحة التحكم الرئيسية: monasbat.test/dashboard/
     add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
+    add_rewrite_rule('^login/?$', 'index.php?pge_action=login', 'top');
 
 
 });
@@ -43,6 +44,18 @@ add_filter('template_include', function ($template) {
     if (get_query_var('pge_action') === 'edit_event') {
         $edit_template = PGE_PATH . 'templates/dashboard-edit.php';
         if (file_exists($edit_template)) return $edit_template;
+    }
+
+    if ($action === 'login') {
+        $theme_login_template = locate_template('page-login.php');
+        if ($theme_login_template && file_exists($theme_login_template)) {
+            return $theme_login_template;
+        }
+
+        $plugin_login_template = PGE_PATH . 'templates/login.php';
+        if (file_exists($plugin_login_template)) {
+            return $plugin_login_template;
+        }
     }
 
     // توجيه مسار لوحة التحكم (التي كانت سابقاً page-profile.php)

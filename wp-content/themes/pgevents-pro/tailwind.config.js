@@ -5,6 +5,7 @@ export default {
     content: [
         "./**/*.php",
         "./assets/**/*.js",
+        "../plugins/pgevents-core/**/*.php",
     ],
     theme: {
         extend: {},
