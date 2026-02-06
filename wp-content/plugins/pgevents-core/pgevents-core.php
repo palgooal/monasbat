@@ -34,7 +34,7 @@ require_once PGE_PATH . 'includes/class-salla-handler.php';
 require_once PGE_PATH . 'includes/routing.php';
 
 add_action('init', function () {
-    $rewrite_version = '1.0.1';
+    $rewrite_version = '1.0.2';
 
     if (get_option('pge_rewrite_version') !== $rewrite_version) {
         flush_rewrite_rules(false);
@@ -50,8 +50,9 @@ register_activation_hook(__FILE__, function () {
     add_rewrite_rule('^create-event/?$', 'index.php?pge_action=create_event', 'top');
     add_rewrite_rule('^edit-event/([0-9]+)/?$', 'index.php?pge_action=edit_event&event_id=$1', 'top');
     add_rewrite_rule('^login/?$', 'index.php?pge_action=login', 'top');
+    add_rewrite_rule('^register/?$', 'index.php?pge_action=register', 'top');
     flush_rewrite_rules();
-    update_option('pge_rewrite_version', '1.0.1');
+    update_option('pge_rewrite_version', '1.0.2');
 });
 
 // 4. تحديث الروابط عند التعطيل (تنظيف)

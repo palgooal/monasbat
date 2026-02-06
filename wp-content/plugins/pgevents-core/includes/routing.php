@@ -14,6 +14,7 @@ add_action('init', function () {
     // 2. مسار لوحة التحكم الرئيسية: monasbat.test/dashboard/
     add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
     add_rewrite_rule('^login/?$', 'index.php?pge_action=login', 'top');
+    add_rewrite_rule('^register/?$', 'index.php?pge_action=register', 'top');
 
 
 });
@@ -55,6 +56,18 @@ add_filter('template_include', function ($template) {
         $plugin_login_template = PGE_PATH . 'templates/login.php';
         if (file_exists($plugin_login_template)) {
             return $plugin_login_template;
+        }
+    }
+
+    if ($action === 'register') {
+        $theme_register_template = locate_template('page-register.php');
+        if ($theme_register_template && file_exists($theme_register_template)) {
+            return $theme_register_template;
+        }
+
+        $plugin_register_template = PGE_PATH . 'templates/register.php';
+        if (file_exists($plugin_register_template)) {
+            return $plugin_register_template;
         }
     }
 

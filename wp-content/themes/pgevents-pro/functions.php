@@ -126,6 +126,15 @@ add_filter('login_url', function ($login_url, $redirect, $force_reauth) {
     return $custom_login_url;
 }, 10, 3);
 
+// Redirect built-in registration URLs to the custom /register/ route.
+add_filter('register_url', function ($register_url) {
+    if (!defined('PGE_PATH')) {
+        return $register_url;
+    }
+
+    return home_url('/register/');
+}, 10, 1);
+
 add_action('wp_ajax_pge_update_user_profile', function () {
     if (!is_user_logged_in()) wp_send_json_error();
     $user_id = get_current_user_id();

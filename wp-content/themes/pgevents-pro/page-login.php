@@ -38,8 +38,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($login_value === '' || $password === '') {
         $login_error = 'يرجى إدخال اسم المستخدم أو البريد وكلمة المرور.';
     } else {
+        $auth_login = $login_value;
+
+        // Allow login by phone even if formatted with spaces or symbols.
+        if (strpos($login_value, '@') === false) {
+            $phone_candidate = preg_replace('/\D+/', '', $login_value);
+            if ($phone_candidate !== '') {
+                $auth_login = $phone_candidate;
+
+                if (!username_exists($auth_login)) {
+                    $users_by_phone = get_users([
+                        'number'     => 1,
+                        'fields'     => 'all',
+                        'meta_query' => [
+                            'relation' => 'OR',
+                            ['key' => 'pge_phone', 'value' => $phone_candidate],
+                            ['key' => 'billing_phone', 'value' => $phone_candidate],
+                            ['key' => 'phone_number', 'value' => $phone_candidate],
+                        ],
+                    ]);
+
+                    if (!empty($users_by_phone) && $users_by_phone[0] instanceof WP_User) {
+                        $auth_login = $users_by_phone[0]->user_login;
+                    }
+                }
+            }
+        }
+
         $user = wp_signon([
-            'user_login'    => $login_value,
+            'user_login'    => $auth_login,
             'user_password' => $password,
             'remember'      => $remember,
         ], is_ssl());
@@ -164,7 +191,7 @@ get_header();
                     <div class="text-sm text-slate-700">
                         ليس لديك حساب؟
                         <a
-                            href="<?php echo esc_url(wp_registration_url()); ?>"
+                            href="<?php echo esc_url(add_query_arg('redirect_to', $redirect_to, wp_registration_url())); ?>"
                             class="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4">
                             أنشئ حسابك الآن
                         </a>
