@@ -81,7 +81,7 @@ get_header();
 
                 <div id="createEventMsg" class="mt-5 hidden rounded-2xl p-3 text-sm font-semibold"></div>
 
-                <form id="createEventForm" class="mt-5 space-y-4" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" method="post" novalidate>
+                <form id="createEventForm" class="mt-5 space-y-4" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" method="post" enctype="multipart/form-data" novalidate>
                     <?php wp_nonce_field('pge_create_event_action', 'pge_event_nonce'); ?>
 
                     <div>
@@ -158,6 +158,18 @@ get_header();
                             placeholder="https://maps.app.goo.gl/..."
                             required
                             <?php echo $has_quota ? '' : 'disabled'; ?> />
+                    </div>
+
+                    <div>
+                        <label for="featured_image" class="text-xs font-semibold text-slate-600">الصورة البارزة</label>
+                        <input
+                            id="featured_image"
+                            name="featured_image"
+                            type="file"
+                            accept="image/*"
+                            class="mt-2 block w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 file:me-3 file:rounded-xl file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-800"
+                            <?php echo $has_quota ? '' : 'disabled'; ?> />
+                        <p class="mt-2 text-xs text-slate-500">اختياري: ستكون الصورة الرئيسية التي تظهر في المعاينة.</p>
                     </div>
 
                     <div class="flex flex-wrap gap-2">

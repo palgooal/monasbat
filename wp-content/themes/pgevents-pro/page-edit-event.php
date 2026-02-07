@@ -47,6 +47,7 @@ if ($event_date_raw !== '') {
 
 $dashboard_url = home_url('/dashboard/?tab=events&event=' . $event_id);
 $event_url = get_permalink($event_id);
+$featured_image_url = get_the_post_thumbnail_url($event_id, 'large');
 
 get_header();
 ?>
@@ -81,7 +82,7 @@ get_header();
 
                 <div id="editEventMsg" class="mt-5 hidden rounded-2xl p-3 text-sm font-semibold"></div>
 
-                <form id="editEventForm" class="mt-5 space-y-4" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" method="post" novalidate>
+                <form id="editEventForm" class="mt-5 space-y-4" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" method="post" enctype="multipart/form-data" novalidate>
                     <?php wp_nonce_field('pge_edit_event_action', 'pge_event_nonce'); ?>
                     <input type="hidden" name="event_id" value="<?php echo (int) $event_id; ?>" />
 
@@ -158,6 +159,21 @@ get_header();
                             required />
                     </div>
 
+                    <div>
+                        <label for="featured_image" class="text-xs font-semibold text-slate-600">الصورة البارزة</label>
+                        <?php if ($featured_image_url): ?>
+                            <div class="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                <img src="<?php echo esc_url($featured_image_url); ?>" alt="" class="h-44 w-full object-cover" />
+                            </div>
+                        <?php endif; ?>
+                        <input
+                            id="featured_image"
+                            name="featured_image"
+                            type="file"
+                            accept="image/*"
+                            class="mt-2 block w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 file:me-3 file:rounded-xl file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-800" />
+                        <p class="mt-2 text-xs text-slate-500">اختياري: ارفع صورة جديدة لاستبدال الصورة الحالية.</p>
+                    </div>
                     <div class="flex flex-wrap gap-2">
                         <button
                             id="editEventSubmit"

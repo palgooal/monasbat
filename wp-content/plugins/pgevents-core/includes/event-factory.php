@@ -32,6 +32,44 @@ if (!function_exists('pge_generate_invite_code')) {
     }
 }
 
+if (!function_exists('pge_handle_featured_image_upload')) {
+    function pge_handle_featured_image_upload($field_name, $post_id)
+    {
+        if (empty($_FILES[$field_name]) || !is_array($_FILES[$field_name])) {
+            return 0;
+        }
+
+        $file = $_FILES[$field_name];
+        $filename = isset($file['name']) ? (string) $file['name'] : '';
+        if ($filename === '') {
+            return 0;
+        }
+
+        $error_code = isset($file['error']) ? (int) $file['error'] : UPLOAD_ERR_NO_FILE;
+        if ($error_code === UPLOAD_ERR_NO_FILE) {
+            return 0;
+        }
+
+        if ($error_code !== UPLOAD_ERR_OK) {
+            return new WP_Error('pge_featured_image_upload_error', 'تعذر رفع الصورة البارزة. حاول مرة أخرى.');
+        }
+
+        if (!function_exists('media_handle_upload')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+        }
+
+        $attachment_id = media_handle_upload($field_name, $post_id, [], ['test_form' => false]);
+        if (is_wp_error($attachment_id)) {
+            return new WP_Error('pge_featured_image_upload_error', $attachment_id->get_error_message());
+        }
+
+        set_post_thumbnail($post_id, (int) $attachment_id);
+        return (int) $attachment_id;
+    }
+}
+
 /**
  * معالجة إنشاء مناسبة جديدة عبر AJAX مع فحص الحصة (Quota) الديناميكية
  */
@@ -112,6 +150,11 @@ function pge_handle_event_creation()
         update_post_meta($post_id, '_pge_event_location', $location);
         update_post_meta($post_id, '_pge_host_phone', $phone);
         update_post_meta($post_id, '_pge_invite_code', $invite_code);
+        $featured_upload = pge_handle_featured_image_upload('featured_image', $post_id);
+        if (is_wp_error($featured_upload)) {
+            wp_delete_post($post_id, true);
+            wp_send_json_error($featured_upload->get_error_message());
+        }
 
         wp_send_json_success(array(
             'message'      => 'تم إنشاء المناسبة بنجاح!',
@@ -164,6 +207,10 @@ function pge_handle_event_update()
             }
         }
         update_post_meta($event_id, '_pge_invite_code', $invite_code);
+        $featured_upload = pge_handle_featured_image_upload('featured_image', $event_id);
+        if (is_wp_error($featured_upload)) {
+            wp_send_json_error($featured_upload->get_error_message());
+        }
 
         wp_send_json_success('تم تحديث البيانات بنجاح');
     } else {
