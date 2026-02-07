@@ -2,6 +2,7 @@
 defined('ABSPATH') || exit;
 
 $event_id = get_the_ID();
+$author_id = (int) get_post_field('post_author', $event_id);
 
 /**
  * =============================
@@ -16,8 +17,8 @@ $limits = [
     'google_map'   => 0,
 ];
 
-if (class_exists('PGE_Packages') && is_user_logged_in()) {
-    $limits = array_merge($limits, (array) PGE_Packages::get_user_plan_limits(get_current_user_id()));
+if (class_exists('PGE_Packages') && $author_id > 0) {
+    $limits = array_merge($limits, (array) PGE_Packages::get_user_plan_limits($author_id));
 }
 
 // Plan flags

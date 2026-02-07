@@ -7,16 +7,41 @@ $event_id = get_the_ID();
 $event_date  = (string) get_post_meta($event_id, '_pge_event_date', true);     // YYYY-MM-DD
 $event_time  = (string) get_post_meta($event_id, '_pge_event_time', true);     // HH:MM (اختياري)
 $event_place = (string) get_post_meta($event_id, '_pge_event_place', true);    // نص
-$map_url     = (string) get_post_meta($event_id, '_pge_map_url', true);        // رابط خرائط (اختياري)
+$map_url     = (string) get_post_meta($event_id, '_pge_event_location', true); // رابط الموقع
+$map_url     = $map_url !== '' ? $map_url : (string) get_post_meta($event_id, '_pge_map_url', true); // fallback legacy
 $cover_id    = (int) get_post_meta($event_id, '_pge_cover_id', true);          // attachment id (اختياري)
 
-$cover_url = $cover_id ? wp_get_attachment_image_url($cover_id, 'full') : '';
+$cover_url = get_the_post_thumbnail_url($event_id, 'full');
+if (!$cover_url && $cover_id) {
+    $cover_url = wp_get_attachment_image_url($cover_id, 'full');
+}
 
 $title = get_the_title($event_id);
+$share_url = get_permalink($event_id);
+$display_location = $event_place !== '' ? $event_place : ($map_url !== '' ? 'الموقع على الخريطة' : '');
 
 // تاريخ/وقت لعد تنازلي (JS)
 $iso_datetime = '';
 if ($event_date) {
+    $normalized = str_replace(' ', 'T', (string) $event_date);
+
+    if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $normalized)) {
+        [$event_date, $parsed_time] = explode('T', $normalized, 2);
+        if (!$event_time) {
+            $event_time = $parsed_time;
+        }
+    } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $normalized)) {
+        $event_date = $normalized;
+    } else {
+        $ts = strtotime(str_replace('T', ' ', (string) $event_date));
+        if ($ts) {
+            $event_date = date('Y-m-d', $ts);
+            if (!$event_time) {
+                $event_time = date('H:i', $ts);
+            }
+        }
+    }
+
     $iso_datetime = $event_date . 'T' . ($event_time ? $event_time : '20:30') . ':00';
 }
 ?>
@@ -64,9 +89,9 @@ if ($event_date) {
                                     </span>
                                 <?php endif; ?>
 
-                                <?php if ($event_place): ?>
+                                <?php if ($display_location): ?>
                                     <span class="rounded-full bg-white/15 px-3 py-1 ring-1 ring-white/20">
-                                        <?php echo esc_html($event_place); ?>
+                                        <?php echo esc_html($display_location); ?>
                                     </span>
                                 <?php endif; ?>
                             </div>
@@ -80,7 +105,7 @@ if ($event_date) {
                             <button type="button"
                                 class="js-add-to-calendar inline-flex items-center justify-center rounded-2xl bg-white/15 px-5 py-3 text-sm font-semibold text-white ring-1 ring-white/20 hover:bg-white/20"
                                 data-title="<?php echo esc_attr($title); ?>"
-                                data-location="<?php echo esc_attr($event_place); ?>"
+                                data-location="<?php echo esc_attr($display_location); ?>"
                                 data-start="<?php echo esc_attr($iso_datetime); ?>">
                                 إضافة للتقويم
                             </button>
@@ -136,7 +161,7 @@ if ($event_date) {
                         </div>
 
                         <div class="mt-3 text-sm text-slate-600">
-                            <?php echo $event_place ? esc_html($event_place) : '—'; ?>
+                            <?php echo $display_location ? esc_html($display_location) : '—'; ?>
                         </div>
 
                         <div class="mt-4 h-28 rounded-2xl bg-slate-200 ring-1 ring-slate-200"></div>
@@ -160,7 +185,8 @@ if ($event_date) {
                             </button>
 
                             <button type="button"
-                                class="js-copy-link rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+                                class="js-copy-link rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                                data-copy="<?php echo esc_attr($share_url); ?>">
                                 نسخ رابط الدعوة
                             </button>
                         </div>

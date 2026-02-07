@@ -69,13 +69,20 @@ $is_host     = pge_is_host_or_admin($event_id);
 // =============================
 // Identify guest phone (cookie preferred)
 // =============================
-$guest_phone_cookie_name = 'pge_event_guest_phone_' . (int) $event_id;
-$guest_phone_cookie      = isset($_COOKIE[$guest_phone_cookie_name]) ? sanitize_text_field($_COOKIE[$guest_phone_cookie_name]) : '';
+$guest_phone_cookie_name = 'pge_event_phone_' . (int) $event_id;
+$legacy_guest_phone_cookie_name = 'pge_event_guest_phone_' . (int) $event_id;
+$guest_phone_cookie_raw = isset($_COOKIE[$guest_phone_cookie_name])
+    ? sanitize_text_field((string) $_COOKIE[$guest_phone_cookie_name])
+    : (isset($_COOKIE[$legacy_guest_phone_cookie_name]) ? sanitize_text_field((string) $_COOKIE[$legacy_guest_phone_cookie_name]) : '');
+$guest_phone_cookie      = $guest_phone_cookie_raw;
 $guest_phone_cookie      = pge_norm_phone($guest_phone_cookie);
 
 // RSVP storage meta
-$meta_key = '_pge_rsvp_records';
+$meta_key = '_pge_rsvp_map';
 $records  = get_post_meta($event_id, $meta_key, true);
+if (!is_array($records)) {
+    $records = get_post_meta($event_id, '_pge_rsvp_records', true);
+}
 if (!is_array($records)) $records = [];
 
 // Compute totals
@@ -185,11 +192,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
                 ];
 
                 update_post_meta($event_id, $meta_key, $records);
+                update_post_meta($event_id, '_pge_rsvp_records', $records);
 
                 // If guest (not host) and cookie missing, set it now for convenience
                 if (!$is_host && $guest_phone_cookie === '' && $phone !== '') {
                     setcookie($guest_phone_cookie_name, $phone, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
                     $_COOKIE[$guest_phone_cookie_name] = $phone;
+                    setcookie($legacy_guest_phone_cookie_name, $phone, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
+                    $_COOKIE[$legacy_guest_phone_cookie_name] = $phone;
                 }
 
                 // Refresh computed totals after save
@@ -358,43 +368,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
         </script>
 
     </div>
-    <script>
-        (function() {
-            const form = document.querySelector('#rsvp form');
-            if (!form) return;
-
-            const yesBtn = form.querySelector('[data-rsvp="yes"]');
-            const noBtn = form.querySelector('[data-rsvp="no"]');
-            const replyInput = form.querySelector('#rsvpReply');
-
-            function setActive(btn, active) {
-                btn.classList.toggle('bg-slate-900', active);
-                btn.classList.toggle('text-white', active);
-            }
-
-            yesBtn?.addEventListener('click', () => {
-                replyInput.value = 'yes';
-            });
-            noBtn?.addEventListener('click', () => {
-                replyInput.value = 'no';
-            });
-
-            form.addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                const fd = new FormData(form);
-                fd.append('action', 'pge_rsvp_submit');
-
-                const res = await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>', {
-                    method: 'POST',
-                    body: fd,
-                    credentials: 'same-origin'
-                });
-
-                const json = await res.json();
-                alert(json?.data?.message || (json.success ? 'تم الحفظ' : 'حدث خطأ'));
-            });
-        })();
-    </script>
 
 </section>
