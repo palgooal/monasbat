@@ -28,7 +28,10 @@ $can_private_chat = !empty($limits['private_chat']);
 
 // Page data (meta placeholders)
 $notes        = (string) get_post_meta($event_id, '_pge_event_notes', true);
-$invite_code  = (string) get_post_meta($event_id, '_pge_invite_code', true);
+$invite_code_raw = (string) get_post_meta($event_id, '_pge_invite_code', true);
+$invite_code  = function_exists('pge_normalize_invite_code')
+    ? pge_normalize_invite_code($invite_code_raw)
+    : strtoupper(trim($invite_code_raw));
 $qr_url       = (string) get_post_meta($event_id, '_pge_qr_url', true); // optional if you store it
 $share_url    = get_permalink($event_id);
 

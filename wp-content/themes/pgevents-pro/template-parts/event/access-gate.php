@@ -38,6 +38,26 @@ if (!function_exists('pge_get_invited_phones')) {
     }
 }
 
+if (!function_exists('pge_norm_invite_code')) {
+    function pge_norm_invite_code($code)
+    {
+        if (function_exists('pge_normalize_invite_code')) {
+            return pge_normalize_invite_code($code);
+        }
+
+        $code = strtoupper(trim((string) $code));
+        $code = preg_replace('/[^A-Z0-9]/', '', $code);
+        if ($code === '') return '';
+
+        $code = substr($code, 0, 8);
+        if (strlen($code) > 4) {
+            $code = substr($code, 0, 4) . '-' . substr($code, 4);
+        }
+
+        return $code;
+    }
+}
+
 if (!function_exists('pge_is_host_or_admin')) {
     function pge_is_host_or_admin($event_id)
     {
@@ -63,7 +83,7 @@ if (!function_exists('pge_access_cookie_name')) {
 if (!function_exists('pge_make_access_token')) {
     function pge_make_access_token($event_id, $phone, $code)
     {
-        $payload = (int) $event_id . '|' . pge_norm_phone($phone) . '|' . trim((string) $code);
+        $payload = (int) $event_id . '|' . pge_norm_phone($phone) . '|' . pge_norm_invite_code($code);
         $salt = defined('AUTH_SALT') ? AUTH_SALT : 'pge_salt_fallback';
         return hash_hmac('sha256', $payload, $salt);
     }
@@ -75,7 +95,7 @@ if (!function_exists('pge_cookie_is_valid')) {
         $token = (string) $token;
         if ($token === '') return false;
 
-        $code = trim((string) get_post_meta($event_id, '_pge_invite_code', true));
+        $code = pge_norm_invite_code((string) get_post_meta($event_id, '_pge_invite_code', true));
         if ($code === '') return false;
 
         $invited = pge_get_invited_phones($event_id);
@@ -108,10 +128,10 @@ if (!$access_ok && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_ac
     $code  = isset($_POST['invite_code']) ? sanitize_text_field($_POST['invite_code']) : '';
     $phone = isset($_POST['guest_phone']) ? sanitize_text_field($_POST['guest_phone']) : '';
 
-    $code = trim($code);
+    $code = pge_norm_invite_code($code);
     $phone_n = pge_norm_phone($phone);
 
-    $saved_code = trim((string) get_post_meta($event_id, '_pge_invite_code', true));
+    $saved_code = pge_norm_invite_code((string) get_post_meta($event_id, '_pge_invite_code', true));
     $invited = pge_get_invited_phones($event_id);
 
     if ($saved_code === '') {
@@ -178,7 +198,7 @@ if (!$access_ok) : ?>
 
                     <div>
                         <label class="text-xs font-semibold text-slate-600">رمز الدعوة</label>
-                        <input name="invite_code" autocomplete="one-time-code"
+                        <input name="invite_code" autocomplete="one-time-code" dir="ltr" maxlength="9"
                             class="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
                             placeholder="مثال: A9X2-6K" />
                     </div>
@@ -200,6 +220,23 @@ if (!$access_ok) : ?>
                         </button>
                     </div>
                 </form>
+
+                <script>
+                    (function() {
+                        const inviteInput = document.querySelector('input[name="invite_code"]');
+                        if (!inviteInput) return;
+
+                        function normalizeInviteCode(value) {
+                            const cleaned = (value || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+                            if (cleaned.length > 4) return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+                            return cleaned;
+                        }
+
+                        inviteInput.addEventListener('input', () => {
+                            inviteInput.value = normalizeInviteCode(inviteInput.value);
+                        });
+                    })();
+                </script>
 
             </div>
         </div>

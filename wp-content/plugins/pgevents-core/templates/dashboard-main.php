@@ -127,6 +127,7 @@ $selected_event_date = $selected_event_id ? (string) get_post_meta($selected_eve
 $selected_response_rate = $total_invited > 0 ? (int) round((($yes_count + $no_count) / $total_invited) * 100) : 0;
 $selected_attendance_rate = $total_invited > 0 ? (int) round(($yes_count / $total_invited) * 100) : 0;
 $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_count) * 100) : 0;
+$selected_manage_url = $selected_event_id ? home_url('/event-manage/' . $selected_event_id . '/') : home_url('/dashboard/?tab=operations');
 
 ?>
 <main class="min-h-screen bg-slate-50 text-slate-900" dir="rtl">
@@ -407,7 +408,7 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
                                 <a href="<?php echo esc_url(get_permalink($eid)); ?>"
                                     class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">فتح</a>
 
-                                <a href="<?php echo esc_url(add_query_arg(['event' => $eid, 'tab' => 'operations'], home_url('/dashboard/'))); ?>"
+                                <a href="<?php echo esc_url(home_url('/event-manage/' . $eid . '/')); ?>"
                                     class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">إدارة</a>
 
                                 <?php if (!$is_archived): ?>
@@ -573,7 +574,7 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
                             class="block rounded-2xl bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-slate-800">إنشاء مناسبة جديدة</a>
                         <a href="<?php echo esc_url(home_url('/dashboard/?tab=events')); ?>"
                             class="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">عرض كل المناسبات</a>
-                        <a href="<?php echo esc_url(home_url('/dashboard/?tab=operations')); ?>"
+                        <a href="<?php echo esc_url($selected_manage_url); ?>"
                             class="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">إدارة المدعوين والدخول</a>
                     </div>
                 </div>

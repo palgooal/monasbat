@@ -10,6 +10,7 @@ add_action('init', function () {
 
     // أضف هذه القاعدة داخل دالة init في ملف routing.php
     add_rewrite_rule('edit-event/([0-9]+)/?$', 'index.php?pge_action=edit_event&event_id=$matches[1]', 'top');
+    add_rewrite_rule('event-manage/([0-9]+)/?$', 'index.php?pge_action=event_manage&event_id=$matches[1]', 'top');
 
     // 2. مسار لوحة التحكم الرئيسية: monasbat.test/dashboard/
     add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
@@ -57,6 +58,18 @@ add_filter('template_include', function ($template) {
         $plugin_edit_template = PGE_PATH . 'templates/dashboard-edit.php';
         if (file_exists($plugin_edit_template)) {
             return $plugin_edit_template;
+        }
+    }
+
+    if ($action === 'event_manage') {
+        $theme_manage_template = locate_template('page-event-manage.php');
+        if ($theme_manage_template && file_exists($theme_manage_template)) {
+            return $theme_manage_template;
+        }
+
+        $plugin_manage_template = PGE_PATH . 'templates/event-manage.php';
+        if (file_exists($plugin_manage_template)) {
+            return $plugin_manage_template;
         }
     }
 

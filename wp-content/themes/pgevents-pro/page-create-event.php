@@ -125,6 +125,29 @@ get_header();
                     </div>
 
                     <div>
+                        <label for="invite_code" class="text-xs font-semibold text-slate-600">رمز الدعوة</label>
+                        <div class="mt-2 flex gap-2">
+                            <input
+                                id="invite_code"
+                                name="invite_code"
+                                type="text"
+                                dir="ltr"
+                                maxlength="9"
+                                class="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold tracking-widest outline-none placeholder:text-slate-400 focus:border-slate-900"
+                                placeholder="AB12-CD34"
+                                <?php echo $has_quota ? '' : 'disabled'; ?> />
+                            <button
+                                id="generateInviteCodeBtn"
+                                type="button"
+                                <?php echo $has_quota ? '' : 'disabled'; ?>
+                                class="shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+                                توليد
+                            </button>
+                        </div>
+                        <p class="mt-2 text-xs text-slate-500">اتركه فارغًا وسيتم توليده تلقائيًا.</p>
+                    </div>
+
+                    <div>
                         <label for="event_location" class="text-xs font-semibold text-slate-600">رابط الموقع (Google Maps)</label>
                         <input
                             id="event_location"
@@ -163,11 +186,48 @@ get_header();
     const createEventSubmit = document.getElementById('createEventSubmit');
     const createEventMsg = document.getElementById('createEventMsg');
     const eventDateInput = document.getElementById('event_date');
+    const inviteCodeInput = document.getElementById('invite_code');
+    const generateInviteCodeBtn = document.getElementById('generateInviteCodeBtn');
 
     if (eventDateInput && !eventDateInput.value) {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         eventDateInput.min = now.toISOString().slice(0, 16);
+    }
+
+    function normalizeInviteCode(value) {
+        const cleaned = (value || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+        if (cleaned.length > 4) {
+            return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+        }
+        return cleaned;
+    }
+
+    function generateInviteCode() {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let out = '';
+        for (let i = 0; i < 8; i += 1) {
+            out += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return `${out.slice(0, 4)}-${out.slice(4)}`;
+    }
+
+    if (inviteCodeInput && !inviteCodeInput.disabled) {
+        if (!inviteCodeInput.value) {
+            inviteCodeInput.value = generateInviteCode();
+        }
+
+        inviteCodeInput.addEventListener('input', () => {
+            inviteCodeInput.value = normalizeInviteCode(inviteCodeInput.value);
+        });
+    }
+
+    if (generateInviteCodeBtn && inviteCodeInput && !generateInviteCodeBtn.disabled) {
+        generateInviteCodeBtn.addEventListener('click', () => {
+            inviteCodeInput.value = generateInviteCode();
+            inviteCodeInput.focus();
+            inviteCodeInput.select();
+        });
     }
 
     function showCreateEventMessage(type, text) {
@@ -187,6 +247,10 @@ get_header();
 
             createEventSubmit.disabled = true;
             createEventSubmit.textContent = 'جاري الإنشاء...';
+
+            if (inviteCodeInput) {
+                inviteCodeInput.value = normalizeInviteCode(inviteCodeInput.value || '');
+            }
 
             const formData = new FormData(createEventForm);
             formData.append('action', 'pge_create_new_event');

@@ -22,6 +22,7 @@ require_once PGE_PATH . 'includes/admin-mods.php';
 require_once PGE_PATH . 'includes/class-pge-packages.php';
 include_once PGE_PATH . 'includes/checkin-handler.php';
 include_once PGE_PATH . 'includes/ajax.php';
+require_once PGE_PATH . 'includes/event-guests.php';
 
 
 // أضف هذا السطر هنا (مهم جداً لحل خطأ 500)
@@ -34,7 +35,7 @@ require_once PGE_PATH . 'includes/class-salla-handler.php';
 require_once PGE_PATH . 'includes/routing.php';
 
 add_action('init', function () {
-    $rewrite_version = '1.0.3';
+    $rewrite_version = '1.0.4';
 
     if (get_option('pge_rewrite_version') !== $rewrite_version) {
         flush_rewrite_rules(false);
@@ -48,12 +49,13 @@ register_activation_hook(__FILE__, function () {
     pge_register_event_post_type();
     add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
     add_rewrite_rule('^create-event/?$', 'index.php?pge_action=create_event', 'top');
-    add_rewrite_rule('^edit-event/([0-9]+)/?$', 'index.php?pge_action=edit_event&event_id=$1', 'top');
+    add_rewrite_rule('^edit-event/([0-9]+)/?$', 'index.php?pge_action=edit_event&event_id=$matches[1]', 'top');
+    add_rewrite_rule('^event-manage/([0-9]+)/?$', 'index.php?pge_action=event_manage&event_id=$matches[1]', 'top');
     add_rewrite_rule('^login/?$', 'index.php?pge_action=login', 'top');
     add_rewrite_rule('^register/?$', 'index.php?pge_action=register', 'top');
     add_rewrite_rule('^forgot-password/?$', 'index.php?pge_action=forgot_password', 'top');
     flush_rewrite_rules();
-    update_option('pge_rewrite_version', '1.0.3');
+    update_option('pge_rewrite_version', '1.0.4');
 });
 
 // 4. تحديث الروابط عند التعطيل (تنظيف)
