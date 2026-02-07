@@ -37,15 +37,27 @@ add_filter('template_include', function ($template) {
 
     // توجيه مسار إنشاء المناسبة
     if ($action === 'create_event') {
-        $create_template = PGE_PATH . 'templates/dashboard-create.php';
-        if (file_exists($create_template)) {
-            return $create_template;
+        $theme_create_template = locate_template('page-create-event.php');
+        if ($theme_create_template && file_exists($theme_create_template)) {
+            return $theme_create_template;
+        }
+
+        $plugin_create_template = PGE_PATH . 'templates/dashboard-create.php';
+        if (file_exists($plugin_create_template)) {
+            return $plugin_create_template;
         }
     }
 
-    if (get_query_var('pge_action') === 'edit_event') {
-        $edit_template = PGE_PATH . 'templates/dashboard-edit.php';
-        if (file_exists($edit_template)) return $edit_template;
+    if ($action === 'edit_event') {
+        $theme_edit_template = locate_template('page-edit-event.php');
+        if ($theme_edit_template && file_exists($theme_edit_template)) {
+            return $theme_edit_template;
+        }
+
+        $plugin_edit_template = PGE_PATH . 'templates/dashboard-edit.php';
+        if (file_exists($plugin_edit_template)) {
+            return $plugin_edit_template;
+        }
     }
 
     if ($action === 'login') {

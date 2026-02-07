@@ -179,8 +179,8 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
                         لا توجد مناسبات حتى الآن. أنشئ أول مناسبة للبدء.
                     </div>
                 <?php else: ?>
-                    <form method="get" class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <select name="event" class="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm sm:w-72">
+                    <form method="get" id="dashboardEventForm" class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <select id="dashboardEventSelect" name="event" class="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm sm:w-72">
                             <?php foreach ($events as $ev):
                                 $eid = (int) $ev->ID;
                                 $date = (string) get_post_meta($eid, '_pge_event_date', true);
@@ -258,7 +258,7 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
                     </div>
                     <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div class="text-xs font-semibold text-slate-500">تسجيل دخول</div>
-                        <div class="mt-2 text-3xl font-extrabold"><?php echo (int) $all_checkins_total; ?></div>
+                        <div id="allCheckinsKpiTop" class="mt-2 text-3xl font-extrabold"><?php echo (int) $all_checkins_total; ?></div>
                     </div>
                 </div>
 
@@ -287,49 +287,49 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
                             <div>
                                 <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
                                     <span>نسبة التفاعل مع الدعوة</span>
-                                    <span class="font-extrabold text-slate-700"><?php echo (int) $selected_response_rate; ?>%</span>
+                                    <span id="selectedResponseRateText" class="font-extrabold text-slate-700"><?php echo (int) $selected_response_rate; ?>%</span>
                                 </div>
                                 <div class="h-2 overflow-hidden rounded-full bg-slate-100">
-                                    <div class="h-full bg-indigo-500" style="width: <?php echo (int) $selected_response_rate; ?>%"></div>
+                                    <div id="selectedResponseRateBar" class="h-full bg-indigo-500" style="width: <?php echo (int) $selected_response_rate; ?>%"></div>
                                 </div>
                             </div>
 
                             <div>
                                 <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
                                     <span>نسبة تأكيد الحضور</span>
-                                    <span class="font-extrabold text-emerald-700"><?php echo (int) $selected_attendance_rate; ?>%</span>
+                                    <span id="selectedAttendanceRateText" class="font-extrabold text-emerald-700"><?php echo (int) $selected_attendance_rate; ?>%</span>
                                 </div>
                                 <div class="h-2 overflow-hidden rounded-full bg-slate-100">
-                                    <div class="h-full bg-emerald-500" style="width: <?php echo (int) $selected_attendance_rate; ?>%"></div>
+                                    <div id="selectedAttendanceRateBar" class="h-full bg-emerald-500" style="width: <?php echo (int) $selected_attendance_rate; ?>%"></div>
                                 </div>
                             </div>
 
                             <div>
                                 <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
                                     <span>نسبة Check-in من المؤكدين</span>
-                                    <span class="font-extrabold text-slate-700"><?php echo (int) $selected_checkin_rate; ?>%</span>
+                                    <span id="selectedCheckinRateText" class="font-extrabold text-slate-700"><?php echo (int) $selected_checkin_rate; ?>%</span>
                                 </div>
                                 <div class="h-2 overflow-hidden rounded-full bg-slate-100">
-                                    <div class="h-full bg-slate-900" style="width: <?php echo (int) $selected_checkin_rate; ?>%"></div>
+                                    <div id="selectedCheckinRateBar" class="h-full bg-slate-900" style="width: <?php echo (int) $selected_checkin_rate; ?>%"></div>
                                 </div>
                             </div>
                         </div>
 
                         <div class="mt-4 grid grid-cols-4 gap-2 text-center">
                             <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
-                                <div class="text-lg font-extrabold"><?php echo (int) $total_invited; ?></div>
+                                <div id="selectedInvitedCount" class="text-lg font-extrabold"><?php echo (int) $total_invited; ?></div>
                                 <div class="mt-1 text-[11px] text-slate-500">مدعو</div>
                             </div>
                             <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
-                                <div class="text-lg font-extrabold text-emerald-700"><?php echo (int) $yes_count; ?></div>
+                                <div id="selectedYesCount" class="text-lg font-extrabold text-emerald-700"><?php echo (int) $yes_count; ?></div>
                                 <div class="mt-1 text-[11px] text-slate-500">سيحضر</div>
                             </div>
                             <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
-                                <div class="text-lg font-extrabold text-rose-700"><?php echo (int) $no_count; ?></div>
+                                <div id="selectedNoCount" class="text-lg font-extrabold text-rose-700"><?php echo (int) $no_count; ?></div>
                                 <div class="mt-1 text-[11px] text-slate-500">اعتذر</div>
                             </div>
                             <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
-                                <div class="text-lg font-extrabold"><?php echo (int) $checkins_count; ?></div>
+                                <div id="selectedCheckinsCount" class="text-lg font-extrabold"><?php echo (int) $checkins_count; ?></div>
                                 <div class="mt-1 text-[11px] text-slate-500">Check-in</div>
                             </div>
                         </div>
@@ -426,7 +426,7 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
         <div id="dashboardPanelOperations" class="dashboard-panel mt-4 hidden">
             <section class="grid gap-4 lg:grid-cols-12">
             <!-- Guests -->
-            <div class="lg:col-span-8">
+            <div class="lg:col-span-7">
                 <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
@@ -471,7 +471,7 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
                                             $status = $reply === 'yes' ? 'yes' : ($reply === 'no' ? 'no' : 'pending');
                                             $checked = isset($checkins[$ph]) ? 'yes' : 'no';
                                         ?>
-                                            <tr class="guest-row" data-status="<?php echo esc_attr($status); ?>" data-phone="<?php echo esc_attr($ph); ?>">
+                                            <tr class="guest-row" data-status="<?php echo esc_attr($status); ?>" data-phone="<?php echo esc_attr($ph); ?>" data-checked="<?php echo esc_attr($checked); ?>">
                                                 <td class="px-4 py-3 font-semibold text-slate-900"><?php echo esc_html($ph); ?></td>
                                                 <td class="px-4 py-3">
                                                     <?php if ($status === 'yes'): ?>
@@ -500,7 +500,7 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
             </div>
 
             <!-- Check-in -->
-            <div class="lg:col-span-4">
+            <div class="lg:col-span-5">
                 <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div class="flex items-center justify-between">
                         <h3 class="text-lg font-extrabold">إدارة الدخول</h3>
@@ -540,7 +540,7 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
 
         <div id="dashboardPanelReports" class="dashboard-panel mt-4 hidden">
             <section class="grid gap-4 lg:grid-cols-12">
-                <div class="lg:col-span-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="lg:col-span-7 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                     <h3 class="text-lg font-extrabold">ملخص الأداء</h3>
                     <p class="mt-1 text-sm text-slate-600">قراءة سريعة لأداء كل المناسبات على مستوى الدعوات والحضور.</p>
 
@@ -559,12 +559,12 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
                         </div>
                         <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
                             <div class="text-xs font-semibold text-slate-500">Check-ins</div>
-                            <div class="mt-2 text-2xl font-extrabold"><?php echo (int) $all_checkins_total; ?></div>
+                            <div id="allCheckinsKpiReports" class="mt-2 text-2xl font-extrabold"><?php echo (int) $all_checkins_total; ?></div>
                         </div>
                     </div>
                 </div>
 
-                <div class="lg:col-span-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="lg:col-span-5 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                     <h3 class="text-lg font-extrabold">إجراءات سريعة</h3>
                     <p class="mt-1 text-sm text-slate-600">انتقل مباشرة للإجراءات الأكثر استخدامًا.</p>
 
@@ -588,7 +588,27 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
     const dashboardTabButtons = document.querySelectorAll('.dashboard-tab-btn');
     const dashboardPanels = document.querySelectorAll('.dashboard-panel');
     const dashboardTabField = document.getElementById('dashboardTabField');
+    const dashboardEventForm = document.getElementById('dashboardEventForm');
+    const dashboardEventSelect = document.getElementById('dashboardEventSelect');
     const dashboardTabs = ['overview', 'events', 'operations', 'reports'];
+    const DASHBOARD_TAB_KEY = 'pge_dashboard_active_tab';
+    const DASHBOARD_EVENT_KEY = 'pge_dashboard_selected_event';
+
+    function getLocalStorageItem(key) {
+        try {
+            return window.localStorage ? window.localStorage.getItem(key) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function setLocalStorageItem(key, value) {
+        try {
+            if (window.localStorage) {
+                window.localStorage.setItem(key, value);
+            }
+        } catch (e) {}
+    }
 
     function activateDashboardTab(tab) {
         const activeTab = dashboardTabs.includes(tab) ? tab : 'overview';
@@ -614,6 +634,8 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
             dashboardTabField.value = activeTab;
         }
 
+        setLocalStorageItem(DASHBOARD_TAB_KEY, activeTab);
+
         return activeTab;
     }
 
@@ -626,8 +648,40 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
         });
     });
 
-    const initialTab = new URLSearchParams(window.location.search).get('tab') || 'overview';
-    activateDashboardTab(initialTab);
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialTab = urlParams.get('tab') || getLocalStorageItem(DASHBOARD_TAB_KEY) || 'overview';
+    const activeInitialTab = activateDashboardTab(initialTab);
+
+    if (dashboardEventSelect) {
+        const hasEventInUrl = !!urlParams.get('event');
+        const savedEventId = getLocalStorageItem(DASHBOARD_EVENT_KEY);
+        const hasSavedOption = !!savedEventId && Array.from(dashboardEventSelect.options).some(option => option.value === savedEventId);
+
+        if (!hasEventInUrl && hasSavedOption && dashboardEventSelect.value !== savedEventId) {
+            dashboardEventSelect.value = savedEventId;
+            const url = new URL(window.location.href);
+            url.searchParams.set('event', savedEventId);
+            url.searchParams.set('tab', activeInitialTab);
+            window.location.replace(url.toString());
+        } else {
+            setLocalStorageItem(DASHBOARD_EVENT_KEY, dashboardEventSelect.value);
+        }
+
+        dashboardEventSelect.addEventListener('change', () => {
+            setLocalStorageItem(DASHBOARD_EVENT_KEY, dashboardEventSelect.value || '');
+        });
+    }
+
+    if (dashboardEventForm) {
+        dashboardEventForm.addEventListener('submit', () => {
+            if (dashboardTabField) {
+                setLocalStorageItem(DASHBOARD_TAB_KEY, dashboardTabField.value || 'overview');
+            }
+            if (dashboardEventSelect) {
+                setLocalStorageItem(DASHBOARD_EVENT_KEY, dashboardEventSelect.value || '');
+            }
+        });
+    }
 
     // Guest search + status filter
     const guestFilters = document.querySelectorAll('.guest-filter');
@@ -673,27 +727,124 @@ $selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_co
     const checkinBtn = document.getElementById('checkinBtn');
     const checkinPhone = document.getElementById('checkinPhone');
     const checkinMsg = document.getElementById('checkinMsg');
+    const selectedYesCountEl = document.getElementById('selectedYesCount');
+    const selectedCheckinsCountEl = document.getElementById('selectedCheckinsCount');
+    const selectedCheckinRateTextEl = document.getElementById('selectedCheckinRateText');
+    const selectedCheckinRateBarEl = document.getElementById('selectedCheckinRateBar');
+    const allCheckinsKpiTopEl = document.getElementById('allCheckinsKpiTop');
+    const allCheckinsKpiReportsEl = document.getElementById('allCheckinsKpiReports');
+
+    function normalizePhone(v) {
+        return (v || '').toString().replace(/\D+/g, '');
+    }
+
+    function readNumber(el) {
+        if (!el) return 0;
+        const parsed = parseInt((el.textContent || '0').replace(/[^\d-]/g, ''), 10);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function writeNumber(el, value) {
+        if (!el) return;
+        el.textContent = String(Math.max(0, value));
+    }
+
+    function incrementNumber(el, step = 1) {
+        writeNumber(el, readNumber(el) + step);
+    }
+
+    function updateSelectedCheckinRate() {
+        const confirmed = readNumber(selectedYesCountEl);
+        const checkinsTotal = readNumber(selectedCheckinsCountEl);
+        const rate = confirmed > 0 ? Math.round((checkinsTotal / confirmed) * 100) : 0;
+        const clampedRate = Math.max(0, Math.min(100, rate));
+
+        if (selectedCheckinRateTextEl) {
+            selectedCheckinRateTextEl.textContent = `${clampedRate}%`;
+        }
+        if (selectedCheckinRateBarEl) {
+            selectedCheckinRateBarEl.style.width = `${clampedRate}%`;
+        }
+    }
+
+    function markGuestRowChecked(phoneDigits) {
+        if (!phoneDigits) return {
+            found: false,
+            alreadyChecked: false
+        };
+        const row = document.querySelector(`.guest-row[data-phone="${phoneDigits}"]`);
+        if (!row) return {
+            found: false,
+            alreadyChecked: false
+        };
+
+        const alreadyChecked = row.dataset.checked === 'yes';
+        if (!alreadyChecked) {
+            row.dataset.checked = 'yes';
+            const checkinCell = row.querySelector('td:nth-child(3)');
+            if (checkinCell) {
+                checkinCell.innerHTML = '<span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200">تم</span>';
+            }
+        }
+
+        return {
+            found: true,
+            alreadyChecked
+        };
+    }
 
     if (checkinBtn && checkinPhone && window.PGE_CHECKIN) {
         checkinBtn.addEventListener('click', async () => {
+            const rawPhone = checkinPhone.value || '';
+            const normalizedPhone = normalizePhone(rawPhone);
+            if (!normalizedPhone) {
+                checkinMsg.textContent = 'أدخل رقم هاتف صحيح';
+                return;
+            }
+
             checkinMsg.textContent = '...جاري الحفظ';
+            checkinBtn.disabled = true;
             const fd = new FormData();
             fd.append('action', 'pge_checkin_guest');
             fd.append('nonce', window.PGE_CHECKIN.nonce);
             fd.append('event_id', window.PGE_CHECKIN.event_id);
-            fd.append('phone', checkinPhone.value || '');
+            fd.append('phone', rawPhone);
 
-            const res = await fetch(window.PGE_CHECKIN.ajax, {
-                method: 'POST',
-                body: fd
-            });
-            const json = await res.json();
+            try {
+                const res = await fetch(window.PGE_CHECKIN.ajax, {
+                    method: 'POST',
+                    body: fd
+                });
+                const json = await res.json();
 
-            if (json && json.success) {
-                checkinMsg.textContent = '✅ تم تسجيل الدخول بنجاح';
-                location.reload();
-            } else {
-                checkinMsg.textContent = (json && json.data) ? json.data : '❌ حدث خطأ';
+                if (json && json.success) {
+                    const payload = (json.data && typeof json.data === 'object') ? json.data : {};
+                    const alreadyOnServer = !!payload.already;
+                    const serverMessage = payload.message || 'تم تسجيل الدخول';
+
+                    if (alreadyOnServer) {
+                        checkinMsg.textContent = serverMessage;
+                    } else {
+                        const rowState = markGuestRowChecked(normalizedPhone);
+                        if (!rowState.alreadyChecked) {
+                            incrementNumber(selectedCheckinsCountEl);
+                            incrementNumber(allCheckinsKpiTopEl);
+                            incrementNumber(allCheckinsKpiReportsEl);
+                            updateSelectedCheckinRate();
+                        }
+                        checkinMsg.textContent = `✅ ${serverMessage}`;
+                    }
+
+                    checkinPhone.value = '';
+                    checkinPhone.focus();
+                } else {
+                    const errorText = (json && typeof json.data === 'string') ? json.data : 'حدث خطأ';
+                    checkinMsg.textContent = `❌ ${errorText}`;
+                }
+            } catch (e) {
+                checkinMsg.textContent = '❌ تعذر الاتصال بالخادم';
+            } finally {
+                checkinBtn.disabled = false;
             }
         });
     }
