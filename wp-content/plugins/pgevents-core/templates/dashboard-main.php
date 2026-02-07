@@ -122,6 +122,12 @@ foreach ($events as $ev) {
     $all_checkins_total += is_array($cks) ? count($cks) : 0;
 }
 
+$selected_event_title = $selected_event_id ? get_the_title($selected_event_id) : '';
+$selected_event_date = $selected_event_id ? (string) get_post_meta($selected_event_id, '_pge_event_date', true) : '';
+$selected_response_rate = $total_invited > 0 ? (int) round((($yes_count + $no_count) / $total_invited) * 100) : 0;
+$selected_attendance_rate = $total_invited > 0 ? (int) round(($yes_count / $total_invited) * 100) : 0;
+$selected_checkin_rate = $yes_count > 0 ? (int) round(($checkins_count / $yes_count) * 100) : 0;
+
 ?>
 <main class="min-h-screen bg-slate-50 text-slate-900" dir="rtl">
 
@@ -148,8 +154,64 @@ foreach ($events as $ev) {
 
     <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
 
+        <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <h1 class="text-xl font-extrabold">لوحة التحكم</h1>
+                    <p class="mt-1 text-sm text-slate-600">إدارة المناسبات والمدعوين وعمليات الدخول من شاشة واحدة.</p>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                    <a href="<?php echo esc_url(home_url('/create-event/')); ?>"
+                        class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">إنشاء مناسبة</a>
+                    <a href="<?php echo esc_url(home_url('/packages/')); ?>"
+                        class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">الباقات</a>
+                    <?php if ($selected_event_id): ?>
+                        <a href="<?php echo esc_url(get_permalink($selected_event_id)); ?>"
+                            class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">فتح الدعوة</a>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <?php if (empty($events)): ?>
+                    <div class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700 ring-1 ring-slate-200">
+                        لا توجد مناسبات حتى الآن. أنشئ أول مناسبة للبدء.
+                    </div>
+                <?php else: ?>
+                    <form method="get" class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <select name="event" class="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm sm:w-72">
+                            <?php foreach ($events as $ev):
+                                $eid = (int) $ev->ID;
+                                $date = (string) get_post_meta($eid, '_pge_event_date', true);
+                            ?>
+                                <option value="<?php echo $eid; ?>" <?php selected($eid, $selected_event_id); ?>>
+                                    <?php echo esc_html(get_the_title($eid)); ?>
+                                    <?php if ($date) echo ' — ' . esc_html(date_i18n('j F Y', strtotime($date))); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <input type="hidden" name="tab" id="dashboardTabField" value="overview" />
+                        <button class="h-11 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">
+                            تطبيق
+                        </button>
+                    </form>
+                <?php endif; ?>
+            </div>
+        </section>
+
+        <section class="mt-4">
+            <div class="flex flex-wrap gap-2 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+                <button class="dashboard-tab-btn rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white" data-tab="overview">نظرة عامة</button>
+                <button class="dashboard-tab-btn rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50" data-tab="events">المناسبات</button>
+                <button class="dashboard-tab-btn rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50" data-tab="operations">العمليات</button>
+                <button class="dashboard-tab-btn rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50" data-tab="reports">التقارير</button>
+            </div>
+        </section>
+
         <!-- Top: Create + KPIs -->
-        <section class="grid gap-4 lg:grid-cols-12">
+        <div id="dashboardPanelOverview" class="dashboard-panel mt-4">
+            <section class="grid gap-4 lg:grid-cols-12">
             <div class="lg:col-span-5">
                 <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
@@ -201,31 +263,58 @@ foreach ($events as $ev) {
                 </div>
 
                 <div class="mt-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                            <div class="text-sm font-extrabold">المناسبة الحالية</div>
-                            <div class="mt-1 text-sm text-slate-600">اختر مناسبة لإدارة المدعوين وRSVP والدخول</div>
+                            <div class="text-sm font-extrabold">المناسبة النشطة</div>
+                            <?php if ($selected_event_id): ?>
+                                <div class="mt-1 text-sm font-semibold text-slate-900"><?php echo esc_html($selected_event_title); ?></div>
+                                <div class="mt-1 text-xs text-slate-500">
+                                    <?php echo $selected_event_date ? esc_html(date_i18n('j F Y', strtotime($selected_event_date))) : '—'; ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="mt-1 text-sm text-slate-600">اختر مناسبة من أعلى الصفحة.</div>
+                            <?php endif; ?>
                         </div>
 
-                        <form method="get" class="flex gap-2">
-                            <select name="event" class="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm">
-                                <?php foreach ($events as $ev):
-                                    $eid = (int) $ev->ID;
-                                    $date = (string) get_post_meta($eid, '_pge_event_date', true);
-                                ?>
-                                    <option value="<?php echo $eid; ?>" <?php selected($eid, $selected_event_id); ?>>
-                                        <?php echo esc_html(get_the_title($eid)); ?>
-                                        <?php if ($date) echo ' — ' . esc_html(date_i18n('j F Y', strtotime($date))); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                            <button class="h-11 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800">
-                                عرض
-                            </button>
-                        </form>
+                        <?php if ($selected_event_id): ?>
+                            <a href="<?php echo esc_url(get_permalink($selected_event_id)); ?>"
+                                class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">فتح صفحة الدعوة</a>
+                        <?php endif; ?>
                     </div>
 
                     <?php if ($selected_event_id): ?>
+                        <div class="mt-4 space-y-3">
+                            <div>
+                                <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
+                                    <span>نسبة التفاعل مع الدعوة</span>
+                                    <span class="font-extrabold text-slate-700"><?php echo (int) $selected_response_rate; ?>%</span>
+                                </div>
+                                <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                                    <div class="h-full bg-indigo-500" style="width: <?php echo (int) $selected_response_rate; ?>%"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
+                                    <span>نسبة تأكيد الحضور</span>
+                                    <span class="font-extrabold text-emerald-700"><?php echo (int) $selected_attendance_rate; ?>%</span>
+                                </div>
+                                <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                                    <div class="h-full bg-emerald-500" style="width: <?php echo (int) $selected_attendance_rate; ?>%"></div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="mb-1 flex items-center justify-between text-xs text-slate-500">
+                                    <span>نسبة Check-in من المؤكدين</span>
+                                    <span class="font-extrabold text-slate-700"><?php echo (int) $selected_checkin_rate; ?>%</span>
+                                </div>
+                                <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+                                    <div class="h-full bg-slate-900" style="width: <?php echo (int) $selected_checkin_rate; ?>%"></div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="mt-4 grid grid-cols-4 gap-2 text-center">
                             <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
                                 <div class="text-lg font-extrabold"><?php echo (int) $total_invited; ?></div>
@@ -247,10 +336,12 @@ foreach ($events as $ev) {
                     <?php endif; ?>
                 </div>
             </div>
-        </section>
+            </section>
+        </div>
 
         <!-- Events list -->
-        <section class="mt-8">
+        <div id="dashboardPanelEvents" class="dashboard-panel mt-4 hidden">
+            <section>
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-xl font-extrabold">مناسباتي</h2>
@@ -316,7 +407,7 @@ foreach ($events as $ev) {
                                 <a href="<?php echo esc_url(get_permalink($eid)); ?>"
                                     class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">فتح</a>
 
-                                <a href="<?php echo esc_url(add_query_arg(['event' => $eid], home_url('/profile/'))); ?>"
+                                <a href="<?php echo esc_url(add_query_arg(['event' => $eid, 'tab' => 'operations'], home_url('/dashboard/'))); ?>"
                                     class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">إدارة</a>
 
                                 <?php if (!$is_archived): ?>
@@ -328,10 +419,12 @@ foreach ($events as $ev) {
                 <?php endforeach;
                 endif; ?>
             </div>
-        </section>
+            </section>
+        </div>
 
         <!-- Guests + Check-in -->
-        <section class="mt-8 grid gap-4 lg:grid-cols-12">
+        <div id="dashboardPanelOperations" class="dashboard-panel mt-4 hidden">
+            <section class="grid gap-4 lg:grid-cols-12">
             <!-- Guests -->
             <div class="lg:col-span-8">
                 <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -442,13 +535,100 @@ foreach ($events as $ev) {
                     <?php endif; ?>
                 </div>
             </div>
-        </section>
+            </section>
+        </div>
+
+        <div id="dashboardPanelReports" class="dashboard-panel mt-4 hidden">
+            <section class="grid gap-4 lg:grid-cols-12">
+                <div class="lg:col-span-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 class="text-lg font-extrabold">ملخص الأداء</h3>
+                    <p class="mt-1 text-sm text-slate-600">قراءة سريعة لأداء كل المناسبات على مستوى الدعوات والحضور.</p>
+
+                    <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                            <div class="text-xs font-semibold text-slate-500">إجمالي المدعوين</div>
+                            <div class="mt-2 text-2xl font-extrabold"><?php echo (int) $all_invited_total; ?></div>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                            <div class="text-xs font-semibold text-slate-500">حضور مؤكد</div>
+                            <div class="mt-2 text-2xl font-extrabold text-emerald-700"><?php echo (int) $all_yes_total; ?></div>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                            <div class="text-xs font-semibold text-slate-500">اعتذار</div>
+                            <div class="mt-2 text-2xl font-extrabold text-rose-700"><?php echo (int) $all_no_total; ?></div>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                            <div class="text-xs font-semibold text-slate-500">Check-ins</div>
+                            <div class="mt-2 text-2xl font-extrabold"><?php echo (int) $all_checkins_total; ?></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 class="text-lg font-extrabold">إجراءات سريعة</h3>
+                    <p class="mt-1 text-sm text-slate-600">انتقل مباشرة للإجراءات الأكثر استخدامًا.</p>
+
+                    <div class="mt-5 space-y-2">
+                        <a href="<?php echo esc_url(home_url('/create-event/')); ?>"
+                            class="block rounded-2xl bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-slate-800">إنشاء مناسبة جديدة</a>
+                        <a href="<?php echo esc_url(home_url('/dashboard/?tab=events')); ?>"
+                            class="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">عرض كل المناسبات</a>
+                        <a href="<?php echo esc_url(home_url('/dashboard/?tab=operations')); ?>"
+                            class="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">إدارة المدعوين والدخول</a>
+                    </div>
+                </div>
+            </section>
+        </div>
 
     </div>
 
 </main>
 
 <script>
+    const dashboardTabButtons = document.querySelectorAll('.dashboard-tab-btn');
+    const dashboardPanels = document.querySelectorAll('.dashboard-panel');
+    const dashboardTabField = document.getElementById('dashboardTabField');
+    const dashboardTabs = ['overview', 'events', 'operations', 'reports'];
+
+    function activateDashboardTab(tab) {
+        const activeTab = dashboardTabs.includes(tab) ? tab : 'overview';
+
+        dashboardPanels.forEach(panel => {
+            panel.classList.add('hidden');
+        });
+
+        const activePanel = document.getElementById(`dashboardPanel${activeTab.charAt(0).toUpperCase()}${activeTab.slice(1)}`);
+        if (activePanel) activePanel.classList.remove('hidden');
+
+        dashboardTabButtons.forEach(btn => {
+            const isActive = btn.dataset.tab === activeTab;
+            btn.classList.toggle('bg-slate-900', isActive);
+            btn.classList.toggle('text-white', isActive);
+            btn.classList.toggle('border', !isActive);
+            btn.classList.toggle('border-slate-200', !isActive);
+            btn.classList.toggle('bg-white', !isActive);
+            btn.classList.toggle('text-slate-800', !isActive);
+        });
+
+        if (dashboardTabField) {
+            dashboardTabField.value = activeTab;
+        }
+
+        return activeTab;
+    }
+
+    dashboardTabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const nextTab = activateDashboardTab(btn.dataset.tab || 'overview');
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', nextTab);
+            history.replaceState({}, '', url.toString());
+        });
+    });
+
+    const initialTab = new URLSearchParams(window.location.search).get('tab') || 'overview';
+    activateDashboardTab(initialTab);
+
     // Guest search + status filter
     const guestFilters = document.querySelectorAll('.guest-filter');
     const guestRows = document.querySelectorAll('.guest-row');
