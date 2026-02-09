@@ -70,6 +70,59 @@ if (!function_exists('pge_handle_featured_image_upload')) {
     }
 }
 
+if (!function_exists('pge_get_user_plan_limits_for_events')) {
+    function pge_get_user_plan_limits_for_events($user_id)
+    {
+        $user_id = (int) $user_id;
+        if ($user_id <= 0) return [];
+
+        $plan_key = (string) get_user_meta($user_id, '_mon_package_key', true);
+        if ($plan_key === '') {
+            $plan_key = (string) get_user_meta($user_id, 'pge_current_plan', true);
+        }
+
+        $active_features = get_user_meta($user_id, '_mon_active_features', true);
+        $has_active_features = is_array($active_features) && !empty($active_features);
+        $has_plan_context = ($plan_key !== '') || $has_active_features;
+
+        if ($has_plan_context && class_exists('PGE_Packages')) {
+            $limits = (array) PGE_Packages::get_user_plan_limits($user_id);
+            if (!empty($limits)) {
+                return $limits;
+            }
+        }
+
+        $limits = [];
+        $limits['events_count'] = (int) get_user_meta($user_id, '_mon_events_limit', true);
+        $limits['guest_limit'] = (int) get_user_meta($user_id, '_mon_guest_limit', true);
+        $limits['host_photos'] = (int) get_user_meta($user_id, '_mon_host_photos_limit', true);
+        $limits['wa_messages'] = (int) get_user_meta($user_id, '_mon_wa_limit', true);
+
+        if (is_array($active_features)) {
+            foreach ($active_features as $feature_key) {
+                $limits[(string) $feature_key] = 1;
+            }
+        }
+
+        return $limits;
+    }
+}
+
+if (!function_exists('pge_plan_feature_enabled_for_events')) {
+    function pge_plan_feature_enabled_for_events($limits, $feature_key)
+    {
+        if (class_exists('PGE_Packages') && method_exists('PGE_Packages', 'is_feature_enabled')) {
+            return PGE_Packages::is_feature_enabled((array) $limits, (string) $feature_key);
+        }
+
+        $value = is_array($limits) && isset($limits[$feature_key]) ? $limits[$feature_key] : 0;
+        if (is_bool($value)) return $value;
+        if (is_int($value) || is_float($value)) return ((int) $value) === 1;
+        $value = strtolower(trim((string) $value));
+        return in_array($value, ['1', 'on', 'yes', 'true'], true);
+    }
+}
+
 /**
  * معالجة إنشاء مناسبة جديدة عبر AJAX مع فحص الحصة (Quota) الديناميكية
  */
@@ -91,12 +144,19 @@ function pge_handle_event_creation()
 
     // --- [نظام فحص الحصة الديناميكي - Dynamic Quota System] ---
 
-    // جلب الحد الأقصى للمناسبات من باقة المستخدم (القيمة المخزنة عبر سلة)
-    // نستخدم القيمة الافتراضية 0 إذا لم يكن لدى المستخدم باقة نشطة
-    $allowed_limit = get_user_meta($user_id, '_mon_events_limit', true);
+    // جلب صلاحيات الباقة الفعلية للمستخدم
+    $plan_limits = pge_get_user_plan_limits_for_events($user_id);
+    $meta_limit = get_user_meta($user_id, '_mon_events_limit', true);
+    $user_plan_key = (string) get_user_meta($user_id, '_mon_package_key', true);
+    if ($user_plan_key === '') {
+        $user_plan_key = (string) get_user_meta($user_id, 'pge_current_plan', true);
+    }
 
-    // التأكد من أن القيمة رقمية (في حال كانت فارغة أو غير مضبوطة)
-    $allowed_limit = ($allowed_limit === '') ? 0 : (int)$allowed_limit;
+    if ($meta_limit !== '') {
+        $allowed_limit = (int) $meta_limit;
+    } else {
+        $allowed_limit = $user_plan_key !== '' ? (int) ($plan_limits['events_count'] ?? 0) : 0;
+    }
 
     // جلب عدد المناسبات الحالية للمستخدم (بجميع الحالات ما عدا المحذوفة)
     $user_events_query = new WP_Query(array(
@@ -127,7 +187,9 @@ function pge_handle_event_creation()
     // 3. استلام وتنظيف البيانات
     $title    = sanitize_text_field($_POST['event_title']);
     $date     = sanitize_text_field($_POST['event_date']);
-    $location = esc_url_raw($_POST['event_location']);
+    $can_google_map = pge_plan_feature_enabled_for_events($plan_limits, 'google_map');
+    $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
+    $location = $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '';
     $phone    = sanitize_text_field($_POST['host_phone']);
     $invite_code = isset($_POST['invite_code']) ? pge_normalize_invite_code(wp_unslash($_POST['invite_code'])) : '';
     if ($invite_code === '') {
@@ -150,10 +212,12 @@ function pge_handle_event_creation()
         update_post_meta($post_id, '_pge_event_location', $location);
         update_post_meta($post_id, '_pge_host_phone', $phone);
         update_post_meta($post_id, '_pge_invite_code', $invite_code);
-        $featured_upload = pge_handle_featured_image_upload('featured_image', $post_id);
-        if (is_wp_error($featured_upload)) {
-            wp_delete_post($post_id, true);
-            wp_send_json_error($featured_upload->get_error_message());
+        if ($can_header_img) {
+            $featured_upload = pge_handle_featured_image_upload('featured_image', $post_id);
+            if (is_wp_error($featured_upload)) {
+                wp_delete_post($post_id, true);
+                wp_send_json_error($featured_upload->get_error_message());
+            }
         }
 
         wp_send_json_success(array(
@@ -195,8 +259,12 @@ function pge_handle_event_update()
     $result = wp_update_post($updated_post);
 
     if ($result) {
+        $plan_limits = pge_get_user_plan_limits_for_events(get_current_user_id());
+        $can_google_map = pge_plan_feature_enabled_for_events($plan_limits, 'google_map');
+        $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
+
         update_post_meta($event_id, '_pge_event_date', sanitize_text_field($_POST['event_date']));
-        update_post_meta($event_id, '_pge_event_location', esc_url_raw($_POST['event_location']));
+        update_post_meta($event_id, '_pge_event_location', $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '');
         update_post_meta($event_id, '_pge_host_phone', sanitize_text_field($_POST['host_phone']));
 
         $invite_code = isset($_POST['invite_code']) ? pge_normalize_invite_code(wp_unslash($_POST['invite_code'])) : '';
@@ -207,9 +275,11 @@ function pge_handle_event_update()
             }
         }
         update_post_meta($event_id, '_pge_invite_code', $invite_code);
-        $featured_upload = pge_handle_featured_image_upload('featured_image', $event_id);
-        if (is_wp_error($featured_upload)) {
-            wp_send_json_error($featured_upload->get_error_message());
+        if ($can_header_img) {
+            $featured_upload = pge_handle_featured_image_upload('featured_image', $event_id);
+            if (is_wp_error($featured_upload)) {
+                wp_send_json_error($featured_upload->get_error_message());
+            }
         }
 
         wp_send_json_success('تم تحديث البيانات بنجاح');

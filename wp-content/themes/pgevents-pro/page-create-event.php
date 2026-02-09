@@ -8,8 +8,46 @@ if (!is_user_logged_in()) {
 $user_id = get_current_user_id();
 $user = wp_get_current_user();
 
-$allowed_limit = get_user_meta($user_id, '_mon_events_limit', true);
-$allowed_limit = ($allowed_limit === '') ? 0 : (int) $allowed_limit;
+$user_plan_key = (string) get_user_meta($user_id, '_mon_package_key', true);
+if ($user_plan_key === '') {
+    $user_plan_key = (string) get_user_meta($user_id, 'pge_current_plan', true);
+}
+
+$active_features = get_user_meta($user_id, '_mon_active_features', true);
+$has_plan_context = ($user_plan_key !== '') || (is_array($active_features) && !empty($active_features));
+$plan_limits = ($has_plan_context && class_exists('PGE_Packages')) ? (array) PGE_Packages::get_user_plan_limits($user_id) : [];
+
+$feature_enabled = static function (array $limits, $key) {
+    if (class_exists('PGE_Packages') && method_exists('PGE_Packages', 'is_feature_enabled')) {
+        return PGE_Packages::is_feature_enabled($limits, $key);
+    }
+
+    $value = $limits[$key] ?? 0;
+    if (is_bool($value)) return $value;
+    if (is_int($value) || is_float($value)) return ((int) $value) === 1;
+    $value = strtolower(trim((string) $value));
+    return in_array($value, ['1', 'on', 'yes', 'true'], true);
+};
+
+$allowed_limit_meta = get_user_meta($user_id, '_mon_events_limit', true);
+
+if ($allowed_limit_meta !== '') {
+    $allowed_limit = (int) $allowed_limit_meta;
+} else {
+    $allowed_limit = $user_plan_key !== '' ? (int) ($plan_limits['events_count'] ?? 0) : 0;
+}
+$plan_name = (string) get_user_meta($user_id, '_mon_package_name', true);
+if ($plan_name === '') {
+    $plan_name = (string) ($has_plan_context ? ($plan_limits['name'] ?? 'الباقة الحالية') : 'بدون باقة');
+}
+
+$can_google_map = $feature_enabled($plan_limits, 'google_map');
+$can_header_img = $feature_enabled($plan_limits, 'header_img');
+$can_public_chat = $feature_enabled($plan_limits, 'public_chat');
+$can_private_chat = $feature_enabled($plan_limits, 'private_chat');
+$can_guest_photos = $feature_enabled($plan_limits, 'guest_photos');
+$can_guest_video = $feature_enabled($plan_limits, 'guest_video');
+$wa_limit = isset($plan_limits['wa_messages']) ? (int) $plan_limits['wa_messages'] : (int) get_user_meta($user_id, '_mon_wa_limit', true);
 
 $user_events_query = new WP_Query([
     'post_type'      => 'pge_event',
@@ -69,6 +107,58 @@ get_header();
                         <div class="mt-1 text-xl font-extrabold <?php echo $has_quota ? 'text-emerald-700' : 'text-rose-700'; ?>">
                             <?php echo esc_html((string) $remaining); ?>
                         </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="text-sm font-extrabold text-slate-900">صلاحيات الباقة</div>
+                        <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                            <?php echo esc_html($plan_name); ?>
+                        </span>
+                    </div>
+
+                    <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        <div class="rounded-xl bg-white px-3 py-2 text-xs ring-1 ring-slate-200">
+                            <span class="text-slate-500">Google Map:</span>
+                            <span class="font-semibold <?php echo $can_google_map ? 'text-emerald-700' : 'text-rose-700'; ?>">
+                                <?php echo $can_google_map ? 'متاح' : 'غير متاح'; ?>
+                            </span>
+                        </div>
+                        <div class="rounded-xl bg-white px-3 py-2 text-xs ring-1 ring-slate-200">
+                            <span class="text-slate-500">صورة الهيدر:</span>
+                            <span class="font-semibold <?php echo $can_header_img ? 'text-emerald-700' : 'text-rose-700'; ?>">
+                                <?php echo $can_header_img ? 'متاح' : 'غير متاح'; ?>
+                            </span>
+                        </div>
+                        <div class="rounded-xl bg-white px-3 py-2 text-xs ring-1 ring-slate-200">
+                            <span class="text-slate-500">دردشة عامة:</span>
+                            <span class="font-semibold <?php echo $can_public_chat ? 'text-emerald-700' : 'text-rose-700'; ?>">
+                                <?php echo $can_public_chat ? 'متاح' : 'غير متاح'; ?>
+                            </span>
+                        </div>
+                        <div class="rounded-xl bg-white px-3 py-2 text-xs ring-1 ring-slate-200">
+                            <span class="text-slate-500">دردشة خاصة:</span>
+                            <span class="font-semibold <?php echo $can_private_chat ? 'text-emerald-700' : 'text-rose-700'; ?>">
+                                <?php echo $can_private_chat ? 'متاح' : 'غير متاح'; ?>
+                            </span>
+                        </div>
+                        <div class="rounded-xl bg-white px-3 py-2 text-xs ring-1 ring-slate-200">
+                            <span class="text-slate-500">ألبوم الصور:</span>
+                            <span class="font-semibold <?php echo $can_guest_photos ? 'text-emerald-700' : 'text-rose-700'; ?>">
+                                <?php echo $can_guest_photos ? 'متاح' : 'غير متاح'; ?>
+                            </span>
+                        </div>
+                        <div class="rounded-xl bg-white px-3 py-2 text-xs ring-1 ring-slate-200">
+                            <span class="text-slate-500">فيديو الضيوف:</span>
+                            <span class="font-semibold <?php echo $can_guest_video ? 'text-emerald-700' : 'text-rose-700'; ?>">
+                                <?php echo $can_guest_video ? 'متاح' : 'غير متاح'; ?>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="mt-2 text-xs text-slate-500">
+                        حد رسائل واتساب في الباقة: <?php echo esc_html((string) max(0, $wa_limit)); ?>
                     </div>
                 </div>
 
@@ -156,8 +246,11 @@ get_header();
                             dir="ltr"
                             class="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
                             placeholder="https://maps.app.goo.gl/..."
-                            required
-                            <?php echo $has_quota ? '' : 'disabled'; ?> />
+                            <?php echo $can_google_map ? 'required' : ''; ?>
+                            <?php echo ($has_quota && $can_google_map) ? '' : 'disabled'; ?> />
+                        <p class="mt-2 text-xs <?php echo $can_google_map ? 'text-slate-500' : 'text-rose-600'; ?>">
+                            <?php echo $can_google_map ? 'هذه الميزة متاحة حسب باقتك.' : 'ميزة Google Map غير متاحة في باقتك الحالية.'; ?>
+                        </p>
                     </div>
 
                     <div>
@@ -168,8 +261,10 @@ get_header();
                             type="file"
                             accept="image/*"
                             class="mt-2 block w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 file:me-3 file:rounded-xl file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-800"
-                            <?php echo $has_quota ? '' : 'disabled'; ?> />
-                        <p class="mt-2 text-xs text-slate-500">اختياري: ستكون الصورة الرئيسية التي تظهر في المعاينة.</p>
+                            <?php echo ($has_quota && $can_header_img) ? '' : 'disabled'; ?> />
+                        <p class="mt-2 text-xs <?php echo $can_header_img ? 'text-slate-500' : 'text-rose-600'; ?>">
+                            <?php echo $can_header_img ? 'اختياري: ستكون الصورة الرئيسية التي تظهر في المعاينة.' : 'ميزة صورة الهيدر غير متاحة في باقتك الحالية.'; ?>
+                        </p>
                     </div>
 
                     <div class="flex flex-wrap gap-2">

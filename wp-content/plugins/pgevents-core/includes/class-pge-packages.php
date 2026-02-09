@@ -20,13 +20,84 @@ class PGE_Packages
      */
     public static function get_user_plan_limits($user_id)
     {
-        $plan_id = get_user_meta($user_id, 'pge_current_plan', true) ?: 'plan_1';
-        return self::get_package_settings($plan_id);
+        $plan_id = get_user_meta($user_id, 'pge_current_plan', true);
+        if (!$plan_id) {
+            $plan_id = get_user_meta($user_id, '_mon_package_key', true);
+        }
+        if (!$plan_id) {
+            $plan_id = 'plan_1';
+        }
+
+        $limits = self::get_package_settings($plan_id);
+
+        $events_limit = get_user_meta($user_id, '_mon_events_limit', true);
+        if ($events_limit !== '') {
+            $limits['events_count'] = (int) $events_limit;
+        }
+
+        $guest_limit = get_user_meta($user_id, '_mon_guest_limit', true);
+        if ($guest_limit !== '') {
+            $limits['guest_limit'] = (int) $guest_limit;
+        }
+
+        $host_photos_limit = get_user_meta($user_id, '_mon_host_photos_limit', true);
+        if ($host_photos_limit !== '') {
+            $limits['host_photos'] = (int) $host_photos_limit;
+        }
+
+        $wa_limit = get_user_meta($user_id, '_mon_wa_limit', true);
+        if ($wa_limit !== '') {
+            $limits['wa_messages'] = (int) $wa_limit;
+        }
+
+        $active_features = get_user_meta($user_id, '_mon_active_features', true);
+        if (is_array($active_features)) {
+            $active_features = array_map('strval', $active_features);
+            foreach (self::get_feature_keys() as $feature_key) {
+                $limits[$feature_key] = in_array($feature_key, $active_features, true) ? 1 : 0;
+            }
+        }
+
+        return is_array($limits) ? $limits : [];
     }
 
     /**
      * القيم الافتراضية (Fallback) لضمان عدم اختفاء الباقات أبداً
      */
+    public static function get_feature_keys()
+    {
+        return [
+            'header_img',
+            'event_barcode',
+            'event_date',
+            'countdown',
+            'google_map',
+            'stc_pay',
+            'guest_photos',
+            'guest_video',
+            'public_chat',
+            'private_chat',
+            'prev_events',
+            'next_events',
+            'guest_history',
+            'archive',
+        ];
+    }
+
+    public static function is_feature_enabled($limits, $key)
+    {
+        if (!is_array($limits) || $key === '' || !array_key_exists($key, $limits)) {
+            return false;
+        }
+
+        $value = $limits[$key];
+        if (is_bool($value)) return $value;
+        if (is_int($value) || is_float($value)) return ((int) $value) === 1;
+
+        $value = strtolower(trim((string) $value));
+        return in_array($value, ['1', 'on', 'yes', 'true'], true);
+    }
+
     public static function get_default_plans()
     {
         return [
@@ -53,7 +124,13 @@ class PGE_Packages
         }
 
         $user_id = get_current_user_id();
-        $current_plan = get_user_meta($user_id, 'pge_current_plan', true) ?: 'plan_1';
+        $current_plan = get_user_meta($user_id, 'pge_current_plan', true);
+        if (!$current_plan) {
+            $current_plan = get_user_meta($user_id, '_mon_package_key', true);
+        }
+        if (!$current_plan) {
+            $current_plan = 'plan_1';
+        }
         $colors = ['plan_1' => 'blue', 'plan_2' => 'purple', 'plan_3' => 'amber', 'plan_4' => 'emerald'];
 
         ob_start(); ?>
