@@ -125,6 +125,40 @@ add_action('elementor/theme/register_locations', function ($elementor_theme_mana
     }
 });
 
+add_action('elementor/widgets/register', function ($widgets_manager) {
+    $widgets = [
+        [
+            'file'  => get_stylesheet_directory() . '/inc/elementor/widgets/class-pge-login-button-widget.php',
+            'class' => '\PGE_Login_Button_Widget',
+        ],
+        [
+            'file'  => get_stylesheet_directory() . '/inc/elementor/widgets/class-pge-packages-widget.php',
+            'class' => '\PGE_Packages_Widget',
+        ],
+    ];
+
+    foreach ($widgets as $widget) {
+        if (empty($widget['file']) || empty($widget['class']) || !file_exists($widget['file'])) {
+            continue;
+        }
+
+        require_once $widget['file'];
+        if (!class_exists($widget['class'])) {
+            continue;
+        }
+
+        $instance = new $widget['class']();
+        if (method_exists($widgets_manager, 'register')) {
+            $widgets_manager->register($instance);
+            continue;
+        }
+
+        if (method_exists($widgets_manager, 'register_widget_type')) {
+            $widgets_manager->register_widget_type($instance);
+        }
+    }
+});
+
 /**
  * استقبال تحديثات الملف الشخصي عبر Ajax
  */
