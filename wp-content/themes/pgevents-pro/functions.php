@@ -105,6 +105,27 @@ function pge_align()
 }
 
 /**
+ * Elementor compatibility helpers.
+ */
+if (!function_exists('pge_is_elementor_built_page')) {
+    function pge_is_elementor_built_page($post_id = 0)
+    {
+        $post_id = (int) ($post_id ?: get_the_ID());
+        if ($post_id <= 0) return false;
+        if (!did_action('elementor/loaded') || !class_exists('\Elementor\Plugin')) return false;
+
+        $document = \Elementor\Plugin::$instance->documents->get($post_id);
+        return $document && method_exists($document, 'is_built_with_elementor') && $document->is_built_with_elementor();
+    }
+}
+
+add_action('elementor/theme/register_locations', function ($elementor_theme_manager) {
+    if (is_object($elementor_theme_manager) && method_exists($elementor_theme_manager, 'register_all_core_location')) {
+        $elementor_theme_manager->register_all_core_location();
+    }
+});
+
+/**
  * استقبال تحديثات الملف الشخصي عبر Ajax
  */
 // Redirect built-in login URLs to the custom /login/ route.

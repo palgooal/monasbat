@@ -11,6 +11,10 @@
 <body <?php body_class('bg-slate-50 text-slate-900'); ?>>
     <?php wp_body_open(); ?>
 
+    <?php if (function_exists('elementor_theme_do_location') && elementor_theme_do_location('header')) : ?>
+        <?php return; ?>
+    <?php endif; ?>
+
     <header class="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur">
         <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
 
@@ -62,5 +66,3 @@
 
         </div>
     </header>
-
-    <body <?php body_class(); ?> dir="<?php echo is_rtl() ? 'rtl' : 'ltr'; ?>">
