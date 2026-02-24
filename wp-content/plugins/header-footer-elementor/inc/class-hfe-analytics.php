@@ -111,20 +111,34 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 				'uaelite_subscription' => ( 'done' === get_option( 'uaelite_subscription' ) ) ? 'yes' : 'no'
             ];
 
-            $hfe_posts = get_posts( [
-                'post_type'   => 'elementor-hf',
-                'post_status' => 'publish',
-                'numberposts' => -1
-            ] );
+            $hfe_posts = get_posts( 
+				[
+					'post_type'   => 'elementor-hf',
+					'post_status' => 'publish',
+					'numberposts' => -1,
+        	    ] 
+			);
 
             $stats_data['plugin_data']['uae']['numeric_values'] = [
-                'total_hfe_templates'            => count( $hfe_posts ),
+                'total_hfe_templates' => count( $hfe_posts ),
             ];
 
 			$fetch_elementor_data = $this->hfe_get_widgets_usage();
-			foreach ($fetch_elementor_data as $key => $value) {
+			foreach ( $fetch_elementor_data as $key => $value ) {
 				$stats_data['plugin_data']['uae']['numeric_values'][$key] = $value;
 			}
+
+			$learn_progress = $this->get_learn_progress_analytics_data();
+			if ( ! empty( $learn_progress ) ) {
+				$stats_data['plugin_data']['uae']['learn_chapters_completed'] = $learn_progress;
+			}
+
+			// Add KPI tracking data.
+			$kpi_data = $this->get_kpi_tracking_data();
+			if ( ! empty( $kpi_data ) ) {
+				$stats_data['plugin_data']['uae']['kpi_records'] = $kpi_data;
+			}
+
             return $stats_data;
         }
 
@@ -134,6 +148,150 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 		private function hfe_get_widgets_usage() {
 				$get_Widgets = get_option( 'uae_widgets_usage_data_option', [] );
 				return $get_Widgets;
+		}
+
+		/**
+		 * Get UAE learn progress analytics data.
+		 *
+		 * @return array
+		 */
+		private function get_learn_progress_analytics_data() {
+			global $wpdb;
+
+			$results = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT meta_value FROM {$wpdb->usermeta} WHERE meta_key = %s",
+					'hfe_learn_progress'
+				),
+				ARRAY_A
+			);
+
+			if ( empty( $results ) ) {
+				return [];
+			}
+
+			if ( ! class_exists( '\HFE\API\HFE_Learn_API' ) ) {
+				return [];
+			}
+
+			$chapters = \HFE\API\HFE_Learn_API::get_chapters_structure();
+
+			$completed_chapters = [];
+
+			foreach ( $results as $row ) {
+				$progress_data = maybe_unserialize( $row['meta_value'] );
+
+				if ( ! is_array( $progress_data ) ) {
+					continue;
+				}
+
+				foreach ( $chapters as $chapter ) {
+
+					$chapter_id = $chapter['id'];
+
+					// Skip already counted.
+					if ( in_array( $chapter_id, $completed_chapters, true ) ) {
+						continue;
+					}
+
+					// Skip invalid chapters.
+					if ( empty( $chapter['steps'] ) || ! is_array( $chapter['steps'] ) ) {
+						continue;
+					}
+
+					// Skip if not present in user data.
+					if ( empty( $progress_data[ $chapter_id ] ) || ! is_array( $progress_data[ $chapter_id ] ) ) {
+						continue;
+					}
+
+					$all_steps_completed = true;
+
+					foreach ( $chapter['steps'] as $step ) {
+						$step_id = $step['id'];
+
+						if (
+							! isset( $progress_data[ $chapter_id ][ $step_id ] ) ||
+							! $progress_data[ $chapter_id ][ $step_id ]
+						) {
+							$all_steps_completed = false;
+							break;
+						}
+					}
+
+					if ( $all_steps_completed ) {
+						$completed_chapters[] = $chapter_id;
+					}
+				}
+			}
+
+			return array_values( array_unique( $completed_chapters ) );
+		}
+
+		/**
+		 * Get KPI tracking data for the last 2 days (excluding today).
+		 *
+		 * Uses stored snapshots for state-based metrics (total_templates,
+		 * widgets_count, total_widget_instances) and computes modified_templates
+		 * fresh for each completed past day to ensure accurate counts.
+		 *
+		 * @since 2.8.4
+		 * @return array KPI data organized by date.
+		 */
+		private function get_kpi_tracking_data() {
+			$snapshots = get_option( 'hfe_kpi_daily_snapshots', [] );
+
+			if ( empty( $snapshots ) || ! is_array( $snapshots ) ) {
+				return [];
+			}
+
+			$kpi_data = [];
+			$today    = current_time( 'Y-m-d' );
+
+			// Only send data for dates that have actual per-day snapshots.
+			for ( $i = 1; $i <= 2; $i++ ) {
+				$date = gmdate( 'Y-m-d', strtotime( $today . ' -' . $i . ' days' ) );
+
+				if ( ! isset( $snapshots[ $date ]['numeric_values'] ) ) {
+					continue;
+				}
+
+				$kpi_data[ $date ] = [
+					'numeric_values' => array_merge(
+						$snapshots[ $date ]['numeric_values'],
+						[ 'modified_templates' => $this->get_modified_template_count( $date ) ]
+					),
+				];
+			}
+
+			return $kpi_data;
+		}
+
+		/**
+		 * Get count of HFE templates modified on a given date.
+		 *
+		 * @since 2.8.4
+		 * @param string $date Date in Y-m-d format.
+		 * @return int Modified template count for the date.
+		 */
+		private function get_modified_template_count( $date ) {
+			$posts = get_posts(
+				[
+					'post_type'   => 'elementor-hf',
+					'post_status' => 'publish',
+					'numberposts' => -1,
+					'fields'      => 'ids',
+					'date_query'  => [
+						[
+							'column'    => 'post_modified',
+							'after'     => $date . ' 00:00:00',
+							'before'    => $date . ' 23:59:59',
+							'inclusive' => true,
+						],
+					],
+				]
+			);
+
+			return count( $posts );
 		}
 	}
 }

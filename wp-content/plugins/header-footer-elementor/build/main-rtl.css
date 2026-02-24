@@ -463,6 +463,10 @@
     margin-top: 0px;
     margin-bottom: 0px;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .my-0\.5{
+    margin-top: 0.125rem;
+    margin-bottom: 0.125rem;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .my-12{
     margin-top: 3rem;
     margin-bottom: 3rem;
@@ -474,6 +478,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .my-5{
     margin-top: 1.25rem;
     margin-bottom: 1.25rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .-mt-2{
+    margin-top: -0.5rem;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .mb-0{
     margin-bottom: 0px;
@@ -504,6 +511,12 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .ml-4{
     margin-right: 1rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .ml-7{
+    margin-right: 1.75rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .ml-8{
+    margin-right: 2rem;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .ml-auto{
     margin-right: auto;
@@ -553,6 +566,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .mt-4{
     margin-top: 1rem;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .mt-\[1px\]{
+    margin-top: 1px;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .mt-\[2px\]{
     margin-top: 2px;
 }
@@ -591,6 +607,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .hidden{
     display: none;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .aspect-video{
+    aspect-ratio: 16 / 9;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .size-1\.5{
     width: 0.375rem;
@@ -652,6 +671,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .h-12{
     height: 3rem;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .h-14{
+    height: 3.5rem;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .h-2{
     height: 0.5rem;
 }
@@ -670,11 +692,17 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .h-6{
     height: 1.5rem;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .h-64{
+    height: 16rem;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .h-7{
     height: 1.75rem;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .h-8{
     height: 2rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .h-\[0\.5px\]{
+    height: 0.5px;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .h-\[40px\]{
     height: 40px;
@@ -700,6 +728,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .max-h-\[13\.5rem\]{
     max-height: 13.5rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .max-h-\[85vh\]{
+    max-height: 85vh;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .min-h-16{
     min-height: 4rem;
@@ -777,6 +808,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-120{
     width: 30rem;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .w-14{
+    width: 3.5rem;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-16{
     width: 4rem;
 }
@@ -786,6 +820,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-2\.5{
     width: 0.625rem;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .w-2\/3{
+    width: 66.666667%;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-3{
     width: 0.75rem;
 }
@@ -794,6 +831,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-5{
     width: 1.25rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .w-6{
+    width: 1.5rem;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-60{
     width: 15rem;
@@ -810,6 +850,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-96{
     width: 24rem;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .w-\[104px\]{
+    width: 104px;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-\[18\.5rem\]{
     width: 18.5rem;
 }
@@ -821,6 +864,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-\[696px\]{
     width: 696px;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .w-\[90vw\]{
+    width: 90vw;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .w-\[calc\(100\%\+0\.75rem\)\]{
     width: calc(100% + 0.75rem);
@@ -847,6 +893,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .min-w-12{
     min-width: 3rem;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .min-w-40{
+    min-width: 10rem;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .min-w-6{
     min-width: 1.5rem;
 }
@@ -867,6 +916,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .max-w-32{
     max-width: 8rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .max-w-5xl{
+    max-width: 64rem;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .max-w-80{
     max-width: 20rem;
@@ -978,6 +1030,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .resize{
     resize: both;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .list-disc{
+    list-style-type: disc;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .list-none{
     list-style-type: none;
@@ -1275,6 +1330,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .overflow-hidden{
     overflow: hidden;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .overflow-clip{
+    overflow: clip;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .overflow-visible{
     overflow: visible;
 }
@@ -1326,6 +1384,10 @@
     border-bottom-left-radius: 0px;
     border-bottom-right-radius: 0px;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .rounded-t-lg{
+    border-top-right-radius: 0.5rem;
+    border-top-left-radius: 0.5rem;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .rounded-bl{
     border-bottom-right-radius: 0.25rem;
 }
@@ -1367,6 +1429,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .border-\[0\.5px\]{
     border-width: 0.5px;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .border-\[1\.25px\]{
+    border-width: 1.25px;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .border-x-0{
     border-right-width: 0px;
@@ -1509,6 +1574,10 @@
     --tw-border-opacity: 1;
     border-color: rgb(226 232 240 / var(--tw-border-opacity, 1));
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .border-support-success-inverse{
+    --tw-border-opacity: 1;
+    border-color: rgb(74 222 128 / var(--tw-border-opacity, 1));
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .border-tab-border{
     --tw-border-opacity: 1;
     border-color: rgb(229 231 235 / var(--tw-border-opacity, 1));
@@ -1524,13 +1593,23 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .border-transparent{
     border-color: transparent;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .\!bg-transparent{
+    background-color: transparent !important;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .bg-\[\#6005FF\]{
     --tw-bg-opacity: 1;
     background-color: rgb(96 5 255 / var(--tw-bg-opacity, 1));
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .bg-\[\#BAE6FD\]\/40{
+    background-color: rgb(186 230 253 / 0.4);
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .bg-\[\#F9FAFB\]{
     --tw-bg-opacity: 1;
     background-color: rgb(249 250 251 / var(--tw-bg-opacity, 1));
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .bg-\[\#FCFCFD\]{
+    --tw-bg-opacity: 1;
+    background-color: rgb(252 252 253 / var(--tw-bg-opacity, 1));
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .bg-alert-background-danger{
     --tw-bg-opacity: 1;
@@ -1623,6 +1702,10 @@
     --tw-bg-opacity: 1;
     background-color: rgb(37 99 235 / var(--tw-bg-opacity, 1));
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .bg-border-subtle{
+    --tw-bg-opacity: 1;
+    background-color: rgb(229 231 235 / var(--tw-bg-opacity, 1));
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .bg-brand-background-50{
     --tw-bg-opacity: 1;
     background-color: rgb(239 246 255 / var(--tw-bg-opacity, 1));
@@ -1693,6 +1776,10 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .bg-misc-progress-background{
     --tw-bg-opacity: 1;
     background-color: rgb(229 231 235 / var(--tw-bg-opacity, 1));
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .bg-support-success{
+    --tw-bg-opacity: 1;
+    background-color: rgb(22 163 74 / var(--tw-bg-opacity, 1));
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .bg-tab-background{
     --tw-bg-opacity: 1;
@@ -1789,6 +1876,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .p-8{
     padding: 2rem;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .p-\[3px\]{
+    padding: 3px;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .px-0\.5{
     padding-right: 0.125rem;
     padding-left: 0.125rem;
@@ -1860,6 +1950,13 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .py-4{
     padding-top: 1rem;
     padding-bottom: 1rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .py-5{
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .pb-0{
+    padding-bottom: 0px;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .pb-1{
     padding-bottom: 0.25rem;
@@ -1992,6 +2089,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .font-semibold{
     font-weight: 600;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .uppercase{
+    text-transform: uppercase;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .capitalize{
     text-transform: capitalize;
 }
@@ -2024,6 +2124,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .leading-none{
     line-height: 1;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .leading-relaxed{
+    line-height: 1.625;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .tracking-2{
     letter-spacing: 0.125em;
@@ -2136,6 +2239,10 @@
     --tw-text-opacity: 1;
     color: rgb(255 255 255 / var(--tw-text-opacity, 1));
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .text-icon-on-color{
+    --tw-text-opacity: 1;
+    color: rgb(255 255 255 / var(--tw-text-opacity, 1));
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .text-icon-on-color-disabled{
     --tw-text-opacity: 1;
     color: rgb(156 163 175 / var(--tw-text-opacity, 1));
@@ -2225,6 +2332,9 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .no-underline{
     text-decoration-line: none;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .underline-offset-2{
+    text-underline-offset: 2px;
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .placeholder-text-tertiary::-moz-placeholder{
     --tw-placeholder-opacity: 1;
@@ -2341,6 +2451,9 @@
 :is(#hfe-settings-app, [data-floating-ui-portal]) .outline-focus-error-border{
     outline-color: #FECACA;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .outline-link-primary{
+    outline-color: #2563EB;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .outline-transparent{
     outline-color: transparent;
 }
@@ -2433,6 +2546,11 @@
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 150ms;
 }
+:is(#hfe-settings-app, [data-floating-ui-portal]) .transition-\[width\]{
+    transition-property: width;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+}
 :is(#hfe-settings-app, [data-floating-ui-portal]) .transition-all{
     transition-property: all;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -2479,6 +2597,26 @@
 }
 :is(#hfe-settings-app, [data-floating-ui-portal]) .\[word-break\:break-word\]{
     word-break: break-word;
+}
+
+/* Custom Force UI Color Overrides */
+:is(#hfe-settings-app, [data-floating-ui-portal]) .text-link-primary {
+    --tw-text-opacity: 1;
+    color: rgb(96 5 255 / var(--tw-text-opacity, 1)) !important; /* UAE Purple */
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .text-button-primary{
+    --tw-text-opacity: 1;
+    color: rgb(96 5 255 / var(--tw-text-opacity, 1)) !important; /* UAE Purple */
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .bg-button-secondary{
+    --tw-bg-opacity: 1;
+    background-color: #DDD6FE !important;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .hover\:outline-button-secondary:hover{
+    outline-color: #DDD6FE !important;
+}
+:is(#hfe-settings-app, [data-floating-ui-portal]) .outline-button-secondary{
+   outline-color: #DDD6FE !important;
 }
 
 /* Add to your main CSS file (e.g., index.css) */
@@ -3221,6 +3359,10 @@ input[type="checkbox"].uae-role-checkbox:focus{
     outline-color: #1D4ED8;
 }
 
+:is(#hfe-settings-app, [data-floating-ui-portal]) .hover\:outline-button-secondary:hover{
+    outline-color: #1F2937;
+}
+
 :is(#hfe-settings-app, [data-floating-ui-portal]) .hover\:outline-button-secondary-hover:hover{
     outline-color: #374151;
 }
@@ -3617,11 +3759,67 @@ input[type="checkbox"].uae-role-checkbox:focus{
 }
 
 @media (min-width: 640px){
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:mx-8{
+        margin-right: 2rem;
+        margin-left: 2rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:block{
+        display: block;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:inline{
+        display: inline;
+    }
     :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:h-10{
         height: 2.5rem;
     }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:h-3\.5{
+        height: 0.875rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:max-h-\[80vh\]{
+        max-height: 80vh;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:w-3\.5{
+        width: 0.875rem;
+    }
     :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:w-8{
         width: 2rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:w-\[62px\]{
+        width: 62px;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:max-w-\[72\%\]{
+        max-width: 72%;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:gap-2\.5{
+        gap: 0.625rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:gap-3{
+        gap: 0.75rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:p-4{
+        padding: 1rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:p-\[4px\]{
+        padding: 4px;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:px-4{
+        padding-right: 1rem;
+        padding-left: 1rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:px-5{
+        padding-right: 1.25rem;
+        padding-left: 1.25rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:py-5{
+        padding-top: 1.25rem;
+        padding-bottom: 1.25rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:pb-5{
+        padding-bottom: 1.25rem;
+    }
+    :is(#hfe-settings-app, [data-floating-ui-portal]) .sm\:text-base{
+        font-size: 1rem;
+        line-height: 1.5rem;
     }
 }
 
@@ -4373,12 +4571,27 @@ input[type="checkbox"].uae-role-checkbox:focus{
     left: 0.125rem;
 }
 
+:is(#hfe-settings-app, [data-floating-ui-portal]) .\[\&\:has\(\[aria-expanded\=\'true\'\]\)\]\:shadow-xs:has([aria-expanded='true']){
+    --tw-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+    --tw-shadow-colored: 0px 1px 2px 0px var(--tw-shadow-color);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
 :is(#hfe-settings-app, [data-floating-ui-portal]) .\[\&\:hover\:has\(\:disabled\)\]\:outline-field-border-disabled:hover:has(:disabled){
     outline-color: #F3F4F6;
 }
 
 :is(#hfe-settings-app, [data-floating-ui-portal]) .\[\&\:hover\:not\(\:focus\)\:not\(\:disabled\)\]\:outline-border-strong:hover:not(:focus):not(:disabled){
     outline-color: #6B7280;
+}
+
+:is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\:hover\>h3\]\:bg-transparent:hover>h3){
+    background-color: transparent;
+}
+
+:is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\:hover\>svg\]\:text-border-strong:hover>svg){
+    --tw-text-opacity: 1;
+    color: rgb(107 114 128 / var(--tw-text-opacity, 1));
 }
 
 :is(#hfe-settings-app, [data-floating-ui-portal]) .\[\&\:is\(\[data-hover\=true\]\)\]\:rounded-none:is([data-hover=true]){
@@ -4458,6 +4671,14 @@ input[type="checkbox"].uae-role-checkbox:focus{
     color: rgb(220 38 38 / var(--tw-text-opacity, 1));
 }
 
+:is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\>div\]\:flex-grow>div){
+    flex-grow: 1;
+}
+
+:is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\>div\]\:p-0>div){
+    padding: 0px;
+}
+
 :is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\>li\]\:pointer-events-auto>li){
     pointer-events: auto;
 }
@@ -4492,6 +4713,10 @@ input[type="checkbox"].uae-role-checkbox:focus{
 
 :is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\>svg\]\:block>svg){
     display: block;
+}
+
+:is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\>svg\]\:hidden>svg){
+    display: none;
 }
 
 :is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\>svg\]\:size-12>svg){
@@ -4560,6 +4785,15 @@ input[type="checkbox"].uae-role-checkbox:focus{
 :is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\>svg\]\:text-icon-interactive>svg){
     --tw-text-opacity: 1;
     color: rgb(37 99 235 / var(--tw-text-opacity, 1));
+}
+
+:is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\[aria-expanded\=\'true\'\]_\.learn-chevron-right\]\:rotate-90[aria-expanded='true'] .learn-chevron-right){
+    --tw-rotate: 90deg;
+    transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+
+:is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&\[aria-expanded\=\'true\'\]_\.learn-more-btn\]\:flex[aria-expanded='true'] .learn-more-btn){
+    display: flex;
 }
 
 :is(#hfe-settings-app, [data-floating-ui-portal]) :is(.\[\&_\*\]\:box-border *){

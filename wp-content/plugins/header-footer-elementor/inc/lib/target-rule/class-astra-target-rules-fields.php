@@ -308,6 +308,10 @@ class Astra_Target_Rules_Fields {
 
 		check_ajax_referer( 'hfe-get-posts-by-query', 'nonce' );
 
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( __( 'Unauthorized.', 'header-footer-elementor' ) );
+		}
+
 		$search_string = isset( $_POST['q'] ) ? sanitize_text_field( $_POST['q'] ) : '';
 		$data          = array();
 		$result        = array();
@@ -335,7 +339,7 @@ class Astra_Target_Rules_Fields {
 				array(
 					's'              => $search_string,
 					'post_type'      => $post_type,
-					'posts_per_page' => - 1,
+					'posts_per_page' => 50,
 				)
 			);
 
@@ -1358,7 +1362,7 @@ class Astra_Target_Rules_Fields {
 			foreach ( $posts as $local_post ) {
 				self::$current_page_data[ $post_type ][ $local_post->ID ] = array(
 					'id'       => $local_post->ID,
-					'location' => unserialize( $local_post->meta_value ),
+					'location' => maybe_unserialize( $local_post->meta_value ),
 				);
 			}
 
@@ -1442,7 +1446,7 @@ class Astra_Target_Rules_Fields {
 		);
 
 		foreach ( $all_headers as $header ) {
-			$location_rules = unserialize( $header->meta_value );
+			$location_rules = maybe_unserialize( $header->meta_value );
 
 			if ( is_array( $location_rules ) && isset( $location_rules['rule'] ) ) {
 				foreach ( $location_rules['rule'] as $key => $rule ) {

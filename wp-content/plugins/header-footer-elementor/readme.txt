@@ -4,7 +4,7 @@ Tags: elementor, elementor addons, elementor widgets, elementor template, header
 Requires at least: 5.0  
 Tested up to: 6.9
 Requires PHP: 7.4  
-Stable tag: 2.8.3
+Stable tag: 2.8.4
 License: GPLv2 or later  
 License URI: https://www.gnu.org/licenses/gpl-2.0.html  
 
@@ -310,6 +310,9 @@ You can report the issue through our [Bug Bounty Program](https://brainstormforc
 ---
 
 == Changelog ==
+= 2.8.4 =
+- New: Introduced a Learn tab with step-by-step guides to help users master website customization and configuration.
+
 = 2.8.3 =
 - Improvement: Compatibility with latest Elementor and Elementor Pro 3.35 version.
 
@@ -350,7 +353,6 @@ You can report the issue through our [Bug Bounty Program](https://brainstormforc
 - Improvement: Compatibility with latest Elementor and Elementor Pro 3.32 version.
 - Fix: This update addressed a security bug. Props to Willow from WP Scan for reporting it responsibly to our team.
 - Fix: Navigation Menu - Alignment now works for last menu item as button.
-
 
 = 2.4.9 =
 - Fix: Navigation Menu - Resolved accessibility issue with the expandable menu layout.

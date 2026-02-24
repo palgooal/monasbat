@@ -138,7 +138,7 @@ msgid "Advanced Heading"
 msgstr ""
 
 #: src/Components/Compare/FreevsPro.jsx:225
-#: src/Components/NavMenu.js:242
+#: src/Components/NavMenu.js:251
 #: src/Components/Onboarding/Features.jsx:193
 msgid "Free"
 msgstr ""
@@ -149,6 +149,7 @@ msgstr ""
 
 #: src/Components/Compare/FreevsPro.jsx:231
 #: src/Components/Onboarding/Features.jsx:351
+#: src/lib/bsf-learn/components/BsfLearnStep.js:136
 msgid "Pro"
 msgstr ""
 
@@ -646,7 +647,7 @@ msgid "Create New Page"
 msgstr ""
 
 #: src/Components/Dashboard/WidgetItem.jsx:177
-#: src/Components/NavMenu.js:210
+#: src/Components/NavMenu.js:219
 #: src/Components/UpgradeNotice.jsx:81
 msgid "Get Full Control"
 msgstr ""
@@ -672,6 +673,25 @@ msgstr ""
 msgid "Formerly Elementor Header & Footer Builder"
 msgstr ""
 
+#: src/Components/Learn/Learn.jsx:32
+#: src/Components/NavMenu.js:172
+msgid "Learn"
+msgstr ""
+
+#: src/Components/Learn/Learn.jsx:35
+msgid ""
+"Master UAE with our step-by-step guide and tutorials. Create stunning "
+"headers and footers with confidence."
+msgstr ""
+
+#: src/Components/Learn/Learn.jsx:46
+msgid "Hide Video"
+msgstr ""
+
+#: src/Components/Learn/Learn.jsx:46
+msgid "Watch Video"
+msgstr ""
+
 #: src/Components/NavMenu.js:131
 msgid "Dashboard"
 msgstr ""
@@ -684,39 +704,39 @@ msgstr ""
 msgid "Widgets"
 msgstr ""
 
-#: src/Components/NavMenu.js:174
+#: src/Components/NavMenu.js:183
 msgid "Settings"
 msgstr ""
 
-#: src/Components/NavMenu.js:183
+#: src/Components/NavMenu.js:192
 msgid "Free vs Pro"
 msgstr ""
 
-#: src/Components/NavMenu.js:233
+#: src/Components/NavMenu.js:242
 msgid "Version"
 msgstr ""
 
-#: src/Components/NavMenu.js:267
+#: src/Components/NavMenu.js:276
 msgid "Useful Resources"
 msgstr ""
 
-#: src/Components/NavMenu.js:284
+#: src/Components/NavMenu.js:293
 msgid "Getting Started"
 msgstr ""
 
-#: src/Components/NavMenu.js:297
+#: src/Components/NavMenu.js:306
 msgid "How to use widgets"
 msgstr ""
 
-#: src/Components/NavMenu.js:310
+#: src/Components/NavMenu.js:319
 msgid "How to use features"
 msgstr ""
 
-#: src/Components/NavMenu.js:323
+#: src/Components/NavMenu.js:332
 msgid "How to use templates"
 msgstr ""
 
-#: src/Components/NavMenu.js:336
+#: src/Components/NavMenu.js:345
 msgid "Contact us"
 msgstr ""
 
@@ -1293,4 +1313,35 @@ msgstr ""
 
 #: src/Components/Widgets/UltimateWidgets.jsx:119
 msgid "Compare Free vs Pro"
+msgstr ""
+
+#: src/lib/bsf-learn/components/BsfLearnChapters.js:102
+#. %1$d is the number of completed steps, %2$d is the total number of steps.
+msgid "%1$d of %2$d steps completed"
+msgstr ""
+
+#: src/lib/bsf-learn/components/BsfLearnChapters.js:89
+#: src/lib/bsf-learn/components/BsfLearnStep.js:146
+msgid "Learn how"
+msgstr ""
+
+#: src/lib/bsf-learn/components/BsfLearnStep.js:165
+msgid "Set Up"
+msgstr ""
+
+#: src/lib/bsf-learn/components/BsfLearnStep.js:86
+msgid "Mark as incomplete"
+msgstr ""
+
+#: src/lib/bsf-learn/components/BsfLearnStep.js:87
+msgid "Mark as complete"
+msgstr ""
+
+#: src/lib/bsf-learn/components/learn-how/Checklist.js:25
+#. %s is the step number.
+msgid "Step %d:"
+msgstr ""
+
+#: src/lib/bsf-learn/useBsfLearn.js:78
+msgid "Failed to save progress. Please try again."
 msgstr ""

@@ -2,10 +2,10 @@
 # This file is distributed under the same license as the Ultimate Addons for Elementor (UAE) package.
 msgid ""
 msgstr ""
-"Project-Id-Version: Ultimate Addons for Elementor (UAE) 2.8.3\n"
+"Project-Id-Version: Ultimate Addons for Elementor (UAE) 2.8.4\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/header-footer-elementor\n"
-"POT-Creation-Date: 2026-02-02 07:49:27+00:00\n"
+"POT-Creation-Date: 2026-02-16 07:30:00+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -243,188 +243,188 @@ msgstr ""
 msgid "Header Footer Builder"
 msgstr ""
 
-#: admin/class-hfe-admin.php:291
+#: admin/class-hfe-admin.php:346
 msgid "Important Notice:"
 msgstr ""
 
-#: admin/class-hfe-admin.php:295
+#: admin/class-hfe-admin.php:350
 msgid "Can't edit your header or footer?"
 msgstr ""
 
-#: admin/class-hfe-admin.php:296
+#: admin/class-hfe-admin.php:351
 msgid ""
 "Try clearing your cache or resetting permalinks (Settings > Permalinks > "
 "Save Changes)."
 msgstr ""
 
-#: admin/class-hfe-admin.php:297
+#: admin/class-hfe-admin.php:352
 msgid "Learn More"
 msgstr ""
 
-#: admin/class-hfe-admin.php:301
+#: admin/class-hfe-admin.php:356
 msgid "Flush Permalink"
 msgstr ""
 
-#: admin/class-hfe-admin.php:374 admin/class-hfe-admin.php:662
+#: admin/class-hfe-admin.php:429 admin/class-hfe-admin.php:717
 msgid "Display Rules"
 msgstr ""
 
-#: admin/class-hfe-admin.php:375
+#: admin/class-hfe-admin.php:430
 #: inc/widgets-manager/widgets/basic-posts/basic-posts.php:164
 #: inc/widgets-manager/widgets/post-info/post-info.php:170
 #: inc/widgets-manager/widgets/woo-product-grid/woo-product-grid.php:375
 msgid "Date"
 msgstr ""
 
-#: admin/class-hfe-admin.php:465 admin/class-hfe-admin.php:466
-#: admin/class-hfe-admin.php:467 admin/class-hfe-admin.php:468
+#: admin/class-hfe-admin.php:520 admin/class-hfe-admin.php:521
+#: admin/class-hfe-admin.php:522 admin/class-hfe-admin.php:523
 msgid "Elementor Header & Footer Builder"
 msgstr ""
 
-#: admin/class-hfe-admin.php:469 admin/class-hfe-admin.php:470
+#: admin/class-hfe-admin.php:524 admin/class-hfe-admin.php:525
 msgid "Add New"
 msgstr ""
 
-#: admin/class-hfe-admin.php:471
+#: admin/class-hfe-admin.php:526
 msgid "New Template"
 msgstr ""
 
-#: admin/class-hfe-admin.php:472
+#: admin/class-hfe-admin.php:527
 msgid "Edit Template"
 msgstr ""
 
-#: admin/class-hfe-admin.php:473
+#: admin/class-hfe-admin.php:528
 msgid "View Template"
 msgstr ""
 
-#: admin/class-hfe-admin.php:474 inc/class-hfe-settings-page.php:496
+#: admin/class-hfe-admin.php:529 inc/class-hfe-settings-page.php:496
 msgid "View All"
 msgstr ""
 
-#: admin/class-hfe-admin.php:475
+#: admin/class-hfe-admin.php:530
 msgid "Search Templates"
 msgstr ""
 
-#: admin/class-hfe-admin.php:476
+#: admin/class-hfe-admin.php:531
 msgid "Parent Templates:"
 msgstr ""
 
-#: admin/class-hfe-admin.php:477
+#: admin/class-hfe-admin.php:532
 msgid "No Templates found."
 msgstr ""
 
-#: admin/class-hfe-admin.php:478
+#: admin/class-hfe-admin.php:533
 msgid "No Templates found in Trash."
 msgstr ""
 
-#: admin/class-hfe-admin.php:526 admin/class-hfe-admin.php:527
+#: admin/class-hfe-admin.php:581 admin/class-hfe-admin.php:582
 msgid "Create New"
 msgstr ""
 
-#: admin/class-hfe-admin.php:536
+#: admin/class-hfe-admin.php:591
 msgid "Header/Footer Builder"
 msgstr ""
 
-#: admin/class-hfe-admin.php:537
+#: admin/class-hfe-admin.php:592
 msgid "Header & Footer"
 msgstr ""
 
-#: admin/class-hfe-admin.php:566
+#: admin/class-hfe-admin.php:621
 msgid "Elementor Header & Footer Builder Options"
 msgstr ""
 
-#: admin/class-hfe-admin.php:595
+#: admin/class-hfe-admin.php:650
 msgid "Type of Template"
 msgstr ""
 
-#: admin/class-hfe-admin.php:599
+#: admin/class-hfe-admin.php:654
 msgid "Select Option"
 msgstr ""
 
-#: admin/class-hfe-admin.php:600
+#: admin/class-hfe-admin.php:655
 msgid "Header"
 msgstr ""
 
-#: admin/class-hfe-admin.php:601
+#: admin/class-hfe-admin.php:656
 msgid "Before Footer"
 msgstr ""
 
-#: admin/class-hfe-admin.php:602
+#: admin/class-hfe-admin.php:657
 msgid "Footer"
 msgstr ""
 
-#: admin/class-hfe-admin.php:603
+#: admin/class-hfe-admin.php:658
 msgid "Custom Block"
 msgstr ""
 
-#: admin/class-hfe-admin.php:611 admin/class-hfe-admin.php:861
+#: admin/class-hfe-admin.php:666 admin/class-hfe-admin.php:916
 msgid "Shortcode"
 msgstr ""
 
-#: admin/class-hfe-admin.php:612
+#: admin/class-hfe-admin.php:667
 msgid ""
 "Copy this shortcode and paste it into your post, page, or text widget "
 "content."
 msgstr ""
 
-#: admin/class-hfe-admin.php:624
+#: admin/class-hfe-admin.php:679
 msgid "Enable Layout for Elementor Canvas Template?"
 msgstr ""
 
-#: admin/class-hfe-admin.php:626
+#: admin/class-hfe-admin.php:681
 msgid ""
 "Enabling this option will display this layout on pages using Elementor "
 "Canvas Template."
 msgstr ""
 
-#: admin/class-hfe-admin.php:653
+#: admin/class-hfe-admin.php:708
 #: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:125
 msgid "Display On"
 msgstr ""
 
-#: admin/class-hfe-admin.php:655
+#: admin/class-hfe-admin.php:710
 msgid "Add locations for where this template should appear."
 msgstr ""
 
-#: admin/class-hfe-admin.php:666
+#: admin/class-hfe-admin.php:721
 msgid "Add Display Rule"
 msgstr ""
 
-#: admin/class-hfe-admin.php:675
+#: admin/class-hfe-admin.php:730
 msgid "Do Not Display On"
 msgstr ""
 
-#: admin/class-hfe-admin.php:677
+#: admin/class-hfe-admin.php:732
 msgid "Add locations for where this template should not appear."
 msgstr ""
 
-#: admin/class-hfe-admin.php:684
+#: admin/class-hfe-admin.php:739
 msgid "Exclude On"
 msgstr ""
 
-#: admin/class-hfe-admin.php:687
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:847
+#: admin/class-hfe-admin.php:742
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:851
 msgid "Add Exclusion Rule"
 msgstr ""
 
-#: admin/class-hfe-admin.php:697
+#: admin/class-hfe-admin.php:752
 msgid "User Roles"
 msgstr ""
 
-#: admin/class-hfe-admin.php:698
+#: admin/class-hfe-admin.php:753
 msgid "Display custom template based on user role."
 msgstr ""
 
-#: admin/class-hfe-admin.php:705
+#: admin/class-hfe-admin.php:760
 #: inc/widgets-manager/widgets/counter/counter.php:151
 msgid "Users"
 msgstr ""
 
-#: admin/class-hfe-admin.php:708
+#: admin/class-hfe-admin.php:763
 msgid "Add User Rule"
 msgstr ""
 
-#: admin/class-hfe-admin.php:789
+#: admin/class-hfe-admin.php:844
 #. Translators: Post title, Template Location
 msgid "Template %1$s is already assigned to the location %2$s"
 msgstr ""
@@ -456,8 +456,283 @@ msgstr ""
 msgid "Update Elementor"
 msgstr ""
 
-#: inc/class-header-footer-elementor.php:851
+#: inc/class-header-footer-elementor.php:854
 msgid "Theme Support"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:157 inc/class-hfe-learn-api.php:272
+#: inc/class-hfe-learn-api.php:340 inc/class-hfe-learn-api.php:379
+msgid "Permission denied."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:161
+msgid "UAE Learn Footer"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:162
+msgid "UAE Learn Header"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:307
+msgid "UAE Learn Page"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:313
+msgid "Page creation failed."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:348
+msgid "Invalid extension."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:355
+msgid "No active Elementor Kit found."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:528
+msgid "Create Your Header"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:529
+msgid "Build a stunning header that showcases your brand on every page."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:533
+msgid "Set Up Header Under 5 Mins!"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:534
+msgid ""
+"Create a branded header that appears on every page and keeps your "
+"navigation consistent."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:541
+msgid "Add header in Elementor"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:546
+msgid "Set Up Header"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:556 inc/class-hfe-learn-api.php:631
+msgid "Control Where Your Template Appears"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:557 inc/class-hfe-learn-api.php:632
+msgid ""
+"Use Display Conditions to choose exactly where this template shows — entire "
+"site, specific pages, posts, or archives."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:564
+msgid "Add Display conditions to your header"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:569 inc/class-hfe-learn-api.php:644
+msgid "Add Display Conditions"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:580
+msgid "Add Your Favorite UAE Widgets and Make it Live"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:581
+msgid "Include logo, menu, CTA, and contact access for a complete header."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:588
+msgid "Add UAE widgets to your header"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:593
+msgid "Add Header Widgets"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:603
+msgid "Create Your Footer"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:604
+msgid "Design a professional footer that builds trust and improves site navigation."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:609
+msgid "Set Up Footer in less than 5 mins!"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:610
+msgid ""
+"Add a global footer for consistent links, policies, and brand presence on "
+"every page."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:617
+msgid "Set Up Footer Template"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:622
+msgid "Set Up Footer"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:639
+msgid "Add display conditons to your footer"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:655
+msgid "Add Your Footer Widgets and Make it live."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:656
+msgid ""
+"Insert essential elements like Social Icons, Contact Info, Copyright Text, "
+"and Navigation Links for complete site credibility."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:663
+msgid "Footer Widgets in Elementor"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:668
+msgid "Add Footer Widgets"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:678
+msgid "Add More Powerful Widgets"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:679
+msgid ""
+"Supercharge your pages with UAE's most popular content widgets for better "
+"engagement."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:684
+msgid "Create Eye-Catching Info Cards"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:685
+msgid ""
+"Display key features, services, or benefits with beautiful Info Card "
+"widgets that convert visitors into customers."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:692
+msgid "Info Card Widget in Elementor"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:697
+msgid "Add Info Card"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:707
+msgid "Showcase Dynamic Content with Posts"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:708
+msgid ""
+"Automatically display your latest blog posts, news, or updates with the "
+"Basic Posts widget for fresh, engaging content."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:715
+msgid "Basic Posts Widget in Elementor"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:720
+msgid "Add Posts Widget"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:731
+msgid "Power Extensions"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:732
+msgid ""
+"Enable time-saving features that streamline your workflow and enhance user "
+"experience."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:737
+msgid "Duplicate Pages in One Click"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:738
+msgid ""
+"Save hours by cloning any page or post instantly with Post Duplicator - "
+"perfect for creating template variations."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:745
+msgid "Post Duplicator Extension"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:750
+msgid "Enable UAE Duplicator"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:760
+msgid "Add Scroll to Top Button"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:761 inc/class-hfe-learn-api.php:782
+msgid ""
+"Improve navigation on long pages with a floating button that helps visitors "
+"jump back to the top effortlessly."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:768
+msgid "Scroll To Top Setting"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:773
+msgid "Enable Scroll Button"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:781
+msgid "Add Reading Progress Bar"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:789
+#: inc/widgets-manager/base/widgets-config.php:188
+#: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:38
+#: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:88
+#: inc/widgets-manager/extensions/class-reading-progress-bar.php:157
+msgid "Reading Progress Bar"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:794
+#: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:96
+msgid "Enable Reading Progress Bar"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:809
+msgid "Pro Features"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:810
+msgid "Unlock advanced widgets and features with UAE Pro"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:814
+msgid "Explore Pro Features"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:815
+msgid "See what's available in the Pro version"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:817 inc/class-hfe-settings-page.php:767
+#: inc/class-hfe-settings-page.php:768
+msgid "Upgrade to Pro"
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:919
+msgid "Progress saved successfully."
+msgstr ""
+
+#: inc/class-hfe-learn-api.php:938
+msgid "Sorry, you cannot access this resource."
 msgstr ""
 
 #: inc/class-hfe-post-duplicator.php:156
@@ -762,10 +1037,6 @@ msgstr ""
 msgid "Get Help"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:767 inc/class-hfe-settings-page.php:768
-msgid "Upgrade to Pro"
-msgstr ""
-
 #: inc/class-hfe-settings-page.php:824
 msgid "Elementor Header & Footer Builder "
 msgstr ""
@@ -1043,80 +1314,84 @@ msgstr ""
 msgid "Advanced"
 msgstr ""
 
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:624
-msgid "Please enter"
-msgstr ""
-
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:625
-msgid "Please delete"
-msgstr ""
-
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:626
-msgid "or more characters"
-msgstr ""
-
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:627
-msgid "character"
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:312
+msgid "Unauthorized."
 msgstr ""
 
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:628
-msgid "Loading more results…"
+msgid "Please enter"
 msgstr ""
 
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:629
-msgid "You can only select"
+msgid "Please delete"
 msgstr ""
 
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:630
-msgid "item"
+msgid "or more characters"
 msgstr ""
 
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:631
-msgid "s"
+msgid "character"
 msgstr ""
 
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:632
-msgid "No results found"
+msgid "Loading more results…"
 msgstr ""
 
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:633
-msgid "Searching…"
+msgid "You can only select"
 msgstr ""
 
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:634
-msgid "The results could not be loaded."
+msgid "item"
 msgstr ""
 
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:635
+msgid "s"
+msgstr ""
+
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:636
+msgid "No results found"
+msgstr ""
+
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:637
+msgid "Searching…"
+msgstr ""
+
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:638
+msgid "The results could not be loaded."
+msgstr ""
+
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:639
 msgid "Search pages / post / categories"
 msgstr ""
 
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:654
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:1064
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:658
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:1068
 msgid "Add Rule"
 msgstr ""
 
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:670
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:775
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:1080
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:1110
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:1572
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:674
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:779
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:1084
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:1114
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:1576
 msgid "Select"
 msgstr ""
 
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:720
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:724
 #. translators: %s post label
 msgid "All %s"
 msgstr ""
 
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:725
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:734
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:729
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:738
 #. translators: %s post label
 #. translators: %s taxonomy label
 msgid "All %s Archive"
 msgstr ""
 
-#: inc/lib/target-rule/class-astra-target-rules-fields.php:1513
+#: inc/lib/target-rule/class-astra-target-rules-fields.php:1517
 #. translators: %s post title.
 msgid "The same display setting is already exist in %s post/s."
 msgstr ""
@@ -1231,13 +1506,6 @@ msgstr ""
 
 #: inc/widgets-manager/base/widgets-config.php:182
 msgid "Display customizable copyright text for your site's footer."
-msgstr ""
-
-#: inc/widgets-manager/base/widgets-config.php:188
-#: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:38
-#: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:88
-#: inc/widgets-manager/extensions/class-reading-progress-bar.php:157
-msgid "Reading Progress Bar"
 msgstr ""
 
 #: inc/widgets-manager/base/widgets-config.php:196
@@ -1925,10 +2193,6 @@ msgstr ""
 
 #: inc/widgets-manager/class-widgets-loader.php:187
 msgid "Ultimate Addons"
-msgstr ""
-
-#: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:96
-msgid "Enable Reading Progress Bar"
 msgstr ""
 
 #: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:98

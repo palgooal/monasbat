@@ -676,6 +676,9 @@ class Header_Footer_Elementor {
 		if ( ! class_exists( 'HFE_Promotion' ) ) {
 			require_once HFE_DIR . 'inc/class-hfe-promotion.php';
 		}
+		
+		// Load the Learn API
+		require_once HFE_DIR . 'inc/class-hfe-learn-api.php';
 	}
 
 	/**

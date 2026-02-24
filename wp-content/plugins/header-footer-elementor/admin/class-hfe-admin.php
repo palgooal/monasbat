@@ -152,7 +152,7 @@ class HFE_Admin {
 		// Hook into Elementor's editor styles
 		add_action('elementor/editor/before_enqueue_scripts', [$this, 'enqueue_editor_scripts']);
 		if ( 'yes' === get_option( 'uae_usage_optin', false ) ) {
-			add_action('shutdown', [ $this, 'maybe_run_hfe_widgets_usage_check' ] );
+			add_action('shutdown', [ $this, 'hfe_check_widgets_data_usage' ] );
 		}
 	}
 
@@ -167,28 +167,15 @@ class HFE_Admin {
                        HFE_VER,
                        true
                );
-       }
+    }
 	
-	/**
-	 * Check the page on which Widget check need to be run.
-	 */
-	public function maybe_run_hfe_widgets_usage_check() {
-		// Run only on admin.php?page=hfe
-		if (
-			is_admin() &&
-			isset( $_GET['page'] ) &&
-			( 'uaepro' === $_GET['page'] || 'hfe' === $_GET['page'])
-		) {
-			$this->hfe_check_widgets_data_usage();
-		}
-	}
 	/**
 	 * Handle AJAX request to get widgets usage data.
 	 *
 	 * @since 2.3.0
 	 */
 	public function hfe_check_widgets_data_usage() {
-		// Check user permissions
+		// Check user permissions.
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
@@ -196,11 +183,79 @@ class HFE_Admin {
 		$transient_key = 'uae_widgets_usage_data';
 		$widgets_usage = get_transient( $transient_key );
 
-		if ( false === $widgets_usage || false === get_option( 'uae_widgets_usage_data_option' ) ) {
+		$needs_widget_refresh = false === $widgets_usage || false === get_option( 'uae_widgets_usage_data_option' );
+		$needs_kpi_init       = false === get_option( 'hfe_kpi_daily_snapshots', false );
+
+		if ( $needs_widget_refresh || $needs_kpi_init ) {
 			$filtered_widgets_usage = HFE_Helper::get_used_widget();
-			set_transient( $transient_key, $filtered_widgets_usage, MONTH_IN_SECONDS ); // Store for 5 minutes
+			set_transient( $transient_key, $filtered_widgets_usage, DAY_IN_SECONDS );
 			update_option( 'uae_widgets_usage_data_option', $filtered_widgets_usage );
+			$this->save_kpi_snapshot( $filtered_widgets_usage );
 		}
+	}
+
+	/**
+	 * Save a daily KPI snapshot alongside widget usage refresh.
+	 *
+	 * Computes aggregated metrics from widget usage and template data,
+	 * stores them keyed by today's date, and keeps only the last 3 days.
+	 *
+	 * @since 2.8.4
+	 * @param array $widgets_usage Filtered widget usage data.
+	 * @return void
+	 */
+	private function save_kpi_snapshot( $widgets_usage ) {
+		$today = current_time( 'Y-m-d' );
+
+		// Total published templates.
+		$total_templates = $this->get_total_template_count();
+
+		// Widget metrics.
+		$total_hfe_widget_instances = 0;
+
+		if ( is_array( $widgets_usage ) ) {
+			foreach ( $widgets_usage as $slug => $count ) {
+				$total_hfe_widget_instances += (int) $count;
+			}
+		}
+
+		$snapshot = [
+			'numeric_values' => [
+				'total_templates'            => $total_templates,
+				'total_hfe_widget_instances' => $total_hfe_widget_instances,
+			],
+		];
+
+		// Read existing snapshots, add today's, keep last 3 days.
+		$snapshots = get_option( 'hfe_kpi_daily_snapshots', [] );
+		if ( ! is_array( $snapshots ) ) {
+			$snapshots = [];
+		}
+
+		$snapshots[ $today ] = $snapshot;
+		krsort( $snapshots );
+		$snapshots = array_slice( $snapshots, 0, 3, true );
+
+		update_option( 'hfe_kpi_daily_snapshots', $snapshots, false );
+	}
+
+	/**
+	 * Get count of published HFE templates.
+	 *
+	 * @since 2.8.4
+	 * @return int Total published template count.
+	 */
+	private function get_total_template_count() {
+		$posts = get_posts(
+			[
+				'post_type'   => 'elementor-hf',
+				'post_status' => 'publish',
+				'numberposts' => -1,
+				'fields'      => 'ids',
+			]
+		);
+
+		return count( $posts );
 	}
 
 	/**

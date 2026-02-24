@@ -5,6 +5,20 @@ $default_redirect = home_url('/dashboard/');
 $requested_redirect = isset($_REQUEST['redirect_to']) ? wp_unslash($_REQUEST['redirect_to']) : '';
 $redirect_to = $requested_redirect ? wp_validate_redirect($requested_redirect, $default_redirect) : $default_redirect;
 
+$page_id = (int) get_queried_object_id();
+$use_elementor_login = function_exists('pge_is_elementor_built_page') && pge_is_elementor_built_page($page_id);
+if ($use_elementor_login) {
+    get_header();
+    if (have_posts()) {
+        while (have_posts()) {
+            the_post();
+            the_content();
+        }
+    }
+    get_footer();
+    return;
+}
+
 if (is_user_logged_in()) {
     wp_safe_redirect($redirect_to);
     exit;

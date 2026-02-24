@@ -463,24 +463,25 @@ class Nps_Survey {
 			);
 		}
 
-		$nps_form_status = self::get_nps_survey_dismiss_status( strval( $request['plugin_slug'] ) );
+		$plugin_slug     = sanitize_key( strval( $request['plugin_slug'] ) );
+		$nps_form_status = self::get_nps_survey_dismiss_status( $plugin_slug );
 
 		// Add dismiss timespan.
-		$nps_form_status['dismiss_timespan'] = $request['dismiss_timespan'];
+		$nps_form_status['dismiss_timespan'] = sanitize_text_field( $request['dismiss_timespan'] );
 
 		// Add dismiss date.
 		$nps_form_status['dismiss_time'] = time();
 
 		// Update dismiss count.
 		$nps_form_status['dismiss_count'] += 1;
-		$nps_form_status['dismiss_step']   = $request['current_step'];
+		$nps_form_status['dismiss_step']   = sanitize_text_field( $request['current_step'] );
 
 		// Dismiss Permanantly.
 		if ( $nps_form_status['dismiss_count'] >= 2 ) {
 			$nps_form_status['dismiss_permanently'] = true;
 		}
 
-		update_option( self::get_nps_id( strval( $request['plugin_slug'] ) ), $nps_form_status );
+		update_option( self::get_nps_id( $plugin_slug ), $nps_form_status );
 
 		wp_send_json_success(
 			array(

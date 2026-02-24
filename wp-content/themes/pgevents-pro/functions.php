@@ -128,6 +128,10 @@ add_action('elementor/theme/register_locations', function ($elementor_theme_mana
 add_action('elementor/widgets/register', function ($widgets_manager) {
     $widgets = [
         [
+            'file'  => get_stylesheet_directory() . '/inc/elementor/widgets/class-pge-login-screen-widget.php',
+            'class' => '\PGE_Login_Screen_Widget',
+        ],
+        [
             'file'  => get_stylesheet_directory() . '/inc/elementor/widgets/class-pge-login-button-widget.php',
             'class' => '\PGE_Login_Button_Widget',
         ],
