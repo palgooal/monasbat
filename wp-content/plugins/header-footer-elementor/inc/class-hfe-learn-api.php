@@ -153,7 +153,9 @@ class HFE_Learn_API extends WP_REST_Controller {
      */
     private function handle_hf_template( $type = 'header', $open_elementor = true ) {
 
-        if ( ! current_user_can( 'edit_posts' ) ) {
+        check_admin_referer( 'hfe_learn_action' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( esc_html__( 'Permission denied.', 'header-footer-elementor' ) );
         }
 
@@ -268,6 +270,8 @@ class HFE_Learn_API extends WP_REST_Controller {
      * @return void
      */
     public function uae_create_page_and_open_elementor() {
+        check_admin_referer( 'hfe_learn_action' );
+
         if ( ! current_user_can( 'edit_pages' ) ) {
             wp_die( esc_html__( 'Permission denied.', 'header-footer-elementor' ) );
         }
@@ -336,7 +340,9 @@ class HFE_Learn_API extends WP_REST_Controller {
      * @return void
      */
     public function uae_open_extension() {
-        if ( ! current_user_can( 'edit_posts' ) ) {
+        check_admin_referer( 'hfe_learn_action' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( esc_html__( 'Permission denied.', 'header-footer-elementor' ) );
         }
 
@@ -375,7 +381,9 @@ class HFE_Learn_API extends WP_REST_Controller {
      * @return void
      */
     public function uae_enable_duplicator() {
-        if ( ! current_user_can( 'edit_posts' ) ) {
+        check_admin_referer( 'hfe_learn_action' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
             wp_die( esc_html__( 'Permission denied.', 'header-footer-elementor' ) );
         }
 
@@ -544,7 +552,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Set Up Header', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_create_header_elementor' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_create_header_elementor' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -567,7 +575,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Add Display Conditions', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_create_header_elementor' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_create_header_elementor' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -591,7 +599,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Add Header Widgets', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_edit_header_elementor' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_edit_header_elementor' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -620,7 +628,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Set Up Footer', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_create_footer_elementor' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_create_footer_elementor' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -642,7 +650,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Add Display Conditions', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_create_footer_elementor' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_create_footer_elementor' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -666,7 +674,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Add Footer Widgets', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_edit_footer_elementor' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_edit_footer_elementor' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -695,7 +703,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Add Info Card', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_create_page_elementor&uae_widgets=info card' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_create_page_elementor&uae_widgets=info card' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -718,7 +726,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Add Posts Widget', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_create_page_elementor&uae_widgets=basic posts' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_create_page_elementor&uae_widgets=basic posts' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -748,7 +756,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Enable UAE Duplicator', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_enable_duplicator' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_enable_duplicator' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -771,7 +779,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Enable Scroll Button', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_open_extension&ext=scroll_to_top' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_open_extension&ext=scroll_to_top' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,
@@ -792,7 +800,7 @@ class HFE_Learn_API extends WP_REST_Controller {
                         ),
                         'action'      => array(
                             'label'      => __( 'Enable Reading Progress Bar', 'header-footer-elementor' ),
-                            'url'        => admin_url( 'admin-post.php?action=uae_open_extension&ext=reading_progress' ),
+                            'url'        => add_query_arg( '_wpnonce', wp_create_nonce( 'hfe_learn_action' ), admin_url( 'admin-post.php?action=uae_open_extension&ext=reading_progress' ) ),
                             'isExternal' => true,
                         ),
                         'completed'   => false,

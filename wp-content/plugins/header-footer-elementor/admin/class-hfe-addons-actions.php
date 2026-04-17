@@ -67,9 +67,7 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 			add_action( 'wp_ajax_save_analytics_option', [ $this, 'save_analytics_option' ] );
 
 			add_action( 'wp_ajax_update_permalink_notice_option', [ $this, 'update_permalink_notice_option' ] );
-			add_action( 'wp_ajax_nopriv_update_permalink_notice_option', [ $this, 'update_permalink_notice_option' ] );
 			add_action( 'wp_ajax_hfe_flush_permalink_notice', [ $this, 'hfe_flush_permalink_notice' ] );
-			add_action( 'wp_ajax_nopriv_hfe_flush_permalink_notice', [ $this, 'hfe_flush_permalink_notice' ] );
 
 			add_action( 'wp_ajax_hfe_dismiss_upgrade_notice', [ $this, 'dismiss_upgrade_notice' ] );
 
@@ -324,10 +322,11 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 			}
 		
 			$deactivated = [];
-	
-			// Set all extension to enabled.
+			$widgets     = [];
+
+			// Set unused widgets to disabled.
 			foreach ( self::$widget_list as $slug => $value ) {
-				if ( in_array( $slug, $unused_widgets ) ) {
+				if ( in_array( $slug, $unused_widgets, true ) ) {
 					$widgets[ $slug ] = 'disabled';
 					$deactivated[] = $slug;
 				}
@@ -353,9 +352,18 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 				wp_send_json_error( __( 'You do not have permission to perform this action.', 'header-footer-elementor' ) );
 			}
 
-			$module_id = isset( $_POST['module_id'] ) ? sanitize_text_field( $_POST['module_id'] ) : '';
-			$widgets   = HFE_Helper::get_admin_settings_option( '_hfe_widgets', [] );
+			$module_id = isset( $_POST['module_id'] ) ? sanitize_text_field( wp_unslash( $_POST['module_id'] ) ) : '';
 
+			// Validate module_id against known widget list.
+			if ( ! isset( self::$widget_list ) ) {
+				self::$widget_list = HFE_Helper::get_widget_list();
+			}
+
+			if ( empty( $module_id ) || ! array_key_exists( $module_id, self::$widget_list ) ) {
+				wp_send_json_error( __( 'Invalid widget identifier.', 'header-footer-elementor' ) );
+			}
+
+			$widgets               = HFE_Helper::get_admin_settings_option( '_hfe_widgets', [] );
 			$widgets[ $module_id ] = 'disabled';
 			$widgets               = array_map( 'esc_attr', $widgets );
 
@@ -377,7 +385,17 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 				wp_send_json_error( __( 'You do not have permission to perform this action.', 'header-footer-elementor' ) );
 			}
 
-			$module_id             = isset( $_POST['module_id'] ) ? sanitize_text_field( $_POST['module_id'] ) : '';
+			$module_id = isset( $_POST['module_id'] ) ? sanitize_text_field( wp_unslash( $_POST['module_id'] ) ) : '';
+
+			// Validate module_id against known widget list.
+			if ( ! isset( self::$widget_list ) ) {
+				self::$widget_list = HFE_Helper::get_widget_list();
+			}
+
+			if ( empty( $module_id ) || ! array_key_exists( $module_id, self::$widget_list ) ) {
+				wp_send_json_error( __( 'Invalid widget identifier.', 'header-footer-elementor' ) );
+			}
+
 			$widgets               = HFE_Helper::get_admin_settings_option( '_hfe_widgets', [] );
 			$widgets[ $module_id ] = $module_id;
 			$widgets               = array_map( 'esc_attr', $widgets );
@@ -534,8 +552,14 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 			}
 
 			if ( isset( $_POST['hfe_compatibility_option'] ) ) {
-				// Sanitize and update option.
-				$option = sanitize_text_field( $_POST['hfe_compatibility_option'] );
+				// Sanitize and validate option against allowed values.
+				$option        = sanitize_text_field( wp_unslash( $_POST['hfe_compatibility_option'] ) );
+				$allowed_values = [ '1', '2' ];
+
+				if ( ! in_array( $option, $allowed_values, true ) ) {
+					wp_send_json_error( esc_html__( 'Invalid compatibility option value.', 'header-footer-elementor' ) );
+				}
+
 				update_option( 'hfe_compatibility_option', $option );
 
 				// Return a success response.
@@ -562,8 +586,14 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 			}
 
 			if ( isset( $_POST['uae_usage_optin'] ) ) {
-				// Sanitize and update option.
-				$option = sanitize_text_field( $_POST['uae_usage_optin'] );
+				// Sanitize and validate option against allowed values.
+				$option        = sanitize_text_field( wp_unslash( $_POST['uae_usage_optin'] ) );
+				$allowed_values = [ 'yes', 'no' ];
+
+				if ( ! in_array( $option, $allowed_values, true ) ) {
+					wp_send_json_error( __( 'Invalid analytics option value.', 'header-footer-elementor' ) );
+				}
+
 				update_option( 'uae_usage_optin', $option );
 
 				// Return a success response.
@@ -581,15 +611,15 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 		 */
 		public function dismiss_upgrade_notice() {
 
-			// Check if user has permission to manage options.
-			if ( ! current_user_can( 'manage_options' ) ) {
-				wp_send_json_error( __( 'You do not have permission to perform this action.', 'header-footer-elementor' ) );
+			// Verify nonce for security.
+			if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'hfe-admin-nonce' ) ) {
+				wp_send_json_error( __( 'Security check failed.', 'header-footer-elementor' ) );
 				return;
 			}
 
-			// Verify nonce for security
-			if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'hfe-admin-nonce' ) ) {
-				wp_send_json_error( __( 'Security check failed.', 'header-footer-elementor' ) );
+			// Check if user has permission to manage options.
+			if ( ! current_user_can( 'manage_options' ) ) {
+				wp_send_json_error( __( 'You do not have permission to perform this action.', 'header-footer-elementor' ) );
 				return;
 			}
 

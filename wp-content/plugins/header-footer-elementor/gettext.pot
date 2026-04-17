@@ -432,17 +432,17 @@ msgstr ""
 
 #: src/Components/Dashboard/ExtendWebsiteWidget.jsx:107
 #: src/Components/Onboarding/ExtendOnboardingWidget.jsx:114
-msgid "Theme Installation failed, Please try again later."
+msgid "Theme installation failed. Please try again later."
 msgstr ""
 
 #: src/Components/Dashboard/ExtendWebsiteWidget.jsx:111
 #: src/Components/Onboarding/ExtendOnboardingWidget.jsx:115
-msgid "Plugin Installation failed, Please try again later."
+msgid "Plugin installation failed. Please try again later."
 msgstr ""
 
 #: src/Components/Dashboard/ExtendWebsiteWidget.jsx:144
 #: src/Components/Onboarding/ExtendOnboardingWidget.jsx:143
-msgid "Activating.."
+msgid "Activating..."
 msgstr ""
 
 #: src/Components/Dashboard/ExtendWebsiteWidget.jsx:157
@@ -485,7 +485,7 @@ msgstr ""
 
 #: src/Components/Dashboard/ExtendWebsiteWidget.jsx:71
 #: src/Components/Onboarding/ExtendOnboardingWidget.jsx:93
-msgid "Installing.."
+msgid "Installing..."
 msgstr ""
 
 #: src/Components/Dashboard/ExtendWebsiteWidget.jsx:82
@@ -745,7 +745,7 @@ msgid "What's New?"
 msgstr ""
 
 #: src/Components/Onboarding/Build.jsx:141
-msgid "You're all set!🚀"
+msgid "You're all set! 🚀"
 msgstr ""
 
 #: src/Components/Onboarding/Build.jsx:144
@@ -1145,6 +1145,13 @@ msgstr ""
 msgid "Branding"
 msgstr ""
 
+#: src/Components/Settings/ThemeSupport.jsx:10
+msgid ""
+"This option will automatically replace your theme's header and footer files "
+"with custom templates from the plugin. It works with most themes and is "
+"selected by default."
+msgstr ""
+
 #: src/Components/Settings/ThemeSupport.jsx:140
 msgid "Note:"
 msgstr ""
@@ -1161,9 +1168,8 @@ msgstr ""
 
 #: src/Components/Settings/ThemeSupport.jsx:16
 msgid ""
-"This option will automatically replace your theme's header and footer files "
-"with custom templates from the plugin. It works with most themes and is "
-"selected by default."
+"This option hides your theme's header and footer using CSS and displays "
+"custom templates from the plugin. Use this if Option 1 causes layout issues."
 msgstr ""
 
 #: src/Components/Settings/ThemeSupport.jsx:9
@@ -1237,7 +1243,7 @@ msgstr ""
 #: src/Components/Templates/ExploreTemplates.jsx:183
 msgid ""
 "Stop building your site from scratch. Use our professional templates for "
-"your stunning website.It is easy to customize and completely responsive. "
+"your stunning website. It is easy to customize and completely responsive. "
 "Explore hundreds of designs and bring your vision to life in no time."
 msgstr ""
 
@@ -1294,7 +1300,7 @@ msgid "Deactivating..."
 msgstr ""
 
 #: src/Components/Widgets/Features/FeatureWidgets.jsx:253
-msgid "Deactivate All "
+msgid "Deactivate All"
 msgstr ""
 
 #: src/Components/Widgets/UltimateWidgetFeatures.jsx:149

@@ -1156,6 +1156,21 @@ class Source_Local extends Source_Base {
 		}
 	}
 
+	public function redirect_categories_page_to_saved_templates_page() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$taxonomy = sanitize_key( wp_unslash( $_GET['taxonomy'] ?? '' ) );
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$post_type = sanitize_key( wp_unslash( $_GET['post_type'] ?? '' ) );
+		$is_categories_page = 'edit-tags.php' === $GLOBALS['pagenow']
+			&& self::TAXONOMY_CATEGORY_SLUG === $taxonomy
+			&& self::CPT === $post_type;
+
+		if ( $is_categories_page ) {
+			wp_safe_redirect( admin_url( 'edit.php?post_type=' . self::CPT . '&tabs_group=library' ) );
+			die;
+		}
+	}
+
 	/**
 	 * Is template library supports export.
 	 *
@@ -1798,6 +1813,8 @@ class Source_Local extends Source_Base {
 				$this->register_admin_menu( $admin_menu );
 			}, static::ADMIN_MENU_PRIORITY );
 
+			add_action( 'admin_init', [ $this, 'redirect_categories_page_to_saved_templates_page' ] );
+
 			add_action( 'elementor/editor-one/menu/register', function ( Menu_Data_Provider $menu_data_provider ) {
 				$this->register_editor_one_menu( $menu_data_provider );
 			} );
@@ -2072,7 +2089,7 @@ class Source_Local extends Source_Base {
 		$post_status = $this->wordpress_adapter->get_post_status( $post_id );
 		$is_private_or_non_published = ( 'private' === $post_status && ! $this->wordpress_adapter->current_user_can( 'read_private_posts', $post_id ) ) || ( 'publish' !== $post_status );
 
-		$can_read_template = $is_private_or_non_published || $this->wordpress_adapter->current_user_can( 'edit_post', $post_id );
+		$can_read_template = ! $is_private_or_non_published || $this->wordpress_adapter->current_user_can( 'edit_post', $post_id );
 
 		return apply_filters( 'elementor/template-library/is_allowed_to_read_template', $can_read_template, $args );
 	}

@@ -255,6 +255,10 @@ class HFE_Settings_Api {
 		$lname  = sanitize_text_field( $request->get_param( 'lname' ) );
 		$isActive = sanitize_text_field( $request->get_param( 'isActive' ) );
 		$domain = sanitize_text_field( $request->get_param( 'domain' ) );
+
+		if ( ! empty( $domain ) && false === filter_var( $domain, FILTER_VALIDATE_URL ) ) {
+			return new WP_Error( 'invalid_domain', __( 'Invalid domain provided.', 'header-footer-elementor' ), [ 'status' => 400 ] );
+		}
 		
 		$api_domain = trailingslashit( $this->get_api_domain() );
 		$api_domain_url = $api_domain . 'wp-json/uaelite/v1/subscribe/';
@@ -285,7 +289,8 @@ class HFE_Settings_Api {
 		$response_body = json_decode( wp_remote_retrieve_body( $response ), true );
 
 		if ( ! in_array( $response_code, [ 200, 201, 204 ], true ) ) {
-			return new WP_Error( 'webhook_error', __( 'Error in API response: ' . ( $response_body['message'] ?? 'Unknown error' ), 'header-footer-elementor' ), [ 'status' => $response_code ] );
+			error_log( 'HFE webhook API error: ' . ( isset( $response_body['message'] ) ? sanitize_text_field( $response_body['message'] ) : 'Unknown error' ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			return new WP_Error( 'webhook_error', __( 'Failed to send email. Please try again later.', 'header-footer-elementor' ), [ 'status' => $response_code ] );
 		}
 
 		update_option( 'uaelite_subscription', 'done' );

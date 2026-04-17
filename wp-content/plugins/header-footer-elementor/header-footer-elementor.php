@@ -7,14 +7,14 @@
  * Author URI:  https://www.brainstormforce.com/
  * Text Domain: header-footer-elementor
  * Domain Path: /languages
- * Version: 2.8.4
+ * Version: 2.8.5
  * Elementor tested up to: 3.35
  * Elementor Pro tested up to: 3.35
  *
  * @package         header-footer-elementor
  */
 
-define( 'HFE_VER', '2.8.4' );
+define( 'HFE_VER', '2.8.5' );
 define( 'HFE_FILE', __FILE__ );
 define( 'HFE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'HFE_URL', plugins_url( '/', __FILE__ ) );
@@ -38,6 +38,21 @@ function hfe_plugin_activation() {
 }
 
 register_activation_hook( HFE_FILE, 'hfe_plugin_activation' );
+
+/**
+ * Remove the Data not required.
+ *
+ * @return void
+ */
+function hfe_plugin_deactivation() {
+	$timestamp = wp_next_scheduled( 'hfe_widgets_usage_cron' );
+	if ( $timestamp ) {
+		wp_unschedule_event( $timestamp, 'hfe_widgets_usage_cron' );
+	}
+}
+
+// deActivation hook.
+register_deactivation_hook( HFE_FILE, 'hfe_plugin_deactivation' );
 
 /**
  * Load the Plugin Class.

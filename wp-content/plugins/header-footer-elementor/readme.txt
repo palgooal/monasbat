@@ -4,7 +4,7 @@ Tags: elementor, elementor addons, elementor widgets, elementor template, header
 Requires at least: 5.0  
 Tested up to: 6.9
 Requires PHP: 7.4  
-Stable tag: 2.8.4
+Stable tag: 2.8.5
 License: GPLv2 or later  
 License URI: https://www.gnu.org/licenses/gpl-2.0.html  
 
@@ -310,6 +310,9 @@ You can report the issue through our [Bug Bounty Program](https://brainstormforc
 ---
 
 == Changelog ==
+= 2.8.5 =
+- Improvement: Strengthened plugin security and updated required package dependencies.
+
 = 2.8.4 =
 - New: Introduced a Learn tab with step-by-step guides to help users master website customization and configuration.
 

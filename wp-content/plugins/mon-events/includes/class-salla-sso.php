@@ -3,9 +3,9 @@ if (!defined('ABSPATH')) exit;
 
 class Mon_Salla_SSO
 {
-    private $client_id     = '82febe64-c582-46d5-8dd2-c7938eddf2de';
-    private $client_secret = '07ac5a341a0dcf57669205d05544ae61d9c5e4d64a5230d46c0ae85aebf95503';
-    private $redirect_uri  = 'https://mon.wpgoals.com/salla-callback-sso';
+    private $client_id     = 'afc8df16-3e98-4a24-8bdd-5152d13c86d3';
+    private $client_secret = '5292b38c89be5c933e466dc32f6d5d7cc00c75c58cf1b161377349cc1b86caba';
+    private $redirect_uri  = 'https://hilwah.net/salla-callback-sso';
 
     public function __construct()
     {

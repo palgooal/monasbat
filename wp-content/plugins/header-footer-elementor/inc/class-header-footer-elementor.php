@@ -5,6 +5,8 @@
  * @package header-footer-elementor
  */
 
+defined( 'ABSPATH' ) || exit;
+
 use HFE\Lib\Astra_Target_Rules_Fields;
 
 /**
@@ -224,207 +226,18 @@ class Header_Footer_Elementor {
 			return;
 		}
 
+		wp_enqueue_style( 'hfe-promo-notice', HFE_URL . 'assets/css/hfe-promo-notice.css', [], HFE_VER );
+		wp_enqueue_script( 'hfe-promo-notice', HFE_URL . 'assets/js/hfe-promo-notice.js', [], HFE_VER, true );
+
 		?>
-			<style>
-				@keyframes slideInFromBottom {
-					0% {
-						transform: translateY(100%);
-						opacity: 0;
-					}
-					100% {
-						transform: translateY(0);
-						opacity: 1;
-					}
-				}
-				
-				@keyframes slideOutToBottom {
-					0% {
-						transform: translateY(0);
-						opacity: 1;
-					}
-					100% {
-						transform: translateY(100%);
-						opacity: 0;
-					}
-				}
-				
-				.hfe-promo-notice {
-					position: fixed;
-					bottom: 0;
-					left: 0;
-					right: 0;
-					background: #000;
-					color: #ffffff;
-					padding: 10px 20px;
-					box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-					z-index: 999999;
-					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-					font-size: 14px;
-					font-weight: 500;
-					animation: slideInFromBottom 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-					backdrop-filter: blur(10px);
-					border-top: 1px solid rgba(255, 255, 255, 0.2);
-					display: none;
-				}
-				
-				.hfe-promo-notice.show {
-					display: block;
-				}
-				
-				.hfe-promo-notice.hide {
-					animation: slideOutToBottom 0.4s cubic-bezier(0.55, 0.06, 0.68, 0.19) forwards;
-				}
-				
-				.hfe-promo-notice-container {
-					display: flex;
-					align-items: center;
-					justify-content: space-around;
-				}
-				
-				.hfe-promo-notice-content {
-					display: flex;
-					align-items: center;
-					/* flex: 1; */
-				}
-				
-				.hfe-promo-notice-icon {
-					display: inline-flex;
-					width: 24px;
-					height: 24px;
-					margin-right: 12px;
-					background: rgba(255, 255, 255, 0.2);
-					border-radius: 50%;
-					align-items: center;
-					justify-content: center;
-					font-size: 14px;
-					flex-shrink: 0;
-				}
-				
-				.hfe-promo-notice-text {
-					flex: 1;
-					line-height: 1.4;
-				}
-				
-				.hfe-promo-notice-title {
-					font-weight: 600;
-					margin-bottom: 2px;
-					font-size: 15px;
-				}
-				
-				.hfe-promo-notice-description {
-					opacity: 0.9;
-					font-size: 14px;
-				}
-				
-				.hfe-promo-notice-cta {
-					margin-left: 8px;
-					padding: 5px 16px;
-					background: rgb(96, 5, 255);
-					border: 1px solid rgb(96, 5, 255);
-					color: #ffffff;
-					text-decoration: none;
-					border-radius: 4px;
-					font-size: 12px;
-					font-weight: 600;
-					transition: all 0.2s ease;
-    				white-space: nowrap;
-				}
-				
-				.hfe-promo-notice-cta:hover {
-					background:rgb(96, 5, 255);
-					color: #ffffff;
-					text-decoration: none;
-				}
-				
-				.hfe-promo-notice-close {
-					margin-left: 16px;
-					position: absolute;
-					right:5px;
-					background: none;
-					border: none;
-					color: rgba(255, 255, 255, 0.8);
-					font-size: 20px;
-					cursor: pointer;
-					padding: 4px;
-					width: 28px;
-					height: 28px;
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					border-radius: 50%;
-					transition: all 0.2s ease;
-					flex-shrink: 0;
-				}
-				
-				.hfe-promo-notice-close:hover {
-					background: rgba(255, 255, 255, 0.1);
-					color: #ffffff;
-				}
-				
-				@media (max-width: 768px) {
-					.hfe-promo-notice {
-						padding: 12px 16px;
-						font-size: 13px;
-					}
-					
-					.hfe-promo-notice-container {
-						flex-direction: column;
-						align-items: stretch;
-						gap: 12px;
-					}
-					
-					.hfe-promo-notice-content {
-						flex-direction: column;
-						align-items: flex-start;
-						text-align: left;
-					}
-					
-					.hfe-promo-notice-icon {
-						margin-right: 8px;
-						width: 20px;
-						height: 20px;
-						font-size: 12px;
-					}
-					
-					.hfe-promo-notice-cta {
-						margin-left: 0;
-						margin-top: 8px;
-						align-self: flex-start;
-					}
-					
-					.hfe-promo-notice-close {
-						position: absolute;
-						top: 8px;
-						right: 8px;
-						margin-left: 0;
-					}
-				}
-				
-				@media (max-width: 480px) {
-					.hfe-promo-notice-container {
-						padding-right: 40px;
-					}
-					
-					.hfe-promo-notice-title {
-						font-size: 14px;
-					}
-					
-					.hfe-promo-notice-description {
-						font-size: 12px;
-					}
-				}
-			</style>
-			
 			<div id="hfe-promo-notice" class="hfe-promo-notice">
 				<div class="hfe-promo-notice-container">
 					<div class="hfe-promo-notice-content">
-						<!-- <div class="hfe-promo-notice-icon">🚀</div> -->
 						<div class="hfe-promo-notice-text">
-							<!-- <div class="hfe-promo-notice-title">Unlock More Elementor Widgets!</div> -->
 							<div class="hfe-promo-notice-description">Psst… want to save hours? Get 300+ professionally built templates.</div>
 						</div>
-						<a href="https://ultimateelementor.com/pricing/?utm_source=preview&utm_medium=notice&utm_campaign=uae-lite" 
-						   target="_blank" 
+						<a href="https://ultimateelementor.com/pricing/?utm_source=preview&utm_medium=notice&utm_campaign=uae-lite"
+						   target="_blank"
 						   class="hfe-promo-notice-cta">
 							Unlock Now
 						</a>
@@ -432,8 +245,6 @@ class Header_Footer_Elementor {
 					<button class="hfe-promo-notice-close" onclick="hfePromoNotice.dismiss()">&times;</button>
 				</div>
 			</div>
-			
-			<script>window.hfePromoNotice={storageKey:'hfe_promo_notice_dismissed',oneMonthMs:2592000000,init:function(){this.shouldShow()&&this.show()},shouldShow:function(){try{const a=localStorage.getItem(this.storageKey);if(!a)return!0;const b=parseInt(a),c=Date.now();return c-b>=this.oneMonthMs}catch(a){return!0}},show:function(){const a=document.getElementById('hfe-promo-notice');a&&a.classList.add('show')},dismiss:function(){const a=document.getElementById('hfe-promo-notice');a&&(a.classList.add('hide'),setTimeout(()=>{a.remove()},400));try{localStorage.setItem(this.storageKey,Date.now().toString())}catch(a){console.log('Could not save dismissal state')}}};"loading"===document.readyState?document.addEventListener('DOMContentLoaded',function(){hfePromoNotice.init()}):hfePromoNotice.init();</script>
 			<?php
 	}
 
@@ -462,12 +273,14 @@ class Header_Footer_Elementor {
 
 		$preview_id = intval( sanitize_text_field( wp_unslash( $_GET['preview_id'] ) ) );
 
-		// Verify preview nonce for security (if available)
-		if ( isset( $_GET['preview_nonce'] ) ) {
-			$preview_nonce = sanitize_text_field( wp_unslash( $_GET['preview_nonce'] ) );
-			if ( ! wp_verify_nonce( $preview_nonce, 'post_preview_' . $preview_id ) ) {
-				return false;
-			}
+		// Verify preview nonce for security.
+		if ( ! isset( $_GET['preview_nonce'] ) ) {
+			return false;
+		}
+
+		$preview_nonce = sanitize_text_field( wp_unslash( $_GET['preview_nonce'] ) );
+		if ( ! wp_verify_nonce( $preview_nonce, 'post_preview_' . $preview_id ) ) {
+			return false;
 		}
 
 		// Check if it's a page post type (not header/footer templates)

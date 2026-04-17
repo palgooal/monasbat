@@ -5,6 +5,8 @@
  * @package  header-footer-elementor
  */
 
+defined( 'ABSPATH' ) || exit;
+
 /**
  * Checks if Header is enabled from HFE.
  *
@@ -85,7 +87,7 @@ function hfe_render_header() {
 
 	?>
 		<header id="masthead" itemscope="itemscope" itemtype="https://schema.org/WPHeader">
-			<p class="main-title bhf-hidden" itemprop="headline"><a href="<?php echo bloginfo( 'url' ); ?>" title="<?php echo esc_attr( get_bloginfo( 'name', 'display' ) ); ?>" rel="home"><?php bloginfo( 'name' ); ?></a></p>
+			<p class="main-title bhf-hidden" itemprop="headline"><a href="<?php echo esc_url( home_url( '/' ) ); ?>" title="<?php echo esc_attr( get_bloginfo( 'name', 'display' ) ); ?>" rel="home"><?php bloginfo( 'name' ); ?></a></p>
 			<?php Header_Footer_Elementor::get_header_content(); ?>
 		</header>
 

@@ -66,7 +66,7 @@ class HFE_Post_Duplicator {
 	 *
 	 * @since 2.8.0
 	 */
-	public function __construct() {
+	private function __construct() {
 		// Support for all post types.
 		add_action( 'admin_init', array( $this, 'add_post_type_filters' ) );
 
@@ -140,7 +140,7 @@ class HFE_Post_Duplicator {
 
 		// Create duplicate link.
 		$duplicate_link = admin_url(
-			'admin.php?action=hfe_duplicate_post&post=' . $post->ID . '&nonce=' . $nonce
+			'admin.php?action=hfe_duplicate_post&post=' . absint( $post->ID ) . '&nonce=' . $nonce
 		);
 
 		$short_name = defined( 'UAEL_PLUGIN_SHORT_NAME' )
@@ -159,7 +159,7 @@ class HFE_Post_Duplicator {
 		);
 
 		// Reorder actions to place UAE Duplicate before "Edit with Elementor" and after "Trash".
-		$new_actions = [];
+		$new_actions = array();
 
 		foreach ( $actions as $key => $action ) {
 			if ( 'trash' === $key ) {
@@ -204,6 +204,11 @@ class HFE_Post_Duplicator {
 	 * @return void
 	 */
 	public function duplicate_post() {
+		// Ensure the user is logged in before processing any request.
+		if ( ! is_user_logged_in() ) {
+			wp_die( esc_html__( 'You must be logged in to duplicate posts.', 'header-footer-elementor' ) );
+		}
+
 		// Check if we're duplicating a post.
 		if ( ! isset( $_GET['post'] ) || ! isset( $_GET['nonce'] ) ) {
 			wp_die( esc_html__( 'No post to duplicate has been supplied!', 'header-footer-elementor' ) );
@@ -241,7 +246,7 @@ class HFE_Post_Duplicator {
 		}
 
 		// Redirect to the edit screen for the new post.
-		wp_safe_redirect( admin_url( 'post.php?action=edit&post=' . $new_post_id ) );
+		wp_safe_redirect( admin_url( 'post.php?action=edit&post=' . absint( $new_post_id ) ) );
 		exit;
 	}
 
@@ -255,12 +260,13 @@ class HFE_Post_Duplicator {
 	private function create_duplicate( $post ) {
 		// Create new post data array.
 		$new_post_data = array(
-			'post_author'    => $post->post_author,
+			'post_author'    => get_current_user_id(),
 			'post_content'   => $post->post_content,
 			'post_excerpt'   => $post->post_excerpt,
 			'post_parent'    => $post->post_parent,
 			'post_password'  => $post->post_password,
 			'post_status'    => 'draft', // Always set to draft.
+			/* translators: %s: Original post title */
 			'post_title'     => sprintf( __( 'Copy of %s', 'header-footer-elementor' ), $post->post_title ),
 			'post_type'      => $post->post_type,
 			'comment_status' => $post->comment_status,
@@ -298,6 +304,9 @@ class HFE_Post_Duplicator {
 		 * @since 2.8.0
 		 * @param int $new_post_id New post ID.
 		 * @param int $post_id     Original post ID.
+		 *
+		 * @note Callbacks must not call wp_insert_post() recursively — there is no
+		 *       recursion guard. Avoid triggering further duplications from this hook.
 		 */
 		do_action( 'hfe_post_duplicated', $new_post_id, $post->ID );
 
@@ -310,6 +319,12 @@ class HFE_Post_Duplicator {
 			),
 			30
 		);
+
+		// Increment global duplication counter. Shared option used by both Lite and Pro.
+		// Note: read-then-write is not atomic; under simultaneous duplications the counter
+		// may under-count. This is an accepted trade-off for a non-critical stat.
+		$count = (int) get_option( 'uae_duplicator_count', 0 );
+		update_option( 'uae_duplicator_count', $count + 1, false );
 
 		return $new_post_id;
 	}
@@ -327,7 +342,7 @@ class HFE_Post_Duplicator {
 	private function copy_post_meta_raw( $source_post_id, $target_post_id ) {
 		global $wpdb;
 
-		$meta_rows = $wpdb->get_results(
+		$meta_rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$wpdb->prepare(
 				"SELECT meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d",
 				$source_post_id
@@ -344,12 +359,12 @@ class HFE_Post_Duplicator {
 				continue;
 			}
 
-			$wpdb->insert(
+			$wpdb->insert( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
 				$wpdb->postmeta,
 				array(
 					'post_id'    => $target_post_id,
 					'meta_key'   => $meta->meta_key,
-					'meta_value' => $meta->meta_value,
+					'meta_value' => $meta->meta_value, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 				),
 				array( '%d', '%s', '%s' )
 			);

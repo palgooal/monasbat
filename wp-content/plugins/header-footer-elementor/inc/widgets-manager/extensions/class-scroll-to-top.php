@@ -315,7 +315,7 @@ class Scroll_To_Top {
 		$element->add_control(
 			'hfe_scroll_to_top_single_disable',
 			[
-				'label'        => __( 'Disable Scroll to Top For This Page', 'header-footer-elementor' ),
+				'label'        => __( 'Disable Scroll to Top for This Page', 'header-footer-elementor' ),
 				'type'         => Controls_Manager::SWITCHER,
 				'default'      => '',
 				'label_on'     => __( 'Yes', 'header-footer-elementor' ),

@@ -1252,7 +1252,7 @@ class Astra_Target_Rules_Fields {
 		global $wpdb;
 		global $post;
 
-		$post_type = $post_type ? esc_sql( $post_type ) : esc_sql( $post->post_type );
+		$post_type = $post_type ? $post_type : $post->post_type;
 
 		if ( is_array( self::$current_page_data ) && isset( self::$current_page_data[ $post_type ] ) ) {
 			return apply_filters( 'astra_get_display_posts_by_conditions', self::$current_page_data[ $post_type ], $post_type );
@@ -1267,97 +1267,98 @@ class Astra_Target_Rules_Fields {
 
 		/* Meta option is enabled */
 		if ( false === $meta_header ) {
-			$current_post_type = esc_sql( get_post_type() );
+			$current_post_type = get_post_type();
 			$current_post_id   = false;
 			$q_obj             = get_queried_object();
 
-			$current_id      = esc_sql( get_the_id() );
+			$current_id = get_the_id();
 			// Find WPML Object ID for current page.
 			if ( defined( 'ICL_SITEPRESS_VERSION' ) ) {
 				$default_lang = apply_filters( 'wpml_default_language', '' );
 				$current_lang = apply_filters( 'wpml_current_language', '' );
 
-				if( $default_lang !== $current_lang ) {
-					$current_post_type 	= get_post_type( $current_id );
-					$current_id = apply_filters( 'wpml_object_id', $current_id, $current_post_type, true, $default_lang );
+				if ( $default_lang !== $current_lang ) {
+					$current_post_type = get_post_type( $current_id );
+					$current_id        = apply_filters( 'wpml_object_id', $current_id, $current_post_type, true, $default_lang );
 				}
 			}
 
-			$location = isset( $option['location'] ) ? esc_sql( $option['location'] ) : '';
+			$location = isset( $option['location'] ) ? $option['location'] : '';
 
-			$query = "SELECT p.ID, pm.meta_value FROM {$wpdb->postmeta} as pm
-						INNER JOIN {$wpdb->posts} as p ON pm.post_id = p.ID
-						WHERE pm.meta_key = '{$location}'
-						AND p.post_type = '{$post_type}'
-						AND p.post_status = 'publish'";
-
-			$orderby = ' ORDER BY p.post_date DESC';
+			$base_query = $wpdb->prepare(
+				"SELECT p.ID, pm.meta_value FROM {$wpdb->postmeta} as pm
+				INNER JOIN {$wpdb->posts} as p ON pm.post_id = p.ID
+				WHERE pm.meta_key = %s
+				AND p.post_type = %s
+				AND p.post_status = 'publish'",
+				$location,
+				$post_type
+			);
 
 			/* Entire Website */
-			$meta_args = "pm.meta_value LIKE '%\"basic-global\"%'";
+			$like_conditions   = array();
+			$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"basic-global"%' );
 
 			switch ( $current_page_type ) {
 				case 'is_404':
-					$meta_args .= " OR pm.meta_value LIKE '%\"special-404\"%'";
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"special-404"%' );
 					break;
 				case 'is_search':
-					$meta_args .= " OR pm.meta_value LIKE '%\"special-search\"%'";
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"special-search"%' );
 					break;
 				case 'is_archive':
 				case 'is_tax':
 				case 'is_date':
 				case 'is_author':
-					$meta_args .= " OR pm.meta_value LIKE '%\"basic-archives\"%'";
-					$meta_args .= " OR pm.meta_value LIKE '%\"{$current_post_type}|all|archive\"%'";
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"basic-archives"%' );
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"' . $current_post_type . '|all|archive"%' );
 
 					if ( 'is_tax' == $current_page_type && ( is_category() || is_tag() || is_tax() ) ) {
 						if ( is_object( $q_obj ) ) {
-							$meta_args .= " OR pm.meta_value LIKE '%\"{$current_post_type}|all|taxarchive|{$q_obj->taxonomy}\"%'";
-							$meta_args .= " OR pm.meta_value LIKE '%\"tax-{$q_obj->term_id}\"%'";
+							$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"' . $current_post_type . '|all|taxarchive|' . $q_obj->taxonomy . '"%' );
+							$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"tax-' . $q_obj->term_id . '"%' );
 						}
 					} elseif ( 'is_date' == $current_page_type ) {
-						$meta_args .= " OR pm.meta_value LIKE '%\"special-date\"%'";
+						$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"special-date"%' );
 					} elseif ( 'is_author' == $current_page_type ) {
-						$meta_args .= " OR pm.meta_value LIKE '%\"special-author\"%'";
+						$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"special-author"%' );
 					}
 					break;
 				case 'is_home':
-					$meta_args .= " OR pm.meta_value LIKE '%\"special-blog\"%'";
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"special-blog"%' );
 					break;
 				case 'is_front_page':
-					$current_post_id = $current_id;
-					$meta_args      .= " OR pm.meta_value LIKE '%\"special-front\"%'";
-					$meta_args      .= " OR pm.meta_value LIKE '%\"{$current_post_type}|all\"%'";
-					$meta_args      .= " OR pm.meta_value LIKE '%\"post-{$current_id}\"%'";
+					$current_post_id   = $current_id;
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"special-front"%' );
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"' . $current_post_type . '|all"%' );
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"post-' . $current_id . '"%' );
 					break;
 				case 'is_singular':
-					$current_post_id = $current_id;
-					$meta_args      .= " OR pm.meta_value LIKE '%\"basic-singulars\"%'";
-					$meta_args      .= " OR pm.meta_value LIKE '%\"{$current_post_type}|all\"%'";
-					$meta_args      .= " OR pm.meta_value LIKE '%\"post-{$current_id}\"%'";
-					
+					$current_post_id   = $current_id;
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"basic-singulars"%' );
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"' . $current_post_type . '|all"%' );
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"post-' . $current_id . '"%' );
+
 					if ( is_object( $q_obj ) ) {
 						$taxonomies = get_object_taxonomies( $q_obj->post_type );
 						$terms      = wp_get_post_terms( $q_obj->ID, $taxonomies );
 
 						foreach ( $terms as $key => $term ) {
-							$meta_args .= " OR pm.meta_value LIKE '%\"tax-{$term->term_id}-single-{$term->taxonomy}\"%'";
+							$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"tax-' . $term->term_id . '-single-' . $term->taxonomy . '"%' );
 						}
 					}
 
 					break;
 				case 'is_woo_shop_page':
-					$meta_args .= " OR pm.meta_value LIKE '%\"special-woo-shop\"%'";
+					$like_conditions[] = $wpdb->prepare( 'pm.meta_value LIKE %s', '%"special-woo-shop"%' );
 					break;
 				case '':
 					$current_post_id = $current_id;
 					break;
 			}
 
-			// Ignore the PHPCS warning about constant declaration.
-			// @codingStandardsIgnoreStart
-			$posts  = $wpdb->get_results( $query . ' AND (' . $meta_args . ')' . $orderby );
-			// @codingStandardsIgnoreEnd
+			$meta_args = implode( ' OR ', $like_conditions );
+			$posts     = $wpdb->get_results( $base_query . ' AND (' . $meta_args . ') ORDER BY p.post_date DESC' );
 
 			foreach ( $posts as $local_post ) {
 				self::$current_page_data[ $post_type ][ $local_post->ID ] = array(

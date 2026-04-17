@@ -8,7 +8,7 @@ if (!defined('ABSPATH')) exit;
 class Mon_Salla_Handler
 {
     // سر الويب هوك الخاص بمتجر سلة
-    private $webhook_secret = 'c76c9b516b18bf41ed71475c926e5d59feb006a3609e9053b942c04c06bdc8a3';
+    private $webhook_secret = '60ae230590b3549e1f162a38e45dc3c24db4cb976b609bdbae37905b2799722a';
 
     public function __construct()
     {

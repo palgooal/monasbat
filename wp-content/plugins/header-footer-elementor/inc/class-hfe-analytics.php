@@ -181,7 +181,8 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 			foreach ( $results as $row ) {
 				$progress_data = maybe_unserialize( $row['meta_value'] );
 
-				if ( ! is_array( $progress_data ) ) {
+				// Guard against object injection — only accept arrays.
+				if ( ! is_array( $progress_data ) || is_object( $progress_data ) ) {
 					continue;
 				}
 

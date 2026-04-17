@@ -152,7 +152,8 @@ class HFE_Admin {
 		// Hook into Elementor's editor styles
 		add_action('elementor/editor/before_enqueue_scripts', [$this, 'enqueue_editor_scripts']);
 		if ( 'yes' === get_option( 'uae_usage_optin', false ) ) {
-			add_action('shutdown', [ $this, 'hfe_check_widgets_data_usage' ] );
+			add_action( 'init', array( $this, 'hfe_schedule_usage_cron' ) );
+			add_action( 'hfe_widgets_usage_cron', array( $this, 'hfe_check_widgets_data_usage' ) );
 		}
 	}
 
@@ -160,26 +161,36 @@ class HFE_Admin {
 	 * Enqueuing Promotion widget scripts.
 	 */
 	public function enqueue_editor_scripts() {
-               wp_enqueue_script(
-                       'uae-pro-promotion',
-                       HFE_URL . 'build/promotion-widget.js',
-                       [ 'jquery', 'wp-element', 'wp-dom-ready' ],
-                       HFE_VER,
-                       true
-               );
+        wp_enqueue_script(
+            'uae-pro-promotion',
+	    	HFE_URL . 'build/promotion-widget.js',
+           [ 'jquery', 'wp-element', 'wp-dom-ready' ],
+            HFE_VER,
+           true
+	   );
     }
 	
 	/**
-	 * Handle AJAX request to get widgets usage data.
+	 * Schedule the daily cron event for widget usage data collection.
 	 *
-	 * @since 2.3.0
+	 * @since 2.8.5
+	 * @return void
+	 */
+	public function hfe_schedule_usage_cron() {
+		if ( ! wp_next_scheduled( 'hfe_widgets_usage_cron' ) ) {
+			wp_schedule_event( time(), 'daily', 'hfe_widgets_usage_cron' );
+		}
+	}
+
+	/**
+	 * Collect widgets usage data via WP-Cron.
+	 *
+	 * Runs in a background cron context instead of on every page load,
+	 * preventing timeouts on content-heavy sites.
+	 *
+	 * @since 2.8.5
 	 */
 	public function hfe_check_widgets_data_usage() {
-		// Check user permissions.
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return;
-		}
-
 		$transient_key = 'uae_widgets_usage_data';
 		$widgets_usage = get_transient( $transient_key );
 
@@ -873,7 +884,7 @@ class HFE_Admin {
 	 */
 	public function block_template_frontend() {
 		if ( is_singular( 'elementor-hf' ) && ! current_user_can( 'edit_posts' ) ) {
-			wp_redirect( site_url(), 301 );
+			wp_safe_redirect( site_url(), 301 );
 			die;
 		}
 	}
