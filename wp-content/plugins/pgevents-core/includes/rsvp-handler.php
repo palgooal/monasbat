@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) exit;
 function pge_create_rsvp_table()
 {
     global $wpdb;
-    $table_name = $wpdb->prefix . 'pge_rsvp';
+    $table_name = $wpdb->prefix . 'pge_event_rsvps';
     $charset_collate = $wpdb->get_charset_collate();
     $sql = "CREATE TABLE $table_name (
         id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,

@@ -7,11 +7,25 @@ if (!defined('ABSPATH')) exit;
  */
 class Mon_Salla_Handler
 {
-    // سر الويب هوك الخاص بمتجر سلة
-    private $webhook_secret = '60ae230590b3549e1f162a38e45dc3c24db4cb976b609bdbae37905b2799722a';
+    private $webhook_secret;
+    private $client_id;
+    private $client_secret;
 
     public function __construct()
     {
+        // كل المفاتيح تُقرأ من لوحة التحكم (DB) أو wp-config كـ fallback
+        $this->webhook_secret = defined('PGE_SALLA_WEBHOOK_SECRET')
+            ? PGE_SALLA_WEBHOOK_SECRET
+            : (string) get_option('pge_salla_webhook_secret', '');
+
+        $this->client_id = defined('PGE_SALLA_CLIENT_ID')
+            ? PGE_SALLA_CLIENT_ID
+            : (string) get_option('pge_salla_client_id', '');
+
+        $this->client_secret = defined('PGE_SALLA_CLIENT_SECRET')
+            ? PGE_SALLA_CLIENT_SECRET
+            : (string) get_option('pge_salla_client_secret', '');
+
         add_action('rest_api_init', [$this, 'register_webhook_route']);
         $this->init_admin_hooks();
     }
@@ -19,8 +33,7 @@ class Mon_Salla_Handler
     public function register_webhook_route()
     {
         register_rest_route('mon/v1', '/salla-callback', [
-            // السماح بـ GET للاختبار عبر المتصفح و POST لاستقبال بيانات سلة
-            'methods'             => ['GET', 'POST'],
+            'methods'             => 'POST',
             'callback'            => [$this, 'handle_salla_notification'],
             'permission_callback' => '__return_true',
         ]);
@@ -28,33 +41,126 @@ class Mon_Salla_Handler
 
     public function handle_salla_notification($request)
     {
-        $payload = $request->get_body();
-        $data = json_decode($payload, true);
+        $payload   = $request->get_body();
+        $signature = $request->get_header('x_salla_signature');
 
-        $order_data = $data['data'] ?? null;
-        if (!$order_data) return new WP_REST_Response(['message' => 'No Data'], 200);
+        if (!$this->is_valid_signature($payload, $signature)) {
+            return new WP_REST_Response(['error' => 'Invalid signature'], 401);
+        }
 
-        $status_slug = $order_data['status']['slug'] ?? '';
+        $data        = json_decode($payload, true);
+        $event       = $data['event']    ?? '';
+        $event_data  = $data['data']     ?? [];
+        $merchant_id = (int) ($data['merchant'] ?? 0);
+
+        // ── S1: توجيه الحدث حسب نوعه ──────────────────────────────────────
+        switch ($event) {
+
+            // أحداث الطلبات
+            case 'order.created':
+            case 'order.updated':
+            case 'order.payment.updated':
+                return $this->handle_order_event($event_data);
+
+            // تجديد التوكن (كل 14 يوم)
+            case 'app.store.authorize':
+                return $this->handle_app_authorize($event_data, $merchant_id);
+
+            // تثبيت / إلغاء / تحديث التطبيق
+            case 'app.installed':
+                return $this->handle_app_installed($event_data, $merchant_id);
+
+            case 'app.store.uninstall':
+            case 'app.uninstalled':
+                return $this->handle_app_uninstalled($merchant_id);
+
+            case 'app.updated':
+                return $this->handle_app_updated($event_data, $merchant_id);
+
+            default:
+                error_log("ℹ️ Salla Webhook: حدث غير معالج — " . $event);
+                return new WP_REST_Response(['status' => 'ignored', 'event' => $event], 200);
+        }
+    }
+
+    // ── معالج أحداث الطلبات (order.*) ─────────────────────────────────────
+    private function handle_order_event($order_data)
+    {
+        if (empty($order_data)) {
+            return new WP_REST_Response(['message' => 'No Data'], 200);
+        }
+
+        $status_slug    = $order_data['status']['slug'] ?? '';
         $customer_email = $order_data['customer']['email'] ?? '';
 
-        // 1. حالات التفعيل (بمجرد وصول الطلب لهذه الحالات يتم منح الصلاحيات)
-        $activation_statuses = ['completed', 'delivered'];
-
-        // 2. حالات إلغاء التفعيل (إذا تحول الطلب لهذه الحالات يتم سحب الصلاحيات)
+        $activation_statuses   = ['completed', 'delivered'];
         $deactivation_statuses = ['canceled', 'refunded', 'returned'];
 
         if (in_array($status_slug, $activation_statuses)) {
-            // تفعيل الباقة
             $this->process_user_and_plan($order_data);
             return new WP_REST_Response(['status' => 'success', 'message' => 'Package Activated'], 200);
         } elseif (in_array($status_slug, $deactivation_statuses)) {
-            // إلغاء تفعيل الباقة
             $this->deactivate_user_package($customer_email);
             return new WP_REST_Response(['status' => 'deactivated', 'message' => 'Package Revoked'], 200);
-        } else {
-            // حالات أخرى (مثل قيد المراجعة أو قيد التنفيذ) - ننتظر التحديث القادم
-            return new WP_REST_Response(['status' => 'ignored', 'message' => 'Status: ' . $status_slug . ' - No action taken'], 200);
         }
+
+        return new WP_REST_Response(['status' => 'ignored', 'message' => 'Status: ' . $status_slug], 200);
+    }
+
+    // ── S2: حفظ توكنات App Store (يصلنا كل 14 يوم) ──────────────────────
+    private function handle_app_authorize($data, $merchant_id)
+    {
+        if (empty($data['access_token'])) {
+            error_log("⚠️ Salla app.store.authorize: بيانات التوكن مفقودة للمتجر $merchant_id");
+            return new WP_REST_Response(['error' => 'Missing token data'], 400);
+        }
+
+        $tokens = [
+            'access_token'  => sanitize_text_field($data['access_token']  ?? ''),
+            'refresh_token' => sanitize_text_field($data['refresh_token'] ?? ''),
+            'expires'       => (int) ($data['expires']    ?? 0),
+            'scope'         => sanitize_text_field($data['scope']         ?? ''),
+            'token_type'    => sanitize_text_field($data['token_type']    ?? 'bearer'),
+            'updated_at'    => current_time('mysql'),
+        ];
+
+        update_option('pge_salla_tokens_' . $merchant_id, $tokens, false);
+
+        error_log("✅ Salla tokens saved for merchant: $merchant_id | expires: " . date('Y-m-d H:i', $tokens['expires']));
+
+        return new WP_REST_Response(['status' => 'authorized'], 200);
+    }
+
+    // ── S3a: تثبيت التطبيق ────────────────────────────────────────────────
+    private function handle_app_installed($data, $merchant_id)
+    {
+        update_option('pge_salla_install_' . $merchant_id, [
+            'installed_at' => current_time('mysql'),
+            'merchant_id'  => $merchant_id,
+            'data'         => $data,
+        ], false);
+
+        error_log("📦 Salla app installed for merchant: $merchant_id");
+
+        return new WP_REST_Response(['status' => 'installed'], 200);
+    }
+
+    // ── S3b: إلغاء تثبيت التطبيق ─────────────────────────────────────────
+    private function handle_app_uninstalled($merchant_id)
+    {
+        delete_option('pge_salla_tokens_'  . $merchant_id);
+        delete_option('pge_salla_install_' . $merchant_id);
+
+        error_log("🗑️ Salla app uninstalled for merchant: $merchant_id — tokens deleted");
+
+        return new WP_REST_Response(['status' => 'uninstalled'], 200);
+    }
+
+    // ── S3c: تحديث التطبيق (التوكن سيصل بعدها في app.store.authorize) ────
+    private function handle_app_updated($data, $merchant_id)
+    {
+        error_log("🔄 Salla app updated for merchant: $merchant_id — awaiting new token");
+        return new WP_REST_Response(['status' => 'noted'], 200);
     }
 
     /**
@@ -77,8 +183,9 @@ class Mon_Salla_Handler
 
     private function is_valid_signature($payload, $signature)
     {
+        if (empty($signature) || empty($this->webhook_secret)) return false;
         $computed_signature = hash_hmac('sha256', $payload, $this->webhook_secret);
-        return hash_equals((string)$signature, (string)$computed_signature);
+        return hash_equals((string)$computed_signature, (string)$signature);
     }
 
     private function process_user_and_plan($order_data)

@@ -20,7 +20,6 @@ require_once PGE_PATH . 'includes/rsvp-handler.php';
 require_once PGE_PATH . 'includes/event-factory.php';
 require_once PGE_PATH . 'includes/admin-mods.php';
 require_once PGE_PATH . 'includes/class-pge-packages.php';
-include_once PGE_PATH . 'includes/checkin-handler.php';
 include_once PGE_PATH . 'includes/ajax.php';
 require_once PGE_PATH . 'includes/event-guests.php';
 
