@@ -63,8 +63,11 @@
                              width="22" height="22" >
                     </button>
                 `).on('click', function() {
-                    // Always redirect to HFE dashboard
-                    window.open('/wp-admin/admin.php?page=hfe#dashboard', '_blank');
+                    // Always redirect to HFE dashboard.
+                    const adminUrl = window.hfeEditorConfig && window.hfeEditorConfig.adminUrl
+                        ? window.hfeEditorConfig.adminUrl
+                        : '/wp-admin/admin.php?page=hfe#dashboard';
+                    window.open(adminUrl, '_blank');
                 });
 
                 // Add conditional tooltip functionality

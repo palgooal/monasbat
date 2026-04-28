@@ -32,6 +32,12 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 		 */
 		public function __construct() {
 			add_action( 'admin_init', [ $this, 'maybe_migrate_analytics_tracking' ] );
+
+			// Load analytics events class.
+			if ( ! class_exists( 'HFE_Analytics_Events' ) ) {
+				require_once HFE_DIR . 'inc/class-hfe-analytics-events.php';
+			}
+
 			// BSF Analytics Tracker.
 			if ( ! class_exists( 'BSF_Analytics_Loader' ) ) {
 				require_once HFE_DIR . 'admin/bsf-analytics/class-bsf-analytics-loader.php';
@@ -48,9 +54,9 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 						'time_to_display'     => '+24 hours',
 						'deactivation_survey' => [
 							[
-								'id'                => 'deactivation-survey-header-footer-elementor', // 'deactivation-survey-<your-plugin-slug>'
+								'id'                => 'deactivation-survey-header-footer-elementor',
 								'popup_logo'        => HFE_URL . 'assets/images/settings/logo.svg',
-								'plugin_slug'       => 'header-footer-elementor', // <your-plugin-slug>
+								'plugin_slug'       => 'header-footer-elementor',
 								'plugin_version'    => HFE_VER,
 								'popup_title'       => 'Quick Feedback',
 								'support_url'       => 'https://ultimateelementor.com/contact/',
@@ -62,8 +68,20 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 					],
 				]
 			);
-			
+
 			add_filter( 'bsf_core_stats', [ $this, 'add_uae_analytics_data' ] );
+
+			// Event tracking hooks.
+			add_action( 'transition_post_status', [ $this, 'track_first_template_published' ], 10, 3 );
+			if ( ! HFE_Analytics_Events::is_tracked( 'first_widget_used' ) ) {
+				add_action( 'elementor/editor/after_save', [ $this, 'track_first_widget_on_save' ], 10, 2 );
+			}
+
+			// Detect state-based events only in admin context, throttled to once per day.
+			if ( is_admin() && false === get_transient( 'hfe_state_events_checked' ) ) {
+				$this->detect_state_events();
+				set_transient( 'hfe_state_events_checked', 1, DAY_IN_SECONDS );
+			}
 		}
 
 		/**
@@ -79,12 +97,18 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 		 * @return void
 		 */
 		public function maybe_migrate_analytics_tracking() {
-			$old_tracking = get_option( 'bsf_usage_optin', false );
-			$new_tracking = get_option( 'uae_usage_optin', false );
-			if ( 'yes' === $old_tracking && false === $new_tracking ) {
-				update_option( 'uae_usage_optin', 'yes' );
-				$time = get_option( 'bsf_usage_installed_time' );
-				update_option( 'bsf_usage_installed_time', $time );
+			// Skip if already migrated or new option already set.
+			if ( false !== get_site_option( 'uae_usage_optin', false ) ) {
+				return;
+			}
+
+			$old_tracking = get_site_option( 'bsf_usage_optin', false );
+			if ( 'yes' === $old_tracking ) {
+				update_site_option( 'uae_usage_optin', 'yes' );
+				$time = get_site_option( 'bsf_usage_installed_time' );
+				if ( false !== $time ) {
+					update_site_option( 'uae_usage_installed_time', $time );
+				}
 			}
 		}
         
@@ -108,24 +132,20 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
                 'elementor_version' => ( defined( 'ELEMENTOR_VERSION' ) ? ELEMENTOR_VERSION : '' ),
                 'elementor_pro_version' => ( defined( 'ELEMENTOR_PRO_VERSION' ) ? ELEMENTOR_PRO_VERSION : '' ),
                 'onboarding_triggered' => ( 'yes' === get_option( 'hfe_onboarding_triggered' ) ) ? 'yes' : 'no',
-				'uaelite_subscription' => ( 'done' === get_option( 'uaelite_subscription' ) ) ? 'yes' : 'no'
+				'uaelite_subscription' => ( 'done' === get_option( 'uaelite_subscription' ) ) ? 'yes' : 'no',
+				'active_theme'         => get_template(),
+				'is_theme_supported'   => (bool) get_option( 'hfe_is_theme_supported', false ),
+				'onboarding_analytics' => get_option( 'hfe_onboarding_analytics', [] ),
             ];
 
-            $hfe_posts = get_posts( 
-				[
-					'post_type'   => 'elementor-hf',
-					'post_status' => 'publish',
-					'numberposts' => -1,
-        	    ] 
-			);
-
+            $template_counts = wp_count_posts( 'elementor-hf' );
             $stats_data['plugin_data']['uae']['numeric_values'] = [
-                'total_hfe_templates' => count( $hfe_posts ),
+                'total_hfe_templates' => isset( $template_counts->publish ) ? (int) $template_counts->publish : 0,
             ];
 
-			$fetch_elementor_data = $this->hfe_get_widgets_usage();
-			foreach ( $fetch_elementor_data as $key => $value ) {
-				$stats_data['plugin_data']['uae']['numeric_values'][$key] = $value;
+			$widgets_usage = $this->hfe_get_widgets_usage();
+			foreach ( $widgets_usage as $key => $value ) {
+				$stats_data['plugin_data']['uae']['numeric_values'][ $key ] = $value;
 			}
 
 			$learn_progress = $this->get_learn_progress_analytics_data();
@@ -139,15 +159,169 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 				$stats_data['plugin_data']['uae']['kpi_records'] = $kpi_data;
 			}
 
+			// Flush pending events into payload (only if any exist).
+			$pending_events = HFE_Analytics_Events::flush_pending();
+			if ( ! empty( $pending_events ) ) {
+				$stats_data['plugin_data']['uae']['events_record'] = $pending_events;
+			}
+
             return $stats_data;
         }
+
+		/**
+		 * Track first time a template is published.
+		 *
+		 * @param string   $new_status New post status.
+		 * @param string   $old_status Old post status.
+		 * @param \WP_Post $post       Post object.
+		 * @since 2.8.6
+		 * @return void
+		 */
+		public function track_first_template_published( $new_status, $old_status, $post ) {
+			if ( 'publish' !== $new_status || 'publish' === $old_status || 'elementor-hf' !== $post->post_type ) {
+				return;
+			}
+
+			$template_type      = get_post_meta( $post->ID, 'ehf_template_type', true );
+			$install_time       = get_option( 'uae_usage_installed_time', 0 );
+			$days_since_install = 0;
+			if ( $install_time > 0 ) {
+				$days_since_install = (int) floor( ( time() - (int) $install_time ) / DAY_IN_SECONDS );
+			}
+
+			HFE_Analytics_Events::track(
+				'first_template_published',
+				(string) $post->ID,
+				[
+					'template_type'      => ! empty( $template_type ) ? $template_type : 'unknown',
+					'days_since_install' => (string) $days_since_install,
+				]
+			);
+		}
+
+		/**
+		 * Track first HFE widget usage on Elementor post save.
+		 *
+		 * Fires on elementor/editor/after_save. Checks if the saved post
+		 * contains any HFE widget and tracks the first_widget_used event
+		 * immediately instead of waiting for the daily cron scan.
+		 *
+		 * @since 2.8.7
+		 * @param int   $post_id Post ID.
+		 * @param array $editor_data Elementor editor data.
+		 * @return void
+		 */
+		public function track_first_widget_on_save( $post_id, $editor_data ) {
+			// Skip if already tracked — zero overhead after first detection.
+			if ( HFE_Analytics_Events::is_tracked( 'first_widget_used' ) ) {
+				return;
+			}
+
+			$allowed_widgets = [
+				'hfe-breadcrumbs-widget',
+				'hfe-cart',
+				'copyright',
+				'navigation-menu',
+				'page-title',
+				'post-info-widget',
+				'retina',
+				'hfe-search-button',
+				'site-logo',
+				'hfe-site-tagline',
+				'hfe-site-title',
+				'hfe-infocard',
+				'hfe-woo-product-grid',
+				'hfe-basic-posts',
+				'hfe-counter',
+			];
+
+			$elementor_data = get_post_meta( $post_id, '_elementor_data', true );
+			if ( empty( $elementor_data ) ) {
+				return;
+			}
+
+			$first_widget = '';
+			foreach ( $allowed_widgets as $widget ) {
+				if ( false !== strpos( $elementor_data, '"widgetType":"' . $widget . '"' ) ) {
+					$first_widget = $widget;
+					break;
+				}
+			}
+
+			if ( empty( $first_widget ) ) {
+				return;
+			}
+
+			$install_time       = get_option( 'uae_usage_installed_time', 0 );
+			$days_since_install = 0;
+			if ( $install_time > 0 ) {
+				$days_since_install = (int) floor( ( time() - (int) $install_time ) / DAY_IN_SECONDS );
+			}
+
+			HFE_Analytics_Events::track(
+				'first_widget_used',
+				$first_widget,
+				[
+					'days_since_install' => (string) $days_since_install,
+				]
+			);
+		}
+
+		/**
+		 * Detect state-based events that can't use direct hooks.
+		 * Uses dedup in HFE_Analytics_Events::track() — safe to call repeatedly.
+		 *
+		 * @since 2.8.6
+		 * @return void
+		 */
+		private function detect_state_events() {
+			// Read pushed + pending once to avoid repeated get_option calls per event.
+			$pushed  = get_option( 'hfe_usage_events_pushed', [] );
+			$pushed  = is_array( $pushed ) ? $pushed : [];
+			$pending = get_option( 'hfe_usage_events_pending', [] );
+			$pending = is_array( $pending ) ? $pending : [];
+
+			$tracked_names = array_merge( $pushed, array_column( $pending, 'event_name' ) );
+
+			// onboarding_completed: detect completed or early-exit state from the analytics blob.
+			if ( ! in_array( 'onboarding_completed', $tracked_names, true ) ) {
+				$onboarding_analytics = get_option( 'hfe_onboarding_analytics', [] );
+				$onboarding_done      = 'yes' === get_option( 'hfe_onboarding_triggered' );
+				$onboarding_skipped   = ! empty( $onboarding_analytics['exited_early'] ) && empty( $onboarding_analytics['completed'] );
+
+				if ( $onboarding_done || $onboarding_skipped ) {
+					HFE_Analytics_Events::track(
+						'onboarding_completed',
+						$onboarding_skipped ? 'no' : 'yes',
+						[ 'skipped' => (string) (int) $onboarding_skipped ]
+					);
+				}
+			}
+
+			// first_widget_used: tracked in real-time via elementor/editor/after_save hook.
+
+			// post_duplicator_used: fires once when the post duplicator feature has been used.
+			if ( ! in_array( 'post_duplicator_used', $tracked_names, true ) ) {
+				if ( (int) get_option( 'uae_duplicator_count', 0 ) > 0 ) {
+					$install_time       = get_option( 'uae_usage_installed_time', 0 );
+					$days_since_install = 0;
+					if ( $install_time > 0 ) {
+						$days_since_install = (int) floor( ( time() - (int) $install_time ) / DAY_IN_SECONDS );
+					}
+					HFE_Analytics_Events::track(
+						'post_duplicator_used',
+						'yes',
+						[ 'days_since_install' => (string) $days_since_install ]
+					);
+				}
+			}
+		}
 
 		/**
 		 * Fetch Elementor data.
 		 */
 		private function hfe_get_widgets_usage() {
-				$get_Widgets = get_option( 'uae_widgets_usage_data_option', [] );
-				return $get_Widgets;
+			return get_option( 'uae_widgets_usage_data_option', [] );
 		}
 
 		/**
@@ -160,7 +334,7 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 
 			$results = $wpdb->get_results(
 				$wpdb->prepare(
-					"SELECT meta_value FROM {$wpdb->usermeta} WHERE meta_key = %s",
+					"SELECT meta_value FROM {$wpdb->usermeta} WHERE meta_key = %s LIMIT 100",
 					'hfe_learn_progress'
 				),
 				ARRAY_A
@@ -250,7 +424,7 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 
 			// Only send data for dates that have actual per-day snapshots.
 			for ( $i = 1; $i <= 2; $i++ ) {
-				$date = gmdate( 'Y-m-d', strtotime( $today . ' -' . $i . ' days' ) );
+				$date = wp_date( 'Y-m-d', strtotime( $today . ' -' . $i . ' days' ) );
 
 				if ( ! isset( $snapshots[ $date ]['numeric_values'] ) ) {
 					continue;
@@ -275,13 +449,14 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 		 * @return int Modified template count for the date.
 		 */
 		private function get_modified_template_count( $date ) {
-			$posts = get_posts(
+			$query = new WP_Query(
 				[
-					'post_type'   => 'elementor-hf',
-					'post_status' => 'publish',
-					'numberposts' => -1,
-					'fields'      => 'ids',
-					'date_query'  => [
+					'post_type'      => 'elementor-hf',
+					'post_status'    => 'publish',
+					'posts_per_page' => 1,
+					'no_found_rows'  => false,
+					'fields'         => 'ids',
+					'date_query'     => [
 						[
 							'column'    => 'post_modified',
 							'after'     => $date . ' 00:00:00',
@@ -292,7 +467,7 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 				]
 			);
 
-			return count( $posts );
+			return (int) $query->found_posts;
 		}
 	}
 }

@@ -71,6 +71,8 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 
 			add_action( 'wp_ajax_hfe_dismiss_upgrade_notice', [ $this, 'dismiss_upgrade_notice' ] );
 
+			add_action( 'wp_ajax_hfe_save_onboarding_analytics', [ $this, 'save_onboarding_analytics' ] );
+
 		}
 
 		/**
@@ -562,6 +564,11 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 
 				update_option( 'hfe_compatibility_option', $option );
 
+				// Track theme compatibility change event.
+				if ( class_exists( 'HFE_Analytics_Events' ) ) {
+					HFE_Analytics_Events::track( 'theme_compat_changed', $option, [ 'active_theme' => get_template() ] );
+				}
+
 				// Return a success response.
 				wp_send_json_success( esc_html__( 'Settings saved successfully!', 'header-footer-elementor' ) );
 			} else {
@@ -626,6 +633,69 @@ if ( ! class_exists( 'HFE_Addons_Actions' ) ) {
 			// Update option to remember the dismissal
 			update_user_meta( get_current_user_id(), 'hfe_upgrade_notice_dismissed', 'true' );
 			wp_send_json_success( __( 'Upgrade notice dismissed.', 'header-footer-elementor' ) );
+		}
+
+		/**
+		 * Save onboarding analytics blob from frontend.
+		 *
+		 * Receives the full onboarding journey summary (completed steps,
+		 * skipped steps, early exit flag) and stores it as a single option.
+		 * The data is included in the BSF Analytics periodic payload via
+		 * add_uae_analytics_data(), and the onboarding_completed event is
+		 * fired via detect_state_events() reading this option.
+		 *
+		 * @since 2.8.7
+		 * @return void
+		 */
+		public function save_onboarding_analytics() {
+			check_ajax_referer( 'hfe-admin-nonce', 'nonce' );
+
+			if ( ! current_user_can( 'manage_options' ) ) {
+				wp_send_json_error( __( 'You do not have permission to perform this action.', 'header-footer-elementor' ) );
+			}
+
+			$allowed_steps = [ 'welcome', 'configure', 'features', 'success' ];
+
+			// Sanitize completed_steps array.
+			$completed_steps = [];
+			if ( isset( $_POST['completed_steps'] ) && is_array( $_POST['completed_steps'] ) ) {
+				$raw_completed = array_map( 'sanitize_text_field', wp_unslash( $_POST['completed_steps'] ) );
+				foreach ( $raw_completed as $step ) {
+					if ( in_array( $step, $allowed_steps, true ) ) {
+						$completed_steps[] = $step;
+					}
+				}
+			}
+
+			// Sanitize skipped_steps array.
+			$skipped_steps = [];
+			if ( isset( $_POST['skipped_steps'] ) && is_array( $_POST['skipped_steps'] ) ) {
+				$raw_skipped = array_map( 'sanitize_text_field', wp_unslash( $_POST['skipped_steps'] ) );
+				foreach ( $raw_skipped as $step ) {
+					if ( in_array( $step, $allowed_steps, true ) ) {
+						$skipped_steps[] = $step;
+					}
+				}
+			}
+
+			$exited_early = isset( $_POST['exited_early'] ) && 'true' === sanitize_text_field( wp_unslash( $_POST['exited_early'] ) );
+			$exit_at_step = isset( $_POST['exit_at_step'] ) ? sanitize_text_field( wp_unslash( $_POST['exit_at_step'] ) ) : '';
+
+			if ( ! empty( $exit_at_step ) && ! in_array( $exit_at_step, $allowed_steps, true ) ) {
+				$exit_at_step = '';
+			}
+
+			$analytics_data = [
+				'completed'       => ! $exited_early,
+				'exited_early'    => $exited_early,
+				'exit_at_step'    => $exit_at_step,
+				'skipped_steps'   => $skipped_steps,
+				'completed_steps' => $completed_steps,
+			];
+
+			update_option( 'hfe_onboarding_analytics', $analytics_data, false );
+
+			wp_send_json_success( __( 'Onboarding analytics saved.', 'header-footer-elementor' ) );
 		}
 
 	}

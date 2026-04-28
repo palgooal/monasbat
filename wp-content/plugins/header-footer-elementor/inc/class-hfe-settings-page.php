@@ -288,8 +288,23 @@ class HFE_Settings_Page {
 	 */
 	public function fetch_user_fname() {
 		$current_user = wp_get_current_user();
-		if ( $current_user->ID !== 0 ) {
+		if ( 0 !== $current_user->ID ) {
 			return $current_user->user_firstname;
+		} else {
+			return null;
+		}
+	}
+
+	/**
+	 * Fetch and return the current user's last name.
+	 *
+	 * @since 2.8.7
+	 * @return string|null The user's last name if logged in, null otherwise.
+	 */
+	public function fetch_user_lname() {
+		$current_user = wp_get_current_user();
+		if ( 0 !== $current_user->ID ) {
+			return $current_user->user_lastname;
 		} else {
 			return null;
 		}
@@ -344,8 +359,9 @@ class HFE_Settings_Page {
 			$hfe_post_url      = admin_url( 'post-new.php?post_type=elementor-hf' );
 			// Fetch the user's email.
 			$user_email = $this->fetch_user_email();
-			$user_name  = $this->fetch_user_fname();
-			$siteurl    = $this->fetch_site_url();
+			$user_name     = $this->fetch_user_fname();
+			$user_lastname = $this->fetch_user_lname();
+			$siteurl       = $this->fetch_site_url();
 			$show_theme_support = 'no';
 			$hfe_theme_status   = get_option( 'hfe_is_theme_supported', false );
 			$analytics_status   = get_option( 'uae_usage_optin', false );
@@ -421,6 +437,7 @@ class HFE_Settings_Page {
 					'is_hfe_post'              => $is_hfe_post,
 					'user_email'               => $user_email,
 					'user_fname'               => $user_name,
+					'user_lname'               => $user_lastname,
 					'siteurl'                  => $siteurl,
 					'analytics_status'         => $analytics_status,
 					'onboarding_success_url'   => admin_url( 'admin.php?page=hfe#onboardingsuccess' ),

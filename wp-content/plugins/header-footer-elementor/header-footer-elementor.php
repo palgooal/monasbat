@@ -7,14 +7,14 @@
  * Author URI:  https://www.brainstormforce.com/
  * Text Domain: header-footer-elementor
  * Domain Path: /languages
- * Version: 2.8.5
- * Elementor tested up to: 3.35
- * Elementor Pro tested up to: 3.35
+ * Version: 2.8.7
+ * Elementor tested up to: 4.0
+ * Elementor Pro tested up to: 4.0
  *
  * @package         header-footer-elementor
  */
 
-define( 'HFE_VER', '2.8.5' );
+define( 'HFE_VER', '2.8.7' );
 define( 'HFE_FILE', __FILE__ );
 define( 'HFE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'HFE_URL', plugins_url( '/', __FILE__ ) );
@@ -35,6 +35,12 @@ require_once HFE_DIR . '/inc/class-header-footer-elementor.php';
 function hfe_plugin_activation() {
 	update_option( 'uae_lite_is_activated', 'yes' );
 	update_option( 'hfe_start_onboarding', true );
+
+	// Track plugin activation event.
+	require_once HFE_DIR . 'inc/class-hfe-analytics-events.php';
+	$bsf_referrers = get_option( 'bsf_product_referers', [] );
+	$source        = ! empty( $bsf_referrers['header-footer-elementor'] ) ? $bsf_referrers['header-footer-elementor'] : 'self';
+	HFE_Analytics_Events::track( 'plugin_activated', HFE_VER, [ 'source' => $source ] );
 }
 
 register_activation_hook( HFE_FILE, 'hfe_plugin_activation' );

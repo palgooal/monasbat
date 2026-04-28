@@ -2,10 +2,10 @@
 # This file is distributed under the same license as the Ultimate Addons for Elementor (UAE) package.
 msgid ""
 msgstr ""
-"Project-Id-Version: Ultimate Addons for Elementor (UAE) 2.8.5\n"
+"Project-Id-Version: Ultimate Addons for Elementor (UAE) 2.8.7\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/header-footer-elementor\n"
-"POT-Creation-Date: 2026-03-10 08:32:52+00:00\n"
+"POT-Creation-Date: 2026-04-14 06:16:21+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -25,47 +25,47 @@ msgstr ""
 "X-Textdomain-Support: yes\n"
 "X-Generator: grunt-wp-i18n 1.0.3\n"
 
-#: admin/bsf-analytics/class-bsf-analytics.php:242
+#: admin/bsf-analytics/class-bsf-analytics.php:270
 #. translators: %s product name
 msgid ""
-"Help us improve %1$s and our other products!<br><br>With your permission, "
-"we'd like to collect <strong>non-sensitive information</strong> from your "
-"website — like your PHP version and which features you use — so we can fix "
-"bugs faster, make smarter decisions, and build features that actually "
-"matter to you. <em>No personal info. Ever.</em>"
+"<strong>Help shape the future of %1$s.</strong><br><br>Share how you use "
+"the plugin so we can build features that matter, fix issues faster, and "
+"make smarter decisions."
 msgstr ""
 
-#: admin/bsf-analytics/class-bsf-analytics.php:248
+#: admin/bsf-analytics/class-bsf-analytics.php:276
 msgid "This will be applicable for all sites from the network."
 msgstr ""
 
-#: admin/bsf-analytics/class-bsf-analytics.php:272
+#: admin/bsf-analytics/class-bsf-analytics.php:300
 #. translators: %s usage doc link
-msgid " Know More."
+msgid "Learn more."
 msgstr ""
 
-#: admin/bsf-analytics/class-bsf-analytics.php:282
-msgid "Yes! Allow it"
+#: admin/bsf-analytics/class-bsf-analytics.php:310
+msgid "Happy to help!"
 msgstr ""
 
-#: admin/bsf-analytics/class-bsf-analytics.php:293
-msgid "No Thanks"
+#: admin/bsf-analytics/class-bsf-analytics.php:321
+msgid "Skip"
 msgstr ""
 
-#: admin/bsf-analytics/class-bsf-analytics.php:461
+#: admin/bsf-analytics/class-bsf-analytics.php:499
 msgid "Usage Tracking"
 msgstr ""
 
-#: admin/bsf-analytics/class-bsf-analytics.php:506
+#: admin/bsf-analytics/class-bsf-analytics.php:544
 #. translators: %s Product title
-msgid "Allow %s products to track non-sensitive usage tracking data."
+msgid ""
+"Help improve %s by sharing non-sensitive usage data — like PHP version and "
+"features used."
 msgstr ""
 
-#: admin/bsf-analytics/class-bsf-analytics.php:509
+#: admin/bsf-analytics/class-bsf-analytics.php:547
 msgid " This will be applicable for all sites from the network."
 msgstr ""
 
-#: admin/bsf-analytics/class-bsf-analytics.php:514
+#: admin/bsf-analytics/class-bsf-analytics.php:552
 msgid "Learn More."
 msgstr ""
 
@@ -81,7 +81,7 @@ msgstr ""
 msgid "If you have a moment, please share why you are deactivating the plugin."
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:112
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:105
 #: inc/widgets-manager/extensions/class-scroll-to-top-settings.php:403
 #: inc/widgets-manager/extensions/class-scroll-to-top-settings.php:428
 #: inc/widgets-manager/widgets/breadcrumbs-widget/breadcrumbs-widget.php:238
@@ -99,345 +99,350 @@ msgstr ""
 msgid "Icon"
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:139
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:314
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:132
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:307
 msgid "Please tell us more details."
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:148
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:141
 #. translators: %1$s: link html start, %2$s: link html end
 msgid "Need help from our experts? %1$sClick here to contact us.%2$s"
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:159
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:152
 msgid "Submit & Deactivate"
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:160
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:153
 msgid "Skip & Deactivate"
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:229
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:222
 msgid "Sorry, you are not allowed to do this operation."
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:242
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:235
 msgid "Nonce validation failed"
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:289
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:282
 msgid "This is a temporary deactivation for testing."
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:290
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:283
 msgid "How can we assist you?"
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:295
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:288
 msgid "The plugin isn't working properly."
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:296
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:289
 msgid "Please tell us more about what went wrong?"
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:301
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:294
 msgid "I found a better alternative plugin."
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:302
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:295
 msgid "Could you please specify which plugin?"
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:307
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:300
 msgid "It's missing a specific feature."
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:308
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:301
 msgid "Please tell us more about the feature."
 msgstr ""
 
-#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:313
+#: admin/bsf-analytics/modules/deactivation-survey/classes/class-deactivation-survey-feedback.php:306
 msgid "Other"
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:145
+#: admin/class-hfe-addons-actions.php:147
 msgid "Plugin installation is disabled for you on this site."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:152
+#: admin/class-hfe-addons-actions.php:154
 msgid "Plugin slug is missing."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:175
+#: admin/class-hfe-addons-actions.php:177
 msgid "Plugin installation function not found."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:195
+#: admin/class-hfe-addons-actions.php:197
 msgid "Theme installation is disabled for you on this site."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:202
+#: admin/class-hfe-addons-actions.php:204
 msgid "Theme slug is missing."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:225
+#: admin/class-hfe-addons-actions.php:227
 msgid "Theme installation function not found."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:238
-#: admin/class-hfe-addons-actions.php:271
-#: admin/class-hfe-addons-actions.php:304
-#: admin/class-hfe-addons-actions.php:352
-#: admin/class-hfe-addons-actions.php:385
-#: admin/class-hfe-addons-actions.php:422
-#: admin/class-hfe-addons-actions.php:551
-#: admin/class-hfe-addons-actions.php:585
-#: admin/class-hfe-addons-actions.php:622
+#: admin/class-hfe-addons-actions.php:240
+#: admin/class-hfe-addons-actions.php:273
+#: admin/class-hfe-addons-actions.php:306
+#: admin/class-hfe-addons-actions.php:354
+#: admin/class-hfe-addons-actions.php:387
+#: admin/class-hfe-addons-actions.php:424
+#: admin/class-hfe-addons-actions.php:553
+#: admin/class-hfe-addons-actions.php:592
+#: admin/class-hfe-addons-actions.php:629
+#: admin/class-hfe-addons-actions.php:654
 msgid "You do not have permission to perform this action."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:363
-#: admin/class-hfe-addons-actions.php:396
+#: admin/class-hfe-addons-actions.php:365
+#: admin/class-hfe-addons-actions.php:398
 msgid "Invalid widget identifier."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:497
+#: admin/class-hfe-addons-actions.php:499
 msgid "Plugin activation is disabled for you on this site."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:506
+#: admin/class-hfe-addons-actions.php:508
 msgid "Plugin Activated."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:517
+#: admin/class-hfe-addons-actions.php:519
 msgid "Theme activation is disabled for you on this site."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:526
+#: admin/class-hfe-addons-actions.php:528
 msgid "Theme Activated."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:533
+#: admin/class-hfe-addons-actions.php:535
 msgid "Could not activate plugin. Please activate from the Plugins page."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:535
+#: admin/class-hfe-addons-actions.php:537
 msgid "Could not activate theme. Please activate from the Themes page."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:560
+#: admin/class-hfe-addons-actions.php:562
 msgid "Invalid compatibility option value."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:566
-#: admin/class-hfe-addons-actions.php:600
+#: admin/class-hfe-addons-actions.php:573
+#: admin/class-hfe-addons-actions.php:607
 msgid "Settings saved successfully!"
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:569
-#: admin/class-hfe-addons-actions.php:603
+#: admin/class-hfe-addons-actions.php:576
+#: admin/class-hfe-addons-actions.php:610
 msgid "Unable to save settings."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:594
+#: admin/class-hfe-addons-actions.php:601
 msgid "Invalid analytics option value."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:616
+#: admin/class-hfe-addons-actions.php:623
 msgid "Security check failed."
 msgstr ""
 
-#: admin/class-hfe-addons-actions.php:628
+#: admin/class-hfe-addons-actions.php:635
 msgid "Upgrade notice dismissed."
 msgstr ""
 
-#: admin/class-hfe-admin.php:107
+#: admin/class-hfe-addons-actions.php:698
+msgid "Onboarding analytics saved."
+msgstr ""
+
+#: admin/class-hfe-admin.php:108
 msgid "Header Footer Builder"
 msgstr ""
 
-#: admin/class-hfe-admin.php:357
+#: admin/class-hfe-admin.php:361
 msgid "Important Notice:"
 msgstr ""
 
-#: admin/class-hfe-admin.php:361
+#: admin/class-hfe-admin.php:365
 msgid "Can't edit your header or footer?"
 msgstr ""
 
-#: admin/class-hfe-admin.php:362
+#: admin/class-hfe-admin.php:366
 msgid ""
 "Try clearing your cache or resetting permalinks (Settings > Permalinks > "
 "Save Changes)."
 msgstr ""
 
-#: admin/class-hfe-admin.php:363
+#: admin/class-hfe-admin.php:367
 msgid "Learn More"
 msgstr ""
 
-#: admin/class-hfe-admin.php:367
+#: admin/class-hfe-admin.php:371
 msgid "Flush Permalink"
 msgstr ""
 
-#: admin/class-hfe-admin.php:440 admin/class-hfe-admin.php:728
+#: admin/class-hfe-admin.php:444 admin/class-hfe-admin.php:732
 msgid "Display Rules"
 msgstr ""
 
-#: admin/class-hfe-admin.php:441
+#: admin/class-hfe-admin.php:445
 #: inc/widgets-manager/widgets/basic-posts/basic-posts.php:164
 #: inc/widgets-manager/widgets/post-info/post-info.php:170
 #: inc/widgets-manager/widgets/woo-product-grid/woo-product-grid.php:375
 msgid "Date"
 msgstr ""
 
-#: admin/class-hfe-admin.php:531 admin/class-hfe-admin.php:532
-#: admin/class-hfe-admin.php:533 admin/class-hfe-admin.php:534
+#: admin/class-hfe-admin.php:535 admin/class-hfe-admin.php:536
+#: admin/class-hfe-admin.php:537 admin/class-hfe-admin.php:538
 msgid "Elementor Header & Footer Builder"
 msgstr ""
 
-#: admin/class-hfe-admin.php:535 admin/class-hfe-admin.php:536
+#: admin/class-hfe-admin.php:539 admin/class-hfe-admin.php:540
 msgid "Add New"
 msgstr ""
 
-#: admin/class-hfe-admin.php:537
+#: admin/class-hfe-admin.php:541
 msgid "New Template"
 msgstr ""
 
-#: admin/class-hfe-admin.php:538
+#: admin/class-hfe-admin.php:542
 msgid "Edit Template"
 msgstr ""
 
-#: admin/class-hfe-admin.php:539
+#: admin/class-hfe-admin.php:543
 msgid "View Template"
 msgstr ""
 
-#: admin/class-hfe-admin.php:540 inc/class-hfe-settings-page.php:484
+#: admin/class-hfe-admin.php:544 inc/class-hfe-settings-page.php:501
 msgid "View All"
 msgstr ""
 
-#: admin/class-hfe-admin.php:541
+#: admin/class-hfe-admin.php:545
 msgid "Search Templates"
 msgstr ""
 
-#: admin/class-hfe-admin.php:542
+#: admin/class-hfe-admin.php:546
 msgid "Parent Templates:"
 msgstr ""
 
-#: admin/class-hfe-admin.php:543
+#: admin/class-hfe-admin.php:547
 msgid "No Templates found."
 msgstr ""
 
-#: admin/class-hfe-admin.php:544
+#: admin/class-hfe-admin.php:548
 msgid "No Templates found in Trash."
 msgstr ""
 
-#: admin/class-hfe-admin.php:592 admin/class-hfe-admin.php:593
+#: admin/class-hfe-admin.php:596 admin/class-hfe-admin.php:597
 msgid "Create New"
 msgstr ""
 
-#: admin/class-hfe-admin.php:602
+#: admin/class-hfe-admin.php:606
 msgid "Header/Footer Builder"
 msgstr ""
 
-#: admin/class-hfe-admin.php:603
+#: admin/class-hfe-admin.php:607
 msgid "Header & Footer"
 msgstr ""
 
-#: admin/class-hfe-admin.php:632
+#: admin/class-hfe-admin.php:636
 msgid "Elementor Header & Footer Builder Options"
 msgstr ""
 
-#: admin/class-hfe-admin.php:661
+#: admin/class-hfe-admin.php:665
 msgid "Type of Template"
 msgstr ""
 
-#: admin/class-hfe-admin.php:665
+#: admin/class-hfe-admin.php:669
 msgid "Select Option"
 msgstr ""
 
-#: admin/class-hfe-admin.php:666
+#: admin/class-hfe-admin.php:670
 msgid "Header"
 msgstr ""
 
-#: admin/class-hfe-admin.php:667
+#: admin/class-hfe-admin.php:671
 msgid "Before Footer"
 msgstr ""
 
-#: admin/class-hfe-admin.php:668
+#: admin/class-hfe-admin.php:672
 msgid "Footer"
 msgstr ""
 
-#: admin/class-hfe-admin.php:669
+#: admin/class-hfe-admin.php:673
 msgid "Custom Block"
 msgstr ""
 
-#: admin/class-hfe-admin.php:677 admin/class-hfe-admin.php:927
+#: admin/class-hfe-admin.php:681 admin/class-hfe-admin.php:931
 msgid "Shortcode"
 msgstr ""
 
-#: admin/class-hfe-admin.php:678
+#: admin/class-hfe-admin.php:682
 msgid ""
 "Copy this shortcode and paste it into your post, page, or text widget "
 "content."
 msgstr ""
 
-#: admin/class-hfe-admin.php:690
+#: admin/class-hfe-admin.php:694
 msgid "Enable Layout for Elementor Canvas Template?"
 msgstr ""
 
-#: admin/class-hfe-admin.php:692
+#: admin/class-hfe-admin.php:696
 msgid ""
 "Enabling this option will display this layout on pages using Elementor "
 "Canvas Template."
 msgstr ""
 
-#: admin/class-hfe-admin.php:719
+#: admin/class-hfe-admin.php:723
 #: inc/widgets-manager/extensions/class-reading-progress-bar-settings.php:125
 msgid "Display On"
 msgstr ""
 
-#: admin/class-hfe-admin.php:721
+#: admin/class-hfe-admin.php:725
 msgid "Add locations for where this template should appear."
 msgstr ""
 
-#: admin/class-hfe-admin.php:732
+#: admin/class-hfe-admin.php:736
 msgid "Add Display Rule"
 msgstr ""
 
-#: admin/class-hfe-admin.php:741
+#: admin/class-hfe-admin.php:745
 msgid "Do Not Display On"
 msgstr ""
 
-#: admin/class-hfe-admin.php:743
+#: admin/class-hfe-admin.php:747
 msgid "Add locations for where this template should not appear."
 msgstr ""
 
-#: admin/class-hfe-admin.php:750
+#: admin/class-hfe-admin.php:754
 msgid "Exclude On"
 msgstr ""
 
-#: admin/class-hfe-admin.php:753
+#: admin/class-hfe-admin.php:757
 #: inc/lib/target-rule/class-astra-target-rules-fields.php:851
 msgid "Add Exclusion Rule"
 msgstr ""
 
-#: admin/class-hfe-admin.php:763
+#: admin/class-hfe-admin.php:767
 msgid "User Roles"
 msgstr ""
 
-#: admin/class-hfe-admin.php:764
+#: admin/class-hfe-admin.php:768
 msgid "Display custom template based on user role."
 msgstr ""
 
-#: admin/class-hfe-admin.php:771
+#: admin/class-hfe-admin.php:775
 #: inc/widgets-manager/widgets/counter/counter.php:151
 msgid "Users"
 msgstr ""
 
-#: admin/class-hfe-admin.php:774
+#: admin/class-hfe-admin.php:778
 msgid "Add User Rule"
 msgstr ""
 
-#: admin/class-hfe-admin.php:855
+#: admin/class-hfe-admin.php:859
 #. Translators: Post title, Template Location
 msgid "Template %1$s is already assigned to the location %2$s"
 msgstr ""
@@ -735,16 +740,16 @@ msgstr ""
 msgid "See what's available in the Pro version"
 msgstr ""
 
-#: inc/class-hfe-learn-api.php:825 inc/class-hfe-settings-page.php:753
-#: inc/class-hfe-settings-page.php:754
+#: inc/class-hfe-learn-api.php:825 inc/class-hfe-settings-page.php:770
+#: inc/class-hfe-settings-page.php:771
 msgid "Upgrade to Pro"
 msgstr ""
 
-#: inc/class-hfe-learn-api.php:927
+#: inc/class-hfe-learn-api.php:964
 msgid "Progress saved successfully."
 msgstr ""
 
-#: inc/class-hfe-learn-api.php:946
+#: inc/class-hfe-learn-api.php:983
 msgid "Sorry, you cannot access this resource."
 msgstr ""
 
@@ -909,69 +914,69 @@ msgstr ""
 msgid "The selected version is invalid. Please try a different version."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:462
+#: inc/class-hfe-settings-page.php:479
 msgid "Activate"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:463
+#: inc/class-hfe-settings-page.php:480
 msgid "Activated"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:464
+#: inc/class-hfe-settings-page.php:481
 #: inc/widgets-manager/widgets/navigation-menu/navigation-menu.php:1064
 #: inc/widgets-manager/widgets/navigation-menu/navigation-menu.php:1247
 msgid "Active"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:465
+#: inc/class-hfe-settings-page.php:482
 msgid "Deactivate"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:466
+#: inc/class-hfe-settings-page.php:483
 msgid "Inactive"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:467
+#: inc/class-hfe-settings-page.php:484
 msgid "Install"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:468
+#: inc/class-hfe-settings-page.php:485
 msgid "Theme Installed"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:469
+#: inc/class-hfe-settings-page.php:486
 msgid "Plugin Installed"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:470
+#: inc/class-hfe-settings-page.php:487
 msgid "Download"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:471
+#: inc/class-hfe-settings-page.php:488
 msgid "Already Exists."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:472
+#: inc/class-hfe-settings-page.php:489
 msgid "Visit Website"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:473
+#: inc/class-hfe-settings-page.php:490
 msgid "Could not install. Please download from WordPress.org and install manually."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:474
+#: inc/class-hfe-settings-page.php:491
 msgid "Your details are submitted successfully."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:475
+#: inc/class-hfe-settings-page.php:492
 msgid "Encountered an error while performing your request."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:548
+#: inc/class-hfe-settings-page.php:565
 msgid "Add Theme Support"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:562
+#: inc/class-hfe-settings-page.php:579
 msgid ""
 "The Ultimate Addons for Elementor plugin needs compatibility with your "
 "current theme to work smoothly.<br/><br/>Following are two methods that "
@@ -980,52 +985,52 @@ msgid ""
 "the header or footer template, try choosing Method 2."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:581
+#: inc/class-hfe-settings-page.php:598
 msgid "Method 1 (Recommended)"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:582
+#: inc/class-hfe-settings-page.php:599
 msgid ""
 "This method replaces your theme's header (header.php) & footer (footer.php) "
 "template with plugin's custom templates."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:585
+#: inc/class-hfe-settings-page.php:602
 msgid "Method 2"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:589
+#: inc/class-hfe-settings-page.php:606
 msgid ""
 "This method hides your theme's header & footer template with CSS and "
 "displays custom templates from the plugin."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:600
+#: inc/class-hfe-settings-page.php:617
 #. translators: %s: URL to the plugin support page
 msgid ""
 "If the above methods do not work with your theme, contact your theme author "
 "and request them to add support for the <a href=\"%s\">plugin</a>."
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:632 inc/class-hfe-settings-page.php:644
+#: inc/class-hfe-settings-page.php:649 inc/class-hfe-settings-page.php:661
 msgid "UAE Lite"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:633
+#: inc/class-hfe-settings-page.php:650
 #: inc/widgets-manager/class-widgets-loader.php:165
 msgid "UAE"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:645
+#: inc/class-hfe-settings-page.php:662
 msgid "Dashboard"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:655 inc/class-hfe-settings-page.php:656
+#: inc/class-hfe-settings-page.php:672 inc/class-hfe-settings-page.php:673
 msgid "Widgets"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:666 inc/class-hfe-settings-page.php:667
-#: inc/class-hfe-settings-page.php:824
+#: inc/class-hfe-settings-page.php:683 inc/class-hfe-settings-page.php:684
+#: inc/class-hfe-settings-page.php:841
 #: inc/widgets-manager/base/widgets-config.php:362
 #: inc/widgets-manager/base/widgets-config.php:418
 #: inc/widgets-manager/base/widgets-config.php:501
@@ -1038,37 +1043,33 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:677 inc/class-hfe-settings-page.php:678
-#: inc/class-hfe-settings-page.php:689
+#: inc/class-hfe-settings-page.php:694 inc/class-hfe-settings-page.php:695
+#: inc/class-hfe-settings-page.php:706
 msgid "Onboarding"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:690
+#: inc/class-hfe-settings-page.php:707
 msgid "Onboarding Success"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:742 inc/class-hfe-settings-page.php:743
+#: inc/class-hfe-settings-page.php:759 inc/class-hfe-settings-page.php:760
 msgid "Get Help"
 msgstr ""
 
-#: inc/class-hfe-settings-page.php:823
+#: inc/class-hfe-settings-page.php:840
 msgid "Go to UAE Settings page"
 msgstr ""
 
-#: inc/lib/astra-notices/class-astra-notices.php:146
-msgid "WordPress Nonce not validated."
-msgstr ""
-
-#: inc/lib/astra-notices/class-astra-notices.php:153
+#: inc/lib/astra-notices/class-astra-notices.php:150
 msgid "Invalid notice ID."
 msgstr ""
 
-#: inc/lib/nps-survey/classes/nps-survey-script.php:277
+#: inc/lib/nps-survey/classes/nps-survey-script.php:333
 msgid "Sorry, you are not allowed to do that."
 msgstr ""
 
-#: inc/lib/nps-survey/classes/nps-survey-script.php:331
-#: inc/lib/nps-survey/classes/nps-survey-script.php:449
+#: inc/lib/nps-survey/classes/nps-survey-script.php:387
+#: inc/lib/nps-survey/classes/nps-survey-script.php:505
 msgid "Nonce verification failed."
 msgstr ""
 
