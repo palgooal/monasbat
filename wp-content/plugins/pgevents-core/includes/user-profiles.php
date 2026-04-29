@@ -22,8 +22,22 @@ function pge_extra_user_profile_fields($user)
 function pge_save_extra_user_profile_fields($user_id)
 {
     if (!current_user_can('edit_user', $user_id)) return false;
-    update_user_meta($user_id, 'pge_bio', $_POST['pge_bio']);
-    update_user_meta($user_id, 'pge_cover_url', esc_url_raw($_POST['pge_cover_url']));
+
+    if (isset($_POST['pge_bio'])) {
+        update_user_meta(
+            $user_id,
+            'pge_bio',
+            sanitize_textarea_field(wp_unslash($_POST['pge_bio']))
+        );
+    }
+
+    if (isset($_POST['pge_cover_url'])) {
+        update_user_meta(
+            $user_id,
+            'pge_cover_url',
+            esc_url_raw(wp_unslash($_POST['pge_cover_url']))
+        );
+    }
 }
 add_action('personal_options_update', 'pge_save_extra_user_profile_fields');
 add_action('edit_user_profile_update', 'pge_save_extra_user_profile_fields');

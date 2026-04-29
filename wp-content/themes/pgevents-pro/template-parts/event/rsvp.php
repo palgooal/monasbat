@@ -69,13 +69,26 @@ $is_host     = pge_is_host_or_admin($event_id);
 // =============================
 // Identify guest phone (cookie preferred)
 // =============================
-$guest_phone_cookie_name = 'pge_event_phone_' . (int) $event_id;
+$guest_phone_cookie_name        = 'pge_event_phone_' . (int) $event_id;
 $legacy_guest_phone_cookie_name = 'pge_event_guest_phone_' . (int) $event_id;
-$guest_phone_cookie_raw = isset($_COOKIE[$guest_phone_cookie_name])
-    ? sanitize_text_field((string) $_COOKIE[$guest_phone_cookie_name])
-    : (isset($_COOKIE[$legacy_guest_phone_cookie_name]) ? sanitize_text_field((string) $_COOKIE[$legacy_guest_phone_cookie_name]) : '');
-$guest_phone_cookie      = $guest_phone_cookie_raw;
-$guest_phone_cookie      = pge_norm_phone($guest_phone_cookie);
+
+// تحقق من توقيع HMAC قبل قبول قيمة الـ cookie
+$guest_phone_cookie_raw = '';
+if (isset($_COOKIE[$guest_phone_cookie_name])) {
+    $parts = explode('|', (string) $_COOKIE[$guest_phone_cookie_name], 2);
+    if (count($parts) === 2) {
+        [$raw_phone, $raw_hmac] = $parts;
+        $expected_hmac = wp_hash($raw_phone . '|' . (int) $event_id);
+        if (hash_equals($expected_hmac, $raw_hmac)) {
+            $guest_phone_cookie_raw = sanitize_text_field($raw_phone);
+        }
+    }
+} elseif (isset($_COOKIE[$legacy_guest_phone_cookie_name])) {
+    // دعم مؤقت للـ cookies القديمة غير الموقَّعة
+    $guest_phone_cookie_raw = sanitize_text_field((string) $_COOKIE[$legacy_guest_phone_cookie_name]);
+}
+
+$guest_phone_cookie = pge_norm_phone($guest_phone_cookie_raw);
 
 // RSVP storage meta
 $meta_key = '_pge_rsvp_map';

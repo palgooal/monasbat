@@ -152,9 +152,11 @@ if (!$access_ok && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_ac
 
         $phone_cookie = 'pge_event_phone_' . (int) $event_id;
 
-        // احفظ رقم الضيف (للاستخدام في RSVP)
-        setcookie($phone_cookie, $phone_n, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
-        $_COOKIE[$phone_cookie] = $phone_n;
+        // احفظ رقم الضيف موقَّعاً بـ HMAC (phone|hmac) لمنع التزوير
+        $phone_hmac        = wp_hash($phone_n . '|' . (int) $event_id);
+        $phone_cookie_val  = $phone_n . '|' . $phone_hmac;
+        setcookie($phone_cookie, $phone_cookie_val, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
+        $_COOKIE[$phone_cookie] = $phone_cookie_val;
 
 
         wp_safe_redirect(get_permalink($event_id));

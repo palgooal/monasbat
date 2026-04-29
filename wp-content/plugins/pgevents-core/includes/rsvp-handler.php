@@ -48,9 +48,19 @@ function pge_rsvp_submit()
 
     $note = sanitize_text_field($_POST['note'] ?? '');
 
-    // الضيف: خذ الهاتف من cookie بعد المرور من access gate
-    $phone_cookie = 'pge_event_phone_' . $event_id;
-    $guest_phone = isset($_COOKIE[$phone_cookie]) ? preg_replace('/\D+/', '', (string) $_COOKIE[$phone_cookie]) : '';
+    // الضيف: خذ الهاتف من cookie بعد التحقق من توقيع HMAC
+    $phone_cookie     = 'pge_event_phone_' . $event_id;
+    $guest_phone      = '';
+    if (isset($_COOKIE[$phone_cookie])) {
+        $parts = explode('|', (string) $_COOKIE[$phone_cookie], 2);
+        if (count($parts) === 2) {
+            [$raw_phone, $raw_hmac] = $parts;
+            $expected_hmac = wp_hash($raw_phone . '|' . (int) $event_id);
+            if (hash_equals($expected_hmac, $raw_hmac)) {
+                $guest_phone = preg_replace('/\D+/', '', $raw_phone);
+            }
+        }
+    }
 
     // المضيف/المدير ممكن يمرر phone (اختياري)
     if ((current_user_can('administrator') || get_current_user_id() === (int) get_post_field('post_author', $event_id)) && !empty($_POST['guest_phone'])) {
@@ -109,6 +119,13 @@ function pge_rsvp_submit()
 
 // Check-in (للمضيف فقط)
 add_action('wp_ajax_pge_checkin_submit', function () {
+    // 1. التحقق من الـ Nonce أولاً
+    $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+    if (!$nonce || !wp_verify_nonce($nonce, 'pge_checkin_nonce')) {
+        wp_send_json_error(['message' => 'Invalid nonce']);
+    }
+
+    // 2. التحقق من الصلاحية (أدمن أو مضيف المناسبة)
     if (!current_user_can('administrator')) {
         $event_id = absint($_POST['event_id'] ?? 0);
         $author_id = (int) get_post_field('post_author', $event_id);

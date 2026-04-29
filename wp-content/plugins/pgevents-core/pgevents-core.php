@@ -13,6 +13,7 @@ define('PGE_URL', plugin_dir_url(__FILE__));
 define('PGE_PATH', plugin_dir_path(__FILE__));
 
 // 1. استدعاء المكونات الأساسية (Logic)
+require_once PGE_PATH . 'includes/helpers.php';
 require_once PGE_PATH . 'includes/cpts.php';
 require_once PGE_PATH . 'includes/metaboxes.php';
 require_once PGE_PATH . 'includes/user-profiles.php';
@@ -33,15 +34,6 @@ require_once PGE_PATH . 'includes/class-salla-handler.php';
 // 2. استدعاء نظام التوجيه (Routing) - بديل الصفحات التقليدية
 require_once PGE_PATH . 'includes/routing.php';
 
-add_action('init', function () {
-    $rewrite_version = '1.0.4';
-
-    if (get_option('pge_rewrite_version') !== $rewrite_version) {
-        flush_rewrite_rules(false);
-        update_option('pge_rewrite_version', $rewrite_version);
-    }
-}, 20);
-
 // 3. تحديث الروابط عند التفعيل لضمان عمل الـ Endpoints
 register_activation_hook(__FILE__, function () {
     // 1. تسجيل نوع المنشورات
@@ -59,7 +51,3 @@ register_activation_hook(__FILE__, function () {
 
 // 4. تحديث الروابط عند التعطيل (تنظيف)
 register_deactivation_hook(__FILE__, 'flush_rewrite_rules');
-
-// add_action('init', function () {
-//     flush_rewrite_rules();
-// });

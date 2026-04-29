@@ -530,17 +530,17 @@ if (!$this->is_valid_signature($payload, $signature)) {
 
 ### المرحلة 3 — تشديد الأمان (يومان)
 
-- [ ] #3 — تنظيف `pge_bio`
-- [ ] #4 — نقل `webhook_secret` إلى wp-config + تغيير السر القديم في سلة
-- [ ] #11 — HMAC للـ cookie الخاص بالضيف
-- [ ] مراجعة شاملة لكل AJAX action للتأكد من التحقق من capability
+- [x] #3 — تنظيف `pge_bio` بـ sanitize_textarea_field ✅ 2026-04-29
+- [x] #4 — مفاتيح سلة تُدار من لوحة التحكم (DB) ✅ 2026-04-28
+- [x] #11 — HMAC على cookie الضيف (access-gate + rsvp-handler + rsvp.php) ✅ 2026-04-29
+- [x] مراجعة AJAX: إضافة nonce لـ pge_checkin_submit ✅ 2026-04-29
 
 ### المرحلة 4 — تنظيف معماري (3-5 أيام)
 
-- [ ] #6 — حذف `class-mon-salla-api.php`
-- [ ] #7 + #8 — `helpers.php` حقيقي وتوحيد الدوال
-- [ ] #10 — تنظيف `flush_rewrite_rules`
-- [ ] #12 — حذف `single-event.php` الزائدة
+- [x] #6 — تعطيل `class-mon-salla-api.php` (→ .disabled) ✅ 2026-04-29
+- [x] #7 + #8 — `helpers.php` حقيقي يحوي pge_norm_phone / pge_normalize_invite_code / pge_generate_invite_code / pge_is_host_or_admin ✅ 2026-04-29
+- [x] #10 — حذف init flush المكرر (يبقى فقط activation/deactivation) ✅ 2026-04-29
+- [x] #12 — تعطيل `single-event.php` (→ .disabled) ✅ 2026-04-29
 - [ ] إعادة تنظيم AJAX endpoints في كلاس واحد
 
 ### المرحلة 5 — تحسينات اختيارية (لاحقاً)
@@ -616,5 +616,7 @@ if (!$this->is_valid_signature($payload, $signature)) {
 | 2026-04-28 | إصلاح #1: توحيد اسم جدول RSVP على `wp_pge_event_rsvps` في `rsvp-handler.php` — إصلاح #2: تعطيل `checkin-handler.php` المكرر وحذف استدعاؤه — إصلاح #5: تفعيل `is_valid_signature()` في Webhook + تغيير السر ليقرأ من `wp-config.php` + حذف method GET — إصلاح #9: إضافة حماية `.htaccess` لمنع تنزيل zip/sql/env | Claude (Cowork) |
 | 2026-04-28 | **المرحلة الثانية S1-S5:** switch على نوع الحدث في Webhook handler — معالج `app.store.authorize` يحفظ التوكنات — معالجات installed/uninstalled/updated — صفحة إدارية للمتاجر المربوطة — إضافة Client ID/Secret في wp-config.php | Claude (Cowork) |
 | 2026-04-28 | **اكتمال المرحلة الأولى كاملاً:** حذف `backup-dev` يدوياً — إزالة جميع ZIPs من `wp-content/themes/` — Deactivate/Activate الإضافة لتجديد جدول RSVP — حفظ Webhook Secret الجديد في لوحة التحكم — إعادة توليد Webhook Secret من Salla Partner Portal — إضافة واجهة إدارة المفتاح في `admin-mods.php` | فريق بال قول + Claude (Cowork) |
+| 2026-04-29 | **المرحلة الثالثة (تشديد الأمان):** #3 XSS في pge_bio — #11 HMAC على cookie الضيف (3 ملفات) — nonce لـ pge_checkin_submit | Claude (Cowork) |
+| 2026-04-29 | **المرحلة الرابعة (تنظيف معماري):** تعطيل class-mon-salla-api.php و single-event.php — helpers.php يحوي pge_norm_phone / pge_event_guests_norm_phone / pge_get_invited_phones / pge_normalize_invite_code / pge_generate_invite_code / pge_is_host_or_admin — حذف init flush المكرر | Claude (Cowork) |
 
 > عند معالجة أي بند، حدّث الـ checkbox من `[ ]` إلى `[x]` وأضف صفاً جديداً هنا بالتاريخ ووصف التغيير.
