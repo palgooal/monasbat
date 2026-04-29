@@ -618,5 +618,6 @@ if (!$this->is_valid_signature($payload, $signature)) {
 | 2026-04-28 | **اكتمال المرحلة الأولى كاملاً:** حذف `backup-dev` يدوياً — إزالة جميع ZIPs من `wp-content/themes/` — Deactivate/Activate الإضافة لتجديد جدول RSVP — حفظ Webhook Secret الجديد في لوحة التحكم — إعادة توليد Webhook Secret من Salla Partner Portal — إضافة واجهة إدارة المفتاح في `admin-mods.php` | فريق بال قول + Claude (Cowork) |
 | 2026-04-29 | **المرحلة الثالثة (تشديد الأمان):** #3 XSS في pge_bio — #11 HMAC على cookie الضيف (3 ملفات) — nonce لـ pge_checkin_submit | Claude (Cowork) |
 | 2026-04-29 | **المرحلة الرابعة (تنظيف معماري):** تعطيل class-mon-salla-api.php و single-event.php — helpers.php يحوي pge_norm_phone / pge_event_guests_norm_phone / pge_get_invited_phones / pge_normalize_invite_code / pge_generate_invite_code / pge_is_host_or_admin — حذف init flush المكرر | Claude (Cowork) |
+| 2026-04-30 | **إصلاح حرج (مكتشف من اختبار سلة الحقيقي):** إضافة `order.status.updated` إلى switch في class-salla-handler.php — هذا هو الحدث الفعلي الذي يُفعّل الباقة عند إكمال الطلب (كان مفقوداً). البنية مختلفة: بيانات الطلب في `data.order` وليس `data` مباشرة | Claude (Cowork) |
 
 > عند معالجة أي بند، حدّث الـ checkbox من `[ ]` إلى `[x]` وأضف صفاً جديداً هنا بالتاريخ ووصف التغيير.

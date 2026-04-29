@@ -208,11 +208,14 @@ POST https://hilwah.net/wp-json/mon/v1/salla-callback
 
 | الحدث | الإجراء |
 |-------|---------|
-| `order.created/updated/payment.updated` | تفعيل أو إلغاء الباقة |
+| `order.created/updated/payment.updated` | تفعيل أو إلغاء الباقة (البيانات في `data` مباشرة) |
+| `order.status.updated` | تفعيل أو إلغاء الباقة (البيانات في `data.order`) |
 | `app.store.authorize` | حفظ OAuth tokens (يصل كل 14 يوم) |
 | `app.installed` | تسجيل تثبيت المتجر |
 | `app.store.uninstall` / `app.uninstalled` | مسح tokens |
 | `app.updated` | تسجيل في log فقط |
+
+> **مهم:** `order.status.updated` له بنية مختلفة — بيانات الطلب داخل `$data['order']` وليس `$data` مباشرة. الكود يعالج هذا بتمرير `$event_data['order'] ?? []` لـ `handle_order_event()`.
 
 ### التوكنات
 تُحفظ في `wp_options` تحت `pge_salla_tokens_{merchant_id}` وتحتوي:

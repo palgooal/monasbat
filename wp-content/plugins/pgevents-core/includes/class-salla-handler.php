@@ -56,11 +56,15 @@ class Mon_Salla_Handler
         // ── S1: توجيه الحدث حسب نوعه ──────────────────────────────────────
         switch ($event) {
 
-            // أحداث الطلبات
+            // أحداث الطلبات — البيانات مباشرة في data
             case 'order.created':
             case 'order.updated':
             case 'order.payment.updated':
                 return $this->handle_order_event($event_data);
+
+            // تحديث حالة الطلب — البيانات داخل data.order
+            case 'order.status.updated':
+                return $this->handle_order_event($event_data['order'] ?? []);
 
             // تجديد التوكن (كل 14 يوم)
             case 'app.store.authorize':

@@ -1,0 +1,193 @@
+<?php
+/**
+ * سكربت اختبار Webhook — يُشغَّل مرة واحدة ثم يُحذف
+ * الوصول: https://hilwah.net/wp-content/plugins/pgevents-core/test-webhook-local.php?key=pge_test_2026
+ */
+
+// حماية بسيطة
+if (($_GET['key'] ?? '') !== 'pge_test_2026') {
+    http_response_code(403);
+    die('Forbidden');
+}
+
+// ── إعداد ────────────────────────────────────────────────
+// المسار: plugin/ -> plugins/ -> wp-content/ -> WordPress root
+$wp_root = dirname(__FILE__) . '/../../../';
+
+if (!file_exists($wp_root . 'wp-load.php')) {
+    die('❌ لم يتم العثور على wp-load.php — المسار: ' . realpath($wp_root));
+}
+
+require_once($wp_root . 'wp-load.php');
+
+// جلب مفتاح Webhook
+$secret = defined('PGE_SALLA_WEBHOOK_SECRET')
+    ? PGE_SALLA_WEBHOOK_SECRET
+    : (string) get_option('pge_salla_webhook_secret', '');
+
+if (empty($secret)) {
+    die('❌ مفتاح Webhook غير موجود في DB أو wp-config');
+}
+
+$endpoint = 'https://hilwah.net/wp-json/mon/v1/salla-callback';
+
+// ── دالة الاختبار ─────────────────────────────────────────
+function run_test($label, $endpoint, $payload, $signature = null) {
+    $headers = [
+        'Content-Type: application/json',
+    ];
+    if ($signature !== null) {
+        $headers[] = 'x-salla-signature: ' . $signature;
+    }
+
+    $ch = curl_init($endpoint);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    $body = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $passed = false;
+    $decoded = json_decode($body, true);
+
+    return [
+        'label'     => $label,
+        'http_code' => $http_code,
+        'body'      => $decoded ?? $body,
+        'raw'       => $body,
+    ];
+}
+
+// ── الاختبارات ────────────────────────────────────────────
+$results = [];
+
+// 1. بدون signature → 401
+$results[] = array_merge(
+    run_test(
+        'بدون signature',
+        $endpoint,
+        '{"event":"order.created","merchant":999,"data":{}}'
+    ),
+    ['expect' => 401]
+);
+
+// 2. signature خاطئ → 401
+$results[] = array_merge(
+    run_test(
+        'signature خاطئ',
+        $endpoint,
+        '{"event":"order.created","merchant":999,"data":{}}',
+        '0000000000000000000000000000000000000000000000000000000000000000'
+    ),
+    ['expect' => 401]
+);
+
+// 3. app.store.authorize صحيح → 200
+$payload3 = json_encode([
+    'event'    => 'app.store.authorize',
+    'merchant' => 123456,
+    'data'     => [
+        'access_token'  => 'test_token_' . time(),
+        'refresh_token' => 'test_refresh_' . time(),
+        'expires'       => time() + (14 * 86400),
+        'scope'         => 'settings.read',
+        'token_type'    => 'bearer',
+    ],
+]);
+$sig3 = hash_hmac('sha256', $payload3, $secret);
+$results[] = array_merge(
+    run_test('app.store.authorize (صحيح)', $endpoint, $payload3, $sig3),
+    ['expect' => 200]
+);
+
+// 4. order.created → 200 (status: ignored لأن لا يوجد عميل)
+$payload4 = json_encode([
+    'event'    => 'order.created',
+    'merchant' => 123456,
+    'data'     => [
+        'id'     => 9001,
+        'status' => ['slug' => 'completed'],
+        'customer' => [
+            'email'      => 'webhook-test@example.com',
+            'first_name' => 'اختبار',
+            'last_name'  => 'Webhook',
+            'full_name'  => 'اختبار Webhook',
+        ],
+        'items' => [
+            ['product' => ['id' => 'TEST_PRODUCT_ID_000']],
+        ],
+    ],
+]);
+$sig4 = hash_hmac('sha256', $payload4, $secret);
+$results[] = array_merge(
+    run_test('order.created (صحيح)', $endpoint, $payload4, $sig4),
+    ['expect' => 200]
+);
+
+// 5. app.store.uninstall → 200
+$payload5 = json_encode([
+    'event'    => 'app.store.uninstall',
+    'merchant' => 123456,
+    'data'     => [],
+]);
+$sig5 = hash_hmac('sha256', $payload5, $secret);
+$results[] = array_merge(
+    run_test('app.store.uninstall (صحيح)', $endpoint, $payload5, $sig5),
+    ['expect' => 200]
+);
+
+// ── عرض النتائج ───────────────────────────────────────────
+?>
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>نتائج اختبار Webhook</title>
+<style>
+  body { font-family: monospace; background: #0f172a; color: #e2e8f0; padding: 30px; }
+  h1 { color: #f8fafc; }
+  .test { background: #1e293b; border-radius: 8px; padding: 16px; margin: 12px 0; border-right: 4px solid #64748b; }
+  .pass { border-right-color: #22c55e; }
+  .fail { border-right-color: #ef4444; }
+  .label { font-size: 1.1em; font-weight: bold; margin-bottom: 8px; }
+  .pass .label::before { content: "✅ "; }
+  .fail .label::before { content: "❌ "; }
+  .meta { color: #94a3b8; font-size: 0.9em; margin: 4px 0; }
+  .body { background: #0f172a; border-radius: 4px; padding: 8px; margin-top: 8px; white-space: pre-wrap; font-size: 0.85em; }
+  .summary { background: #1e293b; border-radius: 8px; padding: 16px; margin-top: 20px; font-size: 1.1em; }
+</style>
+</head>
+<body>
+<h1>🔬 نتائج اختبار Webhook — hilwah.net</h1>
+<p style="color:#94a3b8">المفتاح المستخدم: <code><?= substr($secret, 0, 8) ?>••••••••••••••••••••••••••••</code></p>
+
+<?php
+$pass = 0; $fail = 0;
+foreach ($results as $r):
+    $ok = ($r['http_code'] === $r['expect']);
+    if ($ok) $pass++; else $fail++;
+    $cls = $ok ? 'pass' : 'fail';
+?>
+<div class="test <?= $cls ?>">
+    <div class="label"><?= htmlspecialchars($r['label']) ?></div>
+    <div class="meta">HTTP: <strong><?= $r['http_code'] ?></strong> | متوقع: <?= $r['expect'] ?></div>
+    <div class="body"><?= htmlspecialchars(json_encode($r['body'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) ?></div>
+</div>
+<?php endforeach; ?>
+
+<div class="summary">
+    النتيجة الإجمالية:
+    <span style="color:#22c55e">✅ <?= $pass ?> نجح</span> |
+    <span style="color:<?= $fail ? '#ef4444' : '#94a3b8' ?>">❌ <?= $fail ?> فشل</span>
+    <?php if ($fail === 0): ?>
+    <br><br>🎉 <strong>كل الاختبارات نجحت! الـ Webhook يعمل بشكل صحيح.</strong>
+    <?php endif; ?>
+</div>
+
+<p style="color:#ef4444; margin-top:20px;">⚠️ احذف هذا الملف بعد الاختبار!</p>
+</body>
+</html>
