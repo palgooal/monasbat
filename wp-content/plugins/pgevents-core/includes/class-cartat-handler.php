@@ -57,13 +57,23 @@ class Mon_Cartat_Handler
             return new WP_REST_Response(['status' => 'ignored', 'reason' => 'empty'], 200);
         }
 
-        $phone_norm = pge_norm_phone($raw_from);
+        // المفتاح = الرقم كما وصل من واتساب (بدون 00، بدون @...)
+        $wa_key     = pge_norm_phone($raw_from); // مثل 972599000932
+        $phone_norm = $wa_key;
+
+        error_log("📱 Cartat Webhook: raw_from=$raw_from | wa_key=$wa_key | body=$body");
 
         // البحث عن دعوة معلّقة لهذا الرقم
-        $pending = get_option('pge_wa_pending_' . $phone_norm);
+        $pending = get_option('pge_wa_pending_' . $wa_key);
         if (!$pending || empty($pending['event_id'])) {
-            error_log("📱 Cartat: لا دعوة معلّقة للرقم $phone_norm");
-            return new WP_REST_Response(['status' => 'no_pending'], 200);
+            // محاولة ثانية بصيغة 00XXXXXXX (احتياطي للدعوات القديمة)
+            $pending = get_option('pge_wa_pending_00' . $wa_key);
+            if ($pending && !empty($pending['event_id'])) {
+                error_log("📱 Cartat: وجدنا pending بصيغة 00 للرقم $wa_key");
+            } else {
+                error_log("📱 Cartat: لا دعوة معلّقة للرقم $wa_key (جرّبنا pge_wa_pending_{$wa_key} و pge_wa_pending_00{$wa_key})");
+                return new WP_REST_Response(['status' => 'no_pending'], 200);
+            }
         }
 
         $event_id = (int) $pending['event_id'];
@@ -76,19 +86,37 @@ class Mon_Cartat_Handler
             return new WP_REST_Response(['status' => 'invalid_reply'], 200);
         }
 
-        // تسجيل الرد في قاعدة البيانات
-        $this->record_rsvp($event_id, $phone_norm, $reply);
+        // استخدام الرقم الأصلي من قائمة المدعوين لتسجيل RSVP (لتطابق الـ dashboard)
+        $rsvp_phone = $pending['original_phone'] ?? $phone_norm;
+        $this->record_rsvp($event_id, $rsvp_phone, $reply);
 
         // مسح الدعوة المعلّقة
-        delete_option('pge_wa_pending_' . $phone_norm);
+        delete_option('pge_wa_pending_' . $wa_key);
 
         // تأكيد للمدعو
-        $confirm_msg = ($reply === 'yes')
-            ? "شكراً على تأكيد حضورك! 🎉\nنتطلع لرؤيتك في *" . get_the_title($event_id) . "*"
-            : "شكراً على إبلاغنا. نتمنى لك دوام الصحة والسعادة 🌸";
+        if ($reply === 'yes') {
+            $event_name  = get_the_title($event_id);
+            $event_url   = $pending['event_url']   ?? (string) get_permalink($event_id);
+            $invite_code = $pending['invite_code'] ?? '';
+            $disp_phone  = $pending['norm_phone']  ?? $phone_norm;
+
+            $confirm_msg  = "شكراً على تأكيد حضورك! 🎉\n";
+            $confirm_msg .= "نتطلع لرؤيتك في *{$event_name}*\n\n";
+            $confirm_msg .= "━━━━━━━━━━━━━━━\n";
+            $confirm_msg .= "📌 *تفاصيل دخولك:*\n";
+            if ($event_url) {
+                $confirm_msg .= "🔗 رابط المناسبة:\n{$event_url}\n";
+            }
+            if ($invite_code) {
+                $confirm_msg .= "\n🔑 رمز الدعوة: *{$invite_code}*\n";
+                $confirm_msg .= "📱 رقمك المسجل: *{$disp_phone}*";
+            }
+        } else {
+            $confirm_msg = "شكراً على إبلاغنا. نتمنى لك دوام الصحة والسعادة 🌸";
+        }
         $this->send_text_message($raw_from, $confirm_msg);
 
-        error_log("✅ Cartat RSVP: $phone_norm → $reply | event=$event_id");
+        error_log("✅ Cartat RSVP: $wa_key (rsvp_phone=$rsvp_phone) → $reply | event=$event_id");
         return new WP_REST_Response(['status' => 'success', 'reply' => $reply], 200);
     }
 
@@ -157,13 +185,6 @@ class Mon_Cartat_Handler
             if ($event_date) {
                 $caption .= "\n📅 {$event_date}\n";
             }
-            if ($event_url) {
-                $caption .= "\n🔗 رابط الدعوة:\n{$event_url}\n";
-            }
-            if ($invite_code) {
-                $caption .= "\n🔑 رمز الدعوة: *{$invite_code}*\n";
-                $caption .= "📱 رقمك المسجل: *{$norm_phone}*\n";
-            }
             $caption .= "\n━━━━━━━━━━━━━━━\n";
             $caption .= "للرد على الدعوة أرسل:\n";
             $caption .= "✅ *1* — سأحضر بإذن الله\n";
@@ -176,14 +197,28 @@ class Mon_Cartat_Handler
                 $result = $this->send_text_message($wa_number, $caption);
             }
 
-            if ($result && ($result['status'] ?? '') === 'success') {
+            // نعتبر الإرسال ناجحاً إذا لم يكن هناك status=error صريح
+            // (Cartat قد يُرجع status=queued أو sent أو success — كلها تعني القبول)
+            $is_error = ($result === null)
+                     || (isset($result['status']) && $result['status'] === 'error')
+                     || (isset($result['success']) && $result['success'] === false);
+
+            error_log("📨 Cartat send result for $wa_number: " . json_encode($result) . " | is_error=" . ($is_error ? 'yes' : 'no'));
+
+            if (!$is_error) {
                 $sent++;
                 // تخزين الدعوة المعلّقة لربط الرد بالمناسبة لاحقاً
-                update_option('pge_wa_pending_' . pge_norm_phone($phone), [
-                    'event_id' => $event_id,
-                    'sent_at'  => time(),
-                    'msg_id'   => $result['id'] ?? '',
+                // المفتاح = $wa_number (بدون 00) ليتطابق مع ما يُرسله webhook واتساب
+                update_option('pge_wa_pending_' . $wa_number, [
+                    'event_id'       => $event_id,
+                    'sent_at'        => time(),
+                    'msg_id'         => $result['id'] ?? '',
+                    'original_phone' => $norm_phone, // الرقم كما في قائمة المدعوين
+                    'event_url'      => $event_url,
+                    'invite_code'    => $invite_code,
+                    'norm_phone'     => $norm_phone,
                 ], false);
+                error_log("✅ Cartat: pending key saved as pge_wa_pending_$wa_number");
             } else {
                 $failed++;
                 error_log("❌ Cartat: فشل إرسال لـ $wa_number | " . json_encode($result));
