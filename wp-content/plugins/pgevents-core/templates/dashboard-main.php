@@ -15,38 +15,46 @@ $current_user = wp_get_current_user();
 $user_id = $current_user->ID;
 
 /**
- * Helpers
+ * Helpers — تُحمَّل من helpers.php تلقائياً، هذا احتياطي فقط
  */
 if (!function_exists('pge_norm_phone')) {
-    function pge_norm_phone($v)
-    {
-        $v = (string) $v;
-        $v = trim($v);
-        return preg_replace('/\D+/', '', $v);
+    function pge_norm_phone($v) { return preg_replace('/\D+/', '', trim((string)$v)); }
+}
+if (!function_exists('pge_get_invited_phones')) {
+    function pge_get_invited_phones($event_id) {
+        $raw = get_post_meta($event_id, '_pge_invited_phones', true);
+        $phones = is_array($raw) ? $raw : array_filter(array_map('trim', explode("\n", str_replace(["\r\n","\r"],"\n",(string)$raw))));
+        $out = [];
+        foreach ($phones as $p) { $n = pge_norm_phone($p); if ($n !== '') $out[] = $n; }
+        return array_values(array_unique($out));
     }
 }
 
-if (!function_exists('pge_get_invited_phones')) {
-    function pge_get_invited_phones($event_id)
-    {
-        $raw = get_post_meta($event_id, '_pge_invited_phones', true);
+/**
+ * Helper: جلب بيانات RSVP من الجدول الحقيقي
+ * يُعيد: yes, no, checkins (أعداد) + map (phone=>reply) + checkin_map (phone=>true)
+ */
+function pge_dashboard_get_rsvp_stats(int $event_id): array {
+    global $wpdb;
+    $table = $wpdb->prefix . 'pge_event_rsvps';
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT guest_phone, reply, checked_in FROM {$table} WHERE event_id = %d",
+        $event_id
+    ), ARRAY_A);
 
-        if (is_array($raw)) {
-            $phones = $raw;
-        } else {
-            $raw = (string) $raw;
-            $raw = str_replace(["\r\n", "\r"], "\n", $raw);
-            $lines = array_filter(array_map('trim', explode("\n", $raw)));
-            $phones = $lines;
+    $yes = $no = $checkins = 0;
+    $map = [];
+    $checkin_map = [];
+    foreach ($rows as $r) {
+        $map[$r['guest_phone']] = $r['reply'];
+        if ($r['reply'] === 'yes') $yes++;
+        if ($r['reply'] === 'no')  $no++;
+        if ((int)$r['checked_in'] === 1) {
+            $checkins++;
+            $checkin_map[$r['guest_phone']] = true;
         }
-
-        $out = [];
-        foreach ($phones as $p) {
-            $n = pge_norm_phone($p);
-            if ($n !== '') $out[] = $n;
-        }
-        return array_values(array_unique($out));
     }
+    return compact('yes', 'no', 'checkins', 'map', 'checkin_map');
 }
 
 /**
@@ -79,48 +87,41 @@ if ($selected_event_id) {
 }
 
 /**
- * Stats for selected event
+ * Stats for selected event — من الجدول الحقيقي
  */
 $invited_phones = $selected_event_id ? pge_get_invited_phones($selected_event_id) : [];
 $total_invited  = count($invited_phones);
 
-// RSVP counts (we will store RSVP in post meta array for now: _pge_rsvp_map)
-$rsvp_map = $selected_event_id ? (array) get_post_meta($selected_event_id, '_pge_rsvp_map', true) : [];
-$yes_count = 0;
-$no_count = 0;
-
-foreach ($invited_phones as $ph) {
-    $row = $rsvp_map[$ph] ?? null;
-    if (is_array($row) && ($row['reply'] ?? '') === 'yes') $yes_count++;
-    if (is_array($row) && ($row['reply'] ?? '') === 'no')  $no_count++;
-}
+$rsvp_stats    = $selected_event_id ? pge_dashboard_get_rsvp_stats($selected_event_id) : ['yes'=>0,'no'=>0,'checkins'=>0,'map'=>[],'checkin_map'=>[]];
+$yes_count     = $rsvp_stats['yes'];
+$no_count      = $rsvp_stats['no'];
+$checkins_count= $rsvp_stats['checkins'];
+$rsvp_map      = $rsvp_stats['map'];         // phone => 'yes'|'no'
+$checkin_map   = $rsvp_stats['checkin_map']; // phone => true (إذا سجّل دخول)
 $pending_count = max(0, $total_invited - ($yes_count + $no_count));
 
-// Check-ins counts (meta array: _pge_checkins => [phone => timestamp])
-$checkins = $selected_event_id ? (array) get_post_meta($selected_event_id, '_pge_checkins', true) : [];
-$checkins_count = is_array($checkins) ? count($checkins) : 0;
-
-// KPI across all events (simple)
+// KPI across all events — من الجدول الحقيقي
 $all_invited_total = 0;
-$all_yes_total = 0;
-$all_no_total = 0;
-$all_checkins_total = 0;
+$all_yes_total     = 0;
+$all_no_total      = 0;
+$all_checkins_total= 0;
 
 foreach ($events as $ev) {
-    $eid = (int) $ev->ID;
-    $inv = pge_get_invited_phones($eid);
-    $all_invited_total += count($inv);
-
-    $map = (array) get_post_meta($eid, '_pge_rsvp_map', true);
-    foreach ($inv as $ph) {
-        $row = $map[$ph] ?? null;
-        if (is_array($row) && ($row['reply'] ?? '') === 'yes') $all_yes_total++;
-        if (is_array($row) && ($row['reply'] ?? '') === 'no')  $all_no_total++;
-    }
-
-    $cks = (array) get_post_meta($eid, '_pge_checkins', true);
-    $all_checkins_total += is_array($cks) ? count($cks) : 0;
+    $eid  = (int) $ev->ID;
+    $all_invited_total += count(pge_get_invited_phones($eid));
+    $ev_stats = pge_dashboard_get_rsvp_stats($eid);
+    $all_yes_total      += $ev_stats['yes'];
+    $all_no_total       += $ev_stats['no'];
+    $all_checkins_total += $ev_stats['checkins'];
 }
+
+// معلومات الباقة
+$plan_key    = (string) get_user_meta($user_id, '_mon_package_key', true);
+$plan_name   = (string) get_user_meta($user_id, '_mon_package_name', true);
+$plan_status = (string) get_user_meta($user_id, '_mon_package_status', true);
+$events_limit= (int)   get_user_meta($user_id, '_mon_events_limit', true);
+$events_used = (new WP_Query(['post_type'=>'pge_event','author'=>$user_id,'post_status'=>['publish','draft','pending'],'posts_per_page'=>-1,'fields'=>'ids']))->found_posts;
+$events_left = max(0, $events_limit - $events_used);
 
 $selected_event_title = $selected_event_id ? get_the_title($selected_event_id) : '';
 $selected_event_date = $selected_event_id ? (string) get_post_meta($selected_event_id, '_pge_event_date', true) : '';
@@ -234,7 +235,43 @@ $selected_manage_url = $selected_event_id ? home_url('/event-manage/' . $selecte
                         </a>
                     </div>
 
+                    <?php if ($plan_name || $plan_key): ?>
                     <div class="mt-5 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="text-xs font-semibold text-slate-500">باقتك الحالية</div>
+                            <?php if ($plan_status === 'active'): ?>
+                                <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">نشطة</span>
+                            <?php elseif ($plan_status): ?>
+                                <span class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-200"><?php echo esc_html($plan_status); ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="mt-1 text-sm font-bold text-slate-800"><?php echo esc_html($plan_name ?: $plan_key); ?></div>
+                        <?php if ($events_limit > 0): ?>
+                        <div class="mt-2">
+                            <div class="mb-1 flex items-center justify-between text-[11px] text-slate-500">
+                                <span>المناسبات المستخدمة</span>
+                                <span class="font-bold text-slate-700"><?php echo (int)$events_used; ?> / <?php echo (int)$events_limit; ?></span>
+                            </div>
+                            <div class="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                                <div class="h-full bg-slate-800 transition-all" style="width: <?php echo min(100, (int)round(($events_used/$events_limit)*100)); ?>%"></div>
+                            </div>
+                            <?php if ($events_left > 0): ?>
+                                <div class="mt-1 text-[11px] text-slate-500">متبقي <?php echo (int)$events_left; ?> مناسبة</div>
+                            <?php else: ?>
+                                <div class="mt-1 text-[11px] text-rose-600 font-semibold">استنفدت حد المناسبات — <a href="<?php echo esc_url(home_url('/packages/')); ?>" class="underline">ترقية الباقة</a></div>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php else: ?>
+                    <div class="mt-5 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
+                        <div class="text-xs font-semibold text-amber-700">لا توجد باقة نشطة</div>
+                        <div class="mt-1 text-sm text-amber-800">اشترك في إحدى الباقات لإنشاء مناسباتك.</div>
+                        <a href="<?php echo esc_url(home_url('/packages/')); ?>" class="mt-2 inline-block rounded-xl bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">تصفح الباقات</a>
+                    </div>
+                    <?php endif; ?>
+
+                    <div class="mt-3 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
                         <div class="text-xs font-semibold text-slate-500">نصيحة</div>
                         <div class="mt-1 text-sm text-slate-700">
                             أرسل الدعوة مبكرًا مع تذكير تلقائي قبل المناسبة بـ 24 ساعة لرفع نسبة الحضور.
@@ -363,17 +400,11 @@ $selected_manage_url = $selected_event_id ? home_url('/event-manage/' . $selecte
                         $badge = $is_archived ? ['سابقة', 'bg-slate-100', 'text-slate-700', 'ring-slate-200'] : ($status === 'upcoming' ? ['قادمة', 'bg-indigo-50', 'text-indigo-700', 'ring-indigo-200'] :
                             ['حالياً', 'bg-emerald-50', 'text-emerald-700', 'ring-emerald-200']);
 
-                        $inv = pge_get_invited_phones($eid);
-                        $map = (array) get_post_meta($eid, '_pge_rsvp_map', true);
-                        $yes = 0;
-                        $no = 0;
-                        foreach ($inv as $ph) {
-                            $row = $map[$ph] ?? null;
-                            if (is_array($row) && ($row['reply'] ?? '') === 'yes') $yes++;
-                            if (is_array($row) && ($row['reply'] ?? '') === 'no') $no++;
-                        }
-                        $cks = (array) get_post_meta($eid, '_pge_checkins', true);
-                        $ckc = is_array($cks) ? count($cks) : 0;
+                        $inv       = pge_get_invited_phones($eid);
+                        $ev_stats  = pge_dashboard_get_rsvp_stats($eid);
+                        $yes       = $ev_stats['yes'];
+                        $no        = $ev_stats['no'];
+                        $ckc       = $ev_stats['checkins'];
                     ?>
                         <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="flex items-start justify-between gap-3">
@@ -389,7 +420,7 @@ $selected_manage_url = $selected_event_id ? home_url('/event-manage/' . $selecte
                                 <div class="h-10 w-10 rounded-2xl bg-slate-100 ring-1 ring-slate-200"></div>
                             </div>
 
-                            <div class="mt-4 grid grid-cols-3 gap-3 text-center">
+                            <div class="mt-4 grid grid-cols-4 gap-2 text-center">
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
                                     <div class="text-lg font-extrabold"><?php echo (int) count($inv); ?></div>
                                     <div class="mt-1 text-[11px] text-slate-500">مدعو</div>
@@ -397,6 +428,10 @@ $selected_manage_url = $selected_event_id ? home_url('/event-manage/' . $selecte
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
                                     <div class="text-lg font-extrabold text-emerald-700"><?php echo (int) $yes; ?></div>
                                     <div class="mt-1 text-[11px] text-slate-500">حضور</div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                    <div class="text-lg font-extrabold text-rose-700"><?php echo (int) $no; ?></div>
+                                    <div class="mt-1 text-[11px] text-slate-500">اعتذر</div>
                                 </div>
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
                                     <div class="text-lg font-extrabold"><?php echo (int) $ckc; ?></div>
@@ -467,10 +502,9 @@ $selected_manage_url = $selected_event_id ? home_url('/event-manage/' . $selecte
                                     </thead>
                                     <tbody id="guestTbody" class="divide-y divide-slate-100">
                                         <?php foreach ($invited_phones as $ph):
-                                            $row = $rsvp_map[$ph] ?? null;
-                                            $reply = is_array($row) ? ($row['reply'] ?? '') : '';
+                                            $reply  = isset($rsvp_map[$ph]) ? (string) $rsvp_map[$ph] : '';
                                             $status = $reply === 'yes' ? 'yes' : ($reply === 'no' ? 'no' : 'pending');
-                                            $checked = isset($checkins[$ph]) ? 'yes' : 'no';
+                                            $checked = isset($checkin_map[$ph]) ? 'yes' : 'no';
                                         ?>
                                             <tr class="guest-row" data-status="<?php echo esc_attr($status); ?>" data-phone="<?php echo esc_attr($ph); ?>" data-checked="<?php echo esc_attr($checked); ?>">
                                                 <td class="px-4 py-3 font-semibold text-slate-900"><?php echo esc_html($ph); ?></td>
