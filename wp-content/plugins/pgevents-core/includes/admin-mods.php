@@ -38,6 +38,15 @@ class PGE_Admin_Controller
             'pge-salla-stores',
             [$this, 'render_salla_stores_page']
         );
+
+        add_submenu_page(
+            'edit.php?post_type=pge_event',
+            'إعدادات واتساب (Cartat)',
+            '💬 إعدادات واتساب',
+            'manage_options',
+            'pge-cartat-settings',
+            [$this, 'render_cartat_settings_page']
+        );
     }
 
     // ── صفحة متاجر سلة ─────────────────────────────────────────────────────
@@ -632,6 +641,204 @@ class PGE_Admin_Controller
                     <div style="border-right:1px solid #eee; padding-right:20px;"><span style="display:block; font-size:28px; font-weight:bold; color:#e11d48;">' . ($total->private ?? 0) . '</span> مؤرشفة</div>
                   </div>';
         });
+    }
+
+    // ── صفحة إعدادات واتساب (Cartat) ─────────────────────────────────────────
+    public function render_cartat_settings_page()
+    {
+        if (!current_user_can('manage_options')) return;
+
+        // حفظ الإعدادات
+        if (isset($_POST['pge_cartat_save']) && check_admin_referer('pge_cartat_settings_nonce')) {
+            update_option('pge_cartat_api_token',    sanitize_text_field($_POST['pge_cartat_api_token']    ?? ''));
+            update_option('pge_cartat_country_code', sanitize_text_field($_POST['pge_cartat_country_code'] ?? '966'));
+            echo '<div class="notice notice-success is-dismissible"><p>✅ تم حفظ إعدادات واتساب بنجاح.</p></div>';
+        }
+
+        $token        = (string) get_option('pge_cartat_api_token', '');
+        $country_code = (string) get_option('pge_cartat_country_code', '966');
+        $webhook_url  = home_url('/wp-json/mon/v1/wa-callback');
+
+        echo '<div class="wrap" style="direction:rtl; font-family:\'Segoe UI\',Tahoma;">';
+        echo '<h1>💬 إعدادات واتساب — Cartat</h1>';
+
+        echo '<div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:16px; margin:16px 0; color:#1e40af;">';
+        echo '<strong>🔗 Webhook URL</strong> — أدخل هذا الرابط في إعدادات Cartat:<br>';
+        echo '<code style="background:#fff; border:1px solid #bfdbfe; padding:6px 12px; display:inline-block; margin-top:8px; border-radius:4px; font-size:13px;">' . esc_url($webhook_url) . '</code>';
+        echo '<br><small style="margin-top:6px; display:block;">تأكد من تفعيل <strong>messages_events = true</strong> في إعدادات Cartat.</small>';
+        echo '</div>';
+
+        echo '<form method="post">';
+        wp_nonce_field('pge_cartat_settings_nonce');
+        echo '<table class="form-table" style="direction:rtl;">';
+
+        echo '<tr>';
+        echo '<th scope="row"><label for="pge_cartat_api_token">🔑 API Token</label></th>';
+        echo '<td>';
+        echo '<input type="text" id="pge_cartat_api_token" name="pge_cartat_api_token"
+                     value="' . esc_attr($token) . '"
+                     class="regular-text"
+                     placeholder="Bearer token من لوحة Cartat"
+                     style="width:400px;">';
+        echo '<p class="description">احصل عليه من <a href="https://app.cartat.net/store/api" target="_blank">app.cartat.net/store/api</a></p>';
+        echo '</td>';
+        echo '</tr>';
+
+        echo '<tr>';
+        echo '<th scope="row"><label for="pge_cartat_country_code">🌍 كود الدولة</label></th>';
+        echo '<td>';
+        echo '<input type="text" id="pge_cartat_country_code" name="pge_cartat_country_code"
+                     value="' . esc_attr($country_code) . '"
+                     class="small-text"
+                     placeholder="966"
+                     maxlength="5">';
+        echo '<p class="description">مثال: 966 للسعودية، 962 للأردن، 970 لفلسطين</p>';
+        echo '</td>';
+        echo '</tr>';
+
+        echo '</table>';
+        echo '<p><input type="submit" name="pge_cartat_save" class="button button-primary" value="💾 حفظ الإعدادات"></p>';
+        echo '</form>';
+
+        // ── اختبار الاتصال ──────────────────────────────────────────────────
+        echo '<hr>';
+        echo '<h2>🧪 اختبار الاتصال</h2>';
+        if (!empty($token)) {
+            $response = wp_remote_get('https://api.cartat.net/instance/settings', [
+                'headers' => [
+                    'Accept'        => 'application/json',
+                    'Authorization' => 'Bearer ' . $token,
+                ],
+                'timeout' => 10,
+            ]);
+            if (is_wp_error($response)) {
+                echo '<div style="color:#dc2626;">❌ خطأ: ' . esc_html($response->get_error_message()) . '</div>';
+            } else {
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                $code = wp_remote_retrieve_response_code($response);
+                if ($code === 200 && isset($body['webhook'])) {
+                    $wh = $body['webhook'];
+                    echo '<div style="background:#f0fdf4; border:1px solid #bbf7d0; padding:12px; border-radius:6px; color:#15803d;">';
+                    echo '✅ الاتصال ناجح!<br>';
+                    echo '<strong>Webhook URL المُضبوط في Cartat:</strong> ' . esc_html($wh['webhook_url'] ?? '—') . '<br>';
+                    echo '<strong>messages_events:</strong> ' . (($wh['messages_events'] ?? false) ? '✅ مفعّل' : '❌ معطّل') . '<br>';
+                    echo '<strong>is_active:</strong> '       . (($wh['is_active']      ?? false) ? '✅' : '❌');
+                    echo '</div>';
+                } else {
+                    echo '<div style="color:#dc2626;">⚠️ رمز الاستجابة: ' . esc_html($code) . ' | ' . esc_html(json_encode($body)) . '</div>';
+                }
+            }
+        } else {
+            echo '<p style="color:#9ca3af;">أدخل الـ API Token أولاً ثم احفظ.</p>';
+        }
+
+        // ── اختبار الإرسال ──────────────────────────────────────────────────────
+        echo '<hr>';
+        echo '<h2>📤 اختبار الإرسال</h2>';
+
+        // معالجة إرسال رسالة تجريبية
+        $test_result = null;
+        if (isset($_POST['pge_cartat_test_send']) && check_admin_referer('pge_cartat_test_nonce') && !empty($token)) {
+            $test_phone   = sanitize_text_field($_POST['test_phone']   ?? '');
+            $test_message = sanitize_textarea_field($_POST['test_message'] ?? 'رسالة تجريبية من منصة مناسبات ✅');
+            $test_type    = sanitize_text_field($_POST['test_type']    ?? 'text');
+            $test_img_url = esc_url_raw($_POST['test_img_url'] ?? '');
+
+            // تنسيق الرقم
+            $phone_norm = preg_replace('/\D+/', '', $test_phone);
+            if (str_starts_with($phone_norm, '0')) {
+                $phone_norm = $country_code . substr($phone_norm, 1);
+            } elseif (!str_starts_with($phone_norm, $country_code)) {
+                $phone_norm = $country_code . $phone_norm;
+            }
+
+            if ($test_type === 'media' && $test_img_url) {
+                $api_body = ['number' => $phone_norm, 'media_url' => $test_img_url, 'caption' => $test_message];
+                $endpoint = 'https://api.cartat.net/message/media';
+            } else {
+                $api_body = ['number' => $phone_norm, 'message' => $test_message];
+                $endpoint = 'https://api.cartat.net/message/text';
+            }
+
+            $api_res = wp_remote_post($endpoint, [
+                'headers' => [
+                    'Accept'        => 'application/json',
+                    'Content-Type'  => 'application/json',
+                    'Authorization' => 'Bearer ' . $token,
+                    'Expect'        => '',
+                ],
+                'body'        => wp_json_encode($api_body),
+                'timeout'     => 20,
+                'httpversion' => '1.1',
+                'sslverify'   => true,
+            ]);
+
+            if (is_wp_error($api_res)) {
+                $test_result = ['ok' => false, 'msg' => $api_res->get_error_message() . " | الرقم المُرسَل: $phone_norm"];
+            } else {
+                $api_body_res = json_decode(wp_remote_retrieve_body($api_res), true);
+                $ok = ($api_body_res['status'] ?? '') === 'success';
+                $test_result = [
+                    'ok'  => $ok,
+                    'msg' => $ok
+                        ? "✅ تم الإرسال! ID: " . ($api_body_res['id'] ?? '—') . " | إلى: $phone_norm"
+                        : "❌ فشل: " . wp_json_encode($api_body_res) . " | الرقم المُرسَل للـ API: $phone_norm",
+                ];
+            }
+        }
+
+        if ($test_result) {
+            $color = $test_result['ok'] ? '#f0fdf4; border:1px solid #bbf7d0; color:#15803d' : '#fef2f2; border:1px solid #fecaca; color:#dc2626';
+            echo '<div style="background:' . $color . '; padding:12px; border-radius:6px; margin-bottom:16px;">' . esc_html($test_result['msg']) . '</div>';
+        }
+
+        if (!empty($token)) {
+            echo '<form method="post" style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:20px; max-width:540px;">';
+            wp_nonce_field('pge_cartat_test_nonce');
+
+            echo '<table class="form-table" style="direction:rtl; margin:0;">';
+
+            echo '<tr>';
+            echo '<th style="width:140px;"><label for="test_phone">📱 رقم الجوال</label></th>';
+            echo '<td><input type="text" id="test_phone" name="test_phone" class="regular-text"
+                         placeholder="05XXXXXXXX" value="' . esc_attr($_POST['test_phone'] ?? '') . '">
+                  <p class="description">رقم واتساب للاختبار (سعودي أو بكود دولي)</p></td>';
+            echo '</tr>';
+
+            echo '<tr>';
+            echo '<th><label for="test_type">📋 نوع الرسالة</label></th>';
+            echo '<td>';
+            $sel_text  = (($_POST['test_type'] ?? 'text') === 'text')  ? 'selected' : '';
+            $sel_media = (($_POST['test_type'] ?? 'text') === 'media') ? 'selected' : '';
+            echo '<select id="test_type" name="test_type" onchange="document.getElementById(\'img_row\').style.display=this.value===\'media\'?\'table-row\':\'none\'">
+                    <option value="text" '  . $sel_text  . '>نص فقط</option>
+                    <option value="media" ' . $sel_media . '>صورة + نص (media)</option>
+                  </select>';
+            echo '</td>';
+            echo '</tr>';
+
+            $img_display = (($_POST['test_type'] ?? 'text') === 'media') ? 'table-row' : 'none';
+            echo '<tr id="img_row" style="display:' . $img_display . ';">';
+            echo '<th><label for="test_img_url">🖼️ رابط الصورة</label></th>';
+            echo '<td><input type="url" id="test_img_url" name="test_img_url" class="regular-text"
+                         placeholder="https://..." value="' . esc_attr($_POST['test_img_url'] ?? '') . '">
+                  <p class="description">PNG أو JPEG — يجب أن يكون الرابط عاماً ويمكن لـ Cartat الوصول إليه</p></td>';
+            echo '</tr>';
+
+            echo '<tr>';
+            echo '<th><label for="test_message">✉️ نص الرسالة</label></th>';
+            echo '<td><textarea id="test_message" name="test_message" rows="4" class="large-text">'
+                . esc_textarea($_POST['test_message'] ?? 'رسالة تجريبية من منصة مناسبات ✅') . '</textarea></td>';
+            echo '</tr>';
+
+            echo '</table>';
+            echo '<p style="margin-top:12px;"><input type="submit" name="pge_cartat_test_send" class="button button-secondary" value="📨 إرسال رسالة تجريبية"></p>';
+            echo '</form>';
+        } else {
+            echo '<p style="color:#9ca3af;">أدخل الـ API Token أولاً لتفعيل خاصية الاختبار.</p>';
+        }
+
+        echo '</div>'; // end wrap
     }
 }
 

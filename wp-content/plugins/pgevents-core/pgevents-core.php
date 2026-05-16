@@ -31,6 +31,9 @@ require_once PGE_PATH . 'includes/class-mon-events-users.php';
 // 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)
 require_once PGE_PATH . 'includes/class-salla-handler.php';
 
+// 3. تكامل واتساب عبر Cartat
+require_once PGE_PATH . 'includes/class-cartat-handler.php';
+
 // 2. استدعاء نظام التوجيه (Routing) - بديل الصفحات التقليدية
 require_once PGE_PATH . 'includes/routing.php';
 

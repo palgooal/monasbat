@@ -114,6 +114,9 @@ get_header();
                             <button id="bulkDeleteBtn" type="button" disabled class="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50">حذف المحدد</button>
                             <button id="bulkWhatsappBtn" type="button" disabled class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50">واتساب للمحدد</button>
                             <button id="whatsappAllBtn" type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">واتساب للكل</button>
+                            <button id="sendWaInvitesBtn" type="button" class="rounded-2xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 flex items-center gap-1">
+                                <span>📨</span> إرسال دعوات واتساب
+                            </button>
                             <button id="exportCsvBtn" type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">تصدير CSV</button>
                         </div>
                     </div>
@@ -999,6 +1002,51 @@ get_header();
     if (whatsappAllBtn && getRows().length === 0) {
         whatsappAllBtn.disabled = true;
         whatsappAllBtn.classList.add('cursor-not-allowed', 'opacity-50');
+    }
+
+    // ── إرسال دعوات واتساب عبر Cartat API ───────────────────────────────────
+    const sendWaInvitesBtn = document.getElementById('sendWaInvitesBtn');
+    if (sendWaInvitesBtn) {
+        sendWaInvitesBtn.addEventListener('click', async () => {
+            const total = getRows().length;
+            if (!total) {
+                showMsg('error', 'لا يوجد مدعوون لإرسال الدعوة.');
+                return;
+            }
+
+            if (!window.confirm(`سيتم إرسال دعوة واتساب لـ ${total} مدعو عبر Cartat. هل تريد المتابعة؟`)) {
+                return;
+            }
+
+            sendWaInvitesBtn.disabled = true;
+            sendWaInvitesBtn.textContent = '⏳ جاري الإرسال...';
+
+            try {
+                const res = await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        action:   'pge_send_wa_invites',
+                        nonce:    '<?php echo esc_js(wp_create_nonce('pge_event_manage_nonce')); ?>',
+                        event_id: <?php echo (int) $event_id; ?>,
+                    }),
+                });
+                const json = await res.json();
+
+                if (json.success) {
+                    const d = json.data;
+                    showMsg('success', `✅ ${d.message}`);
+                } else {
+                    const errMsg = (json.data && json.data.message) ? json.data.message : JSON.stringify(json.data);
+                    showMsg('error', '❌ ' + errMsg);
+                }
+            } catch (err) {
+                showMsg('error', 'تعذر الاتصال بالخادم: ' + err.message);
+            } finally {
+                sendWaInvitesBtn.disabled = false;
+                sendWaInvitesBtn.innerHTML = '<span>📨</span> إرسال دعوات واتساب';
+            }
+        });
     }
 
     refreshBulkDeleteState();
