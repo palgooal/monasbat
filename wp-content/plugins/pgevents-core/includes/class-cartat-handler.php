@@ -132,7 +132,12 @@ class Mon_Cartat_Handler
             ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
             : '';
 
-        $image_url  = (string) get_the_post_thumbnail_url($event_id, 'full');
+        $image_url   = (string) get_the_post_thumbnail_url($event_id, 'full');
+        $event_url   = (string) get_permalink($event_id);
+        $invite_code = (string) get_post_meta($event_id, '_pge_invite_code', true);
+        if (function_exists('pge_normalize_invite_code')) {
+            $invite_code = pge_normalize_invite_code($invite_code);
+        }
         $guests_map = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
         $phones     = pge_get_invited_phones($event_id);
 
@@ -145,13 +150,22 @@ class Mon_Cartat_Handler
         foreach ($phones as $phone) {
             $wa_number  = $this->format_wa_number($phone);
             $guest_name = $guests_map[$phone]['name'] ?? 'ضيفنا العزيز';
+            $norm_phone = pge_norm_phone($phone);
 
-            $caption  = "مرحباً {$guest_name} 👋\n\n";
-            $caption .= "يسعدنا دعوتك لحضور:\n*{$event_name}*\n";
+            $caption  = "مرحباً *{$guest_name}* 👋\n\n";
+            $caption .= "يسعدنا دعوتك لحضور:\n✨ *{$event_name}*\n";
             if ($event_date) {
                 $caption .= "\n📅 {$event_date}\n";
             }
-            $caption .= "\nللرد على الدعوة أرسل:\n";
+            if ($event_url) {
+                $caption .= "\n🔗 رابط الدعوة:\n{$event_url}\n";
+            }
+            if ($invite_code) {
+                $caption .= "\n🔑 رمز الدعوة: *{$invite_code}*\n";
+                $caption .= "📱 رقمك المسجل: *{$norm_phone}*\n";
+            }
+            $caption .= "\n━━━━━━━━━━━━━━━\n";
+            $caption .= "للرد على الدعوة أرسل:\n";
             $caption .= "✅ *1* — سأحضر بإذن الله\n";
             $caption .= "❌ *2* — لن أتمكن من الحضور";
 
