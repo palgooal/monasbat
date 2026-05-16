@@ -744,12 +744,14 @@ class PGE_Admin_Controller
             $test_type    = sanitize_text_field($_POST['test_type']    ?? 'text');
             $test_img_url = esc_url_raw($_POST['test_img_url'] ?? '');
 
-            // تنسيق الرقم
+            // تنسيق الرقم (يعالج: 00XXX / 0XXX / +XXX / XXX)
             $phone_norm = preg_replace('/\D+/', '', $test_phone);
-            if (str_starts_with($phone_norm, '0')) {
-                $phone_norm = $country_code . substr($phone_norm, 1);
+            if (str_starts_with($phone_norm, '00')) {
+                $phone_norm = substr($phone_norm, 2);          // 00972XXX → 972XXX
+            } elseif (str_starts_with($phone_norm, '0')) {
+                $phone_norm = $country_code . substr($phone_norm, 1); // 0599XXX → 970599XXX
             } elseif (!str_starts_with($phone_norm, $country_code)) {
-                $phone_norm = $country_code . $phone_norm;
+                $phone_norm = $country_code . $phone_norm;     // 599XXX → 970599XXX
             }
 
             if ($test_type === 'media' && $test_img_url) {

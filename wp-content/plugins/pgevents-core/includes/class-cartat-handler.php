@@ -240,15 +240,22 @@ class Mon_Cartat_Handler
 
     /**
      * تحويل رقم الجوال إلى صيغة واتساب الدولية (966XXXXXXXXX)
+     * يعالج: 00XXXXXXXX / 0XXXXXXXX / XXXXXXXX / +XXXXXXXX
      */
     private function format_wa_number(string $phone): string
     {
-        $phone = pge_norm_phone($phone);
+        $phone = pge_norm_phone($phone); // أرقام فقط
 
-        // 05XXXXXXXX → XXXXXXXXX → أضف الكود
-        if (str_starts_with($phone, '0')) {
+        // 00XXXXXXXXX → الرقم يحمل كود الدولة بعد الـ 00
+        if (str_starts_with($phone, '00')) {
+            $phone = substr($phone, 2);
+        }
+        // 0XXXXXXXXX → رقم محلي، أضف كود الدولة بدل الصفر
+        elseif (str_starts_with($phone, '0')) {
             $phone = $this->country_code . substr($phone, 1);
-        } elseif (!str_starts_with($phone, $this->country_code)) {
+        }
+        // XXXXXXXXX بدون كود دولة → أضفه
+        elseif (!str_starts_with($phone, $this->country_code)) {
             $phone = $this->country_code . $phone;
         }
 
