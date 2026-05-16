@@ -112,12 +112,12 @@ get_header();
                         <h2 class="text-lg font-extrabold">قائمة المدعوين</h2>
                         <div class="flex flex-wrap gap-2">
                             <button id="bulkDeleteBtn" type="button" disabled class="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50">حذف المحدد</button>
-                            <button id="bulkWhatsappBtn" type="button" disabled class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50">واتساب للمحدد</button>
-                            <button id="whatsappAllBtn" type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">واتساب للكل</button>
-                            <button id="sendWaInvitesBtn" type="button" class="rounded-2xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-500 flex items-center gap-1">
-                                <span>📨</span> إرسال دعوات واتساب
+                            <button id="bulkWhatsappBtn" type="button" disabled title="يفتح واتساب الويب لكل مدعو محدد" class="rounded-2xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">📲 واتساب للمحدد</button>
+                            <button id="whatsappAllBtn" type="button" title="يفتح واتساب الويب لكل المدعوين" class="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">📲 واتساب للكل</button>
+                            <button id="sendWaInvitesBtn" type="button" title="يرسل الدعوات تلقائياً عبر Cartat API" class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 flex items-center gap-1">
+                                📨 إرسال تلقائي (Cartat)
                             </button>
-                            <button id="exportCsvBtn" type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">تصدير CSV</button>
+                            <button id="exportCsvBtn" type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">⬇ CSV</button>
                         </div>
                     </div>
 
@@ -237,50 +237,7 @@ get_header();
 
                 <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <h3 class="text-lg font-extrabold">إضافة مدعو</h3>
-                    <div class="mt-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                        <div class="flex items-center justify-between gap-2">
-                            <h4 class="text-sm font-extrabold text-slate-900">رسالة واتساب</h4>
-                            <span class="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">Template</span>
-                        </div>
-                        <p class="mt-1 text-xs text-slate-600">خصص نص الدعوة قبل الإرسال. استخدم المتغيرات التالية داخل الرسالة.</p>
-
-                        <textarea
-                            id="whatsappTemplateInput"
-                            rows="6"
-                            class="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
-                            placeholder="اكتب نص رسالة الدعوة..."></textarea>
-
-                        <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
-                            <span class="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{{guest_name}}</span>
-                            <span class="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{{event_title}}</span>
-                            <span class="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{{event_url}}</span>
-                            <span class="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{{image_url}}</span>
-                            <span class="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{{invite_code}}</span>
-                            <span class="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{{guest_phone}}</span>
-                        </div>
-
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            <button
-                                id="resetWhatsappTemplateBtn"
-                                type="button"
-                                class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50">
-                                استعادة الافتراضي
-                            </button>
-                            <button
-                                id="copyWhatsappPreviewBtn"
-                                type="button"
-                                class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50">
-                                نسخ المعاينة
-                            </button>
-                        </div>
-
-                        <div class="mt-3 rounded-2xl bg-white p-3 text-xs text-slate-700 ring-1 ring-slate-200">
-                            <div class="mb-1 font-semibold text-slate-700">معاينة</div>
-                            <pre id="whatsappPreviewText" class="whitespace-pre-wrap break-words font-sans text-xs leading-6 text-slate-700"></pre>
-                        </div>
-                    </div>
-
-                    <form id="addGuestForm" class="mt-6 space-y-3">
+                    <form id="addGuestForm" class="mt-4 space-y-3">
                         <div>
                             <label for="addGuestName" class="text-xs font-semibold text-slate-600">الاسم (اختياري)</label>
                             <input id="addGuestName" name="name" type="text" class="mt-2 h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-slate-900" placeholder="مثال: أحمد علي" />
@@ -305,6 +262,38 @@ get_header();
                         <button type="submit" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-500">إضافة الأرقام</button>
                     </form>
                 </div>
+
+                <details class="rounded-3xl border border-slate-200 bg-white shadow-sm">
+                    <summary class="cursor-pointer px-5 py-4 text-sm font-extrabold text-slate-800 select-none flex items-center justify-between">
+                        <span>✏️ تخصيص رسالة واتساب</span>
+                        <span class="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">Template</span>
+                    </summary>
+                    <div class="border-t border-slate-100 p-5 space-y-3">
+                        <p class="text-xs text-slate-600">خصص نص الدعوة الذي يُرسَل عند الضغط على "واتساب" لكل مدعو.</p>
+
+                        <textarea
+                            id="whatsappTemplateInput"
+                            rows="6"
+                            class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
+                            placeholder="اكتب نص رسالة الدعوة..."></textarea>
+
+                        <div class="flex flex-wrap gap-2 text-[11px] text-slate-600">
+                            <?php foreach (['guest_name','event_title','event_url','image_url','invite_code','guest_phone'] as $var): ?>
+                            <span class="cursor-pointer rounded-full bg-slate-50 px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-100" title="انقر للنسخ" onclick="navigator.clipboard.writeText('{{<?php echo $var; ?>}}')">{{<?php echo $var; ?>}}</span>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <button id="resetWhatsappTemplateBtn" type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50">استعادة الافتراضي</button>
+                            <button id="copyWhatsappPreviewBtn" type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50">نسخ المعاينة</button>
+                        </div>
+
+                        <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                            <div class="mb-1 text-xs font-semibold text-slate-500">معاينة</div>
+                            <pre id="whatsappPreviewText" class="whitespace-pre-wrap break-words font-sans text-xs leading-6 text-slate-700"></pre>
+                        </div>
+                    </div>
+                </details>
 
                 <div id="editGuestCard" class="hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <h3 class="text-lg font-extrabold">تعديل المدعو</h3>

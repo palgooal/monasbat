@@ -129,20 +129,49 @@ if (!function_exists('pge_event_guests_get_status_label')) {
     }
 }
 
+/**
+ * جلب بيانات RSVP من الجدول الحقيقي لمناسبة معينة
+ * يُعيد: map (phone=>reply) + checkin_map (phone=>true)
+ * يُخزَّن في static cache لتجنب الاستعلام المتكرر في نفس الطلب
+ */
+if (!function_exists('pge_event_guests_load_rsvp_from_db')) {
+    function pge_event_guests_load_rsvp_from_db(int $event_id): array
+    {
+        static $cache = [];
+        if (isset($cache[$event_id])) return $cache[$event_id];
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'pge_event_rsvps';
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT guest_phone, reply, checked_in FROM {$table} WHERE event_id = %d",
+            $event_id
+        ), ARRAY_A);
+
+        $map = [];
+        $checkin_map = [];
+        foreach ((array) $rows as $r) {
+            $map[$r['guest_phone']]        = $r['reply'];
+            if ((int) $r['checked_in'] === 1) {
+                $checkin_map[$r['guest_phone']] = true;
+            }
+        }
+
+        $cache[$event_id] = compact('map', 'checkin_map');
+        return $cache[$event_id];
+    }
+}
+
 if (!function_exists('pge_event_guests_get_row_payload')) {
     function pge_event_guests_get_row_payload($event_id, $guest)
     {
         $phone = pge_event_guests_norm_phone($guest['phone'] ?? '');
-        $name = sanitize_text_field((string) ($guest['name'] ?? ''));
-        $note = sanitize_textarea_field((string) ($guest['note'] ?? ''));
+        $name  = sanitize_text_field((string) ($guest['name'] ?? ''));
+        $note  = sanitize_textarea_field((string) ($guest['note'] ?? ''));
 
-        $rsvp_map = (array) get_post_meta($event_id, '_pge_rsvp_map', true);
-        $row = $rsvp_map[$phone] ?? null;
-        $reply = is_array($row) ? (string) ($row['reply'] ?? '') : '';
+        $rsvp   = pge_event_guests_load_rsvp_from_db((int) $event_id);
+        $reply  = isset($rsvp['map'][$phone]) ? (string) $rsvp['map'][$phone] : '';
         $status = ($reply === 'yes' || $reply === 'no') ? $reply : 'pending';
-
-        $checkins = (array) get_post_meta($event_id, '_pge_checkins', true);
-        $checked = isset($checkins[$phone]) ? 'yes' : 'no';
+        $checked = isset($rsvp['checkin_map'][$phone]) ? 'yes' : 'no';
 
         return [
             'phone'        => $phone,
@@ -163,19 +192,16 @@ if (!function_exists('pge_event_guests_get_stats')) {
         }
 
         $phones = array_keys($guests_map);
-        $total = count($phones);
-        $yes = 0;
-        $no = 0;
-        $checked = 0;
+        $total  = count($phones);
+        $yes = $no = $checked = 0;
 
-        $rsvp_map = (array) get_post_meta($event_id, '_pge_rsvp_map', true);
-        $checkins = (array) get_post_meta($event_id, '_pge_checkins', true);
+        $rsvp = pge_event_guests_load_rsvp_from_db((int) $event_id);
 
         foreach ($phones as $phone) {
-            $row = $rsvp_map[$phone] ?? null;
-            if (is_array($row) && ($row['reply'] ?? '') === 'yes') $yes++;
-            if (is_array($row) && ($row['reply'] ?? '') === 'no') $no++;
-            if (isset($checkins[$phone])) $checked++;
+            $reply = $rsvp['map'][$phone] ?? '';
+            if ($reply === 'yes') $yes++;
+            if ($reply === 'no')  $no++;
+            if (isset($rsvp['checkin_map'][$phone])) $checked++;
         }
 
         $pending = max(0, $total - ($yes + $no));

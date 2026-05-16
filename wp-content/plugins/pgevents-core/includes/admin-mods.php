@@ -196,6 +196,51 @@ class PGE_Admin_Controller
             }
         }
 
+        // إسناد باقة لمستخدم يدوياً (إعادة تفعيل)
+        $assign_msg = '';
+        if (isset($_POST['mon_assign_package']) && check_admin_referer('mon_assign_package_nonce')) {
+            $assign_email    = sanitize_email(wp_unslash($_POST['assign_user_email'] ?? ''));
+            $assign_plan_key = sanitize_text_field(wp_unslash($_POST['assign_plan_key'] ?? ''));
+
+            if ($assign_email && $assign_plan_key) {
+                $all_plans_now  = get_option('mon_packages_settings', []);
+                $plan_det       = $all_plans_now[$assign_plan_key] ?? [];
+
+                if (empty($plan_det)) {
+                    $assign_msg = '<div class="notice notice-error is-dismissible"><p>❌ الباقة "' . esc_html($assign_plan_key) . '" غير موجودة في الإعدادات.</p></div>';
+                } else {
+                    $assign_user = get_user_by('email', $assign_email);
+                    if (!$assign_user) {
+                        $assign_msg = '<div class="notice notice-error is-dismissible"><p>❌ لم يُعثر على مستخدم بهذا البريد: ' . esc_html($assign_email) . '</p></div>';
+                    } else {
+                        // تطبيق نفس منطق activate_user_package مباشرة
+                        update_user_meta($assign_user->ID, '_mon_package_status', 'active');
+                        update_user_meta($assign_user->ID, '_mon_package_key',    $assign_plan_key);
+                        update_user_meta($assign_user->ID, '_mon_package_name',   $plan_det['name'] ?? 'باقة');
+                        update_user_meta($assign_user->ID, '_mon_events_limit',   max(1, (int)($plan_det['events_count'] ?? 1)));
+                        update_user_meta($assign_user->ID, '_mon_guest_limit',    max(0, (int)($plan_det['guest_limit']  ?? 0)));
+                        update_user_meta($assign_user->ID, '_mon_host_photos_limit', max(0, (int)($plan_det['host_photos'] ?? 0)));
+                        update_user_meta($assign_user->ID, '_mon_wa_limit',       max(0, (int)($plan_det['wa_messages']  ?? 0)));
+
+                        $features = [];
+                        foreach ($plan_det as $fk => $fv) {
+                            if ($fv == '1' || $fv === 1) $features[] = $fk;
+                        }
+                        update_user_meta($assign_user->ID, '_mon_active_features', $features);
+
+                        error_log("🔧 Manual Plan Assign: {$assign_plan_key} → User #{$assign_user->ID} ({$assign_email}) by Admin");
+
+                        $pname = $plan_det['name'] ?? $assign_plan_key;
+                        $elim  = max(1, (int)($plan_det['events_count'] ?? 1));
+                        $assign_msg = '<div class="notice notice-success is-dismissible"><p>✅ تم تفعيل باقة "<strong>' . esc_html($pname) . '</strong>" للمستخدم <strong>' . esc_html($assign_email) . '</strong> بنجاح! (مناسبات: ' . $elim . ')</p></div>';
+                    }
+                }
+            } else {
+                $assign_msg = '<div class="notice notice-warning is-dismissible"><p>⚠️ يرجى إدخال البريد الإلكتروني واختيار الباقة.</p></div>';
+            }
+        }
+        echo wp_kses_post($assign_msg);
+
         $plans = get_option('mon_packages_settings', []);
 ?>
         <style>
@@ -549,6 +594,66 @@ class PGE_Admin_Controller
                     </button>
                 </form>
             </div>
+
+            <!-- ── إسناد باقة لمستخدم يدوياً ─────────────────────────────── -->
+            <div class="mon-card" style="margin-top:24px; border: 2px solid #f59e0b;">
+                <h2 style="margin-top:0; color:#92400e; border-bottom:2px solid #f59e0b; padding-bottom:10px;">
+                    🛠️ إسناد / إصلاح باقة مستخدم يدوياً
+                </h2>
+                <p style="color:#555; margin-bottom:18px;">
+                    استخدم هذه الأداة لإسناد باقة لمستخدم موجود أو لإصلاح حالة اشتراك لم يتفعل بشكل صحيح.
+                    سيتم نسخ جميع الحدود والمميزات من إعدادات الباقة المحفوظة أعلاه مباشرةً.
+                </p>
+                <form method="post">
+                    <?php wp_nonce_field('mon_assign_package_nonce'); ?>
+                    <table style="width:100%; max-width:700px; border-collapse:collapse;">
+                        <tr>
+                            <td style="padding:8px 0; font-weight:bold; width:200px;">البريد الإلكتروني للمستخدم:</td>
+                            <td style="padding:8px 0;">
+                                <input
+                                    type="email"
+                                    name="assign_user_email"
+                                    placeholder="user@example.com"
+                                    style="width:100%; max-width:350px; padding:8px 12px; border:1px solid #ccc; border-radius:6px; direction:ltr;"
+                                    required
+                                />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:8px 0; font-weight:bold;">الباقة:</td>
+                            <td style="padding:8px 0;">
+                                <select name="assign_plan_key" style="padding:8px 12px; border:1px solid #ccc; border-radius:6px; min-width:200px;">
+                                    <?php
+                                    $assign_plans = get_option('mon_packages_settings', []);
+                                    if (empty($assign_plans)) {
+                                        $assign_plans = [
+                                            'plan_1' => ['name' => 'باقة 1'],
+                                            'plan_2' => ['name' => 'باقة 2'],
+                                            'plan_3' => ['name' => 'باقة 3'],
+                                            'plan_4' => ['name' => 'باقة 4'],
+                                        ];
+                                    }
+                                    foreach ($assign_plans as $pk => $pd):
+                                        if (empty($pd['name'])) continue;
+                                        $elim = max(1, (int)($pd['events_count'] ?? 1));
+                                    ?>
+                                        <option value="<?php echo esc_attr($pk); ?>">
+                                            <?php echo esc_html($pd['name']); ?> — <?php echo $elim; ?> مناسبة
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                    </table>
+                    <div style="margin-top:16px;">
+                        <button type="submit" name="mon_assign_package" class="button button-primary" style="background:#f59e0b; border-color:#d97706; color:#fff;">
+                            ⚡ تفعيل الباقة للمستخدم
+                        </button>
+                        <span style="margin-right:12px; color:#888; font-size:12px;">سيتم استبدال الباقة الحالية للمستخدم.</span>
+                    </div>
+                </form>
+            </div>
+
         </div>
 <?php
     }

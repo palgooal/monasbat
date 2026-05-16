@@ -25,11 +25,11 @@ class Mon_Events_Users
             update_user_meta($user->ID, '_mon_last_order_id', $data['order_id']);
             update_user_meta($user->ID, '_mon_activation_date', current_time('mysql'));
 
-            // 3. تخزين "الحدود والكميات" مباشرة في بيانات المستخدم لسهولة فحصها لاحقاً
-            update_user_meta($user->ID, '_mon_guest_limit', $plan_details['guest_limit'] ?? 0);
-            update_user_meta($user->ID, '_mon_host_photos_limit', $plan_details['host_photos'] ?? 0);
-            update_user_meta($user->ID, '_mon_events_limit', $plan_details['events_count'] ?? 1);
-            update_user_meta($user->ID, '_mon_wa_limit', $plan_details['wa_messages'] ?? 0);
+            // 3. تخزين "الحدود والكميات" — max() يضمن عدم تخزين 0 في events_count بسبب حقل فارغ
+            update_user_meta($user->ID, '_mon_guest_limit',       max(0, (int)($plan_details['guest_limit']  ?? 0)));
+            update_user_meta($user->ID, '_mon_host_photos_limit', max(0, (int)($plan_details['host_photos']  ?? 0)));
+            update_user_meta($user->ID, '_mon_events_limit',      max(1, (int)($plan_details['events_count'] ?? 1)));
+            update_user_meta($user->ID, '_mon_wa_limit',          max(0, (int)($plan_details['wa_messages']  ?? 0)));
 
             // 4. تخزين "المميزات النشطة" كـ Array لسرعة التحقق
             // سنقوم بتخزين كل مفتاح قيمته 1
