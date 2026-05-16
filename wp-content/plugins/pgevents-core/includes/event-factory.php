@@ -158,13 +158,13 @@ function pge_handle_event_creation()
         $allowed_limit = $user_plan_key !== '' ? (int) ($plan_limits['events_count'] ?? 0) : 0;
     }
 
-    // جلب عدد المناسبات الحالية للمستخدم (بجميع الحالات ما عدا المحذوفة)
+    // جلب عدد المناسبات الفعّالة للمستخدم (نستثني المؤرشفة — status=private + meta _pge_archived=1)
     $user_events_query = new WP_Query(array(
         'post_type'      => 'pge_event',
-        'post_status'    => array('publish', 'private', 'draft', 'pending'),
+        'post_status'    => array('publish', 'draft', 'pending'),
         'author'         => $user_id,
         'posts_per_page' => -1,
-        'fields'         => 'ids', // لتحسين الأداء
+        'fields'         => 'ids',
     ));
 
     $current_count = $user_events_query->found_posts;
@@ -356,6 +356,8 @@ function pge_handle_event_archiving()
     ));
 
     if ($result) {
+        // نضع علامة أرشفة حتى لا تُحسب في حصة الباقة
+        update_post_meta($event_id, '_pge_archived', '1');
         wp_send_json_success('تم إغلاق المناسبة وأرشفتها بنجاح');
     } else {
         wp_send_json_error('فشل في إغلاق المناسبة');
