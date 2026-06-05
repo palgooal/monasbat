@@ -114,8 +114,11 @@ get_header();
                             <button id="bulkDeleteBtn" type="button" disabled class="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50">حذف المحدد</button>
                             <button id="bulkWhatsappBtn" type="button" disabled title="يفتح واتساب الويب لكل مدعو محدد" class="rounded-2xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">📲 واتساب للمحدد</button>
                             <button id="whatsappAllBtn" type="button" title="يفتح واتساب الويب لكل المدعوين" class="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">📲 واتساب للكل</button>
-                            <button id="sendWaInvitesBtn" type="button" title="يرسل الدعوات تلقائياً عبر Cartat API" class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 flex items-center gap-1">
+                            <button id="sendWaInvitesBtn" type="button" title="يرسل الدعوات في الخلفية — يمكن إغلاق الصفحة" class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 flex items-center gap-1">
                                 📨 إرسال تلقائي (Cartat)
+                            </button>
+                            <button id="waReportBtn" type="button" title="عرض تقرير الإرسال السابق" class="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                📊 التقرير
                             </button>
                             <button id="exportCsvBtn" type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">⬇ CSV</button>
                         </div>
@@ -1002,47 +1005,132 @@ get_header();
         whatsappAllBtn.classList.add('cursor-not-allowed', 'opacity-50');
     }
 
-    // ── إرسال دعوات واتساب عبر Cartat API ───────────────────────────────────
+    // ── نظام إرسال واتساب في الخلفية ────────────────────────────────────────
+    const ajaxUrl  = '<?php echo esc_url(admin_url('admin-ajax.php')); ?>';
+    const waNonce  = '<?php echo esc_js(wp_create_nonce('pge_event_manage_nonce')); ?>';
+    const waEventId = <?php echo (int) $event_id; ?>;
+
+    // دالة جلب حالة الـ Queue وعرض Modal التقرير
+    async function showWaReport() {
+        const res  = await fetch(ajaxUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ action: 'pge_wa_queue_status', nonce: waNonce, event_id: waEventId }),
+        });
+        const json = await res.json();
+        if (!json.success) return;
+        const d = json.data;
+        if (d.status === 'none') { alert('لا يوجد إرسال مجدول أو منتهٍ بعد.'); return; }
+
+        const statusLabel = { queued: '⏳ في الانتظار', running: '🔄 جاري الإرسال', done: '✅ اكتمل' };
+        const rows = (d.report ?? []).map(r => `
+            <tr class="border-b">
+                <td class="py-1 px-2">${r.name}</td>
+                <td class="py-1 px-2 text-slate-500 text-sm" dir="ltr">${r.phone}</td>
+                <td class="py-1 px-2">${r.status === 'sent' ? '✅ أُرسل' : '❌ فشل'}</td>
+                <td class="py-1 px-2 text-slate-400 text-xs">${r.time}</td>
+            </tr>`).join('');
+
+        // إزالة modal قديم إن وجد
+        document.getElementById('waReportModal')?.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'waReportModal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+        modal.innerHTML = `
+            <div style="background:#fff;border-radius:12px;width:100%;max-width:600px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;" dir="rtl">
+                <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">
+                    <h3 style="font-weight:700;font-size:16px;">📊 تقرير إرسال واتساب</h3>
+                    <button onclick="document.getElementById('waReportModal').remove()" style="font-size:20px;line-height:1;cursor:pointer;">×</button>
+                </div>
+                <div style="padding:12px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;gap:20px;font-size:14px;">
+                    <span>${statusLabel[d.status] ?? d.status}</span>
+                    <span>📊 ${d.offset ?? 0} / ${d.total ?? 0}</span>
+                    <span>✅ نجح: ${d.sent ?? 0}</span>
+                    <span>❌ فشل: ${d.failed ?? 0}</span>
+                    ${d.done_at ? `<span style="color:#6b7280;">انتهى: ${d.done_at}</span>` : ''}
+                </div>
+                ${d.status !== 'done' ? `
+                <div style="padding:12px 20px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:13px;color:#92400e;">
+                    ⏳ الإرسال لا يزال جارياً. أغلق هذه النافذة وعد لاحقاً لمشاهدة التقرير الكامل.
+                </div>` : ''}
+                <div style="overflow-y:auto;flex:1;">
+                    <table style="width:100%;font-size:13px;border-collapse:collapse;">
+                        <thead style="background:#f3f4f6;position:sticky;top:0;">
+                            <tr>
+                                <th class="py-2 px-2 text-right font-semibold">الاسم</th>
+                                <th class="py-2 px-2 text-right font-semibold">الجوال</th>
+                                <th class="py-2 px-2 text-right font-semibold">الحالة</th>
+                                <th class="py-2 px-2 text-right font-semibold">الوقت</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:20px;color:#9ca3af;">لا توجد نتائج بعد</td></tr>'}</tbody>
+                    </table>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    }
+
+    // زر عرض التقرير
+    const waReportBtn = document.getElementById('waReportBtn');
+    if (waReportBtn) waReportBtn.addEventListener('click', showWaReport);
+
+    // تحقق عند تحميل الصفحة: هل هناك إرسال جارٍ؟
+    (async () => {
+        const res  = await fetch(ajaxUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ action: 'pge_wa_queue_status', nonce: waNonce, event_id: waEventId }),
+        }).catch(() => null);
+        if (!res) return;
+        const json = await res.json().catch(() => null);
+        if (!json?.success) return;
+        const d = json.data;
+        if (d.status === 'running' || d.status === 'queued') {
+            showMsg('info', `⏳ إرسال واتساب جارٍ في الخلفية — ${d.offset ?? 0} / ${d.total ?? 0}. اضغط "📊 التقرير" للتفاصيل.`);
+        }
+    })();
+
+    // ── زر إرسال دعوات واتساب (الخلفية) ────────────────────────────────────
     const sendWaInvitesBtn = document.getElementById('sendWaInvitesBtn');
     if (sendWaInvitesBtn) {
         sendWaInvitesBtn.addEventListener('click', async () => {
             const total = getRows().length;
-            if (!total) {
-                showMsg('error', 'لا يوجد مدعوون لإرسال الدعوة.');
-                return;
-            }
+            if (!total) { showMsg('error', 'لا يوجد مدعوون لإرسال الدعوة.'); return; }
 
-            if (!window.confirm(`سيتم إرسال دعوة واتساب لـ ${total} مدعو عبر Cartat. هل تريد المتابعة؟`)) {
-                return;
-            }
+            const mins = Math.ceil(total * 3.5 / 60);
+            if (!window.confirm(
+                `سيتم إرسال دعوة واتساب لـ ${total} مدعو في الخلفية.\n` +
+                `⏱ مدة تقريبية: ${mins} دقيقة.\n\n` +
+                `✅ يمكنك إغلاق الصفحة — الإرسال يكمل تلقائياً.\n` +
+                `📊 عد لاحقاً واضغط "التقرير" لمشاهدة النتائج.`
+            )) return;
 
             sendWaInvitesBtn.disabled = true;
-            sendWaInvitesBtn.textContent = '⏳ جاري الإرسال...';
+            sendWaInvitesBtn.textContent = '⏳ جاري التقديم...';
 
             try {
-                const res = await fetch('<?php echo esc_url(admin_url('admin-ajax.php')); ?>', {
+                const res  = await fetch(ajaxUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams({
-                        action:   'pge_send_wa_invites',
-                        nonce:    '<?php echo esc_js(wp_create_nonce('pge_event_manage_nonce')); ?>',
-                        event_id: <?php echo (int) $event_id; ?>,
+                        action:   'pge_wa_queue_start',
+                        nonce:    waNonce,
+                        event_id: waEventId,
                     }),
                 });
                 const json = await res.json();
-
                 if (json.success) {
-                    const d = json.data;
-                    showMsg('success', `✅ ${d.message}`);
+                    showMsg('success', `🚀 ${json.data.message}`);
                 } else {
-                    const errMsg = (json.data && json.data.message) ? json.data.message : JSON.stringify(json.data);
-                    showMsg('error', '❌ ' + errMsg);
+                    showMsg('error', '❌ ' + (json.data?.message ?? JSON.stringify(json.data)));
                 }
             } catch (err) {
                 showMsg('error', 'تعذر الاتصال بالخادم: ' + err.message);
             } finally {
                 sendWaInvitesBtn.disabled = false;
-                sendWaInvitesBtn.innerHTML = '<span>📨</span> إرسال دعوات واتساب';
+                sendWaInvitesBtn.innerHTML = '📨 إرسال تلقائي (Cartat)';
             }
         });
     }

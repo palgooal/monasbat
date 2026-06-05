@@ -41,7 +41,7 @@ class PGE_Admin_Controller
 
         add_submenu_page(
             'edit.php?post_type=pge_event',
-            'إعدادات واتساب (Cartat)',
+            'إعدادات واتساب',
             '💬 إعدادات واتساب',
             'manage_options',
             'pge-cartat-settings',
@@ -748,12 +748,27 @@ class PGE_Admin_Controller
         });
     }
 
-    // ── صفحة إعدادات واتساب (Cartat) ─────────────────────────────────────────
+    // ── صفحة إعدادات واتساب (Cartat + UltraMsg) ───────────────────────────────
     public function render_cartat_settings_page()
     {
         if (!current_user_can('manage_options')) return;
 
-        // حفظ الإعدادات
+        // ── حفظ اختيار المزوّد ──────────────────────────────────────────────
+        if (isset($_POST['pge_wa_provider_save']) && check_admin_referer('pge_wa_provider_nonce')) {
+            $prov = sanitize_text_field($_POST['pge_wa_provider'] ?? 'cartat');
+            $prov = in_array($prov, ['cartat', 'ultramsg'], true) ? $prov : 'cartat';
+            update_option('pge_wa_provider', $prov);
+            echo '<div class="notice notice-success is-dismissible"><p>✅ تم تغيير المزوّد إلى <strong>' . esc_html($prov === 'ultramsg' ? 'UltraMsg' : 'Cartat') . '</strong> — سيدخل حيز التنفيذ فوراً.</p></div>';
+        }
+
+        // ── حفظ إعدادات UltraMsg ────────────────────────────────────────────
+        if (isset($_POST['pge_ultramsg_save']) && check_admin_referer('pge_ultramsg_settings_nonce')) {
+            update_option('pge_ultramsg_instance_id', sanitize_text_field($_POST['pge_ultramsg_instance_id'] ?? ''));
+            update_option('pge_ultramsg_token',       sanitize_text_field($_POST['pge_ultramsg_token']       ?? ''));
+            echo '<div class="notice notice-success is-dismissible"><p>✅ تم حفظ إعدادات UltraMsg بنجاح.</p></div>';
+        }
+
+        // ── حفظ إعدادات Cartat ──────────────────────────────────────────────
         if (isset($_POST['pge_cartat_save']) && check_admin_referer('pge_cartat_settings_nonce')) {
             update_option('pge_cartat_api_token',    sanitize_text_field($_POST['pge_cartat_api_token']    ?? ''));
             update_option('pge_cartat_country_code', sanitize_text_field($_POST['pge_cartat_country_code'] ?? '966'));
@@ -764,8 +779,146 @@ class PGE_Admin_Controller
         $country_code = (string) get_option('pge_cartat_country_code', '966');
         $webhook_url  = home_url('/wp-json/mon/v1/wa-callback');
 
+        $active_provider    = (string) get_option('pge_wa_provider', 'cartat');
+        $um_instance_id     = (string) get_option('pge_ultramsg_instance_id', '');
+        $um_token           = (string) get_option('pge_ultramsg_token', '');
+        $um_webhook_url     = home_url('/wp-json/mon/v1/um-callback');
+
         echo '<div class="wrap" style="direction:rtl; font-family:\'Segoe UI\',Tahoma;">';
-        echo '<h1>💬 إعدادات واتساب — Cartat</h1>';
+        echo '<h1>💬 إعدادات واتساب</h1>';
+
+        // ── زر التبديل بين المزوّدين ─────────────────────────────────────────
+        echo '<div style="background:#fff; border:2px solid #2271b1; border-radius:12px; padding:20px 24px; margin-bottom:24px;">';
+        echo '<h2 style="margin-top:0; color:#1d2327;">🔀 المزوّد النشط حالياً</h2>';
+        echo '<form method="post" style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">';
+        wp_nonce_field('pge_wa_provider_nonce');
+        echo '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:12px 20px; border-radius:8px; border:2px solid ' . ($active_provider === 'cartat' ? '#2271b1' : '#ccc') . '; background:' . ($active_provider === 'cartat' ? '#eff6ff' : '#f9fafb') . ';">';
+        echo '<input type="radio" name="pge_wa_provider" value="cartat" ' . checked($active_provider, 'cartat', false) . '>';
+        echo '<span style="font-weight:bold; font-size:15px;">Cartat</span>';
+        echo '<span style="font-size:12px; color:#666;">api.cartat.net</span>';
+        echo '</label>';
+        echo '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:12px 20px; border-radius:8px; border:2px solid ' . ($active_provider === 'ultramsg' ? '#16a34a' : '#ccc') . '; background:' . ($active_provider === 'ultramsg' ? '#f0fdf4' : '#f9fafb') . ';">';
+        echo '<input type="radio" name="pge_wa_provider" value="ultramsg" ' . checked($active_provider, 'ultramsg', false) . '>';
+        echo '<span style="font-weight:bold; font-size:15px;">UltraMsg</span>';
+        echo '<span style="font-size:12px; color:#666;">api.ultramsg.com</span>';
+        echo '</label>';
+        echo '<button type="submit" name="pge_wa_provider_save" class="button button-primary">💾 تطبيق الاختيار</button>';
+        echo '</form>';
+        $provider_badge = $active_provider === 'ultramsg'
+            ? '<span style="background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; padding:4px 12px; border-radius:20px; font-weight:bold; font-size:13px;">✅ UltraMsg نشط</span>'
+            : '<span style="background:#eff6ff; color:#2271b1; border:1px solid #bfdbfe; padding:4px 12px; border-radius:20px; font-weight:bold; font-size:13px;">✅ Cartat نشط</span>';
+        echo '<p style="margin-top:12px; color:#555;">المزوّد الحالي: ' . $provider_badge . '</p>';
+        echo '</div>';
+
+        // ── إعدادات UltraMsg ─────────────────────────────────────────────────
+        $um_display = $active_provider === 'ultramsg' ? 'block' : 'none';
+        echo '<div id="pge-ultramsg-section" style="display:' . $um_display . ';">';
+        echo '<div style="background:#f0fdf4; border:2px solid #bbf7d0; border-radius:12px; padding:20px 24px; margin-bottom:24px;">';
+        echo '<h2 style="margin-top:0; color:#15803d;">📱 إعدادات UltraMsg</h2>';
+
+        echo '<div style="background:#dcfce7; border:1px solid #86efac; border-radius:8px; padding:14px 18px; margin:0 0 16px; color:#166534;">';
+        echo '<strong>🔗 Webhook URL لـ UltraMsg</strong> — أدخل هذا الرابط في لوحة UltraMsg:<br>';
+        echo '<code style="background:#fff; border:1px solid #86efac; padding:6px 12px; display:inline-block; margin-top:8px; border-radius:4px; font-size:13px;">' . esc_url($um_webhook_url) . '</code>';
+        echo '<br><small style="margin-top:6px; display:block;">في UltraMsg: Settings → Webhook → Webhook URL</small>';
+        echo '</div>';
+
+        // اختبار الاتصال
+        if (!empty($um_instance_id) && !empty($um_token)) {
+            $um_test_res = wp_remote_get('https://api.ultramsg.com/' . $um_instance_id . '/instance/status', [
+                'body'    => ['token' => $um_token],
+                'timeout' => 10,
+            ]);
+            if (!is_wp_error($um_test_res)) {
+                $um_body = json_decode(wp_remote_retrieve_body($um_test_res), true);
+                $um_status = $um_body['status'] ?? ($um_body['accountStatus'] ?? '');
+                $is_connected = in_array($um_status, ['authenticated', 'connected'], true)
+                             || (isset($um_body['status']['msg']) && $um_body['status']['msg'] === 'qrCode'  ? false : true);
+                echo '<div style="background:' . ($is_connected ? '#f0fdf4' : '#fef9c3') . '; border:1px solid ' . ($is_connected ? '#86efac' : '#fde047') . '; padding:10px 14px; border-radius:6px; margin-bottom:16px; color:' . ($is_connected ? '#15803d' : '#854d0e') . ';">';
+                echo ($is_connected ? '✅ الاتصال ناجح' : '⚠️ تحقق من البيانات') . ' — ' . esc_html(json_encode($um_body));
+                echo '</div>';
+            }
+        }
+
+        echo '<form method="post">';
+        wp_nonce_field('pge_ultramsg_settings_nonce');
+        echo '<table class="form-table" style="direction:rtl;">';
+
+        echo '<tr>';
+        echo '<th scope="row"><label for="pge_um_instance">🆔 Instance ID</label></th>';
+        echo '<td>';
+        echo '<input type="text" id="pge_um_instance" name="pge_ultramsg_instance_id"
+                     value="' . esc_attr($um_instance_id) . '"
+                     class="regular-text" style="width:300px;" placeholder="instance12345">';
+        echo '<p class="description">تجده في لوحة UltraMsg: My Instances → Instance ID</p>';
+        echo '</td></tr>';
+
+        echo '<tr>';
+        echo '<th scope="row"><label for="pge_um_token">🔑 Token</label></th>';
+        echo '<td>';
+        echo '<input type="text" id="pge_um_token" name="pge_ultramsg_token"
+                     value="' . esc_attr($um_token) . '"
+                     class="regular-text" style="width:400px;" placeholder="token من لوحة UltraMsg">';
+        echo '<p class="description">تجده في لوحة UltraMsg: My Instances → Token</p>';
+        echo '</td></tr>';
+
+        echo '</table>';
+        echo '<p><input type="submit" name="pge_ultramsg_save" class="button button-primary" value="💾 حفظ إعدادات UltraMsg"></p>';
+        echo '</form>';
+
+        // اختبار الإرسال عبر UltraMsg
+        echo '<hr>';
+        echo '<h3>📤 اختبار الإرسال عبر UltraMsg</h3>';
+        $um_test_send_result = null;
+        if (isset($_POST['pge_ultramsg_test_send']) && check_admin_referer('pge_ultramsg_test_nonce') && !empty($um_instance_id) && !empty($um_token)) {
+            $t_phone   = preg_replace('/\D+/', '', sanitize_text_field($_POST['um_test_phone'] ?? ''));
+            if (str_starts_with($t_phone, '00')) $t_phone = substr($t_phone, 2);
+            $t_message = sanitize_textarea_field($_POST['um_test_message'] ?? 'رسالة تجريبية من UltraMsg ✅');
+            $send_res  = wp_remote_post('https://api.ultramsg.com/' . $um_instance_id . '/messages/chat', [
+                'headers' => ['Content-Type' => 'application/x-www-form-urlencoded'],
+                'body'    => http_build_query(['token' => $um_token, 'to' => $t_phone, 'body' => $t_message]),
+                'timeout' => 20,
+            ]);
+            if (is_wp_error($send_res)) {
+                $um_test_send_result = ['ok' => false, 'msg' => $send_res->get_error_message()];
+            } else {
+                $b = json_decode(wp_remote_retrieve_body($send_res), true);
+                $ok = ($b['sent'] ?? '') === 'true';
+                $um_test_send_result = ['ok' => $ok, 'msg' => $ok ? '✅ تم الإرسال! ID: ' . ($b['id'] ?? '—') . " | إلى: $t_phone" : '❌ فشل: ' . json_encode($b)];
+            }
+        }
+        if ($um_test_send_result) {
+            $c = $um_test_send_result['ok'] ? '#f0fdf4; border:1px solid #bbf7d0; color:#15803d' : '#fef2f2; border:1px solid #fecaca; color:#dc2626';
+            echo '<div style="background:' . $c . '; padding:12px; border-radius:6px; margin-bottom:16px;">' . esc_html($um_test_send_result['msg']) . '</div>';
+        }
+        if (!empty($um_instance_id) && !empty($um_token)) {
+            echo '<form method="post" style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:16px; max-width:480px;">';
+            wp_nonce_field('pge_ultramsg_test_nonce');
+            echo '<table class="form-table" style="direction:rtl; margin:0;">';
+            echo '<tr><th style="width:130px;">📱 رقم الجوال</th><td><input type="text" name="um_test_phone" class="regular-text" placeholder="972599XXXXXX" value="' . esc_attr($_POST['um_test_phone'] ?? '') . '"></td></tr>';
+            echo '<tr><th>✉️ نص الرسالة</th><td><textarea name="um_test_message" rows="3" class="large-text">' . esc_textarea($_POST['um_test_message'] ?? 'رسالة تجريبية من UltraMsg ✅') . '</textarea></td></tr>';
+            echo '</table>';
+            echo '<p><input type="submit" name="pge_ultramsg_test_send" class="button button-secondary" value="📨 إرسال تجريبي"></p>';
+            echo '</form>';
+        } else {
+            echo '<p style="color:#9ca3af;">أدخل Instance ID و Token أولاً.</p>';
+        }
+
+        echo '</div></div>'; // end ultramsg section + card
+
+        // ── قسم Cartat ─────────────────────────────────────────────────────
+        $cartat_display = $active_provider === 'cartat' ? 'block' : 'none';
+        echo '<div id="pge-cartat-section" style="display:' . $cartat_display . ';">';
+        // Script للتبديل الفوري بدون reload
+        echo '<script>
+        document.addEventListener("DOMContentLoaded", function(){
+            document.querySelectorAll("[name=pge_wa_provider]").forEach(function(r){
+                r.addEventListener("change", function(){
+                    document.getElementById("pge-ultramsg-section").style.display = this.value==="ultramsg" ? "block" : "none";
+                    document.getElementById("pge-cartat-section").style.display   = this.value==="cartat"   ? "block" : "none";
+                });
+            });
+        });
+        </script>';
 
         echo '<div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:16px; margin:16px 0; color:#1e40af;">';
         echo '<strong>🔗 Webhook URL</strong> — أدخل هذا الرابط في إعدادات Cartat:<br>';
@@ -945,6 +1098,7 @@ class PGE_Admin_Controller
             echo '<p style="color:#9ca3af;">أدخل الـ API Token أولاً لتفعيل خاصية الاختبار.</p>';
         }
 
+        echo '</div>'; // end cartat section
         echo '</div>'; // end wrap
     }
 }

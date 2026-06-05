@@ -2,54 +2,57 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * Class Mon_Cartat_Handler
- * تكامل واتساب عبر cartat.net
- * — إرسال دعوات بصورة + نص
- * — استقبال الردود (1=حضور / 2=اعتذار) وتسجيلها في RSVP
+ * Class Mon_UltraMsg_Handler
+ * تكامل واتساب عبر UltraMsg
+ * — نفس منطق Cartat تماماً ولكن عبر UltraMsg API
+ * — لا يوجد مشكلة LID لأن UltraMsg يُرجع رقم الهاتف مباشرة
  */
-class Mon_Cartat_Handler
+class Mon_UltraMsg_Handler
 {
-    private string $api_token;
-    private string $api_base    = 'https://api.cartat.net';
+    private string $instance_id;
+    private string $token;
+    private string $api_base;
     private string $country_code;
 
     public function __construct()
     {
-        $this->api_token    = (string) get_option('pge_cartat_api_token', '');
+        $this->instance_id  = (string) get_option('pge_ultramsg_instance_id', '');
+        $this->token        = (string) get_option('pge_ultramsg_token', '');
         $this->country_code = (string) get_option('pge_cartat_country_code', '966');
+        $this->api_base     = 'https://api.ultramsg.com/' . $this->instance_id;
 
         add_action('rest_api_init',               [$this, 'register_webhook_route']);
         add_action('wp_ajax_pge_send_wa_invites', [$this, 'handle_send_invitations_ajax']);
 
-        // نظام الإرسال في الخلفية (Queue)
+        // نفس أسماء AJAX الخاصة بـ Cartat — page-event-manage.php يعمل بدون تعديل
         add_action('wp_ajax_pge_wa_queue_start',  [$this, 'ajax_queue_start']);
         add_action('wp_ajax_pge_wa_queue_status', [$this, 'ajax_queue_status']);
         add_action('pge_wa_process_queue',        [$this, 'cron_process_queue'], 10, 1);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // REST Webhook — استقبال ردود المدعوين
+    // REST Webhook — استقبال ردود المدعوين من UltraMsg
     // ══════════════════════════════════════════════════════════════════════════
 
     public function register_webhook_route()
     {
-        // POST — استقبال ردود المدعوين من Cartat
-        register_rest_route('mon/v1', '/wa-callback', [
+        register_rest_route('mon/v1', '/um-callback', [
             'methods'             => 'POST',
             'callback'            => [$this, 'handle_incoming_message'],
             'permission_callback' => '__return_true',
         ]);
 
-        // GET — للتحقق أن الـ endpoint يعمل
-        register_rest_route('mon/v1', '/wa-callback', [
+        // GET — للتحقق أن الـ endpoint يعمل + عرض آخر السجلات
+        register_rest_route('mon/v1', '/um-callback', [
             'methods'             => 'GET',
             'callback'            => function () {
-                $log_file = WP_CONTENT_DIR . '/cartat-webhook.log';
+                $log_file = WP_CONTENT_DIR . '/ultramsg-webhook.log';
                 $last = file_exists($log_file)
                     ? array_slice(file($log_file), -20)
                     : ['لا يوجد سجلات بعد'];
                 return new WP_REST_Response([
                     'status'     => 'endpoint_active',
+                    'provider'   => 'ultramsg',
                     'last_lines' => $last,
                 ], 200);
             },
@@ -57,10 +60,10 @@ class Mon_Cartat_Handler
         ]);
     }
 
-    /** كتابة سجل في ملف مباشر (يعمل حتى بدون WP_DEBUG) */
+    /** كتابة سجل في ملف مخصص لـ UltraMsg */
     private function log(string $msg): void
     {
-        $log_file = WP_CONTENT_DIR . '/cartat-webhook.log';
+        $log_file = WP_CONTENT_DIR . '/ultramsg-webhook.log';
         $line     = '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n";
         file_put_contents($log_file, $line, FILE_APPEND | LOCK_EX);
         error_log($msg);
@@ -70,45 +73,27 @@ class Mon_Cartat_Handler
     {
         $raw_body   = $request->get_body();
         $payload    = json_decode($raw_body, true);
-        $event_type = $payload['event'] ?? '';
 
-        $this->log("📱 webhook: event=$event_type");
+        // UltraMsg يستخدم 'event_type' وليس 'event'
+        $event_type = $payload['event_type'] ?? ($payload['event'] ?? '');
+        $data       = $payload['data'] ?? $payload; // بعض الإصدارات ترسل البيانات مباشرة
 
-        // ══════════════════════════════════════════════════════════════
-        // حدث ACK — نستخدمه لربط msg_id بالـ LID قبل وصول الرد
-        // ══════════════════════════════════════════════════════════════
-        if ($event_type === 'ack') {
-            // نعالج فقط أول ACK (server) لتجنب التكرار
-            if ((int)($payload['ack'] ?? 0) === 1) {
-                $msg_id  = $payload['id']  ?? '';
-                $raw_to  = $payload['to']  ?? '';
-                $to_bare = preg_replace('/@.*$/', '', $raw_to);
+        $this->log("📱 UltraMsg webhook: event_type=$event_type | raw=" . substr($raw_body, 0, 200));
 
-                if ($msg_id && $to_bare) {
-                    $pending = get_option('pge_wa_pending_msgid_' . $msg_id);
-                    if ($pending && !empty($pending['event_id'])) {
-                        update_option('pge_wa_pending_lid_' . $to_bare, $pending, false);
-                        $this->log("🔗 ACK: ربط msg_id=$msg_id → lid=$to_bare | event={$pending['event_id']}");
-                    }
-                }
-            }
-            return new WP_REST_Response(['status' => 'ack_ok'], 200);
-        }
-
-        // ══════════════════════════════════════════════════════════════
-        // نتجاهل أي حدث غير message_received
-        // ══════════════════════════════════════════════════════════════
+        // تجاهل أي حدث غير message_received
         if ($event_type !== 'message_received') {
             return new WP_REST_Response(['status' => 'ignored', 'reason' => $event_type ?: 'unknown'], 200);
         }
 
-        // تجاهل الرسائل الصادرة
-        if ($payload['fromMe'] ?? false) {
+        // تجاهل الرسائل الصادرة (self=1 أو fromMe=true)
+        if (($data['self'] ?? '0') === '1' || ($data['fromMe'] ?? false)) {
             return new WP_REST_Response(['status' => 'ignored', 'reason' => 'outgoing'], 200);
         }
 
-        $raw_from = $payload['from']    ?? '';
-        $body     = trim($payload['body'] ?? $payload['content'] ?? '');
+        $raw_from = $data['from'] ?? '';
+        $body     = trim($data['body'] ?? '');
+
+        // UltraMsg: from = "972599000932@c.us" — نزيل الـ suffix
         $from_bare = preg_replace('/@.*$/', '', $raw_from);
 
         if (!$from_bare || $body === '') {
@@ -118,26 +103,16 @@ class Mon_Cartat_Handler
         $this->log("📨 message_received: from=$raw_from | body=$body");
 
         // ══════════════════════════════════════════════════════════════
-        // البحث عن الدعوة المعلّقة بثلاث صيغ
+        // البحث عن الدعوة المعلّقة
+        // UltraMsg لا يستخدم LID — الرقم دائماً بالصيغة الدولية
         // ══════════════════════════════════════════════════════════════
-        $pending = null;
-
-        // 1. LID (الصيغة الجديدة من واتساب: XXXXXXXXXXXX@lid)
-        if (str_contains($raw_from, '@lid')) {
-            $pending = get_option('pge_wa_pending_lid_' . $from_bare);
-            if ($pending) $this->log("✅ pending عبر LID: $from_bare");
-        }
-
-        // 2. رقم الهاتف المباشر (972XXXXXXX)
+        $pending = get_option('pge_wa_pending_' . pge_norm_phone($from_bare));
         if (!$pending) {
-            $pending = get_option('pge_wa_pending_' . pge_norm_phone($from_bare));
-            if ($pending) $this->log("✅ pending عبر phone: $from_bare");
-        }
-
-        // 3. رقم بصيغة 00XXXXXXX
-        if (!$pending) {
+            // fallback: الرقم بصيغة 00XXXXXXX
             $pending = get_option('pge_wa_pending_00' . pge_norm_phone($from_bare));
-            if ($pending) $this->log("✅ pending عبر 00phone: $from_bare");
+        }
+        if ($pending) {
+            $this->log("✅ pending عبر phone: $from_bare");
         }
 
         if (!$pending || empty($pending['event_id'])) {
@@ -163,21 +138,18 @@ class Mon_Cartat_Handler
         $rsvp_phone = $pending['original_phone'] ?? pge_norm_phone($from_bare);
         $this->record_rsvp($event_id, $rsvp_phone, $reply);
 
-        // مسح جميع مفاتيح الدعوة المعلّقة
-        if (str_contains($raw_from, '@lid')) {
-            delete_option('pge_wa_pending_lid_' . $from_bare);
+        // مسح الدعوة المعلّقة
+        if (!empty($pending['wa_number'])) {
+            delete_option('pge_wa_pending_' . $pending['wa_number']);
         }
         if (!empty($pending['msg_id'])) {
             delete_option('pge_wa_pending_msgid_' . $pending['msg_id']);
-        }
-        if (!empty($pending['wa_number'])) {
-            delete_option('pge_wa_pending_' . $pending['wa_number']);
         }
 
         // ══════════════════════════════════════════════════════════════
         // رسالة التأكيد
         // ══════════════════════════════════════════════════════════════
-        $send_to = $pending['wa_number'] ?? $raw_from;
+        $send_to = $pending['wa_number'] ?? $from_bare;
 
         if ($reply === 'yes') {
             $event_name  = get_the_title($event_id);
@@ -222,26 +194,25 @@ class Mon_Cartat_Handler
         if (!$event_id || !pge_is_host_or_admin($event_id)) {
             wp_send_json_error(['message' => 'Forbidden']);
         }
-
-        if (empty($this->api_token)) {
-            wp_send_json_error(['message' => 'لم يتم ضبط Cartat API Token في الإعدادات']);
+        if (empty($this->instance_id) || empty($this->token)) {
+            wp_send_json_error(['message' => 'لم يتم ضبط UltraMsg Instance ID أو Token في الإعدادات']);
         }
 
         $offset     = absint($_POST['offset']     ?? 0);
         $batch_size = absint($_POST['batch_size'] ?? 20);
-        $batch_size = min($batch_size, 30); // حد أقصى 30 لكل دفعة
+        $batch_size = min($batch_size, 30);
 
         $results = $this->send_invitations($event_id, $offset, $batch_size);
         wp_send_json_success($results);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // إرسال الدعوات لكل المدعوين
+    // إرسال الدعوات
     // ══════════════════════════════════════════════════════════════════════════
 
     public function send_invitations(int $event_id, int $offset = 0, int $batch_size = 20): array
     {
-        @set_time_limit(120); // دقيقتان تكفي لدفعة 20 رسالة
+        @set_time_limit(120);
 
         $event      = get_post($event_id);
         $event_name = $event ? $event->post_title : 'مناسبتنا';
@@ -257,16 +228,15 @@ class Mon_Cartat_Handler
         if (function_exists('pge_normalize_invite_code')) {
             $invite_code = pge_normalize_invite_code($invite_code);
         }
-        $guests_map  = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
-        $all_phones  = pge_get_invited_phones($event_id);
-        $total       = count($all_phones);
+        $guests_map = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
+        $all_phones = pge_get_invited_phones($event_id);
+        $total      = count($all_phones);
 
         if (empty($all_phones)) {
             return ['sent' => 0, 'failed' => 0, 'total' => 0, 'done' => true, 'message' => 'لا يوجد مدعوون مضافون'];
         }
 
-        // أخذ الدفعة المطلوبة فقط
-        $phones    = array_slice($all_phones, $offset, $batch_size);
+        $phones      = array_slice($all_phones, $offset, $batch_size);
         $next_offset = $offset + count($phones);
         $has_more    = $next_offset < $total;
 
@@ -287,23 +257,20 @@ class Mon_Cartat_Handler
             $caption .= "✅ *1* — سأحضر بإذن الله\n";
             $caption .= "❌ *2* — لن أتمكن من الحضور";
 
-            // إرسال صورة أو نص حسب توفر الصورة
-            if ($image_url) {
-                $result = $this->send_media_message($wa_number, $image_url, $caption);
-            } else {
-                $result = $this->send_text_message($wa_number, $caption);
-            }
+            $result = $image_url
+                ? $this->send_media_message($wa_number, $image_url, $caption)
+                : $this->send_text_message($wa_number, $caption);
 
-            // تأخير عشوائي بين 2-4 ثوانٍ — يشبه السلوك البشري ويقلل خطر الحظر
+            // تأخير عشوائي 2-4 ثوانٍ
             usleep(rand(2_000_000, 4_000_000));
 
-            // نعتبر الإرسال ناجحاً إذا لم يكن هناك status=error صريح
-            // (Cartat قد يُرجع status=queued أو sent أو success — كلها تعني القبول)
+            // UltraMsg يُرجع {"sent":"true","id":"..."} عند النجاح
             $is_error = ($result === null)
-                     || (isset($result['status']) && $result['status'] === 'error')
-                     || (isset($result['success']) && $result['success'] === false);
+                     || (isset($result['error'])  && !empty($result['error']))
+                     || (isset($result['sent'])   && $result['sent'] === 'false')
+                     || (isset($result['status']) && $result['status'] === 'error');
 
-            $this->log("📨 Cartat send result for $wa_number: " . json_encode($result) . " | is_error=" . ($is_error ? 'yes' : 'no'));
+            $this->log("📨 UltraMsg send result for $wa_number: " . json_encode($result) . " | is_error=" . ($is_error ? 'yes' : 'no'));
 
             if (!$is_error) {
                 $sent++;
@@ -313,29 +280,24 @@ class Mon_Cartat_Handler
                     'event_id'       => $event_id,
                     'sent_at'        => time(),
                     'msg_id'         => $msg_id,
-                    'original_phone' => $norm_phone, // الرقم كما في قائمة المدعوين
-                    'wa_number'      => $wa_number,  // للإرسال في رسالة التأكيد
+                    'original_phone' => $norm_phone,
+                    'wa_number'      => $wa_number,
                     'event_url'      => $event_url,
                     'invite_code'    => $invite_code,
                     'norm_phone'     => $norm_phone,
                 ];
 
-                // حفظ بصيغة رقم الهاتف (fallback)
                 update_option('pge_wa_pending_' . $wa_number, $pending_data, false);
-
-                // حفظ بصيغة msg_id — يُستخدم في ACK لمعرفة LID المستقبِل
                 if ($msg_id) {
                     update_option('pge_wa_pending_msgid_' . $msg_id, $pending_data, false);
                 }
-
-                $this->log("✅ Cartat: pending saved | wa=$wa_number | msg_id=$msg_id");
+                $this->log("✅ UltraMsg: pending saved | wa=$wa_number | msg_id=$msg_id");
             } else {
                 $failed++;
-                $this->log("❌ Cartat: فشل إرسال لـ $wa_number | " . json_encode($result));
+                $this->log("❌ UltraMsg: فشل إرسال لـ $wa_number | " . json_encode($result));
             }
         }
 
-        // حفظ إحصائيات آخر إرسال في الـ post meta (فقط عند انتهاء كل الدفعات)
         if (!$has_more) {
             update_post_meta($event_id, '_pge_wa_sent_at',    current_time('mysql'));
             update_post_meta($event_id, '_pge_wa_sent_count', $next_offset);
@@ -359,48 +321,50 @@ class Mon_Cartat_Handler
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // API Wrappers
+    // UltraMsg API Wrappers
     // ══════════════════════════════════════════════════════════════════════════
 
     private function send_text_message(string $number, string $message): ?array
     {
-        return $this->api_request('/message/text', [
-            'number'  => $number,
-            'message' => $message,
+        return $this->api_request('/messages/chat', [
+            'token' => $this->token,
+            'to'    => $number,
+            'body'  => $message,
         ]);
     }
 
     private function send_media_message(string $number, string $media_url, string $caption = ''): ?array
     {
-        return $this->api_request('/message/media', [
-            'number'    => $number,
-            'media_url' => $media_url,
-            'caption'   => $caption,
+        return $this->api_request('/messages/image', [
+            'token'   => $this->token,
+            'to'      => $number,
+            'image'   => $media_url,
+            'caption' => $caption,
         ]);
     }
 
     private function api_request(string $endpoint, array $body): ?array
     {
+        if (empty($this->instance_id)) {
+            error_log('❌ UltraMsg: instance_id فارغ');
+            return null;
+        }
+
         $response = wp_remote_post($this->api_base . $endpoint, [
             'headers' => [
-                'Accept'        => 'application/json',
-                'Content-Type'  => 'application/json',
-                'Authorization' => 'Bearer ' . $this->api_token,
-                'Expect'        => '', // منع Expect: 100-continue الذي يُعلّق الاتصال
+                'Content-Type' => 'application/x-www-form-urlencoded',
             ],
-            'body'        => wp_json_encode($body),
-            'timeout'     => 20,
-            'httpversion' => '1.1',  // تجنب مشاكل HTTP/2
-            'sslverify'   => true,
+            'body'    => http_build_query($body),
+            'timeout' => 20,
         ]);
 
         if (is_wp_error($response)) {
-            error_log('❌ Cartat API Error: ' . $response->get_error_message());
+            error_log('❌ UltraMsg API Error: ' . $response->get_error_message());
             return null;
         }
 
         $decoded = json_decode(wp_remote_retrieve_body($response), true);
-        error_log('📤 Cartat API Response [' . $endpoint . ']: ' . json_encode($decoded));
+        error_log('📤 UltraMsg API Response [' . $endpoint . ']: ' . json_encode($decoded));
         return $decoded;
     }
 
@@ -408,33 +372,21 @@ class Mon_Cartat_Handler
     // Helpers
     // ══════════════════════════════════════════════════════════════════════════
 
-    /**
-     * تحويل رقم الجوال إلى صيغة واتساب الدولية (966XXXXXXXXX)
-     * يعالج: 00XXXXXXXX / 0XXXXXXXX / XXXXXXXX / +XXXXXXXX
-     */
     private function format_wa_number(string $phone): string
     {
-        $phone = pge_norm_phone($phone); // أرقام فقط
+        $phone = pge_norm_phone($phone);
 
-        // 00XXXXXXXXX → الرقم يحمل كود الدولة بعد الـ 00
         if (str_starts_with($phone, '00')) {
             $phone = substr($phone, 2);
-        }
-        // 0XXXXXXXXX → رقم محلي، أضف كود الدولة بدل الصفر
-        elseif (str_starts_with($phone, '0')) {
+        } elseif (str_starts_with($phone, '0')) {
             $phone = $this->country_code . substr($phone, 1);
-        }
-        // XXXXXXXXX بدون كود دولة → أضفه
-        elseif (!str_starts_with($phone, $this->country_code)) {
+        } elseif (!str_starts_with($phone, $this->country_code)) {
             $phone = $this->country_code . $phone;
         }
 
         return $phone;
     }
 
-    /**
-     * تحليل رد المدعو إلى 'yes' أو 'no'
-     */
     private function parse_rsvp_reply(string $body): string
     {
         $b = mb_strtolower(trim($body));
@@ -447,9 +399,6 @@ class Mon_Cartat_Handler
         return '';
     }
 
-    /**
-     * تسجيل RSVP في الجدول المخصص
-     */
     private function record_rsvp(int $event_id, string $phone, string $reply): void
     {
         global $wpdb;
@@ -474,7 +423,7 @@ class Mon_Cartat_Handler
                 'guest_phone' => $phone,
                 'reply'       => $reply,
                 'companions'  => 0,
-                'note'        => 'via WhatsApp',
+                'note'        => 'via WhatsApp (UltraMsg)',
                 'checked_in'  => 0,
                 'created_at'  => current_time('mysql'),
             ]);
@@ -490,13 +439,11 @@ class Mon_Cartat_Handler
     // نظام الإرسال في الخلفية (Background Queue)
     // ══════════════════════════════════════════════════════════════════════════
 
-    /** مفتاح الـ Queue في wp_options */
     private function queue_key(int $event_id): string
     {
         return 'pge_wa_queue_' . $event_id;
     }
 
-    /** AJAX — بدء الإرسال في الخلفية */
     public function ajax_queue_start(): void
     {
         if (!wp_verify_nonce($_POST['nonce'] ?? '', 'pge_event_manage_nonce')) {
@@ -510,8 +457,8 @@ class Mon_Cartat_Handler
         if (!$event_id || !pge_is_host_or_admin($event_id)) {
             wp_send_json_error(['message' => 'Forbidden']);
         }
-        if (empty($this->api_token)) {
-            wp_send_json_error(['message' => 'لم يتم ضبط Cartat API Token']);
+        if (empty($this->instance_id) || empty($this->token)) {
+            wp_send_json_error(['message' => 'لم يتم ضبط UltraMsg Instance ID أو Token']);
         }
 
         $phones = pge_get_invited_phones($event_id);
@@ -519,7 +466,6 @@ class Mon_Cartat_Handler
             wp_send_json_error(['message' => 'لا يوجد مدعوون']);
         }
 
-        // تجميع بيانات المناسبة مرة واحدة
         $event          = get_post($event_id);
         $event_date_raw = (string) get_post_meta($event_id, '_pge_event_date', true);
         $invite_code    = (string) get_post_meta($event_id, '_pge_invite_code', true);
@@ -530,6 +476,7 @@ class Mon_Cartat_Handler
         $queue = [
             'event_id'   => $event_id,
             'status'     => 'queued',
+            'provider'   => 'ultramsg',
             'phones'     => array_values($phones),
             'guests_map' => function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [],
             'event_name' => $event ? $event->post_title : 'مناسبتنا',
@@ -548,17 +495,15 @@ class Mon_Cartat_Handler
 
         update_option($this->queue_key($event_id), $queue, false);
 
-        // جدولة أول دفعة فوراً
         wp_schedule_single_event(time(), 'pge_wa_process_queue', [$event_id]);
-        spawn_cron(); // إجبار WordPress على تشغيل Cron فوراً
+        spawn_cron();
 
         wp_send_json_success([
-            'message' => "🚀 بدأ الإرسال في الخلفية لـ {$queue['total']} مدعو. يمكنك إغلاق الصفحة.",
+            'message' => "🚀 بدأ الإرسال في الخلفية عبر UltraMsg لـ {$queue['total']} مدعو. يمكنك إغلاق الصفحة.",
             'total'   => $queue['total'],
         ]);
     }
 
-    /** AJAX — جلب حالة الإرسال */
     public function ajax_queue_status(): void
     {
         if (!wp_verify_nonce($_POST['nonce'] ?? '', 'pge_event_manage_nonce')) {
@@ -583,7 +528,6 @@ class Mon_Cartat_Handler
         $failed = count(array_filter($queue['results'], fn($r) => $r['status'] === 'failed'));
         $pct    = $queue['total'] > 0 ? round(($queue['offset'] / $queue['total']) * 100) : 0;
 
-        // بناء تقرير مفصّل
         $report = [];
         foreach ($queue['results'] as $phone => $res) {
             $guest_name = $queue['guests_map'][$phone]['name'] ?? $phone;
@@ -597,6 +541,7 @@ class Mon_Cartat_Handler
 
         wp_send_json_success([
             'status'   => $queue['status'],
+            'provider' => $queue['provider'] ?? 'ultramsg',
             'total'    => $queue['total'],
             'offset'   => $queue['offset'],
             'sent'     => $sent,
@@ -607,18 +552,20 @@ class Mon_Cartat_Handler
         ]);
     }
 
-    /** WP Cron — معالجة دفعة واحدة في الخلفية */
     public function cron_process_queue(int $event_id): void
     {
         $queue = get_option($this->queue_key($event_id));
         if (!$queue || $queue['status'] === 'done') return;
+
+        // تجاهل الـ queue إذا كان من مزوّد مختلف
+        if (($queue['provider'] ?? 'ultramsg') !== 'ultramsg') return;
 
         @set_time_limit(120);
 
         $queue['status'] = 'running';
         update_option($this->queue_key($event_id), $queue, false);
 
-        $batch_size = 10; // دفعة صغيرة لضمان عدم انتهاء الوقت
+        $batch_size = 10;
         $phones     = array_slice($queue['phones'], $queue['offset'], $batch_size);
 
         foreach ($phones as $phone) {
@@ -641,8 +588,9 @@ class Mon_Cartat_Handler
                 : $this->send_text_message($wa_number, $caption);
 
             $is_error = ($result === null)
-                     || (isset($result['status']) && $result['status'] === 'error')
-                     || (isset($result['success']) && $result['success'] === false);
+                     || (isset($result['error'])  && !empty($result['error']))
+                     || (isset($result['sent'])   && $result['sent'] === 'false')
+                     || (isset($result['status']) && $result['status'] === 'error');
 
             if (!$is_error) {
                 $msg_id = $result['id'] ?? '';
@@ -662,25 +610,22 @@ class Mon_Cartat_Handler
                 }
                 $queue['results'][$phone] = ['status' => 'sent',   'time' => current_time('mysql')];
             } else {
-                $queue['results'][$phone] = ['status' => 'failed',  'time' => current_time('mysql')];
+                $queue['results'][$phone] = ['status' => 'failed', 'time' => current_time('mysql')];
                 $this->log("❌ Queue: فشل إرسال لـ $wa_number | " . json_encode($result));
             }
 
-            // تأخير عشوائي بين الرسائل
             usleep(rand(2_000_000, 4_000_000));
         }
 
         $queue['offset'] += count($phones);
 
         if ($queue['offset'] >= $queue['total']) {
-            // انتهى الإرسال
             $queue['status']  = 'done';
             $queue['done_at'] = current_time('mysql');
             update_post_meta($event_id, '_pge_wa_sent_at',    current_time('mysql'));
             update_post_meta($event_id, '_pge_wa_sent_count', $queue['offset']);
             $this->log("✅ Queue done: event=$event_id | offset={$queue['offset']}/{$queue['total']}");
         } else {
-            // جدولة الدفعة التالية بعد 35 ثانية استراحة
             $queue['status'] = 'running';
             wp_schedule_single_event(time() + 35, 'pge_wa_process_queue', [$event_id]);
         }
@@ -689,4 +634,4 @@ class Mon_Cartat_Handler
     }
 }
 
-new Mon_Cartat_Handler();
+new Mon_UltraMsg_Handler();

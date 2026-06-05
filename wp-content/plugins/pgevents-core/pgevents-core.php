@@ -31,8 +31,13 @@ require_once PGE_PATH . 'includes/class-mon-events-users.php';
 // 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)
 require_once PGE_PATH . 'includes/class-salla-handler.php';
 
-// 3. تكامل واتساب عبر Cartat
-require_once PGE_PATH . 'includes/class-cartat-handler.php';
+// 3. تكامل واتساب — يُحمَّل المزوّد النشط فقط (Cartat أو UltraMsg)
+$_pge_wa_provider = get_option('pge_wa_provider', 'cartat');
+if ($_pge_wa_provider === 'ultramsg') {
+    require_once PGE_PATH . 'includes/class-ultramsg-handler.php';
+} else {
+    require_once PGE_PATH . 'includes/class-cartat-handler.php';
+}
 
 // 2. استدعاء نظام التوجيه (Routing) - بديل الصفحات التقليدية
 require_once PGE_PATH . 'includes/routing.php';
