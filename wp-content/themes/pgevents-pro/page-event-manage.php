@@ -1123,20 +1123,6 @@ get_header();
                 const json = await res.json();
                 if (json.success) {
                     showMsg('success', `🚀 ${json.data.message}`);
-
-                    // شغّل الطابور فوراً (يحل مشكلة WP Cron على localhost)
-                    // fire-and-forget — لا ننتظر الرد
-                    fetch(ajaxUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: new URLSearchParams({
-                            action:   'pge_wa_run_now',
-                            nonce:    waNonce,
-                            event_id: waEventId,
-                        }),
-                        keepalive: true,
-                    }).catch(() => {});
-
                 } else {
                     showMsg('error', '❌ ' + (json.data?.message ?? JSON.stringify(json.data)));
                 }

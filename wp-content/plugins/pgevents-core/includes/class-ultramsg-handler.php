@@ -355,31 +355,8 @@ class Mon_UltraMsg_Handler
     }
 
     /**
-     * إرسال رسالة مع أزرار RSVP التفاعلية
-     * header = عنوان الرسالة (يظهر بخط عريض)
-     * body   = النص الرئيسي
-     * footer = نص صغير في الأسفل (اختياري)
-     */
-    private function send_button_message(string $number, string $header, string $body, string $footer = ''): ?array
-    {
-        $buttons = json_encode([
-            ['id' => '1', 'title' => 'سأحضر بإذن الله ✅'],
-            ['id' => '2', 'title' => 'لن أتمكن من الحضور ❌'],
-        ]);
-
-        return $this->api_request('/messages/buttons', [
-            'token'       => $this->token,
-            'to'          => $number,
-            'title'       => $header,
-            'footer'      => $footer,
-            'description' => $body,
-            'buttons'     => $buttons,
-        ]);
-    }
-
-    /**
-     * إرسال دعوة المناسبة — صورة (اختياري) + رسالة الأزرار
-     * إذا وجدت صورة → ترسل أولاً كـ caption، ثم رسالة الأزرار بعدها
+     * إرسال دعوة المناسبة — صورة + نص منسّق (رسالة واحدة)
+     * UltraMsg لا يدعم الأزرار التفاعلية — نستخدم الرد النصي 1/2
      */
     private function send_invite_with_buttons(
         string $wa_number,
@@ -388,26 +365,19 @@ class Mon_UltraMsg_Handler
         string $event_date,
         string $image_url
     ): ?array {
-        // ── بناء نصوص الرسالة ─────────────────────────────────────────
-        $header = "مرحباً {$guest_name} 👋";
-
-        $body  = "يسعدنا دعوتك لحضور:\n";
-        $body .= "✨ *{$event_name}*";
+        $caption  = "مرحباً *{$guest_name}* 👋\n\n";
+        $caption .= "يسعدنا دعوتك لحضور:\n✨ *{$event_name}*";
         if ($event_date) {
-            $body .= "\n\n📅 {$event_date}";
+            $caption .= "\n📅 {$event_date}";
         }
-        $body .= "\n\nاختر ردك على الدعوة:";
+        $caption .= "\n\n━━━━━━━━━━━━━\n";
+        $caption .= "للرد على الدعوة أرسل:\n";
+        $caption .= "✅ *1* — سأحضر بإذن الله\n";
+        $caption .= "❌ *2* — لن أتمكن من الحضور";
 
-        $footer = $event_name;
-
-        // ── إرسال الصورة أولاً إن وجدت ──────────────────────────────
-        if ($image_url) {
-            $this->send_media_message($wa_number, $image_url, "دعوة: {$event_name}");
-            usleep(rand(1_500_000, 2_500_000)); // استراحة 1.5-2.5 ثانية بين الرسالتين
-        }
-
-        // ── إرسال رسالة الأزرار ──────────────────────────────────────
-        return $this->send_button_message($wa_number, $header, $body, $footer);
+        return $image_url
+            ? $this->send_media_message($wa_number, $image_url, $caption)
+            : $this->send_text_message($wa_number, $caption);
     }
 
     private function api_request(string $endpoint, array $body): ?array
@@ -658,11 +628,25 @@ class Mon_UltraMsg_Handler
 
     public function cron_process_queue(int $event_id): void
     {
+        // ── قفل لمنع التنفيذ المزدوج (race condition) ────────────────
+        $lock_key = 'pge_wa_lock_' . $event_id;
+        if (get_transient($lock_key)) {
+            $this->log("⏸ Queue locked for event=$event_id — skipping duplicate run");
+            return;
+        }
+        set_transient($lock_key, 1, 90); // قفل لمدة 90 ثانية
+
         $queue = get_option($this->queue_key($event_id));
-        if (!$queue || $queue['status'] === 'done') return;
+        if (!$queue || $queue['status'] === 'done') {
+            delete_transient($lock_key);
+            return;
+        }
 
         // تجاهل الـ queue إذا كان من مزوّد مختلف
-        if (($queue['provider'] ?? 'ultramsg') !== 'ultramsg') return;
+        if (($queue['provider'] ?? 'ultramsg') !== 'ultramsg') {
+            delete_transient($lock_key);
+            return;
+        }
 
         @set_time_limit(120);
 
@@ -723,8 +707,10 @@ class Mon_UltraMsg_Handler
             update_post_meta($event_id, '_pge_wa_sent_at',    current_time('mysql'));
             update_post_meta($event_id, '_pge_wa_sent_count', $queue['offset']);
             $this->log("✅ Queue done: event=$event_id | offset={$queue['offset']}/{$queue['total']}");
+            delete_transient($lock_key); // حرّر القفل نهائياً
         } else {
             $queue['status'] = 'running';
+            delete_transient($lock_key); // حرّر القفل حتى تعمل الدفعة التالية
             wp_schedule_single_event(time() + 35, 'pge_wa_process_queue', [$event_id]);
         }
 
