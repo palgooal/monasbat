@@ -96,6 +96,29 @@ if (!function_exists('pge_generate_invite_code')) {
 }
 
 // ──────────────────────────────────────────────
+// توليد رابط QR Code عبر api.qrserver.com
+// ──────────────────────────────────────────────
+if (!function_exists('pge_generate_qr_url')) {
+    /**
+     * يُولّد رابط صورة QR للبيانات المحددة.
+     * يعمل بدون أي مكتبة — الصورة تُخدَّم مباشرة من API خارجي.
+     *
+     * @param string $data  النص المشفَّر في QR (رمز الدعوة مثلاً)
+     * @param int    $size  حجم الصورة بالبكسل (افتراضي: 400)
+     * @return string رابط URL للصورة
+     */
+    function pge_generate_qr_url(string $data, int $size = 400): string
+    {
+        return 'https://api.qrserver.com/v1/create-qr-code/'
+            . '?size='   . $size . 'x' . $size
+            . '&data='   . rawurlencode($data)
+            . '&margin=15'
+            . '&color=000000'
+            . '&bgcolor=ffffff';
+    }
+}
+
+// ──────────────────────────────────────────────
 // رابط الدعوة القصير: /e/{ID}
 // ──────────────────────────────────────────────
 if (!function_exists('pge_get_event_short_url')) {

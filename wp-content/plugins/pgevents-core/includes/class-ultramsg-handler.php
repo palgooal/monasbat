@@ -258,6 +258,14 @@ class Mon_UltraMsg_Handler
 
         $this->send_text_message($send_to, $confirm_msg);
 
+        // ── إرسال QR code عند تأكيد الحضور ───────────────────────────────────
+        if ($reply === 'yes' && $invite_code !== '' && function_exists('pge_generate_qr_url')) {
+            $qr_url     = pge_generate_qr_url($invite_code);
+            $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع\n🔑 الرمز: *{$invite_code}*";
+            $this->send_media_message($send_to, $qr_url, $qr_caption);
+            $this->log("📱 QR sent: code=$invite_code | to=$send_to");
+        }
+
         $this->log("✅ RSVP: from=$raw_from | rsvp_phone=$rsvp_phone | reply=$reply | event=$event_id");
         return new WP_REST_Response(['status' => 'success', 'reply' => $reply], 200);
     }
@@ -486,12 +494,16 @@ class Mon_UltraMsg_Handler
         $phone = pge_norm_phone($phone);
 
         if (str_starts_with($phone, '00')) {
+            // 00XXXXXXXX → أزل الأصفار، الكود يلي بعدها
             $phone = substr($phone, 2);
         } elseif (str_starts_with($phone, '0')) {
+            // 0XXXXXXXX → رقم محلي، أضف كود الدولة
             $phone = $this->country_code . substr($phone, 1);
-        } elseif (!str_starts_with($phone, $this->country_code)) {
+        } elseif (strlen($phone) < 10) {
+            // رقم قصير بدون كود دولة → أضفه
             $phone = $this->country_code . $phone;
         }
+        // رقم ≥ 10 أرقام لا يبدأ بـ 0 → كود الدولة موجود مسبقاً (972, 966, 962...)
 
         return $phone;
     }
