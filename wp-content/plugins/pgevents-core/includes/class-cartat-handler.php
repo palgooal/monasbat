@@ -512,10 +512,11 @@ class Mon_Cartat_Handler
         elseif (str_starts_with($phone, '0')) {
             $phone = $this->country_code . substr($phone, 1);
         }
-        // XXXXXXXXX بدون كود دولة → أضفه
-        elseif (!str_starts_with($phone, $this->country_code)) {
+        // رقم قصير (أقل من 10) بدون كود دولة → أضفه
+        elseif (strlen($phone) < 10) {
             $phone = $this->country_code . $phone;
         }
+        // رقم ≥ 10 أرقام لا يبدأ بـ 0 → كود الدولة موجود مسبقاً (972, 966, 962...)
 
         return $phone;
     }

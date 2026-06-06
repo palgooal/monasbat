@@ -765,6 +765,7 @@ class PGE_Admin_Controller
         if (isset($_POST['pge_ultramsg_save']) && check_admin_referer('pge_ultramsg_settings_nonce')) {
             update_option('pge_ultramsg_instance_id', sanitize_text_field($_POST['pge_ultramsg_instance_id'] ?? ''));
             update_option('pge_ultramsg_token',       sanitize_text_field($_POST['pge_ultramsg_token']       ?? ''));
+            update_option('pge_cartat_country_code',  sanitize_text_field($_POST['pge_cartat_country_code']  ?? '966'));
             echo '<div class="notice notice-success is-dismissible"><p>✅ تم حفظ إعدادات UltraMsg بنجاح.</p></div>';
         }
 
@@ -859,6 +860,16 @@ class PGE_Admin_Controller
                      value="' . esc_attr($um_token) . '"
                      class="regular-text" style="width:400px;" placeholder="token من لوحة UltraMsg">';
         echo '<p class="description">تجده في لوحة UltraMsg: My Instances → Token</p>';
+        echo '</td></tr>';
+
+        $um_country_code = (string) get_option('pge_cartat_country_code', '966');
+        echo '<tr>';
+        echo '<th scope="row"><label for="pge_um_country_code">🌍 كود الدولة</label></th>';
+        echo '<td>';
+        echo '<input type="text" id="pge_um_country_code" name="pge_cartat_country_code"
+                     value="' . esc_attr($um_country_code) . '"
+                     class="small-text" placeholder="966" maxlength="5">';
+        echo '<p class="description">مثال: 966 للسعودية، 962 للأردن، 970 لفلسطين — يُستخدم للأرقام المحلية التي تبدأ بـ 0</p>';
         echo '</td></tr>';
 
         echo '</table>';
