@@ -40,6 +40,13 @@ $event_image_url = get_the_post_thumbnail_url($event_id, 'full');
 $event_image_url = $event_image_url ? (string) $event_image_url : '';
 $edit_url = home_url('/edit-event/' . $event_id . '/');
 
+// قوالب واتساب المحفوظة
+$wa_templates = function_exists('pge_wa_get_templates') ? pge_wa_get_templates($event_id) : [];
+$wa_tpl_invite  = $wa_templates['invite']  ?? '';
+$wa_tpl_yes     = $wa_templates['yes']     ?? '';
+$wa_tpl_no      = $wa_templates['no']      ?? '';
+$wa_tpl_invalid = $wa_templates['invalid'] ?? '';
+
 get_header();
 ?>
 
@@ -90,6 +97,45 @@ get_header();
 
         <div id="manageMsg" class="mt-4 hidden rounded-2xl p-3 text-sm font-semibold"></div>
 
+<!-- Modal الإرسال التجريبي -->
+<div id="waTestModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" dir="rtl">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-extrabold">🧪 إرسال رسالة تجريبية</h3>
+            <button id="waTestModalClose" type="button" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+        </div>
+        <p class="text-sm text-slate-600">اختبر كيف تبدو رسالة الدعوة قبل الإرسال الجماعي. لن يُسجَّل أي RSVP لهذه الرسالة.</p>
+
+        <div class="space-y-3">
+            <div>
+                <label class="text-xs font-semibold text-slate-600">📱 رقم الجوال للاختبار</label>
+                <input id="waTestPhone" type="tel" inputmode="tel"
+                    class="mt-1 h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-amber-400"
+                    placeholder="05XXXXXXXX أو 9665XXXXXXXX" />
+            </div>
+            <div>
+                <label class="text-xs font-semibold text-slate-600">👤 اسم تجريبي (اختياري)</label>
+                <input id="waTestName" type="text"
+                    class="mt-1 h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-amber-400"
+                    placeholder="مثال: أحمد علي" value="ضيف تجريبي" />
+            </div>
+        </div>
+
+        <div id="waTestResult" class="hidden text-sm font-semibold rounded-2xl p-3"></div>
+
+        <div class="flex gap-3">
+            <button id="waTestSendConfirmBtn" type="button"
+                class="flex-1 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-400">
+                📨 إرسال التجربة
+            </button>
+            <button id="waTestModalClose2" type="button"
+                class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                إلغاء
+            </button>
+        </div>
+    </div>
+</div>
+
         <section class="mt-4 grid gap-4 lg:grid-cols-12">
             <div class="lg:col-span-7 space-y-4">
                 <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -114,6 +160,9 @@ get_header();
                             <button id="bulkDeleteBtn" type="button" disabled class="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50">حذف المحدد</button>
                             <button id="bulkWhatsappBtn" type="button" disabled title="يفتح واتساب الويب لكل مدعو محدد" class="rounded-2xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">📲 واتساب للمحدد</button>
                             <button id="whatsappAllBtn" type="button" title="يفتح واتساب الويب لكل المدعوين" class="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">📲 واتساب للكل</button>
+                            <button id="waTestSendBtn" type="button" title="إرسال رسالة تجريبية لرقم محدد قبل الإرسال الجماعي" class="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">
+                                🧪 تجريبي
+                            </button>
                             <button id="sendWaInvitesBtn" type="button" title="يرسل الدعوات في الخلفية — يمكن إغلاق الصفحة" class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 flex items-center gap-1">
                                 📨 إرسال تلقائي (<?php echo esc_html(get_option('pge_wa_provider', 'cartat') === 'ultramsg' ? 'UltraMsg' : 'Cartat'); ?>)
                             </button>
@@ -134,6 +183,7 @@ get_header();
                                         </th>
                                         <th class="px-3 py-3 text-start font-semibold">الاسم</th>
                                         <th class="px-3 py-3 text-start font-semibold">الجوال</th>
+                                        <th class="px-3 py-3 text-start font-semibold">رمز الدعوة</th>
                                         <th class="px-3 py-3 text-start font-semibold">الملاحظة</th>
                                         <th class="px-3 py-3 text-start font-semibold">RSVP</th>
                                         <th class="px-3 py-3 text-start font-semibold">Check-in</th>
@@ -152,16 +202,28 @@ get_header();
                                                 : ['phone' => $phone, 'name' => '', 'note' => '', 'status' => 'pending', 'status_label' => 'لم يرد', 'checked' => 'no'];
                                             $name = (string) ($row['name'] ?? '');
                                             $note = (string) ($row['note'] ?? '');
+                                            $code = (string) ($row['code'] ?? '');
                                             $status = (string) ($row['status'] ?? 'pending');
                                             $status_label = (string) ($row['status_label'] ?? 'لم يرد');
                                             $checked = (string) ($row['checked'] ?? 'no');
                                         ?>
-                                            <tr class="guest-row" data-phone="<?php echo esc_attr($phone); ?>" data-name="<?php echo esc_attr($name); ?>" data-note="<?php echo esc_attr($note); ?>" data-status="<?php echo esc_attr($status); ?>" data-checked="<?php echo esc_attr($checked); ?>">
+                                            <tr class="guest-row" data-phone="<?php echo esc_attr($phone); ?>" data-name="<?php echo esc_attr($name); ?>" data-note="<?php echo esc_attr($note); ?>" data-code="<?php echo esc_attr($code); ?>" data-status="<?php echo esc_attr($status); ?>" data-checked="<?php echo esc_attr($checked); ?>">
                                                 <td class="px-3 py-3">
                                                     <input type="checkbox" class="guest-checkbox h-4 w-4 rounded border-slate-300" data-phone="<?php echo esc_attr($phone); ?>" />
                                                 </td>
                                                 <td class="px-3 py-3 font-semibold text-slate-900"><?php echo $name !== '' ? esc_html($name) : '—'; ?></td>
                                                 <td class="px-3 py-3 font-mono text-slate-800"><?php echo esc_html($phone); ?></td>
+                                                <td class="px-3 py-3">
+                                                    <?php if ($code !== ''): ?>
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="guest-code-display font-mono text-xs font-bold tracking-widest text-indigo-700 bg-indigo-50 px-2 py-1 rounded-lg ring-1 ring-indigo-200"><?php echo esc_html($code); ?></span>
+                                                        <button type="button" class="guest-copy-code-btn text-slate-400 hover:text-slate-700" data-code="<?php echo esc_attr($code); ?>" title="نسخ الرمز">📋</button>
+                                                        <button type="button" class="guest-regen-code-btn text-slate-400 hover:text-amber-600" data-phone="<?php echo esc_attr($phone); ?>" title="توليد رمز جديد">🔄</button>
+                                                    </div>
+                                                    <?php else: ?>
+                                                    <button type="button" class="guest-regen-code-btn text-xs text-slate-400 hover:text-amber-600 underline" data-phone="<?php echo esc_attr($phone); ?>">توليد رمز</button>
+                                                    <?php endif; ?>
+                                                </td>
                                                 <td class="px-3 py-3 text-slate-600"><?php echo $note !== '' ? esc_html($note) : '—'; ?></td>
                                                 <td class="px-3 py-3">
                                                     <?php if ($status === 'yes'): ?>
@@ -197,46 +259,7 @@ get_header();
             </div>
 
             <div class="lg:col-span-5 space-y-4">
-                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div class="flex items-center justify-between gap-2">
-                        <h3 class="text-lg font-extrabold">رمز الدعوة</h3>
-                        <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200">Access</span>
-                    </div>
-                    <p class="mt-1 text-sm text-slate-600">الضيف يدخل الرمز مع رقم جواله لفتح الدعوة.</p>
-
-                    <div class="mt-4 space-y-3">
-                        <div class="flex gap-2">
-                            <input
-                                id="inviteCodeInput"
-                                type="text"
-                                dir="ltr"
-                                maxlength="9"
-                                value="<?php echo esc_attr($invite_code); ?>"
-                                class="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold tracking-widest outline-none placeholder:text-slate-400 focus:border-slate-900"
-                                placeholder="AB12-CD34" />
-                            <button
-                                id="saveInviteCodeBtn"
-                                type="button"
-                                class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
-                                حفظ
-                            </button>
-                        </div>
-                        <div class="grid gap-2 sm:grid-cols-2">
-                            <button
-                                id="regenInviteCodeBtn"
-                                type="button"
-                                class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
-                                توليد جديد
-                            </button>
-                            <button
-                                id="copyInviteCodeBtn"
-                                type="button"
-                                class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
-                                نسخ الرمز
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <!-- رمز الدعوة العام: لم يعد ضرورياً — كل ضيف له رمزه الشخصي في جدول المدعوين -->
 
                 <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <h3 class="text-lg font-extrabold">إضافة مدعو</h3>
@@ -298,6 +321,70 @@ get_header();
                     </div>
                 </details>
 
+                <!-- ══ محرر قوالب رسائل واتساب التلقائية ══ -->
+                <details class="rounded-3xl border border-emerald-200 bg-white shadow-sm">
+                    <summary class="cursor-pointer px-5 py-4 text-sm font-extrabold text-slate-800 select-none flex items-center justify-between">
+                        <span>📝 رسائل واتساب التلقائية</span>
+                        <span class="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">تخصيص</span>
+                    </summary>
+                    <div class="border-t border-slate-100 p-5 space-y-4">
+                        <p class="text-xs text-slate-500">خصّص الرسائل المُرسَلة تلقائياً. اتركها فارغة لاستخدام النص الافتراضي.</p>
+
+                        <?php
+                        $wa_vars_list = [
+                            '{{guest_name}}' => 'اسم الضيف',
+                            '{{event_name}}' => 'اسم المناسبة',
+                            '{{event_date}}' => 'تاريخ المناسبة',
+                            '{{event_date_line}}' => 'سطر التاريخ (📅 ...) أو فارغ',
+                            '{{event_url}}' => 'رابط المناسبة',
+                            '{{invite_code}}' => 'رمز الدعوة الشخصي',
+                            '{{guest_phone}}' => 'رقم الضيف',
+                        ];
+                        $wa_tpl_fields = [
+                            'invite'  => ['label' => '📨 رسالة الدعوة (عند الإرسال)', 'vars' => ['guest_name','event_name','event_date','event_date_line','guest_phone'], 'val' => $wa_tpl_invite],
+                            'yes'     => ['label' => '✅ رد الحضور (بعد الرد بـ 1)',   'vars' => ['event_name','event_url','invite_code','guest_phone'], 'val' => $wa_tpl_yes],
+                            'no'      => ['label' => '❌ رد الاعتذار (بعد الرد بـ 2)', 'vars' => ['event_name'], 'val' => $wa_tpl_no],
+                            'invalid' => ['label' => '❓ رد غير معروف',               'vars' => [], 'val' => $wa_tpl_invalid],
+                        ];
+                        ?>
+
+                        <?php foreach ($wa_tpl_fields as $tpl_key => $tpl_info): ?>
+                        <div class="space-y-1">
+                            <label class="text-xs font-bold text-slate-700"><?php echo esc_html($tpl_info['label']); ?></label>
+                            <?php if (!empty($tpl_info['vars'])): ?>
+                            <div class="flex flex-wrap gap-1 mb-1">
+                                <?php foreach ($tpl_info['vars'] as $v): ?>
+                                <button type="button"
+                                    class="wa-var-insert rounded px-1.5 py-0.5 text-[10px] font-mono bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-700 ring-1 ring-slate-200"
+                                    data-var="{{<?php echo $v; ?>}}"
+                                    data-target="wa_tpl_<?php echo esc_attr($tpl_key); ?>">
+                                    {{<?php echo $v; ?>}}
+                                </button>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
+                            <textarea
+                                id="wa_tpl_<?php echo esc_attr($tpl_key); ?>"
+                                name="tpl_<?php echo esc_attr($tpl_key); ?>"
+                                rows="4"
+                                placeholder="اتركه فارغاً للنص الافتراضي"
+                                class="w-full rounded-2xl border border-slate-200 px-3 py-2 text-xs font-mono outline-none focus:border-emerald-400 resize-y"
+                            ><?php echo esc_textarea($tpl_info['val']); ?></textarea>
+                        </div>
+                        <?php endforeach; ?>
+
+                        <div id="waTplMsg" class="hidden text-xs font-semibold rounded-xl px-3 py-2"></div>
+                        <button id="saveWaTplBtn" type="button"
+                            class="w-full rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">
+                            💾 حفظ القوالب
+                        </button>
+                        <button id="resetWaTplBtn" type="button"
+                            class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                            ↩️ استعادة الافتراضي للكل
+                        </button>
+                    </div>
+                </details>
+
                 <div id="editGuestCard" class="hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <h3 class="text-lg font-extrabold">تعديل المدعو</h3>
                     <form id="editGuestForm" class="mt-4 space-y-3">
@@ -339,10 +426,8 @@ get_header();
 <script>
     const cfg = window.PGE_EVENT_MANAGE || {};
     const msg = document.getElementById('manageMsg');
-    const inviteCodeInput = document.getElementById('inviteCodeInput');
-    const saveInviteCodeBtn = document.getElementById('saveInviteCodeBtn');
-    const regenInviteCodeBtn = document.getElementById('regenInviteCodeBtn');
-    const copyInviteCodeBtn = document.getElementById('copyInviteCodeBtn');
+    // رمز الدعوة العام أُزيل — كل ضيف له رمزه الشخصي في جدول المدعوين
+    const inviteCodeInput = null; // kept for legacy template references
     const addForm = document.getElementById('addGuestForm');
     const bulkForm = document.getElementById('bulkGuestForm');
     const editForm = document.getElementById('editGuestForm');
@@ -466,8 +551,8 @@ get_header();
         return output;
     }
 
-    function buildInviteMessage(name, phone) {
-        const inviteCode = normalizeInviteCode(inviteCodeInput ? inviteCodeInput.value : '');
+    function buildInviteMessage(name, phone, guestCode = '') {
+        const inviteCode = normalizeInviteCode(guestCode);
         const guestNameRaw = (name || '').toString().trim();
         const guestPhone = normPhone(phone);
         const title = (cfg.eventTitle || '').toString().trim();
@@ -492,9 +577,10 @@ get_header();
         if (!whatsappPreviewText) return;
 
         const firstRow = getRows()[0];
-        const sampleName = firstRow ? ((firstRow.dataset.name || '').toString().trim() || 'ضيفنا الكريم') : 'ضيفنا الكريم';
+        const sampleName  = firstRow ? ((firstRow.dataset.name  || '').toString().trim() || 'ضيفنا الكريم') : 'ضيفنا الكريم';
         const samplePhone = firstRow ? normPhone(firstRow.dataset.phone || '') : '05XXXXXXXX';
-        const rendered = buildInviteMessage(sampleName, samplePhone);
+        const sampleCode  = firstRow ? (firstRow.dataset.code || '') : '';
+        const rendered = buildInviteMessage(sampleName, samplePhone, sampleCode);
 
         if (!rendered) {
             whatsappPreviewText.textContent = 'احفظ رمز الدعوة أولاً لإظهار المعاينة.';
@@ -504,20 +590,20 @@ get_header();
         whatsappPreviewText.textContent = rendered;
     }
 
-    function getWhatsappUrl(phone, name, silent = false) {
-        const inviteCode = normalizeInviteCode(inviteCodeInput ? inviteCodeInput.value : '');
+    function getWhatsappUrl(phone, name, guestCode = '', silent = false) {
+        const inviteCode = normalizeInviteCode(guestCode);
         if (!inviteCode) {
-            if (!silent) showMsg('error', 'احفظ رمز الدعوة أولاً قبل الإرسال.');
+            if (!silent) showMsg('error', 'هذا الضيف ليس له رمز دعوة — اضغط 🔄 لتوليد رمز.');
             return '';
         }
 
         const waPhone = normalizeWhatsappPhone(phone);
         if (!waPhone) {
-            if (!silent) showMsg('error', 'رقم الجوال غير صالح لواتساب. استخدم رقمًا بصيغة دولية مثل 9665xxxxxxx.');
+            if (!silent) showMsg('error', 'رقم الجوال غير صالح لواتساب.');
             return '';
         }
 
-        const text = buildInviteMessage(name, phone);
+        const text = buildInviteMessage(name, phone, guestCode);
         if (!text) {
             if (!silent) showMsg('error', 'تعذر تجهيز نص الدعوة.');
             return '';
@@ -526,8 +612,8 @@ get_header();
         return `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
     }
 
-    function openWhatsappInvite(phone, name, silent = false) {
-        const url = getWhatsappUrl(phone, name, silent);
+    function openWhatsappInvite(phone, name, guestCode = '', silent = false) {
+        const url = getWhatsappUrl(phone, name, guestCode, silent);
         if (!url) return false;
 
         const win = window.open(url, '_blank', 'noopener');
@@ -629,43 +715,141 @@ get_header();
         });
     });
 
-    if (inviteCodeInput) {
-        inviteCodeInput.value = normalizeInviteCode(inviteCodeInput.value || '');
-        inviteCodeInput.addEventListener('input', () => {
-            inviteCodeInput.value = normalizeInviteCode(inviteCodeInput.value);
-            updateWhatsappPreview();
-        });
+    // handlers رمز الدعوة العام: أُزيلت لأن كل ضيف له رمزه الشخصي
+
+    // ── الإرسال التجريبي ──────────────────────────────────────────────────────
+    const waTestModal         = document.getElementById('waTestModal');
+    const waTestSendBtn       = document.getElementById('waTestSendBtn');
+    const waTestSendConfirmBtn= document.getElementById('waTestSendConfirmBtn');
+    const waTestResult        = document.getElementById('waTestResult');
+    const waTestPhone         = document.getElementById('waTestPhone');
+    const waTestName          = document.getElementById('waTestName');
+
+    function openTestModal() {
+        if (!waTestModal) return;
+        waTestResult?.classList.add('hidden');
+        waTestModal.classList.remove('hidden');
+        waTestPhone?.focus();
+    }
+    function closeTestModal() {
+        waTestModal?.classList.add('hidden');
     }
 
-    if (saveInviteCodeBtn) {
-        saveInviteCodeBtn.addEventListener('click', async () => {
-            await saveInviteCode();
-            updateWhatsappPreview();
-        });
+    waTestSendBtn?.addEventListener('click', openTestModal);
+    document.getElementById('waTestModalClose')?.addEventListener('click', closeTestModal);
+    document.getElementById('waTestModalClose2')?.addEventListener('click', closeTestModal);
+    waTestModal?.addEventListener('click', e => { if (e.target === waTestModal) closeTestModal(); });
+
+    function showTestResult(ok, text) {
+        if (!waTestResult) return;
+        waTestResult.classList.remove('hidden', 'bg-emerald-50', 'text-emerald-800', 'bg-rose-50', 'text-rose-800');
+        waTestResult.classList.add(ok ? 'bg-emerald-50' : 'bg-rose-50', ok ? 'text-emerald-800' : 'text-rose-800');
+        waTestResult.textContent = text;
+        waTestResult.classList.remove('hidden');
     }
 
-    if (regenInviteCodeBtn) {
-        regenInviteCodeBtn.addEventListener('click', async () => {
-            const newCode = generateInviteCode();
-            if (inviteCodeInput) inviteCodeInput.value = newCode;
-            await saveInviteCode(newCode);
-            updateWhatsappPreview();
-        });
-    }
+    waTestSendConfirmBtn?.addEventListener('click', async () => {
+        const phone = (waTestPhone?.value || '').trim();
+        const name  = (waTestName?.value  || '').trim() || 'ضيف تجريبي';
 
-    if (copyInviteCodeBtn) {
-        copyInviteCodeBtn.addEventListener('click', async () => {
-            const code = normalizeInviteCode(inviteCodeInput ? inviteCodeInput.value : '');
-            if (!code) {
-                showMsg('error', 'لا يوجد رمز دعوة للنسخ');
-                return;
+        if (!phone) {
+            showTestResult(false, '⚠️ أدخل رقم الجوال أولاً');
+            return;
+        }
+
+        waTestSendConfirmBtn.disabled = true;
+        waTestSendConfirmBtn.textContent = '⏳ جاري الإرسال...';
+
+        try {
+            const fd = new FormData();
+            fd.append('action',     'pge_wa_test_send');
+            fd.append('nonce',      cfg.nonce);
+            fd.append('event_id',   cfg.eventId);
+            fd.append('test_phone', phone);
+            fd.append('test_name',  name);
+
+            const res  = await fetch(cfg.ajax, { method: 'POST', body: fd });
+            const json = await res.json();
+
+            if (json.success) {
+                showTestResult(true, json.data?.message || '✅ تم إرسال الرسالة التجريبية!');
+            } else {
+                showTestResult(false, '❌ ' + (json.data?.message || JSON.stringify(json.data)));
             }
+        } catch (err) {
+            showTestResult(false, '❌ خطأ في الاتصال: ' + err.message);
+        } finally {
+            waTestSendConfirmBtn.disabled = false;
+            waTestSendConfirmBtn.textContent = '📨 إرسال التجربة';
+        }
+    });
+
+    // ── محرر قوالب رسائل واتساب ──────────────────────────────────────────────
+    // إدراج متغير في الموضع الحالي للكورسر
+    document.querySelectorAll('.wa-var-insert').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.dataset.target;
+            const varText  = btn.dataset.var || '';
+            const ta = document.getElementById(targetId);
+            if (!ta || !varText) return;
+            const start = ta.selectionStart ?? ta.value.length;
+            const end   = ta.selectionEnd   ?? ta.value.length;
+            ta.value = ta.value.slice(0, start) + varText + ta.value.slice(end);
+            ta.selectionStart = ta.selectionEnd = start + varText.length;
+            ta.focus();
+        });
+    });
+
+    // حفظ القوالب
+    const saveWaTplBtn = document.getElementById('saveWaTplBtn');
+    const waTplMsg     = document.getElementById('waTplMsg');
+
+    function showWaTplMsg(ok, text) {
+        if (!waTplMsg) return;
+        waTplMsg.classList.remove('hidden', 'bg-emerald-50', 'text-emerald-800', 'bg-rose-50', 'text-rose-800');
+        waTplMsg.classList.add(ok ? 'bg-emerald-50' : 'bg-rose-50', ok ? 'text-emerald-800' : 'text-rose-800');
+        waTplMsg.textContent = text;
+        waTplMsg.classList.remove('hidden');
+        setTimeout(() => waTplMsg.classList.add('hidden'), 3000);
+    }
+
+    if (saveWaTplBtn) {
+        saveWaTplBtn.addEventListener('click', async () => {
+            saveWaTplBtn.disabled = true;
+            saveWaTplBtn.textContent = '⏳ جاري الحفظ...';
+
+            const fd = new FormData();
+            fd.append('action',   'pge_event_save_wa_templates');
+            fd.append('nonce',    cfg.nonce);
+            fd.append('event_id', cfg.eventId);
+            ['invite','yes','no','invalid'].forEach(k => {
+                const ta = document.getElementById('wa_tpl_' + k);
+                fd.append('tpl_' + k, ta ? ta.value : '');
+            });
+
             try {
-                await navigator.clipboard.writeText(code);
-                showMsg('success', 'تم نسخ رمز الدعوة');
-            } catch (err) {
-                showMsg('error', 'تعذر نسخ الرمز');
+                const res  = await fetch(cfg.ajax, { method: 'POST', body: fd });
+                const json = await res.json();
+                showWaTplMsg(json.success, json.success ? (json.data?.message || '✅ تم الحفظ') : '❌ تعذر الحفظ');
+            } catch {
+                showWaTplMsg(false, '❌ خطأ في الاتصال');
+            } finally {
+                saveWaTplBtn.disabled = false;
+                saveWaTplBtn.textContent = '💾 حفظ القوالب';
             }
+        });
+    }
+
+    // استعادة الافتراضي (يفرّغ الحقول فقط — الحفظ يستخدم الافتراضي عند الفراغ)
+    const resetWaTplBtn = document.getElementById('resetWaTplBtn');
+    if (resetWaTplBtn) {
+        resetWaTplBtn.addEventListener('click', () => {
+            if (!confirm('هل تريد مسح كل القوالب المخصصة وإعادة النص الافتراضي؟')) return;
+            ['invite','yes','no','invalid'].forEach(k => {
+                const ta = document.getElementById('wa_tpl_' + k);
+                if (ta) ta.value = '';
+            });
+            showWaTplMsg(true, 'سيتم استخدام النص الافتراضي عند الحفظ التالي');
         });
     }
 
@@ -840,8 +1024,9 @@ get_header();
                 showMsg('error', 'رقم الجوال غير صالح.');
                 return;
             }
-
-            openWhatsappInvite(phone, name);
+            const row = waBtn.closest('.guest-row');
+            const guestCode = row?.dataset.code || '';
+            openWhatsappInvite(phone, name, guestCode);
             return;
         }
 
@@ -886,12 +1071,6 @@ get_header();
 
     if (bulkWhatsappBtn) {
         bulkWhatsappBtn.addEventListener('click', () => {
-            const inviteCode = normalizeInviteCode(inviteCodeInput ? inviteCodeInput.value : '');
-            if (!inviteCode) {
-                showMsg('error', 'احفظ رمز الدعوة أولاً قبل الإرسال.');
-                return;
-            }
-
             const phones = getSelectedPhones();
             if (phones.length === 0) return;
 
@@ -899,8 +1078,9 @@ get_header();
             phones.forEach((phone, idx) => {
                 const row = document.querySelector(`.guest-row[data-phone="${phone}"]`);
                 const name = row ? (row.dataset.name || '') : '';
+                const guestCode = row ? (row.dataset.code || '') : '';
                 window.setTimeout(() => {
-                    if (openWhatsappInvite(phone, name, true)) {
+                    if (openWhatsappInvite(phone, name, guestCode, true)) {
                         opened += 1;
                     }
                 }, idx * 220);
@@ -912,12 +1092,6 @@ get_header();
 
     if (whatsappAllBtn) {
         whatsappAllBtn.addEventListener('click', () => {
-            const inviteCode = normalizeInviteCode(inviteCodeInput ? inviteCodeInput.value : '');
-            if (!inviteCode) {
-                showMsg('error', 'احفظ رمز الدعوة أولاً قبل الإرسال.');
-                return;
-            }
-
             const rows = getRows();
             if (!rows.length) {
                 showMsg('error', 'لا يوجد مدعوون لإرسال الدعوة.');
@@ -928,9 +1102,10 @@ get_header();
             rows.forEach((row, idx) => {
                 const phone = normPhone(row.dataset.phone || '');
                 const name = (row.dataset.name || '').toString();
+                const guestCode = row.dataset.code || '';
                 if (!phone) return;
                 window.setTimeout(() => {
-                    if (openWhatsappInvite(phone, name, true)) {
+                    if (openWhatsappInvite(phone, name, guestCode, true)) {
                         opened += 1;
                     }
                 }, idx * 220);
@@ -1134,6 +1309,59 @@ get_header();
             }
         });
     }
+
+    // ── نسخ رمز الدعوة ──────────────────────────────────────────────────────
+    document.addEventListener('click', async (e) => {
+        const copyBtn = e.target.closest('.guest-copy-code-btn');
+        if (copyBtn) {
+            const code = copyBtn.dataset.code || '';
+            if (!code) return;
+            try {
+                await navigator.clipboard.writeText(code);
+                const orig = copyBtn.textContent;
+                copyBtn.textContent = '✅';
+                setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+            } catch {
+                showMsg('error', 'تعذر نسخ الرمز');
+            }
+            return;
+        }
+
+        // ── تجديد رمز ضيف ────────────────────────────────────────────────────
+        const regenBtn = e.target.closest('.guest-regen-code-btn');
+        if (regenBtn) {
+            const phone = normPhone(regenBtn.dataset.phone || '');
+            if (!phone) return;
+            if (!window.confirm(`توليد رمز دعوة جديد للرقم ${phone}؟\nالرمز القديم لن يعمل بعد ذلك.`)) return;
+
+            regenBtn.textContent = '⏳';
+            regenBtn.disabled = true;
+
+            try {
+                const json = await postAction('pge_event_guest_regen_code', { phone });
+                if (json && json.success && json.data?.code) {
+                    const newCode = json.data.code;
+                    const row = document.querySelector(`.guest-row[data-phone="${phone}"]`);
+                    if (row) {
+                        row.dataset.code = newCode;
+                        const codeCell = row.querySelector('.guest-code-display');
+                        if (codeCell) codeCell.textContent = newCode;
+                        const copyBtnEl = row.querySelector('.guest-copy-code-btn');
+                        if (copyBtnEl) copyBtnEl.dataset.code = newCode;
+                    }
+                    showMsg('success', `✅ رمز جديد: ${newCode}`);
+                } else {
+                    showMsg('error', (json && json.data) ? json.data : 'تعذر توليد رمز جديد');
+                }
+            } catch (err) {
+                showMsg('error', 'تعذر الاتصال بالخادم');
+            } finally {
+                regenBtn.textContent = '🔄';
+                regenBtn.disabled = false;
+            }
+            return;
+        }
+    });
 
     refreshBulkDeleteState();
     applyFilters();

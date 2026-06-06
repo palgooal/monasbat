@@ -46,6 +46,7 @@ require_once PGE_PATH . 'includes/routing.php';
 register_activation_hook(__FILE__, function () {
     // 1. تسجيل نوع المنشورات
     pge_register_event_post_type();
+    add_rewrite_rule('^e/([0-9]+)/?$', 'index.php?pge_short_event=$matches[1]', 'top');
     add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
     add_rewrite_rule('^create-event/?$', 'index.php?pge_action=create_event', 'top');
     add_rewrite_rule('^edit-event/([0-9]+)/?$', 'index.php?pge_action=edit_event&event_id=$matches[1]', 'top');

@@ -95,15 +95,26 @@ if (!function_exists('pge_cookie_is_valid')) {
         $token = (string) $token;
         if ($token === '') return false;
 
-        $code = pge_norm_invite_code((string) get_post_meta($event_id, '_pge_invite_code', true));
-        if ($code === '') return false;
-
-        $invited = pge_get_invited_phones($event_id);
+        $invited    = pge_get_invited_phones($event_id);
         if (empty($invited)) return false;
 
+        $event_code = pge_norm_invite_code((string) get_post_meta($event_id, '_pge_invite_code', true));
+        $guests_map = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
+
         foreach ($invited as $p) {
-            $expected = pge_make_access_token($event_id, $p, $code);
-            if (hash_equals($expected, $token)) return true;
+            // 1. تحقق برمز الضيف الشخصي أولاً
+            $personal = isset($guests_map[$p]['code'])
+                ? pge_norm_invite_code($guests_map[$p]['code'])
+                : '';
+
+            if ($personal !== '') {
+                if (hash_equals(pge_make_access_token($event_id, $p, $personal), $token)) return true;
+            }
+
+            // 2. fallback: الرمز الموحّد للمناسبة (للتوافق مع الجلسات القديمة)
+            if ($event_code !== '') {
+                if (hash_equals(pge_make_access_token($event_id, $p, $event_code), $token)) return true;
+            }
         }
         return false;
     }
@@ -131,21 +142,28 @@ if (!$access_ok && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_ac
     $code = pge_norm_invite_code($code);
     $phone_n = pge_norm_phone($phone);
 
-    $saved_code = pge_norm_invite_code((string) get_post_meta($event_id, '_pge_invite_code', true));
-    $invited = pge_get_invited_phones($event_id);
+    $invited    = pge_get_invited_phones($event_id);
+    $guests_map = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
+    $event_code = pge_norm_invite_code((string) get_post_meta($event_id, '_pge_invite_code', true));
 
-    if ($saved_code === '') {
-        $access_error = 'هذه المناسبة غير مهيّأة بعد (لا يوجد رمز دعوة). تواصل مع المضيف.';
-    } elseif ($code === '' || $phone_n === '') {
+    // الرمز الصالح: الشخصي إذا وُجد، وإلا الموحّد
+    $personal_code = isset($guests_map[$phone_n]['code'])
+        ? pge_norm_invite_code($guests_map[$phone_n]['code'])
+        : '';
+    $valid_code = ($personal_code !== '') ? $personal_code : $event_code;
+
+    if ($code === '' || $phone_n === '') {
         $access_error = 'فضلاً أدخل رمز الدعوة ورقم الجوال.';
-    } elseif (!hash_equals($saved_code, $code)) {
-        $access_error = 'رمز الدعوة غير صحيح.';
+    } elseif ($valid_code === '') {
+        $access_error = 'هذه المناسبة غير مهيّأة بعد (لا يوجد رمز دعوة). تواصل مع المضيف.';
     } elseif (empty($invited)) {
         $access_error = 'قائمة المدعوين غير مُضافة بعد. تواصل مع المضيف.';
     } elseif (!in_array($phone_n, $invited, true)) {
         $access_error = 'رقم الجوال غير موجود ضمن قائمة المدعوين.';
+    } elseif (!hash_equals($valid_code, $code)) {
+        $access_error = 'رمز الدعوة غير صحيح.';
     } else {
-        $token = pge_make_access_token($event_id, $phone_n, $saved_code);
+        $token = pge_make_access_token($event_id, $phone_n, $valid_code);
 
         setcookie($cookie_name, $token, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
         $_COOKIE[$cookie_name] = $token;

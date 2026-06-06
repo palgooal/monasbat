@@ -31,6 +31,9 @@ class Mon_UltraMsg_Handler
 
         // تشغيل فوري للطابور (يحل مشكلة WP Cron على localhost)
         add_action('wp_ajax_pge_wa_run_now',      [$this, 'ajax_run_now']);
+
+        // إرسال تجريبي لرقم محدد
+        add_action('wp_ajax_pge_wa_test_send',    [$this, 'ajax_test_send']);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -81,7 +84,56 @@ class Mon_UltraMsg_Handler
         $event_type = $payload['event_type'] ?? ($payload['event'] ?? '');
         $data       = $payload['data'] ?? $payload; // بعض الإصدارات ترسل البيانات مباشرة
 
-        $this->log("📱 UltraMsg webhook: event_type=$event_type | raw=" . substr($raw_body, 0, 200));
+        // نسجّل message_create كاملاً لنرى حقل to بالضبط
+        $log_raw = ($event_type === 'message_create')
+            ? substr($raw_body, 0, 600)
+            : substr($raw_body, 0, 200);
+        $this->log("📱 UltraMsg webhook: event_type=$event_type | raw=" . $log_raw);
+
+        // ══════════════════════════════════════════════════════════════
+        // message_create / message_ack — نبني خريطة LID → pending
+        // الصيغة: "true_133346537541875@lid_MSGID_out"
+        // نستخدم حقل "to" لإيجاد الـ pending بدل msg_id (لأن msg_id يختلف)
+        // ══════════════════════════════════════════════════════════════
+        if ($event_type === 'message_create' || $event_type === 'message_ack') {
+            $compound_id = $data['id'] ?? '';
+            $to_field    = $data['to']   ?? '';  // رقم المستقبل (هاتف أو LID)
+
+            $this->log("📋 $event_type: to=$to_field | compound_id=$compound_id");
+
+            // استخرج LID من الـ compound_id
+            if (str_contains($compound_id, '@lid')) {
+                $lid_parts = explode('@lid', $compound_id, 2);
+                $lid_bare  = preg_replace('/^(true|false)_/', '', $lid_parts[0]); // "133346537541875"
+
+                if ($lid_bare) {
+                    // البحث عن pending بحقل "to" (قد يكون هاتف أو LID)
+                    $to_bare = preg_replace('/@.*$/', '', $to_field);
+                    $pending = null;
+
+                    // محاولة 1: to = رقم هاتف مباشر
+                    if ($to_bare && !ctype_alpha(substr($to_bare, -3))) {
+                        $pending = get_option('pge_wa_pending_' . pge_norm_phone($to_bare));
+                        if (!$pending) {
+                            $pending = get_option('pge_wa_pending_00' . pge_norm_phone($to_bare));
+                        }
+                    }
+
+                    // محاولة 2: to = LID (نفس حقل lid_bare)
+                    if (!$pending && $to_bare) {
+                        $pending = get_option('pge_wa_pending_lid_' . $to_bare);
+                    }
+
+                    if ($pending && !empty($pending['event_id'])) {
+                        update_option('pge_wa_pending_lid_' . $lid_bare, $pending, false);
+                        $this->log("🔗 LID map: lid=$lid_bare | to=$to_field | event={$pending['event_id']}");
+                    } else {
+                        $this->log("⚠️ LID map: لا pending | lid=$lid_bare | to=$to_field");
+                    }
+                }
+            }
+            return new WP_REST_Response(['status' => $event_type . '_ok'], 200);
+        }
 
         // تجاهل أي حدث غير message_received
         if ($event_type !== 'message_received') {
@@ -110,16 +162,25 @@ class Mon_UltraMsg_Handler
         $this->log("📨 message_received: from=$raw_from | type=$msg_type | selected_id=$selected_id | body=$body");
 
         // ══════════════════════════════════════════════════════════════
-        // البحث عن الدعوة المعلّقة
-        // UltraMsg لا يستخدم LID — الرقم دائماً بالصيغة الدولية
+        // البحث عن الدعوة المعلّقة — ثلاث صيغ
         // ══════════════════════════════════════════════════════════════
-        $pending = get_option('pge_wa_pending_' . pge_norm_phone($from_bare));
-        if (!$pending) {
-            // fallback: الرقم بصيغة 00XXXXXXX
-            $pending = get_option('pge_wa_pending_00' . pge_norm_phone($from_bare));
+
+        // 1. LID (الصيغة الجديدة من واتساب: XXXXXXXXXXXX@lid)
+        if (str_contains($raw_from, '@lid')) {
+            $pending = get_option('pge_wa_pending_lid_' . $from_bare);
+            if ($pending) $this->log("✅ pending عبر LID: $from_bare");
         }
-        if ($pending) {
-            $this->log("✅ pending عبر phone: $from_bare");
+
+        // 2. رقم الهاتف المباشر (970XXXXXXX)
+        if (!$pending) {
+            $pending = get_option('pge_wa_pending_' . pge_norm_phone($from_bare));
+            if ($pending) $this->log("✅ pending عبر phone: $from_bare");
+        }
+
+        // 3. رقم بصيغة 00XXXXXXX
+        if (!$pending) {
+            $pending = get_option('pge_wa_pending_00' . pge_norm_phone($from_bare));
+            if ($pending) $this->log("✅ pending عبر 00phone: $from_bare");
         }
 
         if (!$pending || empty($pending['event_id'])) {
@@ -148,7 +209,7 @@ class Mon_UltraMsg_Handler
             // لا نرسل "لم نتعرف" إذا كان زر — فقط للنصوص المجهولة
             if (!$is_button_reply) {
                 $send_to = $pending['wa_number'] ?? $raw_from;
-                $this->send_text_message($send_to, $this->get_reminder_text());
+                $this->send_text_message($send_to, $this->get_reminder_text($event_id));
             }
             return new WP_REST_Response(['status' => 'invalid_reply'], 200);
         }
@@ -168,30 +229,33 @@ class Mon_UltraMsg_Handler
         }
 
         // ══════════════════════════════════════════════════════════════
-        // رسالة التأكيد
+        // رسالة التأكيد — من القالب المخصص أو الافتراضي
         // ══════════════════════════════════════════════════════════════
-        $send_to = $pending['wa_number'] ?? $from_bare;
+        $send_to     = $pending['wa_number'] ?? $from_bare;
+        $event_name  = get_the_title($event_id);
+        $event_url   = $pending['event_url']   ?? function_exists("pge_get_event_short_url") ? pge_get_event_short_url($event_id) : (string) get_permalink($event_id);
+        $invite_code = $pending['invite_code'] ?? '';
+        $disp_phone  = $pending['norm_phone']  ?? $rsvp_phone;
+
+        $tpls = function_exists('pge_wa_get_templates') ? pge_wa_get_templates($event_id) : [];
+
+        $tpl_vars = [
+            'event_name'  => $event_name,
+            'event_url'   => $event_url,
+            'invite_code' => $invite_code,
+            'guest_phone' => $disp_phone,
+        ];
 
         if ($reply === 'yes') {
-            $event_name  = get_the_title($event_id);
-            $event_url   = $pending['event_url']   ?? (string) get_permalink($event_id);
-            $invite_code = $pending['invite_code'] ?? '';
-            $disp_phone  = $pending['norm_phone']  ?? $rsvp_phone;
-
-            $confirm_msg  = "شكراً على تأكيد حضورك! 🎉\n";
-            $confirm_msg .= "نتطلع لرؤيتك في *{$event_name}*\n\n";
-            $confirm_msg .= "━━━━━━━━━━━━━━━\n";
-            $confirm_msg .= "📌 *تفاصيل دخولك:*\n";
-            if ($event_url) {
-                $confirm_msg .= "🔗 رابط المناسبة:\n{$event_url}\n";
-            }
-            if ($invite_code) {
-                $confirm_msg .= "\n🔑 رمز الدعوة: *{$invite_code}*\n";
-                $confirm_msg .= "📱 رقمك المسجل: *{$disp_phone}*";
-            }
+            $tpl = $tpls['yes'] ?? pge_wa_default_reply_yes_template();
         } else {
-            $confirm_msg = "شكراً على إبلاغنا. نتمنى لك دوام الصحة والسعادة 🌸";
+            $tpl = $tpls['no'] ?? pge_wa_default_reply_no_template();
         }
+
+        $confirm_msg = function_exists('pge_wa_render_template')
+            ? pge_wa_render_template($tpl, $tpl_vars)
+            : $tpl;
+
         $this->send_text_message($send_to, $confirm_msg);
 
         $this->log("✅ RSVP: from=$raw_from | rsvp_phone=$rsvp_phone | reply=$reply | event=$event_id");
@@ -244,10 +308,10 @@ class Mon_UltraMsg_Handler
             : '';
 
         $image_url   = (string) get_the_post_thumbnail_url($event_id, 'full');
-        $event_url   = (string) get_permalink($event_id);
-        $invite_code = (string) get_post_meta($event_id, '_pge_invite_code', true);
+        $event_url   = function_exists("pge_get_event_short_url") ? pge_get_event_short_url($event_id) : (string) get_permalink($event_id);
+        $event_invite_code = (string) get_post_meta($event_id, '_pge_invite_code', true);
         if (function_exists('pge_normalize_invite_code')) {
-            $invite_code = pge_normalize_invite_code($invite_code);
+            $event_invite_code = pge_normalize_invite_code($event_invite_code);
         }
         $guests_map = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
         $all_phones = pge_get_invited_phones($event_id);
@@ -268,11 +332,16 @@ class Mon_UltraMsg_Handler
             $guest_name = $guests_map[$phone]['name'] ?? 'ضيفنا العزيز';
             $norm_phone = pge_norm_phone($phone);
 
+            // رمز الضيف الشخصي — fallback للرمز الموحّد إن لم يُوجد
+            $guest_invite_code = isset($guests_map[$phone]['code']) && $guests_map[$phone]['code'] !== ''
+                ? (function_exists('pge_normalize_invite_code') ? pge_normalize_invite_code($guests_map[$phone]['code']) : $guests_map[$phone]['code'])
+                : $event_invite_code;
+
             $result = $this->send_invite_with_buttons(
-                $wa_number, $guest_name, $event_name, $event_date, $image_url
+                $wa_number, $guest_name, $event_name, $event_date, $image_url, $event_id, $norm_phone
             );
 
-            // تأخير عشوائي 2-4 ثوانٍ (إضافي بعد التأخير الداخلي في send_invite_with_buttons)
+            // تأخير عشوائي 2-4 ثوانٍ
             usleep(rand(2_000_000, 3_000_000));
 
             // UltraMsg يُرجع {"sent":"true","id":"..."} عند النجاح
@@ -294,7 +363,7 @@ class Mon_UltraMsg_Handler
                     'original_phone' => $norm_phone,
                     'wa_number'      => $wa_number,
                     'event_url'      => $event_url,
-                    'invite_code'    => $invite_code,
+                    'invite_code'    => $guest_invite_code,  // رمز الضيف الشخصي
                     'norm_phone'     => $norm_phone,
                 ];
 
@@ -302,7 +371,7 @@ class Mon_UltraMsg_Handler
                 if ($msg_id) {
                     update_option('pge_wa_pending_msgid_' . $msg_id, $pending_data, false);
                 }
-                $this->log("✅ UltraMsg: pending saved | wa=$wa_number | msg_id=$msg_id");
+                $this->log("✅ UltraMsg: pending saved | wa=$wa_number | msg_id=$msg_id | code=$guest_invite_code");
             } else {
                 $failed++;
                 $this->log("❌ UltraMsg: فشل إرسال لـ $wa_number | " . json_encode($result));
@@ -355,25 +424,28 @@ class Mon_UltraMsg_Handler
     }
 
     /**
-     * إرسال دعوة المناسبة — صورة + نص منسّق (رسالة واحدة)
-     * UltraMsg لا يدعم الأزرار التفاعلية — نستخدم الرد النصي 1/2
+     * إرسال دعوة المناسبة — يستخدم القالب المخصص أو الافتراضي
      */
     private function send_invite_with_buttons(
         string $wa_number,
         string $guest_name,
         string $event_name,
         string $event_date,
-        string $image_url
+        string $image_url,
+        int    $event_id   = 0,
+        string $norm_phone = ''
     ): ?array {
-        $caption  = "مرحباً *{$guest_name}* 👋\n\n";
-        $caption .= "يسعدنا دعوتك لحضور:\n✨ *{$event_name}*";
-        if ($event_date) {
-            $caption .= "\n📅 {$event_date}";
-        }
-        $caption .= "\n\n━━━━━━━━━━━━━\n";
-        $caption .= "للرد على الدعوة أرسل:\n";
-        $caption .= "✅ *1* — سأحضر بإذن الله\n";
-        $caption .= "❌ *2* — لن أتمكن من الحضور";
+        $tpl = ($event_id && function_exists('pge_wa_get_templates'))
+            ? pge_wa_get_templates($event_id)['invite']
+            : pge_wa_default_invite_template();
+
+        $caption = pge_wa_render_template($tpl, [
+            'guest_name'      => $guest_name,
+            'event_name'      => $event_name,
+            'event_date'      => $event_date,
+            'event_date_line' => $event_date ? "\n📅 {$event_date}" : '',
+            'guest_phone'     => $norm_phone,
+        ]);
 
         return $image_url
             ? $this->send_media_message($wa_number, $image_url, $caption)
@@ -467,9 +539,12 @@ class Mon_UltraMsg_Handler
         }
     }
 
-    private function get_reminder_text(): string
+    private function get_reminder_text(int $event_id = 0): string
     {
-        return "عذراً، لم نتعرف على ردك 😊\n\nيمكنك الرد بـ:\n*1* — للحضور\n*2* — للاعتذار";
+        if ($event_id && function_exists('pge_wa_get_templates')) {
+            return pge_wa_get_templates($event_id)['invalid'];
+        }
+        return pge_wa_default_reply_invalid_template();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -521,7 +596,7 @@ class Mon_UltraMsg_Handler
                 ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
                 : '',
             'image_url'  => (string) get_the_post_thumbnail_url($event_id, 'full'),
-            'event_url'  => (string) get_permalink($event_id),
+            'event_url'  => function_exists("pge_get_event_short_url") ? pge_get_event_short_url($event_id) : (string) get_permalink($event_id),
             'invite_code'=> $invite_code,
             'offset'     => 0,
             'total'      => count($phones),
@@ -587,6 +662,71 @@ class Mon_UltraMsg_Handler
             'report'   => $report,
             'done_at'  => $queue['done_at'],
         ]);
+    }
+
+    /**
+     * AJAX — إرسال رسالة تجريبية لرقم محدد
+     * تستخدم نفس القوالب المحفوظة — لا تُسجّل RSVP
+     */
+    public function ajax_test_send(): void
+    {
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'Invalid nonce']);
+        }
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $event_id   = absint($_POST['event_id']   ?? 0);
+        $test_phone = sanitize_text_field($_POST['test_phone'] ?? '');
+        $test_name  = sanitize_text_field($_POST['test_name']  ?? 'ضيف تجريبي');
+
+        if (!$event_id || !pge_is_host_or_admin($event_id)) {
+            wp_send_json_error(['message' => 'Forbidden']);
+        }
+        if (empty($this->instance_id) || empty($this->token)) {
+            wp_send_json_error(['message' => 'لم يتم ضبط UltraMsg Instance ID أو Token']);
+        }
+        if ($test_phone === '') {
+            wp_send_json_error(['message' => 'أدخل رقم الجوال للاختبار']);
+        }
+
+        $wa_number  = $this->format_wa_number($test_phone);
+        $norm_phone = pge_norm_phone($test_phone);
+
+        $event          = get_post($event_id);
+        $event_name     = $event ? $event->post_title : 'مناسبتنا';
+        $event_date_raw = (string) get_post_meta($event_id, '_pge_event_date', true);
+        $event_date     = $event_date_raw
+            ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
+            : '';
+        $image_url = (string) get_the_post_thumbnail_url($event_id, 'full');
+
+        // رمز تجريبي لإظهار شكل الرمز في الرسالة
+        $test_code = 'TEST-0000';
+
+        // إرسال الدعوة التجريبية
+        $result = $this->send_invite_with_buttons(
+            $wa_number,
+            $test_name ?: 'ضيف تجريبي',
+            $event_name,
+            $event_date,
+            $image_url,
+            $event_id,
+            $norm_phone
+        );
+
+        $is_error = ($result === null)
+                 || (isset($result['error'])  && !empty($result['error']))
+                 || (isset($result['sent'])   && $result['sent'] === 'false')
+                 || (isset($result['status']) && $result['status'] === 'error');
+
+        if ($is_error) {
+            wp_send_json_error(['message' => 'فشل الإرسال: ' . json_encode($result)]);
+        }
+
+        $this->log("🧪 Test send: wa=$wa_number | name=$test_name | event=$event_id");
+        wp_send_json_success(['message' => "✅ تم إرسال الرسالة التجريبية للرقم $wa_number — تحقق من واتساب"]);
     }
 
     /**
@@ -661,12 +801,34 @@ class Mon_UltraMsg_Handler
             $norm_phone = pge_norm_phone($phone);
             $guest_name = $queue['guests_map'][$phone]['name'] ?? 'ضيفنا العزيز';
 
+            // رمز الضيف الشخصي — fallback للرمز الموحّد
+            $guest_code_raw = $queue['guests_map'][$phone]['code'] ?? '';
+            $guest_invite_code = $guest_code_raw !== ''
+                ? (function_exists('pge_normalize_invite_code') ? pge_normalize_invite_code($guest_code_raw) : $guest_code_raw)
+                : $queue['invite_code'];
+
+            // ── احفظ pending قبل الإرسال لتفادي race condition مع message_create webhook ──
+            $pending_data = [
+                'event_id'       => $event_id,
+                'sent_at'        => time(),
+                'msg_id'         => '',
+                'original_phone' => $norm_phone,
+                'wa_number'      => $wa_number,
+                'event_url'      => $queue['event_url'],
+                'invite_code'    => $guest_invite_code,  // رمز الضيف الشخصي
+                'norm_phone'     => $norm_phone,
+            ];
+            update_option('pge_wa_pending_' . $wa_number, $pending_data, false);
+
+            // ── أرسل الدعوة ──────────────────────────────────────────────────
             $result = $this->send_invite_with_buttons(
                 $wa_number,
                 $guest_name,
                 $queue['event_name'],
                 $queue['event_date'],
-                $queue['image_url']
+                $queue['image_url'],
+                $event_id,
+                $norm_phone
             );
 
             $is_error = ($result === null)
@@ -675,23 +837,18 @@ class Mon_UltraMsg_Handler
                      || (isset($result['status']) && $result['status'] === 'error');
 
             if (!$is_error) {
-                $msg_id = $result['id'] ?? '';
-                $pending_data = [
-                    'event_id'       => $event_id,
-                    'sent_at'        => time(),
-                    'msg_id'         => $msg_id,
-                    'original_phone' => $norm_phone,
-                    'wa_number'      => $wa_number,
-                    'event_url'      => $queue['event_url'],
-                    'invite_code'    => $queue['invite_code'],
-                    'norm_phone'     => $norm_phone,
-                ];
-                update_option('pge_wa_pending_' . $wa_number, $pending_data, false);
+                // حدّث pending بـ msg_id الفعلي
+                $msg_id = (string) ($result['id'] ?? '');
                 if ($msg_id) {
+                    $pending_data['msg_id'] = $msg_id;
+                    update_option('pge_wa_pending_' . $wa_number, $pending_data, false);
                     update_option('pge_wa_pending_msgid_' . $msg_id, $pending_data, false);
                 }
+                $this->log("✅ Queue sent: wa=$wa_number | msg_id=$msg_id");
                 $queue['results'][$phone] = ['status' => 'sent',   'time' => current_time('mysql')];
             } else {
+                // فشل الإرسال — احذف الـ pending حتى لا يبقى معلّقاً بدون دعوة
+                delete_option('pge_wa_pending_' . $wa_number);
                 $queue['results'][$phone] = ['status' => 'failed', 'time' => current_time('mysql')];
                 $this->log("❌ Queue: فشل إرسال لـ $wa_number | " . json_encode($result));
             }

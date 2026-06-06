@@ -25,6 +25,9 @@ class Mon_Cartat_Handler
         add_action('wp_ajax_pge_wa_queue_start',  [$this, 'ajax_queue_start']);
         add_action('wp_ajax_pge_wa_queue_status', [$this, 'ajax_queue_status']);
         add_action('pge_wa_process_queue',        [$this, 'cron_process_queue'], 10, 1);
+
+        // إرسال تجريبي لرقم محدد
+        add_action('wp_ajax_pge_wa_test_send',    [$this, 'ajax_test_send']);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -175,34 +178,102 @@ class Mon_Cartat_Handler
         }
 
         // ══════════════════════════════════════════════════════════════
-        // رسالة التأكيد
+        // رسالة التأكيد — من القالب المخصص أو الافتراضي
         // ══════════════════════════════════════════════════════════════
-        $send_to = $pending['wa_number'] ?? $raw_from;
+        $send_to     = $pending['wa_number'] ?? $raw_from;
+        $event_name  = get_the_title($event_id);
+        $event_url   = $pending['event_url']   ?? function_exists("pge_get_event_short_url") ? pge_get_event_short_url($event_id) : (string) get_permalink($event_id);
+        $invite_code = $pending['invite_code'] ?? '';
+        $disp_phone  = $pending['norm_phone']  ?? $rsvp_phone;
 
-        if ($reply === 'yes') {
-            $event_name  = get_the_title($event_id);
-            $event_url   = $pending['event_url']   ?? (string) get_permalink($event_id);
-            $invite_code = $pending['invite_code'] ?? '';
-            $disp_phone  = $pending['norm_phone']  ?? $rsvp_phone;
+        $tpls = function_exists('pge_wa_get_templates') ? pge_wa_get_templates($event_id) : [];
 
-            $confirm_msg  = "شكراً على تأكيد حضورك! 🎉\n";
-            $confirm_msg .= "نتطلع لرؤيتك في *{$event_name}*\n\n";
-            $confirm_msg .= "━━━━━━━━━━━━━━━\n";
-            $confirm_msg .= "📌 *تفاصيل دخولك:*\n";
-            if ($event_url) {
-                $confirm_msg .= "🔗 رابط المناسبة:\n{$event_url}\n";
-            }
-            if ($invite_code) {
-                $confirm_msg .= "\n🔑 رمز الدعوة: *{$invite_code}*\n";
-                $confirm_msg .= "📱 رقمك المسجل: *{$disp_phone}*";
-            }
-        } else {
-            $confirm_msg = "شكراً على إبلاغنا. نتمنى لك دوام الصحة والسعادة 🌸";
-        }
+        $tpl_vars = [
+            'event_name'  => $event_name,
+            'event_url'   => $event_url,
+            'invite_code' => $invite_code,
+            'guest_phone' => $disp_phone,
+        ];
+
+        $tpl = ($reply === 'yes')
+            ? ($tpls['yes'] ?? pge_wa_default_reply_yes_template())
+            : ($tpls['no']  ?? pge_wa_default_reply_no_template());
+
+        $confirm_msg = function_exists('pge_wa_render_template')
+            ? pge_wa_render_template($tpl, $tpl_vars)
+            : $tpl;
+
         $this->send_text_message($send_to, $confirm_msg);
 
         $this->log("✅ RSVP: from=$raw_from | rsvp_phone=$rsvp_phone | reply=$reply | event=$event_id");
         return new WP_REST_Response(['status' => 'success', 'reply' => $reply], 200);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // AJAX — إرسال تجريبي لرقم محدد
+    // ══════════════════════════════════════════════════════════════════════════
+
+    public function ajax_test_send(): void
+    {
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'Invalid nonce']);
+        }
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $event_id   = absint($_POST['event_id']   ?? 0);
+        $test_phone = sanitize_text_field($_POST['test_phone'] ?? '');
+        $test_name  = sanitize_text_field($_POST['test_name']  ?? 'ضيف تجريبي');
+
+        if (!$event_id || !pge_is_host_or_admin($event_id)) {
+            wp_send_json_error(['message' => 'Forbidden']);
+        }
+        if (empty($this->api_token)) {
+            wp_send_json_error(['message' => 'لم يتم ضبط Cartat API Token']);
+        }
+        if ($test_phone === '') {
+            wp_send_json_error(['message' => 'أدخل رقم الجوال للاختبار']);
+        }
+
+        $wa_number  = $this->format_wa_number($test_phone);
+        $norm_phone = pge_norm_phone($test_phone);
+
+        $event          = get_post($event_id);
+        $event_name     = $event ? $event->post_title : 'مناسبتنا';
+        $event_date_raw = (string) get_post_meta($event_id, '_pge_event_date', true);
+        $event_date     = $event_date_raw
+            ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
+            : '';
+        $image_url = (string) get_the_post_thumbnail_url($event_id, 'full');
+
+        // بناء رسالة الدعوة التجريبية من القالب المخصص
+        $tpl_invite = function_exists('pge_wa_get_templates')
+            ? pge_wa_get_templates($event_id)['invite']
+            : pge_wa_default_invite_template();
+
+        $caption = pge_wa_render_template($tpl_invite, [
+            'guest_name'      => $test_name ?: 'ضيف تجريبي',
+            'event_name'      => $event_name,
+            'event_date'      => $event_date,
+            'event_date_line' => $event_date ? "\n📅 {$event_date}" : '',
+            'guest_phone'     => $norm_phone,
+        ]);
+
+        $result = $image_url
+            ? $this->send_media_message($wa_number, $image_url, $caption)
+            : $this->send_text_message($wa_number, $caption);
+
+        $is_error = ($result === null)
+                 || (isset($result['status']) && $result['status'] === 'error')
+                 || (isset($result['success']) && $result['success'] === false);
+
+        if ($is_error) {
+            wp_send_json_error(['message' => 'فشل الإرسال: ' . json_encode($result)]);
+        }
+
+        $this->log("🧪 Test send: wa=$wa_number | name=$test_name | event=$event_id");
+        wp_send_json_success(['message' => "✅ تم إرسال الرسالة التجريبية للرقم $wa_number — تحقق من واتساب"]);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -251,11 +322,11 @@ class Mon_Cartat_Handler
             ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
             : '';
 
-        $image_url   = (string) get_the_post_thumbnail_url($event_id, 'full');
-        $event_url   = (string) get_permalink($event_id);
-        $invite_code = (string) get_post_meta($event_id, '_pge_invite_code', true);
+        $image_url         = (string) get_the_post_thumbnail_url($event_id, 'full');
+        $event_url         = function_exists("pge_get_event_short_url") ? pge_get_event_short_url($event_id) : (string) get_permalink($event_id);
+        $event_invite_code = (string) get_post_meta($event_id, '_pge_invite_code', true);
         if (function_exists('pge_normalize_invite_code')) {
-            $invite_code = pge_normalize_invite_code($invite_code);
+            $event_invite_code = pge_normalize_invite_code($event_invite_code);
         }
         $guests_map  = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
         $all_phones  = pge_get_invited_phones($event_id);
@@ -277,15 +348,24 @@ class Mon_Cartat_Handler
             $guest_name = $guests_map[$phone]['name'] ?? 'ضيفنا العزيز';
             $norm_phone = pge_norm_phone($phone);
 
-            $caption  = "مرحباً *{$guest_name}* 👋\n\n";
-            $caption .= "يسعدنا دعوتك لحضور:\n✨ *{$event_name}*\n";
-            if ($event_date) {
-                $caption .= "\n📅 {$event_date}\n";
-            }
-            $caption .= "\n━━━━━━━━━━━━━━━\n";
-            $caption .= "للرد على الدعوة أرسل:\n";
-            $caption .= "✅ *1* — سأحضر بإذن الله\n";
-            $caption .= "❌ *2* — لن أتمكن من الحضور";
+            // رمز الضيف الشخصي — fallback للرمز الموحّد
+            $guest_code_raw    = $guests_map[$phone]['code'] ?? '';
+            $guest_invite_code = $guest_code_raw !== ''
+                ? (function_exists('pge_normalize_invite_code') ? pge_normalize_invite_code($guest_code_raw) : $guest_code_raw)
+                : $event_invite_code;
+
+            // بناء رسالة الدعوة من القالب المخصص أو الافتراضي
+            $tpl_invite = function_exists('pge_wa_get_templates')
+                ? pge_wa_get_templates($event_id)['invite']
+                : pge_wa_default_invite_template();
+
+            $caption = pge_wa_render_template($tpl_invite, [
+                'guest_name'      => $guest_name,
+                'event_name'      => $event_name,
+                'event_date'      => $event_date,
+                'event_date_line' => $event_date ? "\n📅 {$event_date}" : '',
+                'guest_phone'     => $norm_phone,
+            ]);
 
             // إرسال صورة أو نص حسب توفر الصورة
             if ($image_url) {
@@ -313,10 +393,10 @@ class Mon_Cartat_Handler
                     'event_id'       => $event_id,
                     'sent_at'        => time(),
                     'msg_id'         => $msg_id,
-                    'original_phone' => $norm_phone, // الرقم كما في قائمة المدعوين
-                    'wa_number'      => $wa_number,  // للإرسال في رسالة التأكيد
+                    'original_phone' => $norm_phone,
+                    'wa_number'      => $wa_number,
                     'event_url'      => $event_url,
-                    'invite_code'    => $invite_code,
+                    'invite_code'    => $guest_invite_code,  // رمز الضيف الشخصي
                     'norm_phone'     => $norm_phone,
                 ];
 
@@ -537,7 +617,7 @@ class Mon_Cartat_Handler
                 ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
                 : '',
             'image_url'  => (string) get_the_post_thumbnail_url($event_id, 'full'),
-            'event_url'  => (string) get_permalink($event_id),
+            'event_url'  => function_exists("pge_get_event_short_url") ? pge_get_event_short_url($event_id) : (string) get_permalink($event_id),
             'invite_code'=> $invite_code,
             'offset'     => 0,
             'total'      => count($phones),
@@ -626,15 +706,23 @@ class Mon_Cartat_Handler
             $norm_phone = pge_norm_phone($phone);
             $guest_name = $queue['guests_map'][$phone]['name'] ?? 'ضيفنا العزيز';
 
-            $caption  = "مرحباً *{$guest_name}* 👋\n\n";
-            $caption .= "يسعدنا دعوتك لحضور:\n✨ *{$queue['event_name']}*\n";
-            if ($queue['event_date']) {
-                $caption .= "\n📅 {$queue['event_date']}\n";
-            }
-            $caption .= "\n━━━━━━━━━━━━━━━\n";
-            $caption .= "للرد على الدعوة أرسل:\n";
-            $caption .= "✅ *1* — سأحضر بإذن الله\n";
-            $caption .= "❌ *2* — لن أتمكن من الحضور";
+            // رمز الضيف الشخصي — fallback للرمز الموحّد
+            $guest_code_raw    = $queue['guests_map'][$phone]['code'] ?? '';
+            $guest_invite_code = $guest_code_raw !== ''
+                ? (function_exists('pge_normalize_invite_code') ? pge_normalize_invite_code($guest_code_raw) : $guest_code_raw)
+                : $queue['invite_code'];
+
+            $tpl_invite = function_exists('pge_wa_get_templates')
+                ? pge_wa_get_templates($event_id)['invite']
+                : pge_wa_default_invite_template();
+
+            $caption = pge_wa_render_template($tpl_invite, [
+                'guest_name'      => $guest_name,
+                'event_name'      => $queue['event_name'],
+                'event_date'      => $queue['event_date'],
+                'event_date_line' => $queue['event_date'] ? "\n📅 {$queue['event_date']}" : '',
+                'guest_phone'     => $norm_phone,
+            ]);
 
             $result = $queue['image_url']
                 ? $this->send_media_message($wa_number, $queue['image_url'], $caption)
@@ -653,7 +741,7 @@ class Mon_Cartat_Handler
                     'original_phone' => $norm_phone,
                     'wa_number'      => $wa_number,
                     'event_url'      => $queue['event_url'],
-                    'invite_code'    => $queue['invite_code'],
+                    'invite_code'    => $guest_invite_code,  // رمز الضيف الشخصي
                     'norm_phone'     => $norm_phone,
                 ];
                 update_option('pge_wa_pending_' . $wa_number, $pending_data, false);

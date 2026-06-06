@@ -96,6 +96,81 @@ if (!function_exists('pge_generate_invite_code')) {
 }
 
 // ──────────────────────────────────────────────
+// رابط الدعوة القصير: /e/{ID}
+// ──────────────────────────────────────────────
+if (!function_exists('pge_get_event_short_url')) {
+    function pge_get_event_short_url(int $event_id): string
+    {
+        return rtrim(home_url('/e/' . $event_id), '/');
+    }
+}
+
+// ══════════════════════════════════════════════
+// قوالب رسائل WhatsApp التلقائية
+// ══════════════════════════════════════════════
+
+if (!function_exists('pge_wa_default_invite_template')) {
+    function pge_wa_default_invite_template(): string
+    {
+        return "مرحباً *{{guest_name}}* 👋\n\nيسعدنا دعوتك لحضور:\n✨ *{{event_name}}*{{event_date_line}}\n\n━━━━━━━━━━━━━━━\nللرد على الدعوة أرسل:\n✅ *1* — سأحضر بإذن الله\n❌ *2* — لن أتمكن من الحضور";
+    }
+}
+
+if (!function_exists('pge_wa_default_reply_yes_template')) {
+    function pge_wa_default_reply_yes_template(): string
+    {
+        return "شكراً على تأكيد حضورك! 🎉\nنتطلع لرؤيتك في *{{event_name}}*\n\n━━━━━━━━━━━━━━━\n📌 *تفاصيل دخولك:*\n🔗 رابط المناسبة:\n{{event_url}}\n\n🔑 رمز الدعوة: *{{invite_code}}*\n📱 رقمك المسجل: *{{guest_phone}}*";
+    }
+}
+
+if (!function_exists('pge_wa_default_reply_no_template')) {
+    function pge_wa_default_reply_no_template(): string
+    {
+        return "شكراً على إبلاغنا. نتمنى لك دوام الصحة والسعادة 🌸";
+    }
+}
+
+if (!function_exists('pge_wa_default_reply_invalid_template')) {
+    function pge_wa_default_reply_invalid_template(): string
+    {
+        return "عذراً، لم نتعرف على ردك 😊\n\nأرسل *1* لتأكيد الحضور\nأو *2* للاعتذار";
+    }
+}
+
+/**
+ * جلب قوالب رسائل المناسبة (مع fallback للقيم الافتراضية)
+ */
+if (!function_exists('pge_wa_get_templates')) {
+    function pge_wa_get_templates(int $event_id): array
+    {
+        $stored_invite  = (string) get_post_meta($event_id, '_pge_wa_tpl_invite',  true);
+        $stored_yes     = (string) get_post_meta($event_id, '_pge_wa_tpl_yes',     true);
+        $stored_no      = (string) get_post_meta($event_id, '_pge_wa_tpl_no',      true);
+        $stored_invalid = (string) get_post_meta($event_id, '_pge_wa_tpl_invalid', true);
+
+        return [
+            'invite'  => $stored_invite  !== '' ? $stored_invite  : pge_wa_default_invite_template(),
+            'yes'     => $stored_yes     !== '' ? $stored_yes     : pge_wa_default_reply_yes_template(),
+            'no'      => $stored_no      !== '' ? $stored_no      : pge_wa_default_reply_no_template(),
+            'invalid' => $stored_invalid !== '' ? $stored_invalid : pge_wa_default_reply_invalid_template(),
+        ];
+    }
+}
+
+/**
+ * تصيير قالب واتساب باستبدال المتغيرات
+ */
+if (!function_exists('pge_wa_render_template')) {
+    function pge_wa_render_template(string $template, array $vars): string
+    {
+        foreach ($vars as $key => $val) {
+            $template = str_replace('{{' . $key . '}}', (string) $val, $template);
+        }
+        return trim($template);
+    }
+}
+
+// ──────────────────────────────────────────────
 // هل المستخدم الحالي مضيف المناسبة أو أدمن؟
 // ──────────────────────────────────────────────
 if (!function_exists('pge_is_host_or_admin')) {

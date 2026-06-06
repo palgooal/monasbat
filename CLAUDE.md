@@ -1,7 +1,7 @@
 # CLAUDE.md — دليل المطور لمشروع مناسبات (Monasbat)
 
 > هذا الملف موجّه للمطورين الجدد وأدوات الذكاء الاصطناعي. يشرح معمارية المشروع، أنماط الكود، والقرارات الفنية المهمة.
-> آخر تحديث: 2026-04-29
+> آخر تحديث: 2026-06-06
 
 ---
 
@@ -34,6 +34,8 @@ pgevents-core/
 │   ├── class-pge-packages.php ← كلاس إدارة الباقات والحدود
 │   ├── class-mon-events-users.php ← كلاس تفعيل الباقة بعد الدفع
 │   ├── class-salla-handler.php    ← معالج Webhook سلة
+│   ├── class-cartat-handler.php   ← تكامل واتساب عبر Cartat (مزوّد غير رسمي)
+│   ├── class-ultramsg-handler.php ← تكامل واتساب عبر UltraMsg (مزوّد غير رسمي)
 │   ├── routing.php            ← نظام التوجيه المخصص
 │   └── helpers.php            ← الدوال المساعدة المركزية
 └── templates/
@@ -98,6 +100,16 @@ checked_in (0/1), checked_in_at, created_at
 | `pge_salla_client_secret` | Client Secret لتطبيق سلة |
 | `pge_salla_tokens_{merchant_id}` | توكنات OAuth لكل متجر |
 | `pge_salla_install_{merchant_id}` | بيانات تثبيت التطبيق |
+| `pge_wa_provider` | المزوّد النشط: `cartat` أو `ultramsg` |
+| `pge_cartat_api_token` | API Token لـ Cartat |
+| `pge_cartat_country_code` | كود الدولة الافتراضي (966/970/962) |
+| `pge_ultramsg_instance_id` | Instance ID لـ UltraMsg |
+| `pge_ultramsg_token` | Token لـ UltraMsg |
+| `pge_wa_queue_{event_id}` | طابور إرسال الدعوات في الخلفية |
+| `pge_wa_pending_{wa_number}` | دعوة معلّقة (ينتظر رد الضيف) — يُحذف بعد الرد |
+| `pge_wa_pending_lid_{lid}` | نفس الدعوة مفهرسة بـ WhatsApp LID |
+| `pge_wa_pending_msgid_{msg_id}` | نفس الدعوة مفهرسة بـ msg_id للـ ACK mapping |
+| `pge_wa_lock_{event_id}` | Transient: قفل لمنع تنفيذ الطابور مرتين |
 
 ---
 
@@ -327,3 +339,128 @@ $phone = preg_replace('/\D+/', '', $_POST['phone']);
 | `includes/class-pge-packages.php` | منطق الباقات حساس — اختبر جيداً |
 | `wp-config.php` | يحوي ثوابت سلة الحساسة |
 | `wp_pge_event_rsvps` (جدول) | لا تغير schema بدون migration script |
+
+---
+
+## تكامل واتساب (WhatsApp Integration)
+
+### نظرة عامة
+النظام يدعم مزوّدَين لإرسال دعوات واتساب، ويمكن التبديل بينهما من لوحة التحكم دون تعديل الكود.
+
+| المزوّد | الملف | Webhook URL | ملاحظة |
+|---------|-------|-------------|--------|
+| **Cartat** | `class-cartat-handler.php` | `/wp-json/mon/v1/wa-callback` | المزوّد الأصلي، مُختبَر وناجح |
+| **UltraMsg** | `class-ultramsg-handler.php` | `/wp-json/mon/v1/um-callback` | مزوّد بديل، لا يدعم الأزرار التفاعلية |
+
+### التبديل بين المزوّدين
+```
+لوحة التحكم → المناسبات → إعدادات واتساب → زر التبديل
+```
+القيمة محفوظة في `wp_options` تحت `pge_wa_provider` (قيمة افتراضية: `cartat`).
+
+يُحمَّل المزوّد الصحيح في `pgevents-core.php`:
+```php
+$_pge_wa_provider = get_option('pge_wa_provider', 'cartat');
+if ($_pge_wa_provider === 'ultramsg') {
+    require_once PGE_PATH . 'includes/class-ultramsg-handler.php';
+} else {
+    require_once PGE_PATH . 'includes/class-cartat-handler.php';
+}
+```
+
+### تدفق إرسال الدعوات (Background Queue)
+
+```
+المضيف يضغط "إرسال تلقائي" في /event-manage/{id}/
+    → AJAX: pge_wa_queue_start
+    → يُنشئ قائمة انتظار في wp_options (pge_wa_queue_{event_id})
+    → يجدول WP Cron: pge_wa_process_queue
+    → Cron يعالج 10 رسائل كل 35 ثانية
+    → لكل رسالة:
+        1. يحفظ pending قبل الإرسال (لتجنب race condition)
+        2. يرسل صورة + نص عبر API
+        3. يحدّث pending بـ msg_id الفعلي
+    → عند الانتهاء: status = 'done'
+```
+
+المضيف يتابع التقرير عبر: AJAX `pge_wa_queue_status` → زر "📊 التقرير"
+
+### تدفق استقبال ردود المدعوين (LID Problem)
+
+> **مشكلة معروفة:** واتساب منذ 2024 يستخدم LID (معرّف داخلي) بدلاً من رقم الهاتف في أحداث الـ Webhook. هذا يؤثر على **كلا المزوّدَين** (Cartat وUltraMsg).
+
+**الحل المُطبَّق: خريطة LID**
+
+```
+إرسال الدعوة → UltraMsg يرسل message_create webhook
+    → نستخرج من الحدث:
+        - حقل "to" = رقم هاتف المستقبل (970599000932@c.us)
+        - LID من compound_id = (133346537541875@lid)
+    → نحفظ: pge_wa_pending_lid_133346537541875 → pending data
+
+الضيف يرد بـ 1
+    → message_received webhook يصل
+    → from = "133346537541875@lid"
+    → نجد: pge_wa_pending_lid_133346537541875 ✅
+    → نسجّل RSVP في wp_pge_event_rsvps
+    → نرسل رسالة تأكيد مع رابط المناسبة ورمز الدعوة
+```
+
+**صيغة compound_id في UltraMsg:**
+```
+"true_133346537541875@lid_3EB0909924D689A1E3A426_out"
+ ^^^^  ^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^^^ ^^^
+ من؟    LID المستقبل         WhatsApp msg ID       صادر
+```
+
+**ثلاث صيغ للبحث عن pending (بالترتيب):**
+```php
+// 1. LID (واتساب الجديد)
+$pending = get_option('pge_wa_pending_lid_' . $from_bare);
+// 2. رقم هاتف مباشر
+$pending = get_option('pge_wa_pending_' . pge_norm_phone($from_bare));
+// 3. رقم بصيغة 00XXXXXXX
+$pending = get_option('pge_wa_pending_00' . pge_norm_phone($from_bare));
+```
+
+### إعداد UltraMsg (لوحة التحكم)
+
+الحقول المطلوبة:
+- **Instance ID**: من لوحة UltraMsg → My Instances → Instance ID
+- **Token**: من لوحة UltraMsg → My Instances → Token
+- **Webhook URL**: `https://hilwah.net/wp-json/mon/v1/um-callback`
+
+إعدادات يجب تفعيلها في UltraMsg → Instance → Settings:
+- ✅ Webhook on Received
+- ✅ Webhook on Create
+- ✅ Webhook on ACK
+
+### إعداد Cartat (لوحة التحكم)
+
+الحقول المطلوبة:
+- **API Token**: من app.cartat.net/store/api
+- **Webhook URL**: `https://hilwah.net/wp-json/mon/v1/wa-callback`
+- **كود الدولة**: 966 (سعودية) / 970 (فلسطين) / 962 (أردن)
+
+في Cartat يجب تفعيل: `messages_events = true`
+
+### ملاحظات تقنية مهمة
+
+1. **لا تختبر بنفس رقم UltraMsg** — إذا أرسلت لنفس الرقم المتصل، يظهر الرد كـ `fromMe:true` ولا يُعالَج. اختبر دائماً برقم مختلف.
+
+2. **Race condition محلول** — الـ pending يُحفظ قبل استدعاء API، ليكون جاهزاً حين يصل `message_create` webhook (الذي يصل قبل انتهاء PHP بثانيتين).
+
+3. **الأزرار التفاعلية** — UltraMsg لا يدعم `/messages/buttons` (يُرجع `Path not found`). الحل الحالي: صورة + نص مع طلب الرد بـ 1 أو 2.
+
+4. **قفل الطابور** — `pge_wa_lock_{event_id}` transient (90 ثانية) يمنع تنفيذ الطابور مرتين في نفس الوقت.
+
+5. **ملف السجل** — `wp-content/ultramsg-webhook.log` أو `cartat-webhook.log` للتشخيص.
+
+### الـ AJAX Actions الجديدة
+
+| Action | الملف | الوصف |
+|--------|-------|-------|
+| `pge_wa_queue_start` | handler المزوّد | بدء الإرسال في الخلفية |
+| `pge_wa_queue_status` | handler المزوّد | جلب حالة الطابور والتقرير |
+| `pge_wa_run_now` | class-ultramsg-handler.php | تشغيل الطابور فوراً (للـ localhost) |
+| `pge_send_wa_invites` | handler المزوّد | إرسال مباشر (غير مُستخدم حالياً) |

@@ -64,6 +64,7 @@ if (!function_exists('pge_event_guests_get_map')) {
                         'phone' => $phone,
                         'name'  => '',
                         'note'  => '',
+                        'code'  => '',
                     ];
                     continue;
                 }
@@ -75,6 +76,7 @@ if (!function_exists('pge_event_guests_get_map')) {
                     'phone' => $phone,
                     'name'  => sanitize_text_field((string) ($guest['name'] ?? '')),
                     'note'  => sanitize_textarea_field((string) ($guest['note'] ?? '')),
+                    'code'  => sanitize_text_field((string) ($guest['code'] ?? '')),
                 ];
             }
         }
@@ -86,6 +88,7 @@ if (!function_exists('pge_event_guests_get_map')) {
                     'phone' => $phone,
                     'name'  => '',
                     'note'  => '',
+                    'code'  => '',
                 ];
             }
         }
@@ -106,10 +109,21 @@ if (!function_exists('pge_event_guests_save_map')) {
             $phone = pge_event_guests_norm_phone($guest['phone'] ?? '');
             if ($phone === '') continue;
 
+            // توليد رمز شخصي إذا لم يكن موجوداً
+            $code = sanitize_text_field((string) ($guest['code'] ?? ''));
+            if ($code === '' || !preg_match('/^[A-Z0-9]{4}-[A-Z0-9]{4}$/', $code)) {
+                $code = function_exists('pge_generate_invite_code')
+                    ? pge_generate_invite_code()
+                    : strtoupper(substr(str_replace(['+','/','='],'',base64_encode(random_bytes(6))), 0, 4))
+                      . '-'
+                      . strtoupper(substr(str_replace(['+','/','='],'',base64_encode(random_bytes(6))), 0, 4));
+            }
+
             $clean[$phone] = [
                 'phone' => $phone,
                 'name'  => sanitize_text_field((string) ($guest['name'] ?? '')),
                 'note'  => sanitize_textarea_field((string) ($guest['note'] ?? '')),
+                'code'  => $code,
             ];
         }
 
@@ -173,10 +187,13 @@ if (!function_exists('pge_event_guests_get_row_payload')) {
         $status = ($reply === 'yes' || $reply === 'no') ? $reply : 'pending';
         $checked = isset($rsvp['checkin_map'][$phone]) ? 'yes' : 'no';
 
+        $code = sanitize_text_field((string) ($guest['code'] ?? ''));
+
         return [
             'phone'        => $phone,
             'name'         => $name,
             'note'         => $note,
+            'code'         => $code,
             'status'       => $status,
             'status_label' => pge_event_guests_get_status_label($status),
             'checked'      => $checked,
@@ -423,6 +440,53 @@ add_action('wp_ajax_pge_event_guest_delete', function () {
     wp_send_json_success([
         'message' => 'تم حذف المدعو',
         'stats'   => pge_event_guests_get_stats($event_id, $guests_map),
+    ]);
+});
+
+// ── حفظ قوالب رسائل واتساب للمناسبة ────────────────────────────────────────
+add_action('wp_ajax_pge_event_save_wa_templates', function () {
+    $event_id = pge_event_guests_validate_request();
+
+    $keys = ['invite', 'yes', 'no', 'invalid'];
+    foreach ($keys as $k) {
+        $val = sanitize_textarea_field(wp_unslash($_POST['tpl_' . $k] ?? ''));
+        if ($val !== '') {
+            update_post_meta($event_id, '_pge_wa_tpl_' . $k, $val);
+        } else {
+            delete_post_meta($event_id, '_pge_wa_tpl_' . $k); // حذف = استخدام الافتراضي
+        }
+    }
+
+    wp_send_json_success(['message' => '✅ تم حفظ قوالب الرسائل']);
+});
+
+// ── تجديد رمز ضيف معيّن ─────────────────────────────────────────────────────
+add_action('wp_ajax_pge_event_guest_regen_code', function () {
+    $event_id = pge_event_guests_validate_request();
+    $phone = pge_event_guests_norm_phone($_POST['phone'] ?? '');
+
+    if ($phone === '') {
+        wp_send_json_error('رقم الجوال غير صالح');
+    }
+
+    $guests_map = pge_event_guests_get_map($event_id);
+    if (!isset($guests_map[$phone])) {
+        wp_send_json_error('المدعو غير موجود');
+    }
+
+    $new_code = function_exists('pge_generate_invite_code')
+        ? pge_generate_invite_code()
+        : strtoupper(substr(str_replace(['+','/','='],'',base64_encode(random_bytes(6))), 0, 4))
+          . '-'
+          . strtoupper(substr(str_replace(['+','/','='],'',base64_encode(random_bytes(6))), 0, 4));
+
+    $guests_map[$phone]['code'] = $new_code;
+    pge_event_guests_save_map($event_id, $guests_map);
+
+    wp_send_json_success([
+        'message' => 'تم توليد رمز جديد',
+        'phone'   => $phone,
+        'code'    => $new_code,
     ]);
 });
 

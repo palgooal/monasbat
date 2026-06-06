@@ -5,6 +5,9 @@ if (!defined('ABSPATH')) exit;
  * تسجيل المسارات البرمجية (Virtual Routes) للنظام
  */
 add_action('init', function () {
+    // ── رابط دعوة قصير: /e/{ID} → يُعيد التوجيه لصفحة المناسبة ──────────────
+    add_rewrite_rule('^e/([0-9]+)/?$', 'index.php?pge_short_event=$matches[1]', 'top');
+
     // 1. مسار إنشاء مناسبة جديدة: monasbat.test/create-event/
     add_rewrite_rule('^create-event/?$', 'index.php?pge_action=create_event', 'top');
 
@@ -27,8 +30,24 @@ add_action('init', function () {
 add_filter('query_vars', function ($vars) {
     $vars[] = 'pge_action';
     $vars[] = 'event_id';
+    $vars[] = 'pge_short_event';
     return $vars;
 });
+
+// إعادة التوجيه للرابط القصير /e/{ID}
+add_action('template_redirect', function () {
+    $short_id = (int) get_query_var('pge_short_event');
+    if ($short_id <= 0) return;
+
+    $post = get_post($short_id);
+    if (!$post || $post->post_type !== 'pge_event') {
+        wp_safe_redirect(home_url('/'), 301);
+        exit;
+    }
+
+    wp_redirect(get_permalink($short_id), 301);
+    exit;
+}, 1);
 
 /**
  * التوجيه الذكي للملفات (Template Loader)
