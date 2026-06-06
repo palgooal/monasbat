@@ -115,7 +115,7 @@ get_header();
                             <button id="bulkWhatsappBtn" type="button" disabled title="يفتح واتساب الويب لكل مدعو محدد" class="rounded-2xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">📲 واتساب للمحدد</button>
                             <button id="whatsappAllBtn" type="button" title="يفتح واتساب الويب لكل المدعوين" class="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">📲 واتساب للكل</button>
                             <button id="sendWaInvitesBtn" type="button" title="يرسل الدعوات في الخلفية — يمكن إغلاق الصفحة" class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 flex items-center gap-1">
-                                📨 إرسال تلقائي (Cartat)
+                                📨 إرسال تلقائي (<?php echo esc_html(get_option('pge_wa_provider', 'cartat') === 'ultramsg' ? 'UltraMsg' : 'Cartat'); ?>)
                             </button>
                             <button id="waReportBtn" type="button" title="عرض تقرير الإرسال السابق" class="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                                 📊 التقرير
@@ -1123,6 +1123,20 @@ get_header();
                 const json = await res.json();
                 if (json.success) {
                     showMsg('success', `🚀 ${json.data.message}`);
+
+                    // شغّل الطابور فوراً (يحل مشكلة WP Cron على localhost)
+                    // fire-and-forget — لا ننتظر الرد
+                    fetch(ajaxUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({
+                            action:   'pge_wa_run_now',
+                            nonce:    waNonce,
+                            event_id: waEventId,
+                        }),
+                        keepalive: true,
+                    }).catch(() => {});
+
                 } else {
                     showMsg('error', '❌ ' + (json.data?.message ?? JSON.stringify(json.data)));
                 }
@@ -1130,7 +1144,7 @@ get_header();
                 showMsg('error', 'تعذر الاتصال بالخادم: ' + err.message);
             } finally {
                 sendWaInvitesBtn.disabled = false;
-                sendWaInvitesBtn.innerHTML = '📨 إرسال تلقائي (Cartat)';
+                sendWaInvitesBtn.innerHTML = sendWaInvitesBtn.innerHTML.includes('إرسال') ? sendWaInvitesBtn.innerHTML : '📨 إرسال تلقائي';
             }
         });
     }

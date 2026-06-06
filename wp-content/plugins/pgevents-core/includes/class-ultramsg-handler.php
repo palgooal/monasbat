@@ -28,6 +28,9 @@ class Mon_UltraMsg_Handler
         add_action('wp_ajax_pge_wa_queue_start',  [$this, 'ajax_queue_start']);
         add_action('wp_ajax_pge_wa_queue_status', [$this, 'ajax_queue_status']);
         add_action('pge_wa_process_queue',        [$this, 'cron_process_queue'], 10, 1);
+
+        // تشغيل فوري للطابور (يحل مشكلة WP Cron على localhost)
+        add_action('wp_ajax_pge_wa_run_now',      [$this, 'ajax_run_now']);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -90,17 +93,21 @@ class Mon_UltraMsg_Handler
             return new WP_REST_Response(['status' => 'ignored', 'reason' => 'outgoing'], 200);
         }
 
-        $raw_from = $data['from'] ?? '';
-        $body     = trim($data['body'] ?? '');
+        $raw_from    = $data['from'] ?? '';
+        $body        = trim($data['body'] ?? '');
+        $msg_type    = $data['type']             ?? 'chat';
+        $selected_id = $data['selectedButtonId'] ?? ($data['selectedId'] ?? '');
 
         // UltraMsg: from = "972599000932@c.us" — نزيل الـ suffix
         $from_bare = preg_replace('/@.*$/', '', $raw_from);
 
-        if (!$from_bare || $body === '') {
+        // السماح برسائل الأزرار حتى لو body فارغ (بعض الإصدارات لا ترسل body مع buttons_response)
+        $is_button_reply = in_array($msg_type, ['button_reply', 'buttons_response', 'buttonsResponseMessage'], true);
+        if (!$from_bare || ($body === '' && !$is_button_reply)) {
             return new WP_REST_Response(['status' => 'ignored', 'reason' => 'empty'], 200);
         }
 
-        $this->log("📨 message_received: from=$raw_from | body=$body");
+        $this->log("📨 message_received: from=$raw_from | type=$msg_type | selected_id=$selected_id | body=$body");
 
         // ══════════════════════════════════════════════════════════════
         // البحث عن الدعوة المعلّقة
@@ -123,12 +130,26 @@ class Mon_UltraMsg_Handler
         $event_id = (int) $pending['event_id'];
 
         // ══════════════════════════════════════════════════════════════
-        // تحليل الرد
+        // تحليل الرد — أزرار أو نص
         // ══════════════════════════════════════════════════════════════
-        $reply = $this->parse_rsvp_reply($body);
+        $reply = '';
+
+        // 1. رد عبر الأزرار (الأولوية)
+        if ($is_button_reply && $selected_id !== '') {
+            $reply = ($selected_id === '1') ? 'yes' : (($selected_id === '2') ? 'no' : '');
+        }
+
+        // 2. fallback: تحليل النص (للمستخدمين الذين يكتبون 1 أو 2 يدوياً)
+        if (!$reply && $body !== '') {
+            $reply = $this->parse_rsvp_reply($body);
+        }
+
         if (!$reply) {
-            $send_to = $pending['wa_number'] ?? $raw_from;
-            $this->send_text_message($send_to, $this->get_reminder_text());
+            // لا نرسل "لم نتعرف" إذا كان زر — فقط للنصوص المجهولة
+            if (!$is_button_reply) {
+                $send_to = $pending['wa_number'] ?? $raw_from;
+                $this->send_text_message($send_to, $this->get_reminder_text());
+            }
             return new WP_REST_Response(['status' => 'invalid_reply'], 200);
         }
 
@@ -247,22 +268,12 @@ class Mon_UltraMsg_Handler
             $guest_name = $guests_map[$phone]['name'] ?? 'ضيفنا العزيز';
             $norm_phone = pge_norm_phone($phone);
 
-            $caption  = "مرحباً *{$guest_name}* 👋\n\n";
-            $caption .= "يسعدنا دعوتك لحضور:\n✨ *{$event_name}*\n";
-            if ($event_date) {
-                $caption .= "\n📅 {$event_date}\n";
-            }
-            $caption .= "\n━━━━━━━━━━━━━━━\n";
-            $caption .= "للرد على الدعوة أرسل:\n";
-            $caption .= "✅ *1* — سأحضر بإذن الله\n";
-            $caption .= "❌ *2* — لن أتمكن من الحضور";
+            $result = $this->send_invite_with_buttons(
+                $wa_number, $guest_name, $event_name, $event_date, $image_url
+            );
 
-            $result = $image_url
-                ? $this->send_media_message($wa_number, $image_url, $caption)
-                : $this->send_text_message($wa_number, $caption);
-
-            // تأخير عشوائي 2-4 ثوانٍ
-            usleep(rand(2_000_000, 4_000_000));
+            // تأخير عشوائي 2-4 ثوانٍ (إضافي بعد التأخير الداخلي في send_invite_with_buttons)
+            usleep(rand(2_000_000, 3_000_000));
 
             // UltraMsg يُرجع {"sent":"true","id":"..."} عند النجاح
             $is_error = ($result === null)
@@ -341,6 +352,62 @@ class Mon_UltraMsg_Handler
             'image'   => $media_url,
             'caption' => $caption,
         ]);
+    }
+
+    /**
+     * إرسال رسالة مع أزرار RSVP التفاعلية
+     * header = عنوان الرسالة (يظهر بخط عريض)
+     * body   = النص الرئيسي
+     * footer = نص صغير في الأسفل (اختياري)
+     */
+    private function send_button_message(string $number, string $header, string $body, string $footer = ''): ?array
+    {
+        $buttons = json_encode([
+            ['id' => '1', 'title' => 'سأحضر بإذن الله ✅'],
+            ['id' => '2', 'title' => 'لن أتمكن من الحضور ❌'],
+        ]);
+
+        return $this->api_request('/messages/buttons', [
+            'token'       => $this->token,
+            'to'          => $number,
+            'title'       => $header,
+            'footer'      => $footer,
+            'description' => $body,
+            'buttons'     => $buttons,
+        ]);
+    }
+
+    /**
+     * إرسال دعوة المناسبة — صورة (اختياري) + رسالة الأزرار
+     * إذا وجدت صورة → ترسل أولاً كـ caption، ثم رسالة الأزرار بعدها
+     */
+    private function send_invite_with_buttons(
+        string $wa_number,
+        string $guest_name,
+        string $event_name,
+        string $event_date,
+        string $image_url
+    ): ?array {
+        // ── بناء نصوص الرسالة ─────────────────────────────────────────
+        $header = "مرحباً {$guest_name} 👋";
+
+        $body  = "يسعدنا دعوتك لحضور:\n";
+        $body .= "✨ *{$event_name}*";
+        if ($event_date) {
+            $body .= "\n\n📅 {$event_date}";
+        }
+        $body .= "\n\nاختر ردك على الدعوة:";
+
+        $footer = $event_name;
+
+        // ── إرسال الصورة أولاً إن وجدت ──────────────────────────────
+        if ($image_url) {
+            $this->send_media_message($wa_number, $image_url, "دعوة: {$event_name}");
+            usleep(rand(1_500_000, 2_500_000)); // استراحة 1.5-2.5 ثانية بين الرسالتين
+        }
+
+        // ── إرسال رسالة الأزرار ──────────────────────────────────────
+        return $this->send_button_message($wa_number, $header, $body, $footer);
     }
 
     private function api_request(string $endpoint, array $body): ?array
@@ -432,7 +499,7 @@ class Mon_UltraMsg_Handler
 
     private function get_reminder_text(): string
     {
-        return "عذراً، لم نتعرف على ردك 😊\n\nأرسل *1* لتأكيد الحضور\nأو *2* للاعتذار";
+        return "عذراً، لم نتعرف على ردك 😊\n\nيمكنك الرد بـ:\n*1* — للحضور\n*2* — للاعتذار";
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -552,6 +619,43 @@ class Mon_UltraMsg_Handler
         ]);
     }
 
+    /**
+     * AJAX — تشغيل الطابور فوراً بدون انتظار WP Cron
+     * يحل مشكلة localhost حيث لا يعمل WP Cron تلقائياً
+     */
+    public function ajax_run_now(): void
+    {
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'pge_event_manage_nonce')) wp_die('unauthorized');
+        if (!is_user_logged_in()) wp_die('unauthorized');
+
+        $event_id = absint($_POST['event_id'] ?? 0);
+        if (!$event_id) wp_die('missing event_id');
+
+        // أغلق الاتصال مع المتصفح فوراً وتابع المعالجة في الخلفية
+        status_header(200);
+        header('Content-Type: application/json');
+        header('Content-Length: 2');
+        header('Connection: close');
+        echo '{}';
+
+        // فراغ الـ output buffer وأرسل للمتصفح
+        if (ob_get_level() > 0) ob_end_flush();
+        flush();
+
+        // PHP-FPM: أنهِ الاتصال مع المتصفح وتابع العمل
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+
+        // الآن المتصفح أغلق الاتصال لكن PHP ما زال يعمل
+        @set_time_limit(300);
+        ignore_user_abort(true);
+
+        $this->cron_process_queue($event_id);
+
+        exit;
+    }
+
     public function cron_process_queue(int $event_id): void
     {
         $queue = get_option($this->queue_key($event_id));
@@ -573,19 +677,13 @@ class Mon_UltraMsg_Handler
             $norm_phone = pge_norm_phone($phone);
             $guest_name = $queue['guests_map'][$phone]['name'] ?? 'ضيفنا العزيز';
 
-            $caption  = "مرحباً *{$guest_name}* 👋\n\n";
-            $caption .= "يسعدنا دعوتك لحضور:\n✨ *{$queue['event_name']}*\n";
-            if ($queue['event_date']) {
-                $caption .= "\n📅 {$queue['event_date']}\n";
-            }
-            $caption .= "\n━━━━━━━━━━━━━━━\n";
-            $caption .= "للرد على الدعوة أرسل:\n";
-            $caption .= "✅ *1* — سأحضر بإذن الله\n";
-            $caption .= "❌ *2* — لن أتمكن من الحضور";
-
-            $result = $queue['image_url']
-                ? $this->send_media_message($wa_number, $queue['image_url'], $caption)
-                : $this->send_text_message($wa_number, $caption);
+            $result = $this->send_invite_with_buttons(
+                $wa_number,
+                $guest_name,
+                $queue['event_name'],
+                $queue['event_date'],
+                $queue['image_url']
+            );
 
             $is_error = ($result === null)
                      || (isset($result['error'])  && !empty($result['error']))
