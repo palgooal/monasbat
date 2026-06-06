@@ -1042,7 +1042,6 @@ class Search_Button extends Common_Widget {
 			'container',
 			[
 				'class' => [ 'hfe-search-form__container' ],
-				'role'  => 'tablist',
 			]
 		);
 

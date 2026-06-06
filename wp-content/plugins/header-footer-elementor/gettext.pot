@@ -612,6 +612,7 @@ msgstr ""
 
 #: src/Components/Dashboard/UltimateFeatures.js:87
 #: src/Components/Settings/Branding.jsx:42
+#: src/Components/Settings/Settings.jsx:91
 #: src/Components/Widgets/UltimateWidgetFeatures.jsx:89
 msgid "White Label"
 msgstr ""
@@ -1140,10 +1141,6 @@ msgstr ""
 #: src/Components/Settings/Settings.jsx:70
 #: src/Components/Settings/VersionControl.jsx:45
 msgid "Version Control"
-msgstr ""
-
-#: src/Components/Settings/Settings.jsx:91
-msgid "Branding"
 msgstr ""
 
 #: src/Components/Settings/ThemeSupport.jsx:10

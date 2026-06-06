@@ -4,7 +4,7 @@ Tags: elementor, elementor addons, elementor widgets, elementor template, header
 Requires at least: 5.0  
 Tested up to: 7.0
 Requires PHP: 7.4  
-Stable tag: 2.8.7
+Stable tag: 2.8.8
 License: GPLv2 or later  
 License URI: https://www.gnu.org/licenses/gpl-2.0.html  
 
@@ -310,6 +310,14 @@ You can report the issue through our [Bug Bounty Program](https://brainstormforc
 ---
 
 == Changelog ==
+= 2.8.8 =
+- Improvement: Compatibility with latest Elementor and Elementor Pro 4.1 version.
+- Improvement: Updated translations for German, Spanish, French, and Dutch locales.
+- Fix: WPML - Widget link fields not recognized as translatable links in the Advanced Translation Editor.
+- Fix: WPML - Site Logo default link now points to the correct language-specific homepage URL.
+- Fix: Search Button - Removed incorrect ARIA tablist role from the search form for better screen reader compatibility.
+- Fix: Atomic widget styles now load correctly in header, footer, and before-footer templates on the frontend.
+
 = 2.8.7 =
 - Improvement: WordPress 7.0 compatibility.
 - Improvement: Updated Internal libraries to improve stability and compatibility.

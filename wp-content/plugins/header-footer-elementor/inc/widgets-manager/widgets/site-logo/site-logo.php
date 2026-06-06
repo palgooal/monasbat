@@ -794,7 +794,7 @@ class Site_Logo extends Common_Widget {
 				$link = $site_image;
 				$this->add_render_attribute( 'link', 'href', $link );
 		} elseif ( 'default' === $settings['link_to'] ) {
-			$link = site_url();
+			$link = home_url( '/' );
 			$this->add_render_attribute( 'link', 'href', $link );
 		} else {
 			$link = $this->get_link_url( $settings );
@@ -944,7 +944,7 @@ class Site_Logo extends Common_Widget {
 			if ( empty( $settings['link']['url'] ) ) {
 				return false;
 			}
-			return site_url();
+			return home_url( '/' );
 		}
 	}
 }

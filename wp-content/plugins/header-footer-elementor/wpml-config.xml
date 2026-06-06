@@ -9,7 +9,7 @@
 			</conditions>
     		<fields>
         		<field type="Copyright Text">shortcode</field>
-        		<field type="Copyright: Link">link>url</field>
+        		<field type="Copyright: Link" editor_type="LINK">link>url</field>
     		</fields>
 		</widget>
 		<widget name="page-title">
@@ -19,7 +19,7 @@
     		<fields>
         		<field type="Page Title: Before Title Text">before</field>
         		<field type="Page Title: After Title Text">after</field>
-        		<field type="Page Title: Link">page_heading_link>url</field>
+        		<field type="Page Title: Link" editor_type="LINK">page_heading_link>url</field>
     		</fields>
 		</widget>
 		<widget name="retina">
@@ -28,7 +28,7 @@
 			</conditions>
     		<fields>
         		<field type="Retina Image: Custom Caption">caption</field>
-        		<field type="Retina Image: Link">link>url</field>
+        		<field type="Retina Image: Link" editor_type="LINK">link>url</field>
     		</fields>
 		</widget>
 		<widget name="hfe-search-button">
@@ -45,7 +45,7 @@
 			</conditions>
     		<fields>
         		<field type="Site Logo: Custom Caption">caption</field>
-        		<field type="Site Logo: Link">link>url</field>
+        		<field type="Site Logo: Link" editor_type="LINK">link>url</field>
     		</fields>
 		</widget>
 		<widget name="hfe-site-tagline">
@@ -64,7 +64,7 @@
 			<fields>
 				<field type="Site Title: Before text">before</field>
 				<field type="Site Title: After text">after</field>
-				<field type="Site Title: Custom link">heading_link>url</field>
+				<field type="Site Title: Custom link" editor_type="LINK">heading_link>url</field>
 			</fields>
 		</widget>
 		<widget name="hfe-breadcrumbs-widget">
@@ -88,7 +88,7 @@
 				<field type="Post Info: One Comment">string_one_comment</field>
 				<field type="Post Info: Comments">string_comments</field>
 				<field type="Post Info: Custom">custom_text</field>
-				<field type="Post Info: Custom URL">custom_url>url</field>
+				<field type="Post Info: Custom URL" editor_type="LINK">custom_url>url</field>
 			</fields>
 		</widget>
 		<widget name="hfe-infocard">
@@ -100,7 +100,7 @@
 				<field type="Info Card: Description">infocard_description</field>
 				<field type="Info Card: Link Text">infocard_link_text</field>
 				<field type="Info Card: Button Text">infocard_button_text</field>
-				<field type="Info Card: CTA URL">infocard_text_link>url</field>
+				<field type="Info Card: CTA URL" editor_type="LINK">infocard_text_link>url</field>
 			</fields>
 		</widget>
 		<widget name="hfe-counter">

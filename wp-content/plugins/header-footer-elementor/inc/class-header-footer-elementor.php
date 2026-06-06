@@ -553,6 +553,27 @@ class Header_Footer_Elementor {
 	public function enqueue_scripts() {
 		wp_enqueue_style( 'hfe-style', HFE_URL . 'assets/css/header-footer-elementor.css', [], HFE_VER );
 
+		// Announce HFE template IDs to Elementor's atomic widget styles pipeline BEFORE
+		// triggering Elementor's enqueue_styles(). Elementor's enqueue_styles() fires
+		// `elementor/frontend/after_enqueue_post_styles` which causes Atomic_Styles_Manager
+		// to render/enqueue CSS files for all collected post IDs and then exit. Because that
+		// method is idempotent (static flag), we must add HFE templates to the registry first.
+		$hfe_template_ids = array_filter(
+			[
+				hfe_header_enabled() ? get_hfe_header_id() : null,
+				hfe_footer_enabled() ? get_hfe_footer_id() : null,
+				hfe_is_before_footer_enabled() ? hfe_get_before_footer_id() : null,
+			]
+		);
+
+		foreach ( $hfe_template_ids as $hfe_template_id ) {
+			// Skip trashed, draft, or otherwise non-published templates whose ID may still be stored in an HFE option.
+			if ( 'publish' !== get_post_status( (int) $hfe_template_id ) ) {
+				continue;
+			}
+			do_action( 'elementor/post/render', (int) $hfe_template_id );
+		}
+
 		if ( class_exists( '\Elementor\Plugin' ) ) {
 			$elementor = \Elementor\Plugin::instance();
 			if ( method_exists( $elementor->frontend, 'enqueue_styles' ) ) {
@@ -698,7 +719,7 @@ class Header_Footer_Elementor {
 	 * @return void
 	 */
 	public static function get_header_content() {
-		$header_content = self::$elementor_instance->frontend->get_builder_content_for_display( get_hfe_header_id() );
+		$header_content = self::$elementor_instance->frontend->get_builder_content_for_display( get_hfe_header_id(), true );
 		echo $header_content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- If escaped output is not rendered on frontend.
 	}
 
@@ -709,7 +730,7 @@ class Header_Footer_Elementor {
 	 */
 	public static function get_footer_content() {
 		echo "<div class='footer-width-fixer'>";
-		echo self::$elementor_instance->frontend->get_builder_content_for_display( get_hfe_footer_id() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- If escaped output is not rendered on frontend.
+		echo self::$elementor_instance->frontend->get_builder_content_for_display( get_hfe_footer_id(), true ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- If escaped output is not rendered on frontend.
 		echo '</div>';
 	}
 
@@ -720,7 +741,7 @@ class Header_Footer_Elementor {
 	 */
 	public static function get_before_footer_content() {
 		echo "<div class='footer-width-fixer'>";
-		echo self::$elementor_instance->frontend->get_builder_content_for_display( hfe_get_before_footer_id() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- If escaped output is not rendered on frontend.
+		echo self::$elementor_instance->frontend->get_builder_content_for_display( hfe_get_before_footer_id(), true ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- If escaped output is not rendered on frontend.
 		echo '</div>';
 	}
 

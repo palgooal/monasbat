@@ -240,6 +240,16 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 				return;
 			}
 
+			// _elementor_data is normally a JSON string, but some setups return it
+			// as an array. strpos() is strictly typed on PHP 8+, so coerce to string.
+			if ( is_array( $elementor_data ) ) {
+				$elementor_data = wp_json_encode( $elementor_data );
+			}
+
+			if ( ! is_string( $elementor_data ) || '' === $elementor_data ) {
+				return;
+			}
+
 			$first_widget = '';
 			foreach ( $allowed_widgets as $widget ) {
 				if ( false !== strpos( $elementor_data, '"widgetType":"' . $widget . '"' ) ) {
