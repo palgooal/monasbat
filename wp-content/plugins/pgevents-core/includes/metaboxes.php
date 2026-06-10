@@ -11,6 +11,7 @@ function pge_event_details_callback($post)
 {
     $date = get_post_meta($post->ID, '_pge_event_date', true);
     $location = get_post_meta($post->ID, '_pge_event_location', true);
+    $address  = get_post_meta($post->ID, '_pge_event_address', true);
     $host_phone = get_post_meta($post->ID, '_pge_host_phone', true);
     wp_nonce_field('pge_save_event_meta', 'pge_event_nonce');
 ?>
@@ -23,6 +24,10 @@ function pge_event_details_callback($post)
         <p>
             <label style="display:block; font-weight:bold; margin-bottom:5px;">رابط موقع القاعة (Google Maps):</label>
             <input type="url" name="pge_event_location" value="<?php echo esc_url($location); ?>" placeholder="https://goo.gl/maps/..." style="width:100%; max-width:400px;">
+        </p>
+        <p>
+            <label style="display:block; font-weight:bold; margin-bottom:5px;">اسم القاعة / العنوان (يُرسَل مع واتساب):</label>
+            <input type="text" name="pge_event_address" value="<?php echo esc_attr($address); ?>" placeholder="مثال: قاعة الأفراح — شارع الملك فهد، الرياض" style="width:100%; max-width:500px;">
         </p>
         <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
         <p>
@@ -39,6 +44,7 @@ function pge_save_event_meta($post_id)
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
     if (isset($_POST['pge_event_date'])) update_post_meta($post_id, '_pge_event_date', sanitize_text_field($_POST['pge_event_date']));
     if (isset($_POST['pge_event_location'])) update_post_meta($post_id, '_pge_event_location', esc_url_raw($_POST['pge_event_location']));
+    if (isset($_POST['pge_event_address']))  update_post_meta($post_id, '_pge_event_address',  sanitize_text_field($_POST['pge_event_address']));
     if (isset($_POST['pge_host_phone'])) update_post_meta($post_id, '_pge_host_phone', sanitize_text_field($_POST['pge_host_phone']));
 }
 add_action('save_post', 'pge_save_event_meta');

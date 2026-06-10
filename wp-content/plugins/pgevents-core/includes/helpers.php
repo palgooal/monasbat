@@ -129,6 +129,79 @@ if (!function_exists('pge_get_event_short_url')) {
 }
 
 // ══════════════════════════════════════════════
+// Static Map — استخراج الإحداثيات وبناء صورة الخريطة
+// ══════════════════════════════════════════════
+
+/**
+ * يتتبع redirects رابط Google Maps يدوياً (HEAD فقط = سريع)
+ * ويستخرج lat,lng من أول URL يحتوي على الصيغة /@lat,lng,zoom
+ */
+if (!function_exists('pge_extract_maps_coordinates')) {
+    function pge_extract_maps_coordinates(string $maps_url): ?array
+    {
+        $url = $maps_url;
+        for ($i = 0; $i < 8; $i++) {
+            // فحص الـ URL الحالي أولاً
+            if (preg_match('/@(-?\d+\.\d+),(-?\d+\.\d+)/', $url, $m)) {
+                return ['lat' => (float) $m[1], 'lng' => (float) $m[2]];
+            }
+
+            $response = wp_remote_head($url, [
+                'timeout'    => 8,
+                'redirection'=> 0,   // لا نتبع تلقائياً — نتحكم يدوياً
+                'sslverify'  => true,
+            ]);
+
+            if (is_wp_error($response)) return null;
+
+            $code     = (int) wp_remote_retrieve_response_code($response);
+            $location = wp_remote_retrieve_header($response, 'location');
+
+            if ($code >= 300 && $code < 400 && $location) {
+                // فحص الـ location header قبل المتابعة
+                if (preg_match('/@(-?\d+\.\d+),(-?\d+\.\d+)/', $location, $m)) {
+                    return ['lat' => (float) $m[1], 'lng' => (float) $m[2]];
+                }
+                $url = $location;
+            } else {
+                break;
+            }
+        }
+        return null;
+    }
+}
+
+/**
+ * يبني رابط صورة خريطة ثابتة.
+ * — إذا توفر Google Static Maps API Key: يستخدمه (جودة أعلى).
+ * — بدون key: يستخدم OpenStreetMap مجاناً.
+ */
+if (!function_exists('pge_build_static_map_url')) {
+    function pge_build_static_map_url(float $lat, float $lng): string
+    {
+        $api_key = (string) get_option('pge_google_maps_api_key', '');
+
+        if ($api_key !== '') {
+            return 'https://maps.googleapis.com/maps/api/staticmap'
+                . '?center=' . $lat . ',' . $lng
+                . '&zoom=15'
+                . '&size=600x400'
+                . '&scale=2'
+                . '&maptype=roadmap'
+                . '&markers=color:red%7C' . $lat . ',' . $lng
+                . '&key=' . rawurlencode($api_key);
+        }
+
+        // Fallback مجاني — OpenStreetMap Static Map
+        return 'https://staticmap.openstreetmap.de/staticmap.php'
+            . '?center=' . $lat . ',' . $lng
+            . '&zoom=15'
+            . '&size=600x400'
+            . '&markers=' . $lat . ',' . $lng . ',red-pushpin';
+    }
+}
+
+// ══════════════════════════════════════════════
 // قوالب رسائل WhatsApp التلقائية
 // ══════════════════════════════════════════════
 
@@ -142,7 +215,7 @@ if (!function_exists('pge_wa_default_invite_template')) {
 if (!function_exists('pge_wa_default_reply_yes_template')) {
     function pge_wa_default_reply_yes_template(): string
     {
-        return "شكراً على تأكيد حضورك! 🎉\nنتطلع لرؤيتك في *{{event_name}}*\n\n━━━━━━━━━━━━━━━\n📌 *تفاصيل دخولك:*\n🔗 رابط المناسبة:\n{{event_url}}\n\n🔑 رمز الدعوة: *{{invite_code}}*\n📱 رقمك المسجل: *{{guest_phone}}*";
+        return "شكراً على تأكيد حضورك! 🎉\nنتطلع لرؤيتك في *{{event_name}}*\n\n━━━━━━━━━━━━━━━\n📌 *تفاصيل دخولك:*\n🔗 رابط المناسبة:\n{{event_url}}\n\n🔑 رمز الدعوة: *{{invite_code}}*\n📱 رقمك المسجل: *{{guest_phone}}*{{location_line}}";
     }
 }
 

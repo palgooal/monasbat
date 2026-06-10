@@ -211,6 +211,17 @@ get_header();
                     </div>
 
                     <div>
+                        <label for="event_address" class="text-xs font-semibold text-slate-600">اسم القاعة / العنوان الكتابي</label>
+                        <input
+                            id="event_address"
+                            name="event_address"
+                            type="text"
+                            class="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
+                            placeholder="مثال: قاعة الأفراح — شارع الملك فهد، الرياض" />
+                        <p class="mt-2 text-xs text-slate-500">يُرسَل مع رابط الموقع في رسالة واتساب عند التأكيد.</p>
+                    </div>
+
+                    <div>
                         <label for="featured_image" class="text-xs font-semibold text-slate-600">الصورة البارزة</label>
                         <input
                             id="featured_image"

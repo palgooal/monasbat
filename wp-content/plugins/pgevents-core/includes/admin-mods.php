@@ -771,8 +771,9 @@ class PGE_Admin_Controller
 
         // ── حفظ إعدادات Cartat ──────────────────────────────────────────────
         if (isset($_POST['pge_cartat_save']) && check_admin_referer('pge_cartat_settings_nonce')) {
-            update_option('pge_cartat_api_token',    sanitize_text_field($_POST['pge_cartat_api_token']    ?? ''));
-            update_option('pge_cartat_country_code', sanitize_text_field($_POST['pge_cartat_country_code'] ?? '966'));
+            update_option('pge_cartat_api_token',      sanitize_text_field($_POST['pge_cartat_api_token']      ?? ''));
+            update_option('pge_cartat_country_code',   sanitize_text_field($_POST['pge_cartat_country_code']   ?? '966'));
+            update_option('pge_google_maps_api_key',   sanitize_text_field($_POST['pge_google_maps_api_key']   ?? ''));
             echo '<div class="notice notice-success is-dismissible"><p>✅ تم حفظ إعدادات واتساب بنجاح.</p></div>';
         }
 
@@ -962,6 +963,20 @@ class PGE_Admin_Controller
                      placeholder="966"
                      maxlength="5">';
         echo '<p class="description">مثال: 966 للسعودية، 962 للأردن، 970 لفلسطين</p>';
+        echo '</td>';
+        echo '</tr>';
+
+        $maps_api_key = (string) get_option('pge_google_maps_api_key', '');
+        echo '<tr>';
+        echo '<th scope="row"><label for="pge_google_maps_api_key">🗺 Google Static Maps API Key</label></th>';
+        echo '<td>';
+        echo '<input type="text" id="pge_google_maps_api_key" name="pge_google_maps_api_key"
+                     value="' . esc_attr($maps_api_key) . '"
+                     class="regular-text"
+                     placeholder="AIza...">';
+        echo '<p class="description">اختياري — لإرسال صورة خريطة عالية الجودة بدلاً من رابط الموقع.<br>
+              احصل عليه من <a href="https://console.cloud.google.com/apis/library/static-maps-backend.googleapis.com" target="_blank">Google Cloud Console</a> → Static Maps API → مجاني حتى 100 ألف طلب/شهر.<br>
+              <strong>بدونه:</strong> يُستخدم OpenStreetMap مجاناً (جودة أقل).</p>';
         echo '</td>';
         echo '</tr>';
 

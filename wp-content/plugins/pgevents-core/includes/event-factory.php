@@ -190,6 +190,7 @@ function pge_handle_event_creation()
     $can_google_map = pge_plan_feature_enabled_for_events($plan_limits, 'google_map');
     $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
     $location = $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '';
+    $address  = sanitize_text_field($_POST['event_address'] ?? '');
     $phone    = sanitize_text_field($_POST['host_phone']);
     $invite_code = isset($_POST['invite_code']) ? pge_normalize_invite_code(wp_unslash($_POST['invite_code'])) : '';
     if ($invite_code === '') {
@@ -210,6 +211,7 @@ function pge_handle_event_creation()
         // تخزين الميتا داتا الإضافية
         update_post_meta($post_id, '_pge_event_date', $date);
         update_post_meta($post_id, '_pge_event_location', $location);
+        update_post_meta($post_id, '_pge_event_address',  $address);
         update_post_meta($post_id, '_pge_host_phone', $phone);
         update_post_meta($post_id, '_pge_invite_code', $invite_code);
         if ($can_header_img) {
@@ -263,9 +265,10 @@ function pge_handle_event_update()
         $can_google_map = pge_plan_feature_enabled_for_events($plan_limits, 'google_map');
         $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
 
-        update_post_meta($event_id, '_pge_event_date', sanitize_text_field($_POST['event_date']));
+        update_post_meta($event_id, '_pge_event_date',     sanitize_text_field($_POST['event_date']));
         update_post_meta($event_id, '_pge_event_location', $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '');
-        update_post_meta($event_id, '_pge_host_phone', sanitize_text_field($_POST['host_phone']));
+        update_post_meta($event_id, '_pge_event_address',  sanitize_text_field($_POST['event_address'] ?? ''));
+        update_post_meta($event_id, '_pge_host_phone',     sanitize_text_field($_POST['host_phone']));
 
         $invite_code = isset($_POST['invite_code']) ? pge_normalize_invite_code(wp_unslash($_POST['invite_code'])) : '';
         if ($invite_code === '') {

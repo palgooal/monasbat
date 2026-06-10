@@ -162,8 +162,20 @@ class Mon_Cartat_Handler
 
         // ══════════════════════════════════════════════════════════════
         // تسجيل RSVP
+        // يعتمد على original_phone أولاً، ثم norm_phone، ثم wa_number
+        // (الـ pending القديمة قد لا تحوي original_phone فنرجع لـ wa_number)
         // ══════════════════════════════════════════════════════════════
-        $rsvp_phone = $pending['original_phone'] ?? pge_norm_phone($from_bare);
+        $rsvp_phone = !empty($pending['original_phone'])
+            ? $pending['original_phone']
+            : (!empty($pending['norm_phone'])
+                ? $pending['norm_phone']
+                : pge_norm_phone($pending['wa_number'] ?? $from_bare));
+
+        $this->log("📋 RSVP phone resolved: original_phone=" . ($pending['original_phone'] ?? 'N/A')
+            . " | norm_phone=" . ($pending['norm_phone'] ?? 'N/A')
+            . " | wa_number=" . ($pending['wa_number'] ?? 'N/A')
+            . " | resolved=$rsvp_phone");
+
         $this->record_rsvp($event_id, $rsvp_phone, $reply);
 
         // مسح جميع مفاتيح الدعوة المعلّقة
@@ -188,11 +200,40 @@ class Mon_Cartat_Handler
 
         $tpls = function_exists('pge_wa_get_templates') ? pge_wa_get_templates($event_id) : [];
 
+        // بناء سطر الموقع — يُدمج في رسالة التأكيد
+        $location_url  = (string) get_post_meta($event_id, '_pge_event_location', true);
+        $address_text  = (string) get_post_meta($event_id, '_pge_event_address',  true);
+        $location_line    = '';
+        $static_map_image = ''; // رابط صورة الخريطة إذا نجح الاستخراج
+
+        if ($reply === 'yes' && $location_url !== '') {
+            // محاولة استخراج الإحداثيات وبناء صورة الخريطة
+            if (function_exists('pge_extract_maps_coordinates') && function_exists('pge_build_static_map_url')) {
+                $coords = pge_extract_maps_coordinates($location_url);
+                if ($coords) {
+                    $static_map_image = pge_build_static_map_url($coords['lat'], $coords['lng']);
+                    $this->log("🗺 static map built: lat={$coords['lat']} lng={$coords['lng']}");
+                } else {
+                    $this->log("⚠️ static map: لم يتم استخراج الإحداثيات من $location_url");
+                }
+            }
+
+            // إذا لم تنجح الصورة نُدرج الرابط داخل رسالة التأكيد
+            if ($static_map_image === '') {
+                $location_line = "\n\n━━━━━━━━━━━━━━━\n📍 *موقع المناسبة*";
+                if ($address_text !== '') {
+                    $location_line .= "\n🏛 {$address_text}";
+                }
+                $location_line .= "\n{$location_url}";
+            }
+        }
+
         $tpl_vars = [
-            'event_name'  => $event_name,
-            'event_url'   => $event_url,
-            'invite_code' => $invite_code,
-            'guest_phone' => $disp_phone,
+            'event_name'    => $event_name,
+            'event_url'     => $event_url,
+            'invite_code'   => $invite_code,
+            'guest_phone'   => $disp_phone,
+            'location_line' => $location_line,
         ];
 
         $tpl = ($reply === 'yes')
@@ -203,14 +244,42 @@ class Mon_Cartat_Handler
             ? pge_wa_render_template($tpl, $tpl_vars)
             : $tpl;
 
-        $this->send_text_message($send_to, $confirm_msg);
+        $confirm_result = $this->send_text_message($send_to, $confirm_msg);
+        $confirm_ok = $confirm_result !== null
+            && !(isset($confirm_result['status']) && $confirm_result['status'] === 'error')
+            && !(isset($confirm_result['success']) && $confirm_result['success'] === false);
+        $this->log("📤 confirm msg → $send_to | " . ($confirm_ok ? '✅ sent' : '❌ failed: ' . json_encode($confirm_result)));
 
         // ── إرسال QR code عند تأكيد الحضور ───────────────────────────────────
-        if ($reply === 'yes' && $invite_code !== '' && function_exists('pge_generate_qr_url')) {
-            $qr_url     = pge_generate_qr_url($invite_code);
-            $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع\n🔑 الرمز: *{$invite_code}*";
-            $this->send_media_message($send_to, $qr_url, $qr_caption);
-            $this->log("📱 QR sent: code=$invite_code | to=$send_to");
+        if ($reply === 'yes') {
+            if ($invite_code === '') {
+                $this->log("⚠️ QR skipped: invite_code is empty in pending | event=$event_id");
+            } elseif (!function_exists('pge_generate_qr_url')) {
+                $this->log("⚠️ QR skipped: pge_generate_qr_url not found");
+            } else {
+                $qr_url     = pge_generate_qr_url($invite_code);
+                $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع\n🔑 الرمز: *{$invite_code}*";
+                $qr_result  = $this->send_media_message($send_to, $qr_url, $qr_caption);
+                $qr_ok = $qr_result !== null
+                    && !(isset($qr_result['status']) && $qr_result['status'] === 'error')
+                    && !(isset($qr_result['success']) && $qr_result['success'] === false);
+                $this->log("🔳 QR send → $send_to | code=$invite_code | " . ($qr_ok ? '✅ sent' : '❌ failed: ' . json_encode($qr_result)));
+            }
+
+            // إرسال صورة الخريطة كرسالة منفصلة (أكثر وضوحاً من النص)
+            if ($static_map_image !== '') {
+                $map_caption  = "📍 *موقع المناسبة*";
+                if ($address_text !== '') {
+                    $map_caption .= "\n🏛 {$address_text}";
+                }
+                $map_caption .= "\n{$location_url}";
+
+                $map_result = $this->send_media_message($send_to, $static_map_image, $map_caption);
+                $map_ok = $map_result !== null
+                    && !(isset($map_result['status']) && $map_result['status'] === 'error')
+                    && !(isset($map_result['success']) && $map_result['success'] === false);
+                $this->log("🗺 map image send → $send_to | " . ($map_ok ? '✅ sent' : '❌ failed: ' . json_encode($map_result)));
+            }
         }
 
         $this->log("✅ RSVP: from=$raw_from | rsvp_phone=$rsvp_phone | reply=$reply | event=$event_id");
@@ -528,8 +597,8 @@ class Mon_Cartat_Handler
     {
         $b = mb_strtolower(trim($body));
 
-        $yes = ['1', 'نعم', 'yes', 'حاضر', 'سأحضر', 'حضور', 'اوكي', 'موافق', 'ok', '✅', 'ايه', 'اه'];
-        $no  = ['2', 'لا', 'no', 'اعتذر', 'لن احضر', 'اعتذار', 'معذرة', '❌', 'مش قادر', 'مو قادر'];
+        $yes = ['1', '١', 'نعم', 'yes', 'حاضر', 'سأحضر', 'حضور', 'اوكي', 'موافق', 'ok', '✅', 'ايه', 'اه'];
+        $no  = ['2', '٢', 'لا', 'no', 'اعتذر', 'لن احضر', 'اعتذار', 'معذرة', '❌', 'مش قادر', 'مو قادر'];
 
         if (in_array($b, $yes, true)) return 'yes';
         if (in_array($b, $no,  true)) return 'no';
