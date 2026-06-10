@@ -181,23 +181,16 @@ if (!function_exists('pge_build_static_map_url')) {
     {
         $api_key = (string) get_option('pge_google_maps_api_key', '');
 
-        if ($api_key !== '') {
-            return 'https://maps.googleapis.com/maps/api/staticmap'
-                . '?center=' . $lat . ',' . $lng
-                . '&zoom=15'
-                . '&size=600x400'
-                . '&scale=2'
-                . '&maptype=roadmap'
-                . '&markers=color:red%7C' . $lat . ',' . $lng
-                . '&key=' . rawurlencode($api_key);
-        }
+        if ($api_key === '') return '';
 
-        // Fallback مجاني — OpenStreetMap Static Map
-        return 'https://staticmap.openstreetmap.de/staticmap.php'
+        return 'https://maps.googleapis.com/maps/api/staticmap'
             . '?center=' . $lat . ',' . $lng
             . '&zoom=15'
             . '&size=600x400'
-            . '&markers=' . $lat . ',' . $lng . ',red-pushpin';
+            . '&scale=2'
+            . '&maptype=roadmap'
+            . '&markers=color:red%7C' . $lat . ',' . $lng
+            . '&key=' . rawurlencode($api_key);
     }
 }
 

@@ -207,18 +207,20 @@ class Mon_Cartat_Handler
         $static_map_image = ''; // رابط صورة الخريطة إذا نجح الاستخراج
 
         if ($reply === 'yes' && $location_url !== '') {
-            // محاولة استخراج الإحداثيات وبناء صورة الخريطة
-            if (function_exists('pge_extract_maps_coordinates') && function_exists('pge_build_static_map_url')) {
+            $maps_api_key = (string) get_option('pge_google_maps_api_key', '');
+
+            if ($maps_api_key !== '' && function_exists('pge_extract_maps_coordinates') && function_exists('pge_build_static_map_url')) {
+                // Key موجود — نحاول إرسال صورة الخريطة
                 $coords = pge_extract_maps_coordinates($location_url);
                 if ($coords) {
                     $static_map_image = pge_build_static_map_url($coords['lat'], $coords['lng']);
                     $this->log("🗺 static map built: lat={$coords['lat']} lng={$coords['lng']}");
                 } else {
-                    $this->log("⚠️ static map: لم يتم استخراج الإحداثيات من $location_url");
+                    $this->log("⚠️ static map: لم يتم استخراج الإحداثيات، سيُرسل الرابط نصاً");
                 }
             }
 
-            // إذا لم تنجح الصورة نُدرج الرابط داخل رسالة التأكيد
+            // بدون Key أو إذا فشل الاستخراج — ندرج الرابط في رسالة التأكيد
             if ($static_map_image === '') {
                 $location_line = "\n\n━━━━━━━━━━━━━━━\n📍 *موقع المناسبة*";
                 if ($address_text !== '') {
@@ -233,7 +235,7 @@ class Mon_Cartat_Handler
             'event_url'     => $event_url,
             'invite_code'   => $invite_code,
             'guest_phone'   => $disp_phone,
-            'location_line' => $location_line,
+            'location_line' => $location_line, // للقوالب التي تحتوي المتغير صراحةً
         ];
 
         $tpl = ($reply === 'yes')
@@ -244,6 +246,12 @@ class Mon_Cartat_Handler
             ? pge_wa_render_template($tpl, $tpl_vars)
             : $tpl;
 
+        // إذا لم يُدمج الموقع عبر المتغير (قالب مخصص بدون {{location_line}})
+        // نُلحقه مباشرةً بنهاية الرسالة — يضمن الوصول دائماً
+        if ($location_line !== '' && !str_contains($confirm_msg, $location_url)) {
+            $confirm_msg .= $location_line;
+        }
+
         $confirm_result = $this->send_text_message($send_to, $confirm_msg);
         $confirm_ok = $confirm_result !== null
             && !(isset($confirm_result['status']) && $confirm_result['status'] === 'error')
@@ -252,11 +260,19 @@ class Mon_Cartat_Handler
 
         // ── إرسال QR code عند تأكيد الحضور ───────────────────────────────────
         if ($reply === 'yes') {
+            // إذا فرغ invite_code من الـ pending، نأخذه من الـ event مباشرة
             if ($invite_code === '') {
-                $this->log("⚠️ QR skipped: invite_code is empty in pending | event=$event_id");
-            } elseif (!function_exists('pge_generate_qr_url')) {
-                $this->log("⚠️ QR skipped: pge_generate_qr_url not found");
-            } else {
+                $raw_code = (string) get_post_meta($event_id, '_pge_invite_code', true);
+                if ($raw_code !== '' && function_exists('pge_normalize_invite_code')) {
+                    $invite_code = pge_normalize_invite_code($raw_code);
+                }
+                $this->log($invite_code !== ''
+                    ? "ℹ️ QR: invite_code من الـ pending فارغ، استُخدم رمز المناسبة: $invite_code"
+                    : "⚠️ QR skipped: لا يوجد رمز دعوة للمناسبة $event_id"
+                );
+            }
+
+            if ($invite_code !== '' && function_exists('pge_generate_qr_url')) {
                 $qr_url     = pge_generate_qr_url($invite_code);
                 $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع\n🔑 الرمز: *{$invite_code}*";
                 $qr_result  = $this->send_media_message($send_to, $qr_url, $qr_caption);

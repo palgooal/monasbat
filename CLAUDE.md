@@ -1,7 +1,7 @@
 # CLAUDE.md — دليل المطور لمشروع مناسبات (Monasbat)
 
 > هذا الملف موجّه للمطورين الجدد وأدوات الذكاء الاصطناعي. يشرح معمارية المشروع، أنماط الكود، والقرارات الفنية المهمة.
-> آخر تحديث: 2026-06-06
+> آخر تحديث: 2026-06-10
 
 ---
 
@@ -57,6 +57,7 @@ pgevents-core/
 |---------|-------|-------|
 | `_pge_event_date` | string | تاريخ المناسبة |
 | `_pge_event_location` | string | رابط خريطة Google |
+| `_pge_event_address` | string | اسم القاعة / العنوان الكتابي (يُرسَل مع واتساب) |
 | `_pge_host_phone` | string | جوال المضيف |
 | `_pge_invite_code` | string | رمز الدعوة (XXXX-XXXX) |
 | `_pge_invited_phones` | array\|string | قائمة أرقام المدعوين |
@@ -110,6 +111,7 @@ checked_in (0/1), checked_in_at, created_at
 | `pge_wa_pending_lid_{lid}` | نفس الدعوة مفهرسة بـ WhatsApp LID |
 | `pge_wa_pending_msgid_{msg_id}` | نفس الدعوة مفهرسة بـ msg_id للـ ACK mapping |
 | `pge_wa_lock_{event_id}` | Transient: قفل لمنع تنفيذ الطابور مرتين |
+| `pge_google_maps_api_key` | Google Static Maps API Key (اختياري) — لإرسال صورة خريطة عند التأكيد |
 
 ---
 
@@ -260,6 +262,12 @@ POST https://hilwah.net/wp-json/mon/v1/salla-callback
 | `pge_norm_invite_code($code)` | alias لـ pge_normalize_invite_code |
 | `pge_generate_invite_code()` | توليد رمز دعوة عشوائي |
 | `pge_is_host_or_admin($event_id)` | هل المستخدم الحالي مضيف المناسبة أو أدمن؟ |
+| `pge_generate_qr_url($data, $size)` | يُولّد رابط صورة QR عبر api.qrserver.com |
+| `pge_extract_maps_coordinates($url)` | يتتبع redirects رابط Google Maps ويستخرج `['lat', 'lng']` |
+| `pge_build_static_map_url($lat, $lng)` | يبني رابط صورة Google Static Maps (يعيد `''` إذا لم يكن API Key مضبوطاً) |
+| `pge_wa_default_reply_yes_template()` | قالب رسالة تأكيد الحضور — يدعم `{{location_line}}` |
+| `pge_wa_get_templates($event_id)` | جلب قوالب واتساب للمناسبة (invite / yes / no / invalid) |
+| `pge_wa_render_template($tpl, $vars)` | تصيير قالب بإستبدال `{{key}}` |
 
 ---
 
@@ -441,8 +449,34 @@ $pending = get_option('pge_wa_pending_00' . pge_norm_phone($from_bare));
 - **API Token**: من app.cartat.net/store/api
 - **Webhook URL**: `https://hilwah.net/wp-json/mon/v1/wa-callback`
 - **كود الدولة**: 966 (سعودية) / 970 (فلسطين) / 962 (أردن)
+- **Google Static Maps API Key** *(اختياري)*: من Google Cloud Console → Static Maps API — لإرسال صورة خريطة عند تأكيد الحضور. بدونه يُرسَل الرابط نصاً.
 
 في Cartat يجب تفعيل: `messages_events = true`
+
+### تدفق رسائل التأكيد عند رد الضيف بـ "1" (Cartat)
+
+```
+الضيف يرسل "1" أو "١"
+    → message_received webhook
+    → البحث عن pending بالترتيب: LID → phone → 00phone
+    → تسجيل RSVP (rsvp_phone من original_phone → norm_phone → wa_number → from_bare)
+    → حذف جميع مفاتيح الـ pending
+    → بناء رسالة التأكيد من القالب (yes template)
+        → إلحاق location_line تلقائياً إذا لم يكن في القالب
+    → إرسال رسالة التأكيد (نص واحد يشمل الرابط والرمز والموقع)
+    → إرسال صورة QR (invite_code من pending أو من _pge_invite_code مباشرة)
+    → إرسال صورة خريطة (إذا كان Google Maps API Key مضبوطاً)
+```
+
+**متغيرات القالب المدعومة في yes template:**
+
+| المتغير | القيمة |
+|---------|--------|
+| `{{event_name}}` | اسم المناسبة |
+| `{{event_url}}` | رابط المناسبة القصير |
+| `{{invite_code}}` | رمز الدعوة |
+| `{{guest_phone}}` | رقم الضيف المسجّل |
+| `{{location_line}}` | كتلة الموقع (تُلحَق تلقائياً إذا غابت من القالب) |
 
 ### ملاحظات تقنية مهمة
 
@@ -455,6 +489,12 @@ $pending = get_option('pge_wa_pending_00' . pge_norm_phone($from_bare));
 4. **قفل الطابور** — `pge_wa_lock_{event_id}` transient (90 ثانية) يمنع تنفيذ الطابور مرتين في نفس الوقت.
 
 5. **ملف السجل** — `wp-content/ultramsg-webhook.log` أو `cartat-webhook.log` للتشخيص.
+
+6. **pending القديمة (قبل 2026-06)** — قد تفتقر لحقل `original_phone`. الكود يعوّض بسلسلة fallback: `original_phone → norm_phone → pge_norm_phone(wa_number) → from_bare`. إذا ظهر `rsvp_phone` يساوي LID في الـ log فهذا يعني الـ pending قديم.
+
+7. **الأرقام العربية** — `١` و`٢` مقبولة كـ yes/no في `parse_rsvp_reply` (Cartat فقط حتى الآن).
+
+8. **invite_code في QR** — يُؤخذ من `pending['invite_code']` أولاً، ثم من `_pge_invite_code` مباشرة إذا فرغ الـ pending.
 
 ### الـ AJAX Actions الجديدة
 
