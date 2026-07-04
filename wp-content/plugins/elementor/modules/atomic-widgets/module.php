@@ -72,6 +72,8 @@ use Elementor\Modules\AtomicWidgets\PropTypes\Border_Radius_Prop_Type;
 use Elementor\Modules\AtomicWidgets\PropTypes\Border_Width_Prop_Type;
 use Elementor\Modules\AtomicWidgets\PropTypes\Color_Stop_Prop_Type;
 use Elementor\Modules\AtomicWidgets\PropTypes\Date_Time_Prop_Type;
+use Elementor\Modules\AtomicWidgets\PropTypes\Date_Range_Prop_Type;
+use Elementor\Modules\AtomicWidgets\PropTypes\Time_Range_Prop_Type;
 use Elementor\Modules\AtomicWidgets\PropTypes\Filters\Backdrop_Filter_Prop_Type;
 use Elementor\Modules\AtomicWidgets\PropTypes\Filters\Filter_Prop_Type;
 use Elementor\Modules\AtomicWidgets\PropTypes\Gradient_Color_Stop_Prop_Type;
@@ -105,6 +107,7 @@ use Elementor\Modules\AtomicWidgets\Styles\Style_Schema;
 use Elementor\Modules\AtomicWidgets\Database\Atomic_Widgets_Database_Updater;
 use Elementor\Modules\AtomicWidgets\Elements\Atomic_Tabs\Atomic_Tab_Content\Atomic_Tab_Content;
 use Elementor\Modules\AtomicWidgets\Elements\Atomic_Form\Atomic_Form;
+use Elementor\Modules\AtomicWidgets\Elements\Atomic_Form\Atomic_Form_Promotion;
 use Elementor\Modules\AtomicWidgets\Elements\Atomic_Form\Form_Success_Message\Form_Success_Message;
 use Elementor\Modules\AtomicWidgets\Elements\Atomic_Form\Form_Error_Message\Form_Error_Message;
 use Elementor\Modules\AtomicWidgets\PropTypeMigrations\Migrations_Orchestrator;
@@ -112,12 +115,16 @@ use Elementor\Plugin;
 use Elementor\Widgets_Manager;
 use Elementor\Modules\AtomicWidgets\Library\Atomic_Widgets_Library;
 use Elementor\Modules\AtomicWidgets\PropsResolver\Transformers\Settings\Query_Transformer;
+use Elementor\Modules\AtomicWidgets\PropsResolver\Transformers\Settings\Date_Range_Transformer;
+use Elementor\Modules\AtomicWidgets\PropsResolver\Transformers\Settings\Time_Range_Transformer;
 use Elementor\Modules\AtomicWidgets\PropsResolver\Transformers\Styles\Perspective_Origin_Transformer;
 use Elementor\Modules\AtomicWidgets\PropTypes\Query_Prop_Type;
 use Elementor\Modules\AtomicWidgets\PropTypes\Transform\Perspective_Origin_Prop_Type;
 use Elementor\Modules\AtomicWidgets\Utils\Utils;
 use Elementor\Modules\AtomicWidgets\Elements\Atomic_Self_Hosted_Video\Atomic_Self_Hosted_Video;
+use Elementor\Modules\AtomicWidgets\PropsResolver\Transformers\Styles\Span_Transformer;
 use Elementor\Modules\AtomicWidgets\PropsResolver\Transformers\Video_Src_Transformer;
+use Elementor\Modules\AtomicWidgets\PropTypes\Span_Prop_Type;
 use Elementor\Modules\AtomicWidgets\PropTypes\Video_Src_Prop_Type;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -128,6 +135,8 @@ class Module extends BaseModule {
 	const EXPERIMENT_NAME = 'e_atomic_elements';
 	const ENFORCE_CAPABILITIES_EXPERIMENT = 'atomic_widgets_should_enforce_capabilities';
 	const EXPERIMENT_EDITOR_MCP = 'editor_mcp';
+	const EXPERIMENT_CSS_GRID = 'e_css_grid';
+	const EXPERIMENT_DESIGN_SYSTEM_PANEL = 'e_editor_design_system_panel';
 
 	const PACKAGES = [
 		'editor-canvas',
@@ -139,6 +148,7 @@ class Module extends BaseModule {
 		'editor-styles-repository',
 		'editor-interactions',
 		'editor-templates',
+		'editor-design-system',
 	];
 
 	public function get_name() {
@@ -163,6 +173,8 @@ class Module extends BaseModule {
 
 		add_action( 'elementor/elements/elements_registered', fn ( $elements_manager ) => $this->register_elements( $elements_manager ) );
 		add_action( 'elementor/editor/after_enqueue_scripts', fn () => $this->enqueue_scripts() );
+		add_action( 'elementor/editor/after_enqueue_styles', fn () => $this->enqueue_promotion_styles() );
+		add_action( 'elementor/preview/enqueue_styles', fn () => $this->enqueue_promotion_styles() );
 		add_action( 'elementor/frontend/before_register_scripts', fn () => $this->register_frontend_scripts() );
 		add_action( 'elementor/frontend/after_enqueue_styles', fn () => $this->add_inline_styles() );
 
@@ -219,6 +231,24 @@ class Module extends BaseModule {
 			'name' => Migrations_Orchestrator::EXPERIMENT_BC_MIGRATIONS,
 			'title' => esc_html__( 'Backward compatibility migrations', 'elementor' ),
 			'description' => esc_html__( 'Enable automatic prop type migrations for atomic widgets', 'elementor' ),
+			'hidden' => true,
+			'default' => Experiments_Manager::STATE_ACTIVE,
+			'release_status' => Experiments_Manager::RELEASE_STATUS_DEV,
+		]);
+
+		Plugin::$instance->experiments->add_feature( [
+			'name' => self::EXPERIMENT_CSS_GRID,
+			'title' => esc_html__( 'CSS Grid', 'elementor' ),
+			'description' => esc_html__( 'Enable CSS Grid layout for containers.', 'elementor' ),
+			'hidden' => true,
+			'default' => Experiments_Manager::STATE_INACTIVE,
+			'release_status' => Experiments_Manager::RELEASE_STATUS_DEV,
+		] );
+
+		Plugin::$instance->experiments->add_feature([
+			'name' => self::EXPERIMENT_DESIGN_SYSTEM_PANEL,
+			'title' => esc_html__( 'Editor design system panel', 'elementor' ),
+			'description' => esc_html__( 'Unified design system entry in the editor (toolbar + single panel for variables and global classes).', 'elementor' ),
 			'hidden' => true,
 			'default' => Experiments_Manager::STATE_ACTIVE,
 			'release_status' => Experiments_Manager::RELEASE_STATUS_DEV,
@@ -289,6 +319,8 @@ class Module extends BaseModule {
 			$elements_manager->register_element_type( new Atomic_Form() );
 			$elements_manager->register_element_type( new Form_Success_Message() );
 			$elements_manager->register_element_type( new Form_Error_Message() );
+		} elseif ( ! \Elementor\Utils::has_pro() ) {
+			$elements_manager->register_element_type( new Atomic_Form_Promotion() );
 		}
 	}
 
@@ -303,6 +335,8 @@ class Module extends BaseModule {
 		$transformers->register( Query_Prop_Type::get_key(), new Query_Transformer() );
 		$transformers->register( Attributes_Prop_Type::get_key(), new Attributes_Transformer() );
 		$transformers->register( Date_Time_Prop_Type::get_key(), new Date_Time_Transformer() );
+		$transformers->register( Date_Range_Prop_Type::get_key(), new Date_Range_Transformer() );
+		$transformers->register( Time_Range_Prop_Type::get_key(), new Time_Range_Transformer() );
 		$transformers->register( Html_V2_Prop_Type::get_key(), new Html_V2_Transformer() );
 		$transformers->register( Html_V3_Prop_Type::get_key(), new Html_V3_Transformer() );
 	}
@@ -325,6 +359,7 @@ class Module extends BaseModule {
 		$transformers->register( Stroke_Prop_Type::get_key(), new Stroke_Transformer() );
 		$transformers->register( Image_Prop_Type::get_key(), new Image_Transformer() );
 		$transformers->register( Image_Src_Prop_Type::get_key(), new Image_Src_Transformer() );
+		$transformers->register( Span_Prop_Type::get_key(), new Span_Transformer() );
 	}
 
 	private function register_background_styles_transformers( Transformers_Registry $transformers ): void {
@@ -424,6 +459,8 @@ class Module extends BaseModule {
 			ELEMENTOR_VERSION,
 			true
 		);
+
+		wp_set_script_translations( 'elementor-atomic-widgets-editor', 'elementor' );
 	}
 
 	private function render_panel_category_chip() {
@@ -449,5 +486,25 @@ class Module extends BaseModule {
 		] );
 		wp_add_inline_style( 'elementor-frontend', $inline_css );
 		wp_add_inline_style( 'elementor-editor', $inline_css );
+	}
+
+	private function enqueue_promotion_styles() {
+		if ( \Elementor\Utils::has_pro() ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'elementor-atomic-widgets-promotion-fonts',
+			'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap',
+			[],
+			ELEMENTOR_VERSION
+		);
+
+		wp_enqueue_style(
+			'elementor-atomic-widgets-promotion',
+			$this->get_css_assets_url( 'modules/atomic-widgets/editor' ),
+			[ 'elementor-atomic-widgets-promotion-fonts' ],
+			ELEMENTOR_VERSION
+		);
 	}
 }

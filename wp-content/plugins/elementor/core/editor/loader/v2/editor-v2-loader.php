@@ -20,6 +20,7 @@ class Editor_V2_Loader extends Editor_Base_Loader {
 	 * Packages that should only be registered, unless some other asset depends on them.
 	 */
 	const LIBS = [
+		'editor-modal-shell',
 		'editor-responsive',
 		'editor-ui',
 		'editor-v1-adapters',
@@ -38,6 +39,7 @@ class Editor_V2_Loader extends Editor_Base_Loader {
 		'wp-media',
 		'editor-current-user',
 		'editor-elements-panel-notice',
+		'elementor-mcp-common',
 	];
 
 	const EXTENSIONS = [
@@ -48,6 +50,8 @@ class Editor_V2_Loader extends Editor_Base_Loader {
 		'editor-elements-panel',
 		'unlock-v4-promo',
 		'editor-mcp',
+		'elementor-v3-mcp',
+		'elementor-kit-mcp',
 	];
 
 	/**

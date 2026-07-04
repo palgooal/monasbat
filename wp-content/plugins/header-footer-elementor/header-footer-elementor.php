@@ -7,14 +7,14 @@
  * Author URI:  https://www.brainstormforce.com/
  * Text Domain: header-footer-elementor
  * Domain Path: /languages
- * Version: 2.8.8
+ * Version: 2.9.0
  * Elementor tested up to: 4.1
  * Elementor Pro tested up to: 4.1
  *
  * @package         header-footer-elementor
  */
 
-define( 'HFE_VER', '2.8.8' );
+define( 'HFE_VER', '2.9.0' );
 define( 'HFE_FILE', __FILE__ );
 define( 'HFE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'HFE_URL', plugins_url( '/', __FILE__ ) );
@@ -26,6 +26,17 @@ define( 'UAE_LITE', true );
  * Load the class loader.
  */
 require_once HFE_DIR . '/inc/class-header-footer-elementor.php';
+
+/**
+ * Abilities API integration (WP 6.9+).
+ *
+ * Loaded immediately so the loader's add_action() hooks are in place before
+ * the lazy WP_Abilities_Registry singleton fires wp_abilities_api_init.
+ * Independent of Elementor so MCP discovery works in CLI context.
+ */
+if ( function_exists( 'wp_register_ability' ) ) {
+	require_once HFE_DIR . 'inc/abilities/class-hfe-abilities-loader.php';
+}
 
 /**
  * Load the Plugin Class.

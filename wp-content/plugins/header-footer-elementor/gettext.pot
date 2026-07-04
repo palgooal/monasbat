@@ -494,7 +494,7 @@ msgid "Installed"
 msgstr ""
 
 #: src/Components/Dashboard/MyAccount.jsx:17
-#: src/Components/Settings/Settings.jsx:30
+#: src/Components/Settings/Settings.jsx:31
 msgid "My Account"
 msgstr ""
 
@@ -535,7 +535,7 @@ msgid "VIP Priority Support"
 msgstr ""
 
 #: src/Components/Dashboard/QuickAccess.js:56
-#: src/Components/Dashboard/WidgetItem.jsx:153
+#: src/Components/Dashboard/WidgetItem.jsx:152
 msgid "PRO"
 msgstr ""
 
@@ -612,7 +612,7 @@ msgstr ""
 
 #: src/Components/Dashboard/UltimateFeatures.js:87
 #: src/Components/Settings/Branding.jsx:42
-#: src/Components/Settings/Settings.jsx:91
+#: src/Components/Settings/Settings.jsx:92
 #: src/Components/Widgets/UltimateWidgetFeatures.jsx:89
 msgid "White Label"
 msgstr ""
@@ -647,13 +647,13 @@ msgstr ""
 msgid "Create New Page"
 msgstr ""
 
-#: src/Components/Dashboard/WidgetItem.jsx:177
+#: src/Components/Dashboard/WidgetItem.jsx:176
 #: src/Components/NavMenu.js:219
 #: src/Components/UpgradeNotice.jsx:81
 msgid "Get Full Control"
 msgstr ""
 
-#: src/Components/Dashboard/WidgetItem.jsx:301
+#: src/Components/Dashboard/WidgetItem.jsx:287
 msgid "View Demo"
 msgstr ""
 
@@ -702,10 +702,12 @@ msgid "Header & Footer"
 msgstr ""
 
 #: src/Components/NavMenu.js:163
+#: src/Components/Settings/AITools.jsx:111
 msgid "Widgets"
 msgstr ""
 
 #: src/Components/NavMenu.js:183
+#: src/Components/Settings/AITools.jsx:415
 msgid "Settings"
 msgstr ""
 
@@ -1031,6 +1033,525 @@ msgstr ""
 msgid "Exit Guided Setup"
 msgstr ""
 
+#: src/Components/Settings/AITools.jsx:107
+msgid "Plugin Info"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:108
+msgid "Active Templates"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:109
+msgid "Templates & Builder"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:110
+msgid "Pages"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:112
+msgid "Extensions"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:113
+msgid "Display Rules"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:114
+msgid "Theme"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:116
+msgid "Shortcode"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:117
+msgid "Design System"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:118
+msgid "Maintenance"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:119
+msgid "Pro Features"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:120
+msgid "Pro Plugin Info"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:121
+msgid "Post Skins"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:122
+msgid "Integrations & Branding"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:126
+msgid "Plugin version, health, and compatibility info"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:127
+msgid "See which header/footer is active on any page"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:128
+msgid "Create, edit, and manage templates and page layouts"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:129
+msgid "Create and manage WordPress pages"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:130
+msgid "Activate, deactivate, and list available widgets"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:131
+msgid "Toggle Scroll to Top and Reading Progress Bar"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:132
+msgid "Control where templates appear on your site"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:133
+msgid "Theme detection and compatibility settings"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:134
+msgid "Read and update plugin configuration"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:135
+msgid "Render template shortcodes"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:136
+msgid "Get site colors, fonts, and spacing"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:137
+msgid "Clear caches and run maintenance tasks"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:138
+msgid "UAE Pro upgrade information and pricing"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:196
+msgid "Settings saved."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:209
+msgid "Failed to save settings."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:330
+msgid "Copied to clipboard"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:336
+msgid "Endpoint copied to clipboard"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:342
+msgid "Prompt copied! Paste it into your AI client."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:370
+msgid "Requires WordPress 6.8+"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:371
+msgid "AI Tools requires WordPress 6.8 or later, which includes the Abilities API."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:392
+#: src/Components/Settings/Settings.jsx:112
+msgid "AI Tools"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:395
+msgid "Abilities enabled"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:396
+msgid "Abilities disabled"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:398
+msgid "%1$d / %2$d abilities"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:408
+msgid "Reset to defaults"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:416
+msgid ""
+"Control how UAE registers AI tools with WordPress and exposes them to "
+"clients."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:423
+msgid "Enable Abilities"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:424
+msgid ""
+"Register UAE AI tools with WordPress so they can be used by MCP clients "
+"(such as Claude, Cursor, and VS Code) and Elementor's Angie assistant. "
+"Disabled by default — enable this option to expose AI tools."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:431
+msgid "Enable Edit Abilities"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:434
+msgid ""
+"When enabled, AI clients can create, edit, and delete templates, pages, and "
+"widget settings. When disabled, AI clients have read-only access to your "
+"data."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:442
+msgid "Enable MCP Server"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:444
+msgid ""
+"Creates a dedicated UAE MCP endpoint that AI clients like Claude, Cursor, "
+"and VS Code can connect to. When disabled, the endpoint is removed and "
+"external AI clients cannot discover or call any UAE abilities."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:452
+msgid "Angie Integration"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:455
+msgid ""
+"Enable UAE abilities within Elementor's Angie AI assistant so it can use "
+"them in-browser without an external MCP client."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:456
+msgid "Install and activate the Angie plugin to use in-browser AI."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:469
+msgid "Overview"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:472
+msgid "Abilities"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:479
+msgid "Server & Connect"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:487
+msgid "Connection status"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:487
+msgid "How AI clients reach your site right now"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:495
+msgid "AI Tools are active"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:496
+msgid "AI Tools are off"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:502
+#. 1: MCP server state, 2: access mode, 3: enabled count, 4: total
+msgid "%1$s · %2$s · %3$d of %4$d abilities exposed"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:503
+msgid "MCP server on"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:503
+msgid "MCP server off"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:508
+msgid "Enable “Enable Abilities” above to connect AI clients."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:518
+msgid "External MCP server"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:519
+msgid "Ready"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:519
+msgid "Server off"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:525
+msgid "Copy endpoint"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:530
+msgid "Connect a client"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:534
+msgid "Turn on Enable MCP Server above to expose the endpoint."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:541
+msgid "Angie (in-editor)"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:543
+msgid "Enabled"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:543
+msgid "Disabled"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:543
+msgid "Not installed"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:549
+msgid "UAE tools are available in Elementor’s in-browser AI."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:550
+msgid "Turn on Angie Integration above to use it in the editor."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:551
+msgid "Install the Angie plugin to use in-browser AI."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:558
+msgid "Abilities exposed"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:565
+msgid "Manage abilities"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:572
+msgid "Access mode"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:573
+msgid "Read & write"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:573
+msgid "Read-only"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:577
+msgid ""
+"AI can create, edit and delete. Toggle “Enable Edit Abilities” above for "
+"read-only."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:578
+msgid ""
+"AI can only read your data. Toggle “Enable Edit Abilities” above to allow "
+"changes."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:587
+msgid "Create application password"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:591
+msgid "Server & connect"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:603
+msgid "Ability toggles"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:604
+msgid "Choose exactly which actions AI tools are allowed to perform"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:605
+msgid "%1$d of %2$d enabled"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:615
+msgid "Search abilities"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:616
+msgid "Search abilities - e.g. template, widget, page …"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:621
+msgid "All"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:630
+msgid "Collapse all"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:631
+msgid "Expand all"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:659
+msgid "%d abilities"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:667
+msgid "on"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:675
+msgid "Toggle all %s abilities"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:695
+msgid "Toggle %s"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:715
+msgid "Connect your AI client"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:717
+msgid "UAE's MCP endpoint is live. Wire it into your AI tool below."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:718
+msgid ""
+"Once the WP MCP Adapter plugin is active, this is how you connect your AI "
+"client."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:720
+msgid "Endpoint live"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:721
+msgid "Setup required"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:726
+msgid "Create an Application Password"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:729
+msgid "Open Application Passwords"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:734
+msgid "Add to your AI client:"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:736
+#: src/Components/Settings/UsageTracking.jsx:78
+#: src/Components/Templates/ExploreTemplates.jsx:227
+msgid "Learn More"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:740
+msgid "Claude Code"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:741
+msgid "Claude Desktop"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:742
+msgid "Cursor"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:743
+msgid "VS Code"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:744
+msgid "ChatGPT"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:744
+msgid ""
+"go to Settings → Connectors → Add Connector, paste the endpoint URL, and "
+"use your WordPress username + Application Password."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:748
+msgid "Replace"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:748
+msgid "in the JSON with the password from Step 1."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:754
+msgid "UAE Only"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:755
+msgid "Global"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:761
+msgid "Copy setup prompt for AI client"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:762
+msgid "Copy setup prompt"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:767
+msgid "Copy JSON config"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:799
+msgid "MCP Adapter plugin not detected"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:802
+msgid "To connect AI clients to your site, the"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:804
+msgid "WP MCP Adapter"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:806
+msgid ""
+"plugin is required. Download the latest release from GitHub, upload it via "
+"Plugins > Add New > Upload Plugin, and activate."
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:809
+msgid "Download from GitHub"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:865
+msgid "Read"
+msgstr ""
+
+#: src/Components/Settings/AITools.jsx:865
+msgid "Write"
+msgstr ""
+
 #: src/Components/Settings/Branding.jsx:107
 msgid "https://www.brainstormforce.com"
 msgstr ""
@@ -1121,24 +1642,28 @@ msgstr ""
 msgid "Brainstorm Force"
 msgstr ""
 
-#: src/Components/Settings/Settings.jsx:49
-msgid "Editor"
+#: src/Components/Settings/Settings.jsx:113
+msgid "NEW"
 msgstr ""
 
 #: src/Components/Settings/Settings.jsx:50
+msgid "Editor"
+msgstr ""
+
+#: src/Components/Settings/Settings.jsx:51
 #: src/Components/Settings/ThemeSupport.jsx:80
 msgid "Theme Support"
 msgstr ""
 
-#: src/Components/Settings/Settings.jsx:65
+#: src/Components/Settings/Settings.jsx:66
 msgid "Custom SVG"
 msgstr ""
 
-#: src/Components/Settings/Settings.jsx:69
+#: src/Components/Settings/Settings.jsx:70
 msgid "Utilities"
 msgstr ""
 
-#: src/Components/Settings/Settings.jsx:70
+#: src/Components/Settings/Settings.jsx:71
 #: src/Components/Settings/VersionControl.jsx:45
 msgid "Version Control"
 msgstr ""
@@ -1189,11 +1714,6 @@ msgid ""
 "Help shape the future of Ultimate Addons for Elementor. Share how you use "
 "the plugin so we can build features that matter, fix issues faster, and "
 "make smarter decisions. "
-msgstr ""
-
-#: src/Components/Settings/UsageTracking.jsx:78
-#: src/Components/Templates/ExploreTemplates.jsx:227
-msgid "Learn More"
 msgstr ""
 
 #: src/Components/Settings/VersionControl.jsx:119

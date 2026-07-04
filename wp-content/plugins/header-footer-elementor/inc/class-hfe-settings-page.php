@@ -410,6 +410,8 @@ class HFE_Settings_Page {
 					'user_url'                 => HFE_URL . 'assets/images/settings/user.svg',
 					'user__selected_url'       => HFE_URL . 'assets/images/settings/user-selected.svg',
 					'integrations_url'         => HFE_URL . 'assets/images/settings/integrations.svg', // Update the path to your assets folder.
+					'ai_tools_url'             => HFE_URL . 'assets/images/settings/ai-tools.svg',
+					'ai_tools__selected_url'   => HFE_URL . 'assets/images/settings/ai-tools-selected.svg',
 					'welcome_banner'           => HFE_URL . 'assets/images/settings/welcome-banner.png',
 					'build_banner'             => HFE_URL . 'assets/images/settings/build_banner.png',
 					'special_reward'           => HFE_URL . 'assets/images/settings/build_bg.png',
@@ -441,7 +443,17 @@ class HFE_Settings_Page {
 					'siteurl'                  => $siteurl,
 					'analytics_status'         => $analytics_status,
 					'onboarding_success_url'   => admin_url( 'admin.php?page=hfe#onboardingsuccess' ),
-					'uaelite_subscription'	   => get_option( 'uaelite_subscription', false )
+					'uaelite_subscription'	   => get_option( 'uaelite_subscription', false ),
+					'is_uael_active'           => defined( 'UAEL_VER' ),
+					'mcp_settings'             => wp_parse_args( get_option( 'uae_mcp_settings', [] ), \HFE_Settings_Api::get_mcp_settings_defaults() ),
+					'is_abilities_api_active'  => function_exists( 'wp_register_ability' ),
+					'is_mcp_adapter_active'    => class_exists( '\WP\MCP\Core\McpAdapter' ),
+					'is_angie_active'          => defined( 'ANGIE_VERSION' ),
+					'site_url'                 => site_url(),
+					'rest_url'                 => esc_url_raw( rest_url( '/' ) ),
+					'application_passwords_url' => esc_url_raw( admin_url( 'profile.php#application-passwords-section' ) ),
+					'wp_path'                  => ABSPATH,
+					'current_user'             => is_user_logged_in() ? wp_get_current_user()->user_login : '',
 				]
 			);
 	

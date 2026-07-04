@@ -465,7 +465,7 @@ class Header_Footer_Elementor {
 		}
 
 		// Load the Admin Notice Class.
-		require_once HFE_DIR . 'inc/lib/astra-notices/class-astra-notices.php';
+		require_once HFE_DIR . 'inc/lib/astra-notices/class-bsf-admin-notices.php';
 
 		// Load Target rules.
 		require_once HFE_DIR . 'inc/lib/target-rule/class-astra-target-rules-fields.php';
@@ -492,6 +492,7 @@ class Header_Footer_Elementor {
 		
 		// Load the Learn API
 		require_once HFE_DIR . 'inc/class-hfe-learn-api.php';
+
 	}
 
 	/**

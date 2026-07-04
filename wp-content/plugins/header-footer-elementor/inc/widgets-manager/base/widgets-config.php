@@ -194,7 +194,7 @@ class Widgets_Config {
 				'is_pro'      => false,
 				'is_new'      => true,
 				'description' => __( 'Display a progress indicator as users read your content.', 'header-footer-elementor' ),
-				'demo_url'    => '',
+				'demo_url'    => 'https://ultimateelementor.com/widgets/reading-progress-bar/',
 				'category'    => 'extension',
 			],
 			'Navigation_Menu'      => [

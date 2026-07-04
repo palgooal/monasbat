@@ -37,6 +37,8 @@ __(
 						'Looks like none of your variables work with this control. Create a new variable to use it here.',
 						'elementor'
 					);
+__( 'Drop shadow:', 'elementor' );
+__( 'Move:', 'elementor' );
 __( 'Restore variable', 'elementor' );
 __( 'Name', 'elementor' );
 __( 'Value', 'elementor' );
@@ -52,6 +54,31 @@ __( 'Create variable', 'elementor' );
 __( 'Name', 'elementor' );
 __( 'Value', 'elementor' );
 __( 'Create', 'elementor' );
+__( 'Name', 'elementor' );
+__( 'Value', 'elementor' );
+__( 'Duplicate', 'elementor' );
+__( 'Delete', 'elementor' );
+__( 'Search', 'elementor' );
+__( 'Create your first variable', 'elementor' );
+__(
+						'Variables are saved attributes that you can apply anywhere on your site.',
+						'elementor'
+					);
+__( 'Save changes', 'elementor' );
+__( 'You have unsaved changes', 'elementor' );
+__( 'To avoid losing your updates, save your changes before leaving.', 'elementor' );
+__( 'Discard', 'elementor' );
+__( 'Save', 'elementor' );
+__( 'Variables Manager', 'elementor' );
+__( 'Stop syncing variable color', 'elementor' );
+__(
+						'This will disconnect the variable color from Global Colors. Existing uses on your site will automatically switch to a default color.',
+						'elementor'
+					);
+__( 'Cancel', 'elementor' );
+__( 'Got it', 'elementor' );
+__( "Don't show again", 'elementor' );
+__( 'Add variable', 'elementor' );
 /* translators: %s: Variable Type. */
 __( '%s variables', 'elementor' );
 /* translators: %s: Variable Type. */
@@ -97,31 +124,7 @@ __( 'Delete this variable?', 'elementor' );
 __( 'All elements using', 'elementor' );
 __( 'will keep their current values, but the variable itself will be removed.', 'elementor' );
 __( 'Font family', 'elementor' );
-__( 'Name', 'elementor' );
-__( 'Value', 'elementor' );
-__( 'Delete', 'elementor' );
-__( 'Variables Manager', 'elementor' );
-__( 'Search', 'elementor' );
-__( 'Create your first variable', 'elementor' );
-__(
-								'Variables are saved attributes that you can apply anywhere on your site.',
-								'elementor'
-							);
-__( 'Save changes', 'elementor' );
-__( 'You have unsaved changes', 'elementor' );
-__( 'To avoid losing your updates, save your changes before leaving.', 'elementor' );
-__( 'Discard', 'elementor' );
-__( 'Save', 'elementor' );
-__( 'Stop syncing variable color', 'elementor' );
-__(
-						'This will disconnect the variable color from Global Colors. Existing uses on your site will automatically switch to a default color.',
-						'elementor'
-					);
-__( 'Cancel', 'elementor' );
-__( 'Got it', 'elementor' );
-__( "Don't show again", 'elementor' );
-__( 'Add variable', 'elementor' );
-__( 'Unlink variable', 'elementor' );
 __( 'Missing variable', 'elementor' );
 __( 'changed', 'elementor' );
 __( 'deleted', 'elementor' );
+__( 'Unlink variable', 'elementor' );

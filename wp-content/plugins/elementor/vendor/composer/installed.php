@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
         'name' => 'elementor/elementor',
-        'pretty_version' => '4.00.x-dev',
-        'version' => '4.00.9999999.9999999-dev',
-        'reference' => '997c31de01ac9769446b8961d7784f28b424c52a',
+        'pretty_version' => '4.01.x-dev',
+        'version' => '4.01.9999999.9999999-dev',
+        'reference' => '3e5ebca6574978619e34526d66a98ff4e3e9cb8f',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -11,9 +11,9 @@
     ),
     'versions' => array(
         'elementor/elementor' => array(
-            'pretty_version' => '4.00.x-dev',
-            'version' => '4.00.9999999.9999999-dev',
-            'reference' => '997c31de01ac9769446b8961d7784f28b424c52a',
+            'pretty_version' => '4.01.x-dev',
+            'version' => '4.01.9999999.9999999-dev',
+            'reference' => '3e5ebca6574978619e34526d66a98ff4e3e9cb8f',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -29,8 +29,8 @@
             'dev_requirement' => false,
         ),
         'elementor/wp-one-package' => array(
-            'pretty_version' => '1.0.60',
-            'version' => '1.0.60.0',
+            'pretty_version' => '1.0.64',
+            'version' => '1.0.64.0',
             'reference' => null,
             'type' => 'library',
             'install_path' => __DIR__ . '/../elementor/wp-one-package',

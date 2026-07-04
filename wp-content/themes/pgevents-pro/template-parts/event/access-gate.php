@@ -102,7 +102,6 @@ if (!function_exists('pge_cookie_is_valid')) {
         $guests_map = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
 
         foreach ($invited as $p) {
-            // 1. تحقق برمز الضيف الشخصي أولاً
             $personal = isset($guests_map[$p]['code'])
                 ? pge_norm_invite_code($guests_map[$p]['code'])
                 : '';
@@ -111,13 +110,24 @@ if (!function_exists('pge_cookie_is_valid')) {
                 if (hash_equals(pge_make_access_token($event_id, $p, $personal), $token)) return true;
             }
 
-            // 2. fallback: الرمز الموحّد للمناسبة (للتوافق مع الجلسات القديمة)
             if ($event_code !== '') {
                 if (hash_equals(pge_make_access_token($event_id, $p, $event_code), $token)) return true;
             }
         }
         return false;
     }
+}
+
+// =============================
+// Event info (للعرض في الغلاف)
+// =============================
+$event_title = get_the_title($event_id);
+$cover_url   = get_the_post_thumbnail_url($event_id, 'large');
+$event_date_raw = (string) get_post_meta($event_id, '_pge_event_date', true);
+$event_date_display = '';
+if ($event_date_raw) {
+    $ts = strtotime(str_replace('T', ' ', $event_date_raw));
+    if ($ts) $event_date_display = date_i18n('j F Y', $ts);
 }
 
 // =============================
@@ -146,7 +156,6 @@ if (!$access_ok && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_ac
     $guests_map = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
     $event_code = pge_norm_invite_code((string) get_post_meta($event_id, '_pge_invite_code', true));
 
-    // الرمز الصالح: الشخصي إذا وُجد، وإلا الموحّد
     $personal_code = isset($guests_map[$phone_n]['code'])
         ? pge_norm_invite_code($guests_map[$phone_n]['code'])
         : '';
@@ -155,7 +164,7 @@ if (!$access_ok && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_ac
     if ($code === '' || $phone_n === '') {
         $access_error = 'فضلاً أدخل رمز الدعوة ورقم الجوال.';
     } elseif ($valid_code === '') {
-        $access_error = 'هذه المناسبة غير مهيّأة بعد (لا يوجد رمز دعوة). تواصل مع المضيف.';
+        $access_error = 'هذه المناسبة غير مهيّأة بعد. تواصل مع المضيف.';
     } elseif (empty($invited)) {
         $access_error = 'قائمة المدعوين غير مُضافة بعد. تواصل مع المضيف.';
     } elseif (!in_array($phone_n, $invited, true)) {
@@ -169,13 +178,10 @@ if (!$access_ok && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_ac
         $_COOKIE[$cookie_name] = $token;
 
         $phone_cookie = 'pge_event_phone_' . (int) $event_id;
-
-        // احفظ رقم الضيف موقَّعاً بـ HMAC (phone|hmac) لمنع التزوير
-        $phone_hmac        = wp_hash($phone_n . '|' . (int) $event_id);
-        $phone_cookie_val  = $phone_n . '|' . $phone_hmac;
+        $phone_hmac       = wp_hash($phone_n . '|' . (int) $event_id);
+        $phone_cookie_val = $phone_n . '|' . $phone_hmac;
         setcookie($phone_cookie, $phone_cookie_val, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
         $_COOKIE[$phone_cookie] = $phone_cookie_val;
-
 
         wp_safe_redirect(get_permalink($event_id));
         exit;
@@ -183,89 +189,190 @@ if (!$access_ok && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_ac
 }
 
 // =============================
-// If access denied: show gate and STOP page rendering
+// If access denied: show gate
 // =============================
 if (!$access_ok) : ?>
-    <section class="relative overflow-hidden">
-        <div class="absolute inset-0 -z-10 bg-gradient-to-b from-indigo-50/70 via-white to-slate-50"></div>
-        <div class="pointer-events-none absolute -top-28 start-[-10rem] h-96 w-96 rounded-full bg-indigo-500/15 blur-3xl"></div>
-        <div class="pointer-events-none absolute top-28 end-[-10rem] h-96 w-96 rounded-full bg-slate-900/10 blur-3xl"></div>
 
-        <div class="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
-            <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+<!DOCTYPE html>
+<html <?php language_attributes(); ?> dir="rtl">
+<head>
+    <meta charset="<?php bloginfo('charset'); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><?php echo esc_html($event_title); ?> — دعوة خاصة</title>
+    <?php wp_head(); ?>
+    <style>
+        body { margin: 0; padding: 0; }
+        .gate-bg {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem 1rem;
+        }
+        /* حركة ظهور الكارد */
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .gate-card { animation: slideUp .4s ease both; }
+        /* ── CSS utilities missing from compiled output.css ── */
+        .max-w-sm{max-width:24rem}.max-w-lg{max-width:32rem}
+        .h-14{height:3.5rem}.w-14{width:3.5rem}
+        .h-52{height:13rem}.w-52{width:13rem}
+        .aspect-square{aspect-ratio:1/1}
+        .scrollbar-hide{scrollbar-width:none}.scrollbar-hide::-webkit-scrollbar{display:none}
+        .backdrop-blur-sm{-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+        @keyframes pge-pulse{0%,100%{opacity:1}50%{opacity:.5}}
+        .animate-pulse{animation:pge-pulse 2s ease-in-out infinite}
+        .ring-2{outline:2px solid var(--pge-ring,transparent);outline-offset:0}
+        .ring-emerald-600{--pge-ring:#059669}.ring-slate-800{--pge-ring:#1e293b}
+        .active\:scale-\[\.97\]:active{transform:scale(.97)}
+        .active\:scale-\[\.98\]:active{transform:scale(.98)}
+        .bg-gradient-to-l{background-image:linear-gradient(to left,var(--pge-from,transparent),var(--pge-to,transparent))}
+        .from-indigo-600{--pge-from:#4f46e5}
+        .to-violet-600{--pge-to:#7c3aed}.to-violet-700{--pge-to:#6d28d9}
+        .hover\:from-indigo-500:hover{--pge-from:#6366f1}
+        .hover\:to-violet-500:hover{--pge-to:#8b5cf6}
+        /* shadow-indigo-500/25 and shadow-indigo-500/30 */
+        .shadow-indigo-500\/30{box-shadow:0 4px 12px 0 rgb(99 102 241/.3)}
+    </style>
+</head>
+<body>
+<div class="gate-bg">
 
-                <div class="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-                    <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
-                    وصول محمي
+    <!-- الكارد الرئيسي -->
+    <div class="gate-card w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
+
+        <!-- الغلاف / رأس الكارد -->
+        <?php if ($cover_url): ?>
+            <div class="relative h-52 overflow-hidden">
+                <img src="<?php echo esc_url($cover_url); ?>"
+                     alt="<?php echo esc_attr($event_title); ?>"
+                     class="h-full w-full object-cover">
+                <div class="absolute inset-0" style="background:linear-gradient(to top,rgba(0,0,0,.7),rgba(0,0,0,.2) 50%,transparent)"></div>
+                <div class="absolute bottom-0 w-full p-5">
+                    <h1 class="text-xl font-extrabold leading-tight text-white">
+                        <?php echo esc_html($event_title); ?>
+                    </h1>
+                    <?php if ($event_date_display): ?>
+                        <p class="mt-1 text-sm text-white/80">
+                            <?php echo esc_html($event_date_display); ?>
+                        </p>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="bg-gradient-to-l from-indigo-600 to-violet-600 p-6 text-center">
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 text-3xl">
+                    🎉
+                </div>
+                <h1 class="mt-3 text-xl font-extrabold text-white">
+                    <?php echo esc_html($event_title); ?>
+                </h1>
+                <?php if ($event_date_display): ?>
+                    <p class="mt-1 text-sm text-white/80"><?php echo esc_html($event_date_display); ?></p>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <!-- المحتوى / الفورم -->
+        <div class="p-6">
+
+            <div class="mb-5 text-center">
+                <div class="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
+                    <span class="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
+                    دعوة خاصة — للمدعوين فقط
+                </div>
+                <p class="mt-3 text-sm text-slate-600">أدخل رمز دعوتك ورقم جوالك للوصول إلى تفاصيل المناسبة</p>
+            </div>
+
+            <?php if ($access_error): ?>
+                <div class="mb-5 flex items-start gap-3 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
+                    <span class="mt-0.5 text-rose-500">⚠️</span>
+                    <p class="text-sm font-medium text-rose-800"><?php echo esc_html($access_error); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" class="space-y-4">
+                <?php wp_nonce_field('pge_event_access_' . $event_id); ?>
+
+                <!-- رمز الدعوة -->
+                <div>
+                    <label class="mb-2 block text-xs font-bold text-slate-700">رمز الدعوة</label>
+                    <input name="invite_code"
+                           autocomplete="one-time-code"
+                           dir="ltr"
+                           maxlength="9"
+                           class="h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-center text-lg font-bold tracking-widest text-slate-900 outline-none placeholder:text-slate-400 placeholder:font-normal placeholder:tracking-normal focus:border-indigo-500 focus:bg-white"
+                           placeholder="XXXX-XXXX"
+                           <?php if ($access_error && isset($_POST['invite_code'])): ?>
+                               value="<?php echo esc_attr(sanitize_text_field($_POST['invite_code'])); ?>"
+                           <?php endif; ?> />
+                    <p class="mt-1.5 text-xs text-slate-500">الرمز المرسل لك عبر واتساب أو الرسائل</p>
                 </div>
 
-                <h1 class="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-                    هذه الصفحة خاصة بالمدعوين
-                </h1>
+                <!-- رقم الجوال -->
+                <div>
+                    <label class="mb-2 block text-xs font-bold text-slate-700">رقم الجوال</label>
+                    <input name="guest_phone"
+                           type="tel"
+                           inputmode="numeric"
+                           autocomplete="tel"
+                           class="h-14 w-full rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white"
+                           placeholder="05XXXXXXXX"
+                           <?php if ($access_error && isset($_POST['guest_phone'])): ?>
+                               value="<?php echo esc_attr(sanitize_text_field($_POST['guest_phone'])); ?>"
+                           <?php endif; ?> />
+                </div>
 
-                <p class="mt-2 text-sm leading-6 text-slate-600">
-                    أدخل <span class="font-bold">رمز الدعوة</span> و<span class="font-bold">رقم الجوال</span> المسجل ضمن المدعوين لعرض تفاصيل المناسبة.
-                </p>
+                <!-- زر الدخول -->
+                <button type="submit" name="pge_access_submit" value="1"
+                    class="h-14 w-full rounded-2xl bg-gradient-to-l from-indigo-600 to-violet-600 text-base font-bold text-white shadow-lg shadow-indigo-500/30 hover:from-indigo-500 hover:to-violet-500 active:scale-[.98] transition-transform">
+                    دخول للمناسبة ←
+                </button>
 
-                <?php if ($access_error): ?>
-                    <div class="mt-5 rounded-2xl bg-rose-50 p-4 text-sm text-rose-800 ring-1 ring-rose-200">
-                        <?php echo esc_html($access_error); ?>
-                    </div>
-                <?php endif; ?>
+            </form>
 
-                <form method="post" class="mt-6 grid gap-4 sm:grid-cols-2">
-                    <?php wp_nonce_field('pge_event_access_' . $event_id); ?>
-
-                    <div>
-                        <label class="text-xs font-semibold text-slate-600">رمز الدعوة</label>
-                        <input name="invite_code" autocomplete="one-time-code" dir="ltr" maxlength="9"
-                            class="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
-                            placeholder="مثال: A9X2-6K" />
-                    </div>
-
-                    <div>
-                        <label class="text-xs font-semibold text-slate-600">رقم الجوال</label>
-                        <input name="guest_phone" inputmode="numeric" autocomplete="tel"
-                            class="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-slate-900"
-                            placeholder="05xxxxxxxx" />
-                    </div>
-
-                    <div class="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                        <div class="text-sm text-slate-700">
-                            سيتم حفظ دخولك على هذا الجهاز لمدة 7 أيام.
-                        </div>
-                        <button type="submit" name="pge_access_submit" value="1"
-                            class="rounded-2xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
-                            دخول
-                        </button>
-                    </div>
-                </form>
-
-                <script>
-                    (function() {
-                        const inviteInput = document.querySelector('input[name="invite_code"]');
-                        if (!inviteInput) return;
-
-                        function normalizeInviteCode(value) {
-                            const cleaned = (value || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-                            if (cleaned.length > 4) return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
-                            return cleaned;
-                        }
-
-                        inviteInput.addEventListener('input', () => {
-                            inviteInput.value = normalizeInviteCode(inviteInput.value);
-                        });
-                    })();
-                </script>
-
-            </div>
+            <p class="mt-5 text-center text-xs text-slate-400">
+                يُحفظ دخولك على هذا الجهاز لمدة 7 أيام تلقائياً
+            </p>
         </div>
-    </section>
+    </div>
+
+    <!-- Branding -->
+    <p class="mt-6 text-center text-xs text-white/30">
+        مدعوم بـ <span class="font-semibold text-white/50">هلوه</span>
+    </p>
+
+</div>
+
+<script>
+(function() {
+    const inviteInput = document.querySelector('input[name="invite_code"]');
+    if (!inviteInput) return;
+
+    function normalizeInviteCode(value) {
+        const cleaned = (value || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+        if (cleaned.length > 4) return cleaned.slice(0, 4) + '-' + cleaned.slice(4);
+        return cleaned;
+    }
+
+    inviteInput.addEventListener('input', function() {
+        const pos = inviteInput.selectionStart;
+        inviteInput.value = normalizeInviteCode(inviteInput.value);
+    });
+})();
+</script>
+
+<?php wp_footer(); ?>
+</body>
+</html>
 
 <?php
-    // 👇 أهم سطر: امنع مواصلة العرض
     return false;
 endif;
 
-// ✅ إذا الوصول مسموح
+// ✅ الوصول مسموح
 return true;

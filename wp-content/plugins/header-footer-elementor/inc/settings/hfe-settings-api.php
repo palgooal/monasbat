@@ -107,6 +107,33 @@ class HFE_Settings_Api {
 				'permission_callback' => [ $this, 'get_items_permissions_check' ],
 			]
 		);
+
+		register_rest_route(
+			'hfe/v1',
+			'/mcp-abilities',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ $this, 'get_mcp_abilities' ],
+				'permission_callback' => [ $this, 'get_items_permissions_check' ],
+			]
+		);
+
+		register_rest_route(
+			'hfe/v1',
+			'/mcp-settings',
+			[
+				[
+					'methods'             => 'GET',
+					'callback'            => [ $this, 'get_mcp_settings' ],
+					'permission_callback' => [ $this, 'get_items_permissions_check' ],
+				],
+				[
+					'methods'             => 'POST',
+					'callback'            => [ $this, 'update_mcp_settings' ],
+					'permission_callback' => [ $this, 'get_items_permissions_check' ],
+				],
+			]
+		);
 	}
 
 	/**
@@ -303,6 +330,163 @@ class HFE_Settings_Api {
 		);
 	}
 	
+	/**
+	 * Get all MCP abilities for the settings UI.
+	 *
+	 * Returns the ability list with metadata, grouped by namespace,
+	 * for the ability toggles section.
+	 *
+	 * @param WP_REST_Request $request Request object.
+	 * @return WP_REST_Response
+	 */
+	public function get_mcp_abilities( WP_REST_Request $request ) {
+		$nonce = $request->get_header( 'X-WP-Nonce' );
+
+		if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+			return new WP_Error( 'invalid_nonce', __( 'Invalid nonce', 'header-footer-elementor' ), [ 'status' => 403 ] );
+		}
+
+		// Get abilities from registry if available.
+		$loader = class_exists( 'HFE_Abilities_Loader' ) ? HFE_Abilities_Loader::instance() : null;
+
+		if ( ! $loader || ! method_exists( $loader, 'get_registry' ) ) {
+			return new WP_REST_Response( [], 200 );
+		}
+
+		// Ensure handlers are populated — wp_abilities_api_init may not have fired yet.
+		$loader->ensure_handlers_loaded();
+
+		$registry  = $loader->get_registry();
+		$abilities = $registry->get_abilities_info();
+		$settings  = get_option( 'uae_mcp_settings', [] );
+		$disabled  = ! empty( $settings['disabled_abilities'] ) && is_array( $settings['disabled_abilities'] )
+			? $settings['disabled_abilities']
+			: [];
+
+		// Add is_enabled flag based on disabled_abilities setting.
+		foreach ( $abilities as &$ability ) {
+			$ability['is_enabled'] = ! in_array( $ability['name'], $disabled, true )
+				&& ! in_array( $ability['full_name'], $disabled, true );
+		}
+		unset( $ability );
+
+		return new WP_REST_Response( $abilities, 200 );
+	}
+
+	/**
+	 * Default MCP settings.
+	 *
+	 * @return array
+	 */
+	public static function get_mcp_settings_defaults() {
+		return [
+			'enable_abilities'    => false,
+			'allow_modifications' => true,
+			'dedicated_server'    => false,
+			'angie_enabled'       => false,
+			'disabled_abilities'  => [],
+		];
+	}
+
+	/**
+	 * Get MCP settings.
+	 *
+	 * @param WP_REST_Request $request Request object.
+	 * @return WP_REST_Response
+	 */
+	public function get_mcp_settings( WP_REST_Request $request ) {
+		$nonce = $request->get_header( 'X-WP-Nonce' );
+
+		if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+			return new WP_Error( 'invalid_nonce', __( 'Invalid nonce', 'header-footer-elementor' ), [ 'status' => 403 ] );
+		}
+
+		$defaults = self::get_mcp_settings_defaults();
+		$settings = get_option( 'uae_mcp_settings', [] );
+		$settings = wp_parse_args( $settings, $defaults );
+
+		// Add computed fields for the UI.
+		$settings['is_abilities_api_active'] = function_exists( 'wp_register_ability' );
+		$settings['is_mcp_adapter_active']   = class_exists( '\WP\MCP\Core\McpAdapter' );
+		$settings['is_angie_active']         = defined( 'ANGIE_VERSION' ) || ( function_exists( 'is_plugin_active' ) && is_plugin_active( 'angie/angie.php' ) );
+		$settings['dedicated_server_url']  = rest_url( 'uae/mcp' );
+		$settings['total_abilities']       = $this->count_hfe_abilities();
+
+		return new WP_REST_Response( $settings, 200 );
+	}
+
+	/**
+	 * Update MCP settings.
+	 *
+	 * @param WP_REST_Request $request Request object.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function update_mcp_settings( WP_REST_Request $request ) {
+		$nonce = $request->get_header( 'X-WP-Nonce' );
+
+		if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+			return new WP_Error( 'invalid_nonce', __( 'Invalid nonce', 'header-footer-elementor' ), [ 'status' => 403 ] );
+		}
+
+		$defaults      = self::get_mcp_settings_defaults();
+		$current       = get_option( 'uae_mcp_settings', [] );
+		$current       = wp_parse_args( $current, $defaults );
+		$allowed_keys  = array_keys( $defaults );
+		$params        = $request->get_json_params();
+
+		if ( ! is_array( $params ) ) {
+			return new WP_Error( 'invalid_params', __( 'Invalid parameters.', 'header-footer-elementor' ), [ 'status' => 400 ] );
+		}
+
+		foreach ( $allowed_keys as $key ) {
+			if ( ! isset( $params[ $key ] ) ) {
+				continue;
+			}
+
+			if ( 'disabled_abilities' === $key ) {
+				// Sanitize as array of strings.
+				$current[ $key ] = is_array( $params[ $key ] )
+					? array_values( array_map( 'sanitize_text_field', $params[ $key ] ) )
+					: [];
+			} else {
+				$current[ $key ] = (bool) $params[ $key ];
+			}
+		}
+
+		update_option( 'uae_mcp_settings', $current );
+
+		return new WP_REST_Response(
+			[
+				'success'  => true,
+				'settings' => $current,
+			],
+			200
+		);
+	}
+
+	/**
+	 * Count registered HFE abilities.
+	 *
+	 * @return int
+	 */
+	private function count_hfe_abilities() {
+		if ( ! function_exists( 'wp_get_abilities' ) ) {
+			return 0;
+		}
+
+		$all_abilities = wp_get_abilities();
+		$count         = 0;
+
+		$prefix = class_exists( 'HFE_Ability_Registry' ) ? HFE_Ability_Registry::PREFIX : 'uae/';
+
+		foreach ( $all_abilities as $ability_name => $ability ) {
+			if ( 0 === strpos( $ability_name, $prefix ) ) {
+				++$count;
+			}
+		}
+
+		return $count;
+	}
 }
 
 // Initialize the HFE_Settings_Api class.

@@ -138,6 +138,16 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 				'onboarding_analytics' => get_option( 'hfe_onboarding_analytics', [] ),
             ];
 
+			// AI Tools (MCP) adoption — the three master toggles only. No usage detail, no user data.
+			$mcp_settings = get_option( 'uae_mcp_settings', [] );
+			$mcp_settings = is_array( $mcp_settings ) ? $mcp_settings : [];
+
+			$stats_data['plugin_data']['uae']['mcp'] = [
+				'abilities_enabled'  => ! empty( $mcp_settings['enable_abilities'] ) ? 'yes' : 'no',
+				'mcp_server_enabled' => ! empty( $mcp_settings['dedicated_server'] ) ? 'yes' : 'no',
+				'angie_enabled'      => ! empty( $mcp_settings['angie_enabled'] ) ? 'yes' : 'no',
+			];
+
             $template_counts = wp_count_posts( 'elementor-hf' );
             $stats_data['plugin_data']['uae']['numeric_values'] = [
                 'total_hfe_templates' => isset( $template_counts->publish ) ? (int) $template_counts->publish : 0,

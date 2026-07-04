@@ -128,8 +128,13 @@ class Scroll_To_Top {
 			$scrolltop_media_type = ! empty( $this->get_elementor_settings( 'hfe_scroll_to_top_media_type' ) ) ? $this->get_elementor_settings( 'hfe_scroll_to_top_media_type' ) : 'icon';
 			$scrolltop_icon_html  = '';
 			if ( 'icon' == $scrolltop_media_type ) {
-				$scrolltop_icon      = ! empty( $this->get_elementor_settings( 'hfe_scroll_to_top_button_icon' ) ) ? $this->get_elementor_settings( 'hfe_scroll_to_top_button_icon' )['value'] : 'fas fa-chevron-up';
-				$scrolltop_icon_html = "<i class='$scrolltop_icon'></i>";
+				$scrolltop_icon_setting = $this->get_elementor_settings( 'hfe_scroll_to_top_button_icon' );
+				// The icon control stores a font-icon class as a string, but an
+				// SVG icon as an array. Only use the value when it is a string,
+				// otherwise fall back to the default — prevents an "Array to
+				// string conversion" warning when an SVG icon is selected.
+				$scrolltop_icon      = ( ! empty( $scrolltop_icon_setting['value'] ) && is_string( $scrolltop_icon_setting['value'] ) ) ? $scrolltop_icon_setting['value'] : 'fas fa-chevron-up';
+				$scrolltop_icon_html = "<i class='" . esc_attr( $scrolltop_icon ) . "'></i>";
 			} elseif ( 'image' == $scrolltop_media_type ) {
 				$scrolltop_image     = ! empty( $this->get_elementor_settings( 'hfe_scroll_to_top_button_image' ) ) ? $this->get_elementor_settings( 'hfe_scroll_to_top_button_image' )['url'] : '';
 				$scrolltop_icon_html = "<img src='$scrolltop_image'>";

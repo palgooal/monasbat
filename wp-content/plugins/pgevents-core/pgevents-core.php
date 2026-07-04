@@ -55,8 +55,16 @@ register_activation_hook(__FILE__, function () {
     add_rewrite_rule('^register/?$', 'index.php?pge_action=register', 'top');
     add_rewrite_rule('^forgot-password/?$', 'index.php?pge_action=forgot_password', 'top');
     flush_rewrite_rules();
-    update_option('pge_rewrite_version', '1.0.4');
+    update_option('pge_rewrite_version', '1.0.5');
 });
+
+// auto-flush عند تغيير الإصدار (بدون deactivate/activate)
+add_action('init', function () {
+    if (get_option('pge_rewrite_version') !== '1.0.5') {
+        flush_rewrite_rules();
+        update_option('pge_rewrite_version', '1.0.5');
+    }
+}, 99);
 
 // 4. تحديث الروابط عند التعطيل (تنظيف)
 register_deactivation_hook(__FILE__, 'flush_rewrite_rules');

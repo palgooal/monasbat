@@ -71,7 +71,6 @@ class Loader {
 		\ElementorOne\Admin\Components\Assets::instance();
 		\ElementorOne\Admin\Components\Fields::instance();
 		\ElementorOne\Admin\Components\Onboarding::instance();
-		\ElementorOne\Admin\Components\EditorUpdateNotification::instance();
 	}
 
 	/**
@@ -84,6 +83,7 @@ class Loader {
 		new \ElementorOne\Admin\Controllers\Themes();
 		new \ElementorOne\Admin\Controllers\Plugins();
 		new \ElementorOne\Admin\Controllers\Settings();
+		new \ElementorOne\Admin\Controllers\Logs();
 	}
 
 	/**
