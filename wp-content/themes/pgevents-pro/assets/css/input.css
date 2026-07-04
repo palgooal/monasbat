@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* هوية الألوان -- منصة مناسبات */
+@theme {
+    --color-background: #faf7f5;
+    --color-foreground: #222a39;
+    --color-primary: #cb4d62;
+    --color-secondary: #ebe6e0;
+    --color-gold: #d7ad42;
+    --color-accent: #d7ad42;
+    --color-border: #e5e0dc;
+    --color-destructive: #ef4343;
+}
+
 /* اختياري: تحسينات عامة */
 html { scroll-behavior: smooth; }
-
