@@ -1,16 +1,98 @@
 @import "tailwindcss";
 
-/* هوية الألوان -- منصة مناسبات */
+/* الاكتشاف التلقائي لمحتوى Tailwind v4 يفحص فقط داخل مجلد الثيم (pgevents-pro) ولا يرى
+   ملفات الإضافة (plugins/pgevents-core)، حيث تعيش قوالب لوحة التحكم والصفحات الأخرى.
+   بدون هذا السطر، أي كلاس Tailwind يُستخدم فقط داخل ملفات الإضافة (مثل dashboard-main.php)
+   لن يُصرَّف إلى output.css ولن يُطبَّق فعلياً على الموقع المباشر. */
+@source "../../../../plugins/pgevents-core/**/*.php";
+
+/* هوية الألوان -- منصة مناسبات (فاخرة / أعراس ومناسبات) */
 @theme {
-    --color-background: #faf7f5;
-    --color-foreground: #222a39;
-    --color-primary: #cb4d62;
-    --color-secondary: #ebe6e0;
-    --color-gold: #d7ad42;
-    --color-accent: #d7ad42;
-    --color-border: #e5e0dc;
-    --color-destructive: #ef4343;
+    --color-background: hsl(30, 30%, 97%);
+    --color-foreground: hsl(220, 25%, 18%);
+    --color-primary: #B83F58;
+    --color-primary-hover: #9E344A;
+    --color-secondary: hsl(30, 20%, 90%);
+    --color-gold: hsl(43, 65%, 40%);
+    --color-accent: hsl(43, 65%, 40%);
+    --color-border: hsl(30, 15%, 88%);
+    --color-destructive: hsl(0, 84%, 60%);
+    --color-footer: hsl(30, 20%, 96%);
+
+    /* رموز نصية دلالية (Semantic contrast tokens) — نفس ألوان الهوية (primary/gold/destructive)
+       لكن بدرجة أغمق مخصصة للنص القابل للقراءة فوق خلفيات فاتحة (مثل bg-primary/10 أو
+       bg-destructive/10) لضمان تباين WCAG AA (≥4.5:1). الرمز الأساسي (--color-destructive)
+       يبقى كما هو للاستخدام كخلفية/تينت/حدود فقط (bg-destructive/10, ring-destructive/20)
+       حيث تباينه غير مهم؛ أما النص المقروء فيجب أن يستخدم دائماً --color-destructive-text
+       بدل --color-destructive مباشرة. كانت هذه القيم مكتوبة سابقاً كـ hex حرفية متكررة داخل
+       القوالب (#ae3247 و #87691d و #6f5517) — تم رفعها إلى رموز هنا لتسهيل الصيانة والاستخدام
+       عبر Tailwind كـ text-primary-text / text-gold-text / bg-gold-text / text-destructive-text. */
+    --color-primary-text: #9E344A;
+    --color-gold-text: #87691d;
+    --color-gold-text-hover: #6f5517;
+    --color-destructive-text: #c0392b;
+
+    --font-arabic: "Cairo", "Tajawal", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, sans-serif;
 }
 
 /* اختياري: تحسينات عامة */
 html { scroll-behavior: smooth; }
+body { font-family: var(--font-arabic); }
+
+/* حالة التركيز الموحّدة (focus-visible) عبر كل صفحات المنصّة — قاعدة واحدة هنا بدل تكرار
+   قيم HEX حرفية داخل كلاسات Tailwind العشوائية في كل عنصر تفاعلي على حدة عبر الصفحات
+   (لوحة التحكم، إنشاء مناسبة، إدارة المناسبة، الدخول، التسجيل). */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* رابط "Skip to content" (hfe-skip-link) من إضافة Header Footer Elementor يأتي بنمط inline
+   خاص به (وسم <style id="hfe-skip-link-style"> يطبعه القالب الإضافي نفسه) يضع الرابط بـ
+   left:-9999px مع عرض كامل غير مُجمَّع، مما يوسّع document.documentElement.scrollWidth على
+   كامل الموقع ويسبب سكرول أفقي (clip/clip-path وحدهما لا يمنعان ذلك لأنهما يخفيان الرسم
+   فقط دون تغيير هندسة الصندوق وموضعه). الإصلاح هنا يطبّق نمط "إخفاء بصري" القياسي
+   (visually-hidden) عالمياً بدل تكراره داخل كل صفحة، ويستخدم !important لضمان الأسبقية على
+   نمط الإضافة inline بغض النظر عن ترتيب التحميل، بما أنه لا يمكن تعديل ملفات الإضافة نفسها. */
+.hfe-skip-link {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.hfe-skip-link:focus {
+    position: fixed !important;
+    left: auto !important;
+    right: auto !important;
+    inset-inline-start: 1rem !important;
+    inset-inline-end: auto !important;
+    top: 1rem !important;
+    width: auto !important;
+    height: auto !important;
+    padding: 0.75rem 1.25rem !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    clip: auto !important;
+    clip-path: none !important;
+    white-space: normal !important;
+    border-radius: 0.75rem !important;
+    background-color: var(--color-primary) !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    z-index: 9999 !important;
+    box-shadow: 0 10px 30px -10px rgba(45, 25, 20, 0.35) !important;
+}

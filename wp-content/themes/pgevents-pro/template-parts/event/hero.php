@@ -42,10 +42,41 @@ $display_date = $event_date ? date_i18n('j F Y', strtotime($event_date)) : '';
 $has_location = ($map_url !== '' || $event_address !== '');
 ?>
 
-<div class="mx-auto max-w-lg px-4 pt-6 pb-2" dir="rtl">
+<!-- ============================
+     Top Hero — دعوة فاخرة، هادئة
+============================ -->
+<div class="relative overflow-hidden px-4 pt-10 pb-6 text-center" dir="rtl">
 
-    <!-- بطاقة الغلاف الرئيسية -->
-    <div class="overflow-hidden rounded-3xl shadow-md">
+    <!-- زخرفة زهرية خفيفة -->
+    <svg aria-hidden="true" class="pointer-events-none absolute -top-8 start-1/2 h-40 w-40 -translate-x-1/2 text-gold opacity-[0.08] rtl:translate-x-1/2" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1.4">
+        <circle cx="100" cy="60" r="18"></circle>
+        <circle cx="70" cy="90" r="18"></circle>
+        <circle cx="130" cy="90" r="18"></circle>
+        <circle cx="100" cy="110" r="18"></circle>
+        <circle cx="100" cy="90" r="10"></circle>
+    </svg>
+
+    <div class="relative mx-auto max-w-md">
+        <div class="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-primary-text ring-1 ring-primary/20">
+            <span aria-hidden="true" class="h-1.5 w-1.5 rounded-full bg-primary"></span>
+            دعوة خاصة
+        </div>
+
+        <h1 class="mt-4 text-2xl font-extrabold leading-tight text-foreground sm:text-3xl">
+            يسرنا دعوتكم
+        </h1>
+        <p class="mt-2 text-sm leading-relaxed text-foreground/75 sm:text-base">
+            نتشرف بحضوركم لهذه المناسبة الخاصة
+        </p>
+    </div>
+</div>
+
+<!-- ============================
+     بطاقة الدعوة (المركز البصري)
+============================ -->
+<div class="mx-auto max-w-lg px-4 pb-2" dir="rtl">
+
+    <div class="overflow-hidden rounded-[28px] border border-border bg-white shadow-[0_20px_60px_-15px_rgba(45,25,20,0.10)]">
 
         <!-- صورة الغلاف -->
         <?php if ($cover_url): ?>
@@ -53,61 +84,54 @@ $has_location = ($map_url !== '' || $event_address !== '');
                 <img src="<?php echo esc_url($cover_url); ?>"
                      alt="<?php echo esc_attr($title); ?>"
                      class="h-64 w-full object-cover sm:h-80">
-                <div class="absolute inset-0" style="background:linear-gradient(to top,rgba(0,0,0,.7),rgba(0,0,0,.25) 50%,transparent)"></div>
+                <div class="absolute inset-0" style="background:linear-gradient(to top,rgba(20,10,10,.75),rgba(20,10,10,.25) 55%,transparent)"></div>
 
                 <!-- العنوان فوق الصورة -->
                 <div class="absolute bottom-0 w-full p-5">
-                    <div class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-sm">
-                        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span>
-                        دعوة خاصة
-                    </div>
-                    <h1 class="mt-2 text-2xl font-extrabold leading-tight text-white drop-shadow-sm sm:text-3xl">
+                    <h2 class="text-2xl font-extrabold leading-tight text-white drop-shadow-sm sm:text-3xl">
                         <?php echo esc_html($title); ?>
-                    </h1>
+                    </h2>
                 </div>
             </div>
         <?php else: ?>
-            <div class="bg-gradient-to-l from-indigo-600 to-violet-700 p-8 text-center">
-                <div class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25">
-                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400"></span>
-                    دعوة خاصة
-                </div>
-                <h1 class="mt-3 text-2xl font-extrabold text-white sm:text-3xl">
+            <div class="bg-gradient-to-b from-primary/90 to-primary-hover p-8 text-center">
+                <span aria-hidden="true" class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-2xl ring-1 ring-white/25">🎉</span>
+                <h2 class="mt-3 text-2xl font-extrabold text-white sm:text-3xl">
                     <?php echo esc_html($title); ?>
-                </h1>
+                </h2>
             </div>
         <?php endif; ?>
 
-        <!-- شريط المعلومات السريعة -->
-        <div class="bg-white px-5 py-4">
-            <div class="flex flex-wrap gap-2">
+        <!-- معلومات المناسبة -->
+        <div class="bg-white px-5 py-5">
+            <div class="flex flex-wrap gap-2.5">
 
                 <?php if ($display_date): ?>
-                    <div class="flex items-center gap-2 rounded-2xl bg-slate-50 px-4 py-2.5 ring-1 ring-slate-200">
-                        <span class="text-base">📅</span>
-                        <span class="text-sm font-semibold text-slate-800"><?php echo esc_html($display_date); ?></span>
+                    <div class="flex items-center gap-2 rounded-2xl bg-secondary/60 px-4 py-2.5 ring-1 ring-border">
+                        <span aria-hidden="true" class="text-base">📅</span>
+                        <span class="text-sm font-semibold text-foreground"><?php echo esc_html($display_date); ?></span>
                     </div>
                 <?php endif; ?>
 
                 <?php if ($event_time): ?>
-                    <div class="flex items-center gap-2 rounded-2xl bg-slate-50 px-4 py-2.5 ring-1 ring-slate-200">
-                        <span class="text-base">🕐</span>
-                        <span class="text-sm font-semibold text-slate-800"><?php echo esc_html($event_time); ?></span>
+                    <div class="flex items-center gap-2 rounded-2xl bg-secondary/60 px-4 py-2.5 ring-1 ring-border">
+                        <span aria-hidden="true" class="text-base">🕒</span>
+                        <span class="text-sm font-semibold text-foreground"><?php echo esc_html($event_time); ?></span>
                     </div>
                 <?php endif; ?>
 
                 <?php if ($has_location): ?>
-                    <div class="flex flex-1 items-center justify-between gap-2 rounded-2xl bg-slate-50 px-4 py-2.5 ring-1 ring-slate-200">
-                        <div class="flex items-center gap-2 min-w-0">
-                            <span class="text-base shrink-0">📍</span>
-                            <span class="truncate text-sm font-semibold text-slate-800">
+                    <div class="flex flex-1 items-center justify-between gap-2 rounded-2xl bg-secondary/60 px-4 py-2.5 ring-1 ring-border">
+                        <div class="flex min-w-0 items-center gap-2">
+                            <span aria-hidden="true" class="shrink-0 text-base">📍</span>
+                            <span class="truncate text-sm font-semibold text-foreground">
                                 <?php echo $event_address !== '' ? esc_html($event_address) : 'الموقع على الخريطة'; ?>
                             </span>
                         </div>
                         <?php if ($map_url): ?>
                             <a href="<?php echo esc_url($map_url); ?>"
                                target="_blank" rel="noopener"
-                               class="shrink-0 rounded-xl bg-slate-900 px-3 py-1 text-xs font-bold text-white hover:bg-slate-700">
+                               class="flex h-8 shrink-0 items-center justify-center rounded-xl bg-foreground px-3 text-xs font-bold text-white hover:opacity-90">
                                 الخريطة
                             </a>
                         <?php endif; ?>
@@ -127,50 +151,50 @@ $has_location = ($map_url !== '' || $event_address !== '');
         $is_today  = $event_ts && date('Y-m-d', $event_ts) === date('Y-m-d');
         $days_left = (!$is_past && $event_ts) ? (int) ceil(($event_ts - $now) / 86400) : 0;
     ?>
-        <div class="mt-3 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div class="mt-3 overflow-hidden rounded-3xl border border-border bg-white shadow-sm">
 
         <?php if ($is_past): ?>
             <!-- ── المناسبة انتهت ── -->
             <div class="flex items-center justify-between px-5 py-4">
                 <div>
-                    <div class="text-sm font-extrabold text-slate-700">انتهت المناسبة</div>
-                    <div class="mt-0.5 text-xs text-slate-400">شكراً للحضور 🎉</div>
+                    <div class="text-sm font-extrabold text-foreground">انتهت المناسبة</div>
+                    <div class="mt-0.5 text-xs text-foreground/75">شكراً للحضور 🎉</div>
                 </div>
-                <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-500">مضت</span>
+                <span class="rounded-full bg-secondary px-3 py-1 text-[11px] font-bold text-foreground/75">مضت</span>
             </div>
 
         <?php else: ?>
             <!-- ── العد التنازلي ── -->
             <div class="flex items-center justify-between px-5 pt-4 pb-2">
-                <span class="text-sm font-extrabold text-slate-900">
+                <span class="text-sm font-extrabold text-foreground">
                     <?php echo $is_today ? 'اليوم! 🎉' : 'الوقت المتبقي'; ?>
                 </span>
                 <?php if ($is_today): ?>
-                    <span class="animate-pulse rounded-full bg-rose-500 px-2.5 py-0.5 text-[11px] font-bold text-white">الآن 🔴</span>
+                    <span class="animate-pulse rounded-full bg-destructive px-2.5 py-0.5 text-[11px] font-bold text-white">الآن 🔴</span>
                 <?php elseif ($days_left <= 3): ?>
-                    <span class="rounded-full bg-amber-500 px-2.5 py-0.5 text-[11px] font-bold text-white">قريباً ⚡</span>
+                    <span class="rounded-full bg-gold px-2.5 py-0.5 text-[11px] font-bold text-white">قريباً ⚡</span>
                 <?php else: ?>
-                    <span class="rounded-full bg-indigo-600 px-2.5 py-0.5 text-[11px] font-bold text-white"><?php echo (int)$days_left; ?> يوم</span>
+                    <span class="rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-bold text-white"><?php echo (int)$days_left; ?> يوم</span>
                 <?php endif; ?>
             </div>
 
             <div class="grid grid-cols-4 gap-2 px-4 pb-4"
                  data-countdown="<?php echo esc_attr($iso_datetime); ?>">
-                <div class="flex flex-col items-center rounded-2xl bg-slate-50 py-3 ring-1 ring-slate-200">
-                    <span class="cd-days text-2xl font-extrabold text-slate-900">—</span>
-                    <span class="mt-1 text-[11px] text-slate-500">يوم</span>
+                <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
+                    <span class="cd-days text-2xl font-extrabold text-foreground">—</span>
+                    <span class="mt-1 text-[11px] text-foreground/75">يوم</span>
                 </div>
-                <div class="flex flex-col items-center rounded-2xl bg-slate-50 py-3 ring-1 ring-slate-200">
-                    <span class="cd-hours text-2xl font-extrabold text-slate-900">—</span>
-                    <span class="mt-1 text-[11px] text-slate-500">ساعة</span>
+                <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
+                    <span class="cd-hours text-2xl font-extrabold text-foreground">—</span>
+                    <span class="mt-1 text-[11px] text-foreground/75">ساعة</span>
                 </div>
-                <div class="flex flex-col items-center rounded-2xl bg-slate-50 py-3 ring-1 ring-slate-200">
-                    <span class="cd-mins text-2xl font-extrabold text-slate-900">—</span>
-                    <span class="mt-1 text-[11px] text-slate-500">دقيقة</span>
+                <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
+                    <span class="cd-mins text-2xl font-extrabold text-foreground">—</span>
+                    <span class="mt-1 text-[11px] text-foreground/75">دقيقة</span>
                 </div>
-                <div class="flex flex-col items-center rounded-2xl bg-slate-50 py-3 ring-1 ring-slate-200">
-                    <span class="cd-secs text-2xl font-extrabold text-slate-900">—</span>
-                    <span class="mt-1 text-[11px] text-slate-500">ثانية</span>
+                <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
+                    <span class="cd-secs text-2xl font-extrabold text-foreground">—</span>
+                    <span class="mt-1 text-[11px] text-foreground/75">ثانية</span>
                 </div>
             </div>
         <?php endif; ?>
@@ -181,12 +205,12 @@ $has_location = ($map_url !== '' || $event_address !== '');
     <!-- أزرار الإجراءات -->
     <div class="mt-3 grid grid-cols-2 gap-3">
         <a href="#rsvp"
-           class="flex h-14 items-center justify-center rounded-2xl bg-gradient-to-l from-indigo-600 to-violet-600 text-sm font-bold text-white shadow-md shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500 active:scale-[.98] transition-transform">
+           class="flex h-14 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-white shadow-md transition-colors hover:bg-primary-hover active:scale-[.98]">
             تأكيد الحضور ✅
         </a>
 
         <button type="button"
-            class="js-add-to-calendar flex h-14 items-center justify-center rounded-2xl border-2 border-slate-200 bg-white text-sm font-bold text-slate-800 hover:bg-slate-50 active:scale-[.98] transition-transform"
+            class="js-add-to-calendar flex h-14 items-center justify-center rounded-2xl border-2 border-border bg-white text-sm font-bold text-foreground hover:bg-secondary/40 active:scale-[.98]"
             data-title="<?php echo esc_attr($title); ?>"
             data-location="<?php echo esc_attr($event_address ?: 'الموقع على الخريطة'); ?>"
             data-start="<?php echo esc_attr($iso_datetime); ?>">
@@ -197,14 +221,14 @@ $has_location = ($map_url !== '' || $event_address !== '');
     <!-- زر المشاركة (واتساب + نسخ رابط) -->
     <div class="mt-3 grid grid-cols-2 gap-3">
         <button type="button"
-            class="js-share-wa flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            <span>📲</span> واتساب
+            class="js-share-wa flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-border bg-white text-sm font-semibold text-foreground/80 hover:bg-secondary/40">
+            <span aria-hidden="true">📲</span> واتساب
         </button>
 
         <button type="button"
-            class="js-copy-link flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            class="js-copy-link flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-border bg-white text-sm font-semibold text-foreground/80 hover:bg-secondary/40"
             data-copy="<?php echo esc_attr($share_url); ?>">
-            <span>🔗</span> نسخ الرابط
+            <span aria-hidden="true">🔗</span> نسخ الرابط
         </button>
     </div>
 
@@ -258,7 +282,7 @@ document.querySelectorAll('.js-copy-link').forEach(function(el) {
             ta.remove();
         }
         const orig = el.innerHTML;
-        el.innerHTML = '<span>✅</span> تم النسخ';
+        el.innerHTML = '<span aria-hidden="true">✅</span> تم النسخ';
         setTimeout(function() { el.innerHTML = orig; }, 1500);
     });
 });

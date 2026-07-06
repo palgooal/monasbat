@@ -38,6 +38,32 @@ $wa_tpl_invalid  = $wa_templates['invalid'] ?? '';
 $wa_provider     = get_option('pge_wa_provider', 'cartat');
 $wa_provider_label = $wa_provider === 'ultramsg' ? 'UltraMsg' : 'Cartat';
 
+// عرض فقط — بيانات إضافية للهيرو والشريط الجانبي (قراءة فقط من post meta الموجودة أصلاً، بدون أي منطق جديد)
+$event_address_manage  = (string) get_post_meta($event_id, '_pge_event_address', true);
+$event_location_manage = (string) get_post_meta($event_id, '_pge_event_location', true);
+$manage_event_ts       = $event_date ? strtotime(str_replace('T', ' ', $event_date)) : 0;
+$manage_is_upcoming    = $manage_event_ts && $manage_event_ts >= current_time('timestamp');
+$manage_status_label   = $manage_event_ts ? ($manage_is_upcoming ? 'قادمة' : 'منتهية') : 'بدون تاريخ';
+
+// عرض فقط — ملخص الباقة/الحصة لنفس المستخدم الحالي (إعادة استخدام نفس الدوال والصيغة المستخدمة في لوحة التحكم وصفحة الإنشاء، بدون أي حساب جديد)
+$manage_user_id      = get_current_user_id();
+$manage_plan_limits  = function_exists('pge_get_user_plan_limits_for_events') ? pge_get_user_plan_limits_for_events($manage_user_id) : [];
+$manage_plan_name    = (string) get_user_meta($manage_user_id, '_mon_package_name', true);
+if ($manage_plan_name === '') {
+    $manage_plan_name = (string) ($manage_plan_limits['name'] ?? 'بدون باقة');
+}
+$manage_events_limit_meta = get_user_meta($manage_user_id, '_mon_events_limit', true);
+$manage_events_limit = $manage_events_limit_meta !== '' ? (int) $manage_events_limit_meta : (int) ($manage_plan_limits['events_count'] ?? 0);
+$manage_events_used_q = new WP_Query([
+    'post_type'      => 'pge_event',
+    'post_status'    => ['publish', 'draft', 'pending'],
+    'author'         => $manage_user_id,
+    'posts_per_page' => -1,
+    'fields'         => 'ids',
+]);
+$manage_events_used  = (int) $manage_events_used_q->found_posts;
+$manage_events_left  = max(0, $manage_events_limit - $manage_events_used);
+
 get_header();
 ?>
 <style>
@@ -48,19 +74,19 @@ get_header();
 .noscroll { -ms-overflow-style:none; scrollbar-width:none; }
 
 /* ── Guest Card ───────────────────────────────────── */
-.guest-card { background:#fff; border-radius:18px; border:1px solid #e8edf2; transition:box-shadow .15s; overflow:hidden; }
-.guest-card:active { background:#f8fafc; }
+.guest-card { background:#fff; border-radius:18px; border:1px solid var(--color-border); transition:box-shadow .15s; overflow:hidden; }
+.guest-card:active { background:var(--color-background); }
 
 /* ── Avatar ───────────────────────────────────────── */
 .g-avatar { width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:#fff;flex-shrink:0; }
 .av-yes    { background:linear-gradient(135deg,#10b981,#059669); }
-.av-no     { background:linear-gradient(135deg,#f43f5e,#e11d48); }
-.av-pending{ background:linear-gradient(135deg,#94a3b8,#64748b); }
+.av-no     { background:linear-gradient(135deg, var(--color-destructive-text), #8f2d20); }
+.av-pending{ background:linear-gradient(135deg, color-mix(in srgb, var(--color-foreground) 38%, white), color-mix(in srgb, var(--color-foreground) 55%, white)); }
 
 /* ── Bottom Nav ───────────────────────────────────── */
-.bnav { position:fixed;bottom:0;inset-x:0;height:calc(var(--bnav-h) + var(--safe-b));background:#fff;border-top:1px solid #e2e8f0;z-index:50;display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:var(--safe-b); }
-.bnav-item { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:700;color:#94a3b8;border:none;background:none;cursor:pointer;padding:8px 0;transition:color .15s; }
-.bnav-item.active,.bnav-item:active { color:#6366f1; }
+.bnav { position:fixed;bottom:0;inset-x:0;height:calc(var(--bnav-h) + var(--safe-b));background:#fff;border-top:1px solid var(--color-border);z-index:50;display:grid;grid-template-columns:repeat(4,1fr);padding-bottom:var(--safe-b); }
+.bnav-item { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:700;color:color-mix(in srgb, var(--color-foreground) 45%, white);border:none;background:none;cursor:pointer;padding:8px 0;transition:color .15s; }
+.bnav-item.active,.bnav-item:active { color:var(--color-primary); }
 .bnav-icon { font-size:21px;line-height:1; }
 
 /* ── Actions Panel (bottom sheet on mobile) ───────── */
@@ -74,7 +100,7 @@ get_header();
   #actionsPanel.open { transform:translateY(0); }
   #overlay { position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:44;opacity:0;pointer-events:none;transition:opacity .3s; }
   #overlay.show { opacity:1;pointer-events:auto; }
-  .sheet-bar { width:40px;height:4px;border-radius:2px;background:#e2e8f0;margin:12px auto 4px; }
+  .sheet-bar { width:40px;height:4px;border-radius:2px;background:var(--color-border);margin:12px auto 4px; }
   .pge-main { padding-top:var(--app-h);padding-bottom:calc(var(--bnav-h) + var(--safe-b) + 8px); }
 }
 @media (min-width:1024px) {
@@ -88,7 +114,7 @@ get_header();
 #toast.show { opacity:1;transform:translateX(-50%) translateY(0); }
 @media (min-width:1024px) { #toast { top:20px; } }
 
-/* ── Stat chip ────────────────────────────────────── */
+/* ── Stat card ────────────────────────────────────── */
 .stat-chip { flex-shrink:0;display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:99px;font-size:13px;font-weight:700;border:1.5px solid; }
 .stat-num { font-size:18px;font-weight:800; }
 
@@ -103,95 +129,237 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 @media (max-width:1023px) {
   .stats-outer { padding-top:var(--app-h); }
 }
+
+/* ── Focus-visible: يُطبَّق الآن عالمياً من input.css (رمز واحد لكل الصفحات) ───────────── */
 </style>
 
 <div dir="rtl">
 
 <!-- ══ Toast ══════════════════════════════════════════════════ -->
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <!-- ══ MOBILE APP HEADER ══════════════════════════════════════ -->
-<header class="lg:hidden fixed top-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100" style="height:var(--app-h);">
+<header class="lg:hidden fixed top-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-b border-border" style="height:var(--app-h);">
   <div class="flex items-center gap-2 px-3 h-full">
-    <a href="<?= esc_url($dashboard_url) ?>" class="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    <a href="<?= esc_url($dashboard_url) ?>" aria-label="العودة للوحة التحكم" class="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary/60 text-foreground/70">
+      <svg aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
     </a>
     <div class="flex-1 min-w-0">
-      <div class="font-bold text-sm truncate"><?= esc_html(get_the_title($event_id)) ?></div>
-      <div class="text-[10px] text-slate-400"><?= esc_html($event_date_label) ?></div>
+      <div class="font-bold text-sm truncate text-foreground"><?= esc_html(get_the_title($event_id)) ?></div>
+      <div class="text-[10px] text-foreground/65"><?= esc_html($event_date_label) ?></div>
     </div>
-    <a href="<?= esc_url($event_url) ?>" target="_blank" class="px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold flex-shrink-0">فتح</a>
-    <a href="<?= esc_url($edit_url) ?>" class="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    <a href="<?= esc_url($event_url) ?>" target="_blank" rel="noopener" class="px-3 py-2 rounded-xl bg-primary text-white text-xs font-bold flex-shrink-0">فتح</a>
+    <a href="<?= esc_url($edit_url) ?>" aria-label="تعديل المناسبة" class="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary/60 text-foreground/70">
+      <svg aria-hidden="true" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     </a>
   </div>
 </header>
 
-<!-- ══ DESKTOP HEADER ══════════════════════════════════════════ -->
-<div class="hidden lg:block max-w-7xl mx-auto px-6 pt-8 pb-2">
-  <div class="flex items-start justify-between gap-4 flex-wrap">
-    <div>
-      <h1 class="text-2xl font-extrabold tracking-tight"><?= esc_html(get_the_title($event_id)) ?></h1>
-      <p class="mt-0.5 text-sm text-slate-500">إدارة المدعوين · <?= esc_html($event_date_label) ?></p>
+<!-- ══ HERO (desktop) ═════════════════════════════════════════ -->
+<div class="hidden lg:block max-w-7xl mx-auto px-6 pt-8">
+  <section class="relative overflow-hidden rounded-[28px] border border-border bg-white p-8 shadow-[0_20px_60px_-15px_rgba(45,25,20,0.10)]">
+    <svg aria-hidden="true" class="pointer-events-none absolute -top-10 -start-10 h-56 w-56 text-gold opacity-[0.06]" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M10 190C40 150 30 90 70 60C100 38 130 45 150 20" stroke-linecap="round"/>
+      <circle cx="70" cy="60" r="5"/><circle cx="102" cy="46" r="4"/><circle cx="132" cy="34" r="3.5"/>
+      <path d="M70 60c10-6 18-4 24 4M102 46c8-5 16-3 21 4"/>
+    </svg>
+
+    <div class="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 rounded-full <?= $manage_is_upcoming ? 'bg-primary/10 text-primary-text ring-primary/20' : 'bg-secondary/70 text-foreground/70 ring-border' ?> ring-1 px-3 py-1 text-xs font-bold">
+            <span aria-hidden="true">●</span> <?= esc_html($manage_status_label) ?>
+          </span>
+          <?php if ($invite_code): ?>
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-gold/10 text-gold-text ring-1 ring-gold/20 px-3 py-1 text-xs font-bold font-mono tracking-widest"><?= esc_html($invite_code) ?></span>
+          <?php endif; ?>
+        </div>
+        <h1 class="mt-3 text-2xl font-extrabold leading-tight tracking-tight text-foreground sm:text-3xl"><?= esc_html(get_the_title($event_id)) ?></h1>
+        <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-foreground/70">
+          <span class="inline-flex items-center gap-1.5">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><rect x="3" y="5" width="18" height="16" rx="3"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>
+            <?= esc_html($event_date_label) ?>
+          </span>
+          <?php if ($event_address_manage !== ''): ?>
+            <span class="inline-flex items-center gap-1.5 min-w-0">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4 flex-shrink-0"><path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-6h6v6"/></svg>
+              <span class="truncate"><?= esc_html($event_address_manage) ?></span>
+            </span>
+          <?php elseif ($event_location_manage !== ''): ?>
+            <a href="<?= esc_url($event_location_manage) ?>" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 underline underline-offset-4">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              الموقع على الخريطة
+            </a>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <div class="flex flex-shrink-0 flex-wrap gap-2.5">
+        <button type="button" onclick="focusAddGuest()" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-white shadow-sm shadow-primary/30 transition-colors duration-200 hover:bg-primary-hover">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4.5 w-4.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+          إضافة مدعو
+        </button>
+        <a href="<?= esc_url($edit_url) ?>" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border-[1.5px] border-gold bg-white px-5 text-sm font-bold text-gold-text transition-colors duration-200 hover:bg-gold/[0.06]">
+          تعديل المناسبة
+        </a>
+        <a href="<?= esc_url($event_url) ?>" target="_blank" rel="noopener" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-5 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          عرض الدعوة
+        </a>
+      </div>
     </div>
-    <div class="flex gap-2 flex-wrap">
-      <a href="<?= esc_url($event_url) ?>" class="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">فتح الدعوة</a>
-      <a href="<?= esc_url($edit_url) ?>" class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">تعديل</a>
-      <a href="<?= esc_url($dashboard_url) ?>" class="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">لوحة التحكم</a>
-    </div>
+  </section>
+</div>
+
+<!-- ══ STATS STRIP (mobile: horizontal chips) ═════════════════ -->
+<div class="stats-outer max-w-7xl mx-auto lg:hidden">
+  <div class="flex gap-2 overflow-x-auto noscroll px-4 py-3">
+    <div class="stat-chip bg-secondary/60 border-border text-foreground/70"><span aria-hidden="true">👥</span><span>الكل</span><span class="stat-num"><?= (int)$stats['total'] ?></span></div>
+    <div class="stat-chip bg-emerald-50 border-emerald-200 text-emerald-800"><span aria-hidden="true">✅</span><span>سيحضر</span><span class="stat-num"><?= (int)$stats['yes'] ?></span></div>
+    <div class="stat-chip bg-destructive/10 border-destructive/20 text-destructive-text"><span aria-hidden="true">❌</span><span>اعتذر</span><span class="stat-num"><?= (int)$stats['no'] ?></span></div>
+    <div class="stat-chip bg-gold/10 border-gold/20 text-gold-text"><span aria-hidden="true">⏳</span><span>لم يرد</span><span class="stat-num"><?= (int)$stats['pending'] ?></span></div>
+    <div class="stat-chip bg-primary/10 border-primary/20 text-primary-text"><span aria-hidden="true">🏷️</span><span>حضر</span><span class="stat-num"><?= (int)$stats['checked'] ?></span></div>
   </div>
 </div>
 
-<!-- ══ STATS STRIP ═════════════════════════════════════════════ -->
-<div class="stats-outer max-w-7xl mx-auto lg:px-6">
-  <div class="flex gap-2 overflow-x-auto noscroll px-4 lg:px-0 py-3">
-    <div class="stat-chip bg-slate-50 border-slate-200 text-slate-700"><span>👥</span><span>الكل</span><span class="stat-num"><?= (int)$stats['total'] ?></span></div>
-    <div class="stat-chip bg-emerald-50 border-emerald-200 text-emerald-800"><span>✅</span><span>سيحضر</span><span class="stat-num"><?= (int)$stats['yes'] ?></span></div>
-    <div class="stat-chip bg-rose-50 border-rose-200 text-rose-800"><span>❌</span><span>اعتذر</span><span class="stat-num"><?= (int)$stats['no'] ?></span></div>
-    <div class="stat-chip bg-amber-50 border-amber-200 text-amber-800"><span>⏳</span><span>لم يرد</span><span class="stat-num"><?= (int)$stats['pending'] ?></span></div>
-    <div class="stat-chip bg-indigo-50 border-indigo-200 text-indigo-800"><span>🏷️</span><span>حضر</span><span class="stat-num"><?= (int)$stats['checked'] ?></span></div>
-  </div>
+<!-- ══ STATS KPI CARDS (desktop) + QUICK ACTIONS ══════════════ -->
+<div class="hidden lg:block max-w-7xl mx-auto px-6 mt-6 space-y-6">
+
+  <!-- Quick Actions -->
+  <section class="rounded-[28px] border border-border bg-white p-6 shadow-sm">
+    <h2 class="text-sm font-extrabold text-foreground/70">إجراءات سريعة</h2>
+    <div class="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <button type="button" onclick="focusAddGuest()" class="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl bg-primary text-sm font-bold text-white transition-colors hover:bg-primary-hover">
+        <span aria-hidden="true" class="text-lg">➕</span> إضافة مدعو
+      </button>
+      <button type="button" onclick="focusBulkImport()" class="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border-[1.5px] border-gold bg-white text-sm font-bold text-gold-text transition-colors hover:bg-gold/[0.06]">
+        <span aria-hidden="true" class="text-lg">📋</span> استيراد المدعوين
+      </button>
+      <button type="button" onclick="shareInviteLink()" class="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border border-border bg-white text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+        <span aria-hidden="true" class="text-lg">📤</span> مشاركة الدعوة
+      </button>
+      <button type="button" onclick="document.getElementById('exportCsvBtn')?.click()" class="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border border-border bg-white text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+        <span aria-hidden="true" class="text-lg">⬇️</span> تصدير القائمة
+      </button>
+    </div>
+  </section>
+
+  <!-- Statistics -->
+  <section>
+    <h2 class="px-1 text-sm font-extrabold text-foreground/70">الإحصائيات</h2>
+    <div class="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-2">
+          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary/70 text-foreground/70">👥</span>
+          <span class="text-xs font-bold text-foreground/70">إجمالي المدعوين</span>
+        </div>
+        <div class="mt-2 text-2xl font-extrabold text-foreground"><?= (int)$stats['total'] ?></div>
+        <p class="mt-1 text-[11px] text-foreground/65">كل من أُضيف لقائمة هذه المناسبة</p>
+      </div>
+      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-2">
+          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">✅</span>
+          <span class="text-xs font-bold text-foreground/70">أكد الحضور</span>
+        </div>
+        <div class="mt-2 text-2xl font-extrabold text-emerald-700"><?= (int)$stats['yes'] ?></div>
+        <p class="mt-1 text-[11px] text-foreground/65">ردّوا بـ «سأحضر»</p>
+      </div>
+      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-2">
+          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive-text">❌</span>
+          <span class="text-xs font-bold text-foreground/70">اعتذر</span>
+        </div>
+        <div class="mt-2 text-2xl font-extrabold text-destructive-text"><?= (int)$stats['no'] ?></div>
+        <p class="mt-1 text-[11px] text-foreground/65">ردّوا بالاعتذار عن الحضور</p>
+      </div>
+      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-2">
+          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold-text">⏳</span>
+          <span class="text-xs font-bold text-foreground/70">بانتظار الرد</span>
+        </div>
+        <div class="mt-2 text-2xl font-extrabold text-gold-text"><?= (int)$stats['pending'] ?></div>
+        <p class="mt-1 text-[11px] text-foreground/65">لم يردّوا على الدعوة بعد</p>
+      </div>
+      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-2">
+          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">🏷️</span>
+          <span class="text-xs font-bold text-foreground/70">تم تسجيل الحضور</span>
+        </div>
+        <div class="mt-2 text-2xl font-extrabold text-primary-text"><?= (int)$stats['checked'] ?></div>
+        <p class="mt-1 text-[11px] text-foreground/65">حضروا فعلياً يوم المناسبة</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- RSVP summary strip -->
+  <section class="rounded-3xl border border-border bg-white p-5 shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-sm font-extrabold text-foreground/70">ملخص الردود (RSVP)</h2>
+      <span class="text-xs text-foreground/65"><?= (int)$stats['total'] ?> مدعو إجمالاً</span>
+    </div>
+    <?php $rsvp_total = max(1, (int)$stats['total']); ?>
+    <div class="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-secondary/60">
+      <div class="h-full bg-emerald-500" style="width: <?= round(((int)$stats['yes'] / $rsvp_total) * 100) ?>%"></div>
+      <div class="h-full bg-destructive" style="width: <?= round(((int)$stats['no'] / $rsvp_total) * 100) ?>%"></div>
+      <div class="h-full bg-gold" style="width: <?= round(((int)$stats['pending'] / $rsvp_total) * 100) ?>%"></div>
+    </div>
+    <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] font-semibold text-foreground/60">
+      <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-emerald-500"></span> سيحضر</span>
+      <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-destructive"></span> اعتذر</span>
+      <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-gold"></span> لم يرد</span>
+    </div>
+  </section>
 </div>
 
 <!-- ══ MAIN CONTENT ════════════════════════════════════════════ -->
-<div class="pge-main max-w-7xl mx-auto lg:px-6 lg:pb-10">
+<div class="pge-main max-w-7xl mx-auto lg:px-6 lg:pb-10 lg:mt-6">
 
   <!-- ── GUEST SECTION ──────────────────────────────────────── -->
-  <div>
+  <div class="min-w-0">
+
+    <h2 class="hidden lg:block px-1 pb-3 text-sm font-extrabold text-foreground/70">إدارة المدعوين</h2>
 
     <!-- Search + Filter -->
-    <div class="sticky z-30 bg-white/95 backdrop-blur-md px-4 lg:px-0 py-2.5 border-b border-slate-100 lg:border-0" style="top:var(--app-h);">
-      <input id="guestSearch" type="search" placeholder="ابحث بالاسم أو الجوال أو الملاحظة..."
-        class="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50" />
-      <div class="flex gap-1.5 mt-2 overflow-x-auto noscroll pb-0.5">
-        <button class="status-filter flex-shrink-0 rounded-full bg-slate-900 px-4 py-1.5 text-xs font-bold text-white" data-status="all">الكل</button>
-        <button class="status-filter flex-shrink-0 rounded-full border border-slate-200 bg-white text-slate-700 px-4 py-1.5 text-xs font-bold" data-status="yes">✅ سيحضر</button>
-        <button class="status-filter flex-shrink-0 rounded-full border border-slate-200 bg-white text-slate-700 px-4 py-1.5 text-xs font-bold" data-status="no">❌ اعتذر</button>
-        <button class="status-filter flex-shrink-0 rounded-full border border-slate-200 bg-white text-slate-700 px-4 py-1.5 text-xs font-bold" data-status="pending">⏳ لم يرد</button>
+    <div class="sticky z-30 bg-white/95 backdrop-blur-md px-4 lg:px-0 py-2.5 border-b border-border lg:border-0 lg:static lg:bg-transparent" style="top:var(--app-h);">
+      <label for="guestSearch" class="sr-only">ابحث بالاسم أو الجوال أو الملاحظة</label>
+      <div class="relative">
+        <input id="guestSearch" type="search" placeholder="ابحث بالاسم أو الجوال أو الملاحظة..."
+          class="h-12 w-full rounded-2xl border border-border bg-white ps-4 pe-11 text-sm text-foreground outline-none transition-shadow focus:border-primary" />
+        <span aria-hidden="true" class="pointer-events-none absolute inset-y-0 end-4 flex items-center text-foreground/35">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </span>
+      </div>
+      <div class="flex gap-1.5 mt-2.5 overflow-x-auto noscroll pb-0.5" role="group" aria-label="تصفية حسب حالة الرد">
+        <button class="status-filter flex-shrink-0 flex h-11 items-center rounded-full bg-primary px-4 text-xs font-bold text-white" data-status="all">الكل</button>
+        <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="yes"><span aria-hidden="true">✅</span> سيحضر</button>
+        <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="no"><span aria-hidden="true">❌</span> اعتذر</button>
+        <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="pending"><span aria-hidden="true">⏳</span> لم يرد</button>
       </div>
     </div>
 
     <!-- Bulk Action Bar -->
     <div class="flex flex-wrap gap-2 px-4 lg:px-0 py-2.5 items-center">
-      <label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 text-xs font-bold cursor-pointer text-slate-700">
-        <input id="selectAllGuests" type="checkbox" class="h-4 w-4 rounded border-slate-300 accent-indigo-600" />الكل
+      <label class="flex items-center gap-2 px-3 h-11 rounded-xl bg-secondary/60 text-xs font-bold cursor-pointer text-foreground/70">
+        <input id="selectAllGuests" type="checkbox" class="h-4 w-4 rounded border-border accent-primary" />الكل
       </label>
-      <button id="bulkDeleteBtn" type="button" disabled class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">🗑 حذف</button>
-      <button id="bulkWhatsappBtn" type="button" disabled class="rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">📲 WA</button>
-      <button id="whatsappAllBtn" type="button" class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">📲 للكل</button>
-      <button id="waTestSendBtn" type="button" class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">🧪 تجريبي</button>
-      <button id="sendWaInvitesBtn" type="button" class="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white">📨 إرسال تلقائي</button>
-      <button id="waReportBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">📊 تقرير</button>
-      <button id="exportCsvBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">⬇ CSV</button>
+      <button id="bulkDeleteBtn" type="button" disabled class="h-11 rounded-xl bg-destructive/10 px-3 text-xs font-bold text-destructive-text ring-1 ring-destructive/20 disabled:opacity-40"><span aria-hidden="true">🗑</span> حذف</button>
+      <button id="bulkWhatsappBtn" type="button" disabled class="h-11 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-40"><span aria-hidden="true">📲</span> WA</button>
+      <button id="whatsappAllBtn" type="button" class="h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800"><span aria-hidden="true">📲</span> للكل</button>
+      <button id="waTestSendBtn" type="button" class="h-11 rounded-xl border border-gold/30 bg-gold/10 px-3 text-xs font-bold text-gold-text"><span aria-hidden="true">🧪</span> تجريبي</button>
+      <button id="sendWaInvitesBtn" type="button" class="h-11 rounded-xl bg-primary px-3 text-xs font-bold text-white"><span aria-hidden="true">📨</span> إرسال تلقائي</button>
+      <button id="waReportBtn" type="button" class="h-11 rounded-xl border border-border bg-white px-3 text-xs font-bold text-foreground/70"><span aria-hidden="true">📊</span> تقرير</button>
+      <button id="exportCsvBtn" type="button" class="h-11 rounded-xl border border-border bg-white px-3 text-xs font-bold text-foreground/70"><span aria-hidden="true">⬇</span> CSV</button>
     </div>
 
     <!-- Guest Cards -->
     <div id="guestsContainer" class="px-4 lg:px-0 space-y-2.5 pb-4">
       <?php if (empty($guests_map)): ?>
-        <div class="text-center py-16 text-slate-400">
-          <div class="text-5xl mb-3">👥</div>
-          <div class="font-semibold text-slate-600">لا يوجد مدعوون بعد</div>
-          <div class="text-sm mt-1">اضغط ➕ لإضافة أول مدعو</div>
+        <div class="rounded-[28px] border border-border bg-white px-6 py-14 text-center">
+          <span aria-hidden="true" class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-3xl">👥</span>
+          <div class="mt-4 font-extrabold text-foreground">لا يوجد مدعوون بعد</div>
+          <p class="mx-auto mt-1.5 max-w-xs text-sm text-foreground/60">ابدأ بإضافة أول مدعو لمناسبتك، أو استورد قائمة أرقام دفعة واحدة.</p>
+          <button type="button" onclick="focusAddGuest()" class="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-primary px-6 text-sm font-bold text-white transition-colors hover:bg-primary-hover">
+            <span aria-hidden="true">➕</span> إضافة أول مدعو
+          </button>
         </div>
       <?php else: ?>
         <?php foreach ($guests_map as $phone => $guest):
@@ -207,8 +375,9 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
           $initial  = mb_substr($g_name ?: $phone, 0, 1, 'UTF-8');
           $avc      = $g_status === 'yes' ? 'av-yes' : ($g_status === 'no' ? 'av-no' : 'av-pending');
           $sbg      = $g_status === 'yes' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                    : ($g_status === 'no'  ? 'bg-rose-50 text-rose-700 ring-rose-200'
-                    :                        'bg-slate-50 text-slate-600 ring-slate-200');
+                    : ($g_status === 'no'  ? 'bg-destructive/10 text-destructive-text ring-destructive/20'
+                    :                        'bg-secondary/60 text-foreground/60 ring-border');
+          $status_icon = $g_status === 'yes' ? '✅' : ($g_status === 'no' ? '❌' : '⏳');
         ?>
         <div class="guest-row"
           data-phone="<?= esc_attr($phone) ?>"
@@ -220,34 +389,37 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
           <div class="guest-card overflow-hidden">
             <!-- صف علوي: checkbox + avatar + معلومات + حالة -->
             <div class="flex items-center gap-3 p-3 pb-2">
-              <input type="checkbox" class="guest-checkbox h-5 w-5 rounded-md border-slate-300 accent-indigo-600 flex-shrink-0" data-phone="<?= esc_attr($phone) ?>" />
-              <div class="g-avatar <?= $avc ?> text-base"><?= esc_html($initial) ?></div>
+              <label class="flex-shrink-0">
+                <span class="sr-only">تحديد <?= $g_name !== '' ? esc_html($g_name) : esc_html($phone) ?></span>
+                <input type="checkbox" class="guest-checkbox h-5 w-5 rounded-md border-border accent-primary flex-shrink-0" data-phone="<?= esc_attr($phone) ?>" />
+              </label>
+              <div class="g-avatar <?= $avc ?> text-base" aria-hidden="true"><?= esc_html($initial) ?></div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <span class="font-bold text-sm text-slate-900 leading-tight"><?= $g_name !== '' ? esc_html($g_name) : '<span class="text-slate-400 font-normal text-xs">بدون اسم</span>' ?></span>
-                  <span class="text-[10px] font-bold rounded-full px-2 py-0.5 ring-1 <?= $sbg ?>"><?= esc_html($g_label) ?><?= $g_check === 'yes' ? ' 🏷️' : '' ?></span>
+                  <span class="font-bold text-sm text-foreground leading-tight"><?= $g_name !== '' ? esc_html($g_name) : '<span class="text-foreground/65 font-normal text-xs">بدون اسم</span>' ?></span>
+                  <span class="text-[10px] font-bold rounded-full px-2 py-0.5 ring-1 <?= $sbg ?>"><span aria-hidden="true"><?= $status_icon ?></span> <?= esc_html($g_label) ?><?= $g_check === 'yes' ? ' <span aria-hidden="true">🏷️</span><span class="sr-only">تم تسجيل الحضور</span>' : '' ?></span>
                 </div>
-                <div class="text-xs text-slate-400 font-mono mt-0.5" dir="ltr"><?= esc_html($phone) ?></div>
+                <div class="text-xs text-foreground/65 font-mono mt-0.5" dir="ltr"><?= esc_html($phone) ?></div>
               </div>
             </div>
             <!-- صف أسفل: رمز الدعوة + أزرار الإجراءات -->
             <div class="flex items-center justify-between px-3 pb-3 gap-2">
               <div class="flex items-center gap-1.5 min-w-0">
                 <?php if ($g_code !== ''): ?>
-                <span class="guest-code-display font-mono text-[11px] font-bold tracking-widest text-indigo-700 bg-indigo-50 px-2 py-1 rounded-lg ring-1 ring-indigo-200 whitespace-nowrap"><?= esc_html($g_code) ?></span>
-                <button type="button" class="guest-copy-code-btn w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-sm" data-code="<?= esc_attr($g_code) ?>" title="نسخ">📋</button>
-                <button type="button" class="guest-regen-code-btn w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-sm" data-phone="<?= esc_attr($phone) ?>" title="رمز جديد">🔄</button>
+                <span class="guest-code-display font-mono text-[11px] font-bold tracking-widest text-gold-text bg-gold/10 px-2 py-1 rounded-lg ring-1 ring-gold/20 whitespace-nowrap"><?= esc_html($g_code) ?></span>
+                <button type="button" class="guest-copy-code-btn w-11 h-11 rounded-lg bg-secondary/60 flex items-center justify-center text-sm" data-code="<?= esc_attr($g_code) ?>" aria-label="نسخ رمز الدعوة">📋</button>
+                <button type="button" class="guest-regen-code-btn w-11 h-11 rounded-lg bg-secondary/60 flex items-center justify-center text-sm" data-phone="<?= esc_attr($phone) ?>" aria-label="توليد رمز جديد">🔄</button>
                 <?php else: ?>
-                <button type="button" class="guest-regen-code-btn text-[11px] text-indigo-500 underline font-semibold" data-phone="<?= esc_attr($phone) ?>">+ توليد رمز</button>
+                <button type="button" class="guest-regen-code-btn text-[11px] text-primary-text underline font-semibold" data-phone="<?= esc_attr($phone) ?>">+ توليد رمز</button>
                 <?php endif; ?>
                 <?php if ($g_note !== ''): ?>
-                <span class="text-[10px] text-slate-400 truncate">· <?= esc_html($g_note) ?></span>
+                <span class="text-[10px] text-foreground/65 truncate">· <?= esc_html($g_note) ?></span>
                 <?php endif; ?>
               </div>
               <div class="flex items-center gap-1.5 flex-shrink-0">
-                <button type="button" class="guest-wa-btn h-9 px-3 rounded-xl bg-emerald-600 flex items-center gap-1 text-white text-xs font-bold" data-phone="<?= esc_attr($phone) ?>" data-name="<?= esc_attr($g_name) ?>">📱<span class="hidden sm:inline">واتساب</span></button>
-                <button type="button" class="guest-edit-btn w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-600" data-phone="<?= esc_attr($phone) ?>">✏️</button>
-                <button type="button" class="guest-delete-btn w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600" data-phone="<?= esc_attr($phone) ?>">🗑️</button>
+                <button type="button" class="guest-wa-btn h-11 px-3 rounded-xl bg-emerald-600 flex items-center gap-1 text-white text-xs font-bold" data-phone="<?= esc_attr($phone) ?>" data-name="<?= esc_attr($g_name) ?>"><span aria-hidden="true">📱</span><span class="hidden sm:inline">واتساب</span></button>
+                <button type="button" class="guest-edit-btn w-11 h-11 rounded-xl border border-border bg-white flex items-center justify-center text-foreground/60" data-phone="<?= esc_attr($phone) ?>" aria-label="تعديل بيانات المدعو">✏️</button>
+                <button type="button" class="guest-delete-btn w-11 h-11 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive-text" data-phone="<?= esc_attr($phone) ?>" aria-label="حذف المدعو">🗑️</button>
               </div>
             </div>
           </div>
@@ -257,70 +429,120 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
     </div>
   </div><!-- /guest section -->
 
-  <!-- ── ACTIONS PANEL ─────────────────────────────────────── -->
+  <!-- ── ACTIONS PANEL (mobile sheet / desktop sidebar) ──────── -->
   <div id="actionsPanel">
     <div class="sheet-bar"></div>
 
     <!-- Panel Header (mobile only) -->
-    <div class="panel-header flex items-center justify-between px-5 pt-1 pb-3 border-b border-slate-100 sticky top-0 bg-white z-10">
+    <div class="panel-header flex items-center justify-between px-5 pt-1 pb-3 border-b border-border sticky top-0 bg-white z-10">
       <div class="font-bold text-sm" id="panelTitle">إضافة مدعو</div>
-      <button id="closePanelBtn" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 text-lg font-bold">×</button>
+      <button id="closePanelBtn" aria-label="إغلاق" class="w-11 h-11 rounded-full bg-secondary/60 flex items-center justify-center text-foreground/70 text-lg font-bold">×</button>
     </div>
 
     <div class="p-4 space-y-4">
 
+      <!-- ملخص المناسبة (سايدبار الديسكتوب) -->
+      <div class="hidden lg:block rounded-[24px] border border-border bg-white p-5 lg:sticky lg:top-6">
+        <h3 class="text-sm font-extrabold text-foreground/70">ملخص المناسبة</h3>
+        <div class="mt-3 space-y-2 text-sm">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-foreground/60">التاريخ</span>
+            <span class="font-semibold text-foreground text-left"><?= esc_html($event_date_label) ?></span>
+          </div>
+          <?php if ($invite_code): ?>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-foreground/60">رمز الدعوة</span>
+            <span class="font-mono font-bold tracking-widest text-gold-text"><?= esc_html($invite_code) ?></span>
+          </div>
+          <?php endif; ?>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-foreground/60">الحالة</span>
+            <span class="font-semibold text-foreground"><?= esc_html($manage_status_label) ?></span>
+          </div>
+        </div>
+
+        <div class="mt-4 border-t border-gold/30"></div>
+
+        <h3 class="mt-4 text-sm font-extrabold text-foreground/70">ملخص الباقة</h3>
+        <div class="mt-3 flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold text-foreground/65">الباقة الحالية</span>
+          <span class="truncate rounded-full bg-secondary/60 px-3 py-1 text-xs font-bold text-foreground ring-1 ring-border"><?= esc_html($manage_plan_name) ?></span>
+        </div>
+        <?php if ($manage_events_limit > 0): ?>
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold text-foreground/65">المناسبات المتبقية</span>
+          <span class="text-sm font-extrabold text-foreground"><?= (int)$manage_events_left ?> <span class="text-xs font-semibold text-foreground/65">/ <?= (int)$manage_events_limit ?></span></span>
+        </div>
+        <?php endif; ?>
+
+        <div class="mt-4 border-t border-gold/30"></div>
+
+        <h3 class="mt-4 text-sm font-extrabold text-foreground/70">روابط سريعة</h3>
+        <div class="mt-3 flex flex-col gap-2">
+          <a href="<?= esc_url($dashboard_url) ?>" class="flex h-11 items-center justify-center rounded-xl border border-border bg-white text-xs font-bold text-foreground/70 hover:bg-secondary/50">لوحة التحكم</a>
+          <a href="<?= esc_url(home_url('/packages/')) ?>" class="flex h-11 items-center justify-center rounded-xl border-[1.5px] border-gold bg-white text-xs font-bold text-gold-text hover:bg-gold/[0.06]">إدارة الباقة</a>
+        </div>
+      </div>
+
       <!-- تعديل مدعو -->
-      <div id="editGuestCard" class="hidden rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
-        <h3 class="font-bold text-sm text-indigo-800 mb-3">✏️ تعديل المدعو</h3>
+      <div id="editGuestCard" class="hidden rounded-2xl border border-primary/20 bg-primary/5 p-4">
+        <h3 class="font-bold text-sm text-primary-text mb-3"><span aria-hidden="true">✏️</span> تعديل المدعو</h3>
         <form id="editGuestForm" class="space-y-2.5">
           <input type="hidden" id="editOldPhone" name="old_phone" />
+          <label for="editGuestName" class="sr-only">الاسم</label>
           <input id="editGuestName" name="name" type="text" placeholder="الاسم"
-            class="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-400" />
+            class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
+          <label for="editGuestPhone" class="sr-only">رقم الجوال</label>
           <input id="editGuestPhone" name="phone" type="tel" inputmode="tel" placeholder="رقم الجوال" required
-            class="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-400" />
+            class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
+          <label for="editGuestNote" class="sr-only">ملاحظة</label>
           <input id="editGuestNote" name="note" type="text" placeholder="ملاحظة"
-            class="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-indigo-400" />
+            class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
           <div class="flex gap-2">
-            <button type="submit" class="flex-1 h-11 rounded-2xl bg-indigo-600 text-sm font-bold text-white">حفظ</button>
-            <button id="cancelEditGuestBtn" type="button" class="h-11 px-4 rounded-2xl border border-slate-200 bg-white text-sm font-semibold">إلغاء</button>
+            <button type="submit" class="flex-1 h-12 rounded-2xl bg-primary text-sm font-bold text-white hover:bg-primary-hover">حفظ</button>
+            <button id="cancelEditGuestBtn" type="button" class="h-12 px-4 rounded-2xl border border-border bg-white text-sm font-semibold text-foreground/70">إلغاء</button>
           </div>
         </form>
       </div>
 
       <!-- إضافة مدعو -->
-      <div class="rounded-2xl border border-slate-200 bg-white p-4" id="addSection">
-        <h3 class="text-base font-bold mb-3">➕ إضافة مدعو</h3>
+      <div class="rounded-2xl border border-border bg-white p-4" id="addSection">
+        <h3 class="text-base font-bold text-foreground mb-3"><span aria-hidden="true">➕</span> إضافة مدعو</h3>
         <form id="addGuestForm" class="space-y-2.5">
+          <label for="addGuestName" class="sr-only">الاسم (اختياري)</label>
           <input id="addGuestName" name="name" type="text" placeholder="الاسم (اختياري)"
-            class="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-slate-900" />
+            class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
+          <label for="addGuestPhone" class="sr-only">رقم الجوال</label>
           <input id="addGuestPhone" name="phone" type="tel" inputmode="tel" placeholder="رقم الجوال" required
-            class="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-slate-900" />
+            class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
+          <label for="addGuestNote" class="sr-only">ملاحظة (اختياري)</label>
           <input id="addGuestNote" name="note" type="text" placeholder="ملاحظة (اختياري)"
-            class="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-slate-900" />
-          <button type="submit" class="w-full h-11 rounded-2xl bg-slate-900 text-sm font-bold text-white">إضافة المدعو</button>
+            class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
+          <button type="submit" class="w-full h-12 rounded-2xl bg-primary text-sm font-bold text-white hover:bg-primary-hover">إضافة المدعو</button>
         </form>
       </div>
 
       <!-- إضافة جماعية -->
-      <div class="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 class="text-base font-bold mb-1">📋 إضافة جماعية</h3>
-        <p class="text-xs text-slate-500 mb-3">ضع كل رقم في سطر منفصل.</p>
+      <div class="rounded-2xl border border-border bg-white p-4" id="bulkImportSection">
+        <h3 class="text-base font-bold text-foreground mb-1"><span aria-hidden="true">📋</span> إضافة جماعية</h3>
+        <p class="text-xs text-foreground/60 mb-3">ضع كل رقم في سطر منفصل.</p>
         <form id="bulkGuestForm" class="space-y-2.5">
+          <label for="bulkPhones" class="sr-only">أرقام الجوال</label>
           <textarea id="bulkPhones" name="phones_text" rows="5"
-            class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-900"
+            class="w-full rounded-2xl border border-border px-4 py-3 text-sm outline-none focus:border-primary"
             placeholder="05XXXXXXXX&#10;9665XXXXXXXX"></textarea>
-          <button type="submit" class="w-full h-11 rounded-2xl bg-emerald-600 text-sm font-bold text-white">إضافة الأرقام</button>
+          <button type="submit" class="w-full h-12 rounded-2xl bg-emerald-600 text-sm font-bold text-white">إضافة الأرقام</button>
         </form>
       </div>
 
       <!-- رسائل واتساب التلقائية -->
       <details class="rounded-2xl border border-emerald-200 bg-white" id="templatesSection">
         <summary class="flex items-center justify-between px-4 py-3.5 cursor-pointer select-none list-none">
-          <span class="font-bold text-sm">📝 رسائل واتساب التلقائية</span>
+          <span class="font-bold text-sm text-foreground"><span aria-hidden="true">📝</span> رسائل واتساب التلقائية</span>
           <span class="text-[10px] font-bold rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 px-2 py-0.5">تخصيص</span>
         </summary>
-        <div class="border-t border-slate-100 p-4 space-y-4">
-          <p class="text-xs text-slate-500">اتركها فارغة لاستخدام النص الافتراضي.</p>
+        <div class="border-t border-border p-4 space-y-4">
+          <p class="text-xs text-foreground/60">اتركها فارغة لاستخدام النص الافتراضي.</p>
           <?php
           $wa_tpl_fields = [
             'invite'  => ['label' => '📨 رسالة الدعوة', 'vars' => ['guest_name','event_name','event_date','event_date_line','guest_phone'], 'val' => $wa_tpl_invite],
@@ -330,50 +552,51 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
           ];
           foreach ($wa_tpl_fields as $tpl_key => $tpl_info): ?>
           <div>
-            <label class="text-xs font-bold text-slate-700 block mb-1"><?= esc_html($tpl_info['label']) ?></label>
+            <label for="wa_tpl_<?= esc_attr($tpl_key) ?>" class="text-xs font-bold text-foreground/80 block mb-1"><?= esc_html($tpl_info['label']) ?></label>
             <?php if ($tpl_info['vars']): ?>
             <div class="flex flex-wrap gap-1 mb-1.5">
               <?php foreach ($tpl_info['vars'] as $v): ?>
-              <button type="button" class="wa-var-insert rounded px-1.5 py-0.5 text-[9px] font-mono bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-700 ring-1 ring-slate-200"
+              <button type="button" class="wa-var-insert rounded px-1.5 py-0.5 text-[9px] font-mono bg-secondary/60 text-foreground/60 hover:bg-emerald-100 hover:text-emerald-700 ring-1 ring-border"
                 data-var="{{<?= $v ?>}}" data-target="wa_tpl_<?= esc_attr($tpl_key) ?>">{{<?= $v ?>}}</button>
               <?php endforeach; ?>
             </div>
             <?php endif; ?>
             <textarea id="wa_tpl_<?= esc_attr($tpl_key) ?>" name="tpl_<?= esc_attr($tpl_key) ?>" rows="3"
               placeholder="اتركه فارغاً للنص الافتراضي"
-              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-mono outline-none focus:border-emerald-400 resize-y"
+              class="w-full rounded-xl border border-border px-3 py-2 text-xs font-mono outline-none focus:border-emerald-400 resize-y"
             ><?= esc_textarea($tpl_info['val']) ?></textarea>
           </div>
           <?php endforeach; ?>
           <div id="waTplMsg" class="hidden text-xs font-semibold rounded-xl px-3 py-2"></div>
-          <button id="saveWaTplBtn" class="w-full h-10 rounded-2xl bg-emerald-600 text-sm font-bold text-white">💾 حفظ القوالب</button>
-          <button id="resetWaTplBtn" class="w-full h-9 rounded-2xl border border-slate-200 text-xs font-semibold text-slate-600 mt-1">↩️ استعادة الافتراضي</button>
+          <button id="saveWaTplBtn" class="w-full h-11 rounded-2xl bg-emerald-600 text-sm font-bold text-white"><span aria-hidden="true">💾</span> حفظ القوالب</button>
+          <button id="resetWaTplBtn" class="w-full h-10 rounded-2xl border border-border text-xs font-semibold text-foreground/60 mt-1"><span aria-hidden="true">↩️</span> استعادة الافتراضي</button>
         </div>
       </details>
 
       <!-- قالب الإرسال اليدوي -->
-      <details class="rounded-2xl border border-slate-200 bg-white">
+      <details class="rounded-2xl border border-border bg-white">
         <summary class="flex items-center justify-between px-4 py-3.5 cursor-pointer select-none list-none">
-          <span class="font-bold text-sm">✏️ قالب الإرسال اليدوي</span>
-          <span class="text-[10px] font-bold rounded-full bg-slate-50 text-slate-600 ring-1 ring-slate-200 px-2 py-0.5">Template</span>
+          <span class="font-bold text-sm text-foreground"><span aria-hidden="true">✏️</span> قالب الإرسال اليدوي</span>
+          <span class="text-[10px] font-bold rounded-full bg-secondary/60 text-foreground/60 ring-1 ring-border px-2 py-0.5">Template</span>
         </summary>
-        <div class="border-t border-slate-100 p-4 space-y-3">
+        <div class="border-t border-border p-4 space-y-3">
+          <label for="whatsappTemplateInput" class="sr-only">قالب رسالة الدعوة</label>
           <textarea id="whatsappTemplateInput" rows="6"
-            class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-900"
+            class="w-full rounded-2xl border border-border px-4 py-3 text-sm outline-none focus:border-primary"
             placeholder="نص رسالة الدعوة..."></textarea>
           <div class="flex flex-wrap gap-1.5">
             <?php foreach (['guest_name','event_title','event_url','image_url','invite_code','guest_phone'] as $var): ?>
-            <span class="cursor-pointer rounded-full bg-slate-100 px-2 py-1 ring-1 ring-slate-200 text-[10px] font-mono text-slate-600 hover:bg-slate-200"
+            <span class="cursor-pointer rounded-full bg-secondary/60 px-2 py-1 ring-1 ring-border text-[10px] font-mono text-foreground/60 hover:bg-secondary"
               onclick="navigator.clipboard.writeText('{{<?= $var ?>}}')">{{<?= $var ?>}}</span>
             <?php endforeach; ?>
           </div>
           <div class="flex gap-2">
-            <button id="resetWhatsappTemplateBtn" class="flex-1 h-9 rounded-2xl border border-slate-200 text-xs font-semibold text-slate-700">استعادة الافتراضي</button>
-            <button id="copyWhatsappPreviewBtn" class="flex-1 h-9 rounded-2xl border border-slate-200 text-xs font-semibold text-slate-700">نسخ المعاينة</button>
+            <button id="resetWhatsappTemplateBtn" class="flex-1 h-10 rounded-2xl border border-border text-xs font-semibold text-foreground/70">استعادة الافتراضي</button>
+            <button id="copyWhatsappPreviewBtn" class="flex-1 h-10 rounded-2xl border border-border text-xs font-semibold text-foreground/70">نسخ المعاينة</button>
           </div>
-          <div class="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-            <div class="text-[10px] font-semibold text-slate-500 mb-1">معاينة</div>
-            <pre id="whatsappPreviewText" class="whitespace-pre-wrap break-words font-sans text-xs leading-6 text-slate-700"></pre>
+          <div class="rounded-xl bg-secondary/40 p-3 ring-1 ring-border">
+            <div class="text-[10px] font-semibold text-foreground/65 mb-1">معاينة</div>
+            <pre id="whatsappPreviewText" class="whitespace-pre-wrap break-words font-sans text-xs leading-6 text-foreground/70"></pre>
           </div>
         </div>
       </details>
@@ -390,19 +613,19 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 <div id="waSendPanel" class="lg:hidden">
   <div class="sheet-bar"></div>
   <div class="px-5 pb-6 pt-2 space-y-3">
-    <h3 class="font-bold text-base text-center">📱 إرسال واتساب</h3>
+    <h3 class="font-bold text-base text-center text-foreground"><span aria-hidden="true">📱</span> إرسال واتساب</h3>
     <div class="grid grid-cols-2 gap-3">
-      <button onclick="triggerAndClose('sendWaInvitesBtn')" class="h-16 rounded-2xl bg-indigo-600 text-white font-bold text-sm flex flex-col items-center justify-center gap-1">
-        <span class="text-2xl">📨</span><span>إرسال تلقائي</span>
+      <button onclick="triggerAndClose('sendWaInvitesBtn')" class="h-16 rounded-2xl bg-primary text-white font-bold text-sm flex flex-col items-center justify-center gap-1">
+        <span aria-hidden="true" class="text-2xl">📨</span><span>إرسال تلقائي</span>
       </button>
-      <button onclick="triggerAndClose('waTestSendBtn')" class="h-16 rounded-2xl border border-amber-200 bg-amber-50 text-amber-800 font-bold text-sm flex flex-col items-center justify-center gap-1">
-        <span class="text-2xl">🧪</span><span>إرسال تجريبي</span>
+      <button onclick="triggerAndClose('waTestSendBtn')" class="h-16 rounded-2xl border border-gold/30 bg-gold/10 text-gold-text font-bold text-sm flex flex-col items-center justify-center gap-1">
+        <span aria-hidden="true" class="text-2xl">🧪</span><span>إرسال تجريبي</span>
       </button>
       <button onclick="triggerAndClose('whatsappAllBtn')" class="h-16 rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-800 font-bold text-sm flex flex-col items-center justify-center gap-1">
-        <span class="text-2xl">📲</span><span>واتساب للكل</span>
+        <span aria-hidden="true" class="text-2xl">📲</span><span>واتساب للكل</span>
       </button>
-      <button onclick="triggerAndClose('waReportBtn')" class="h-16 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 font-bold text-sm flex flex-col items-center justify-center gap-1">
-        <span class="text-2xl">📊</span><span>التقرير</span>
+      <button onclick="triggerAndClose('waReportBtn')" class="h-16 rounded-2xl border border-border bg-secondary/40 text-foreground/70 font-bold text-sm flex flex-col items-center justify-center gap-1">
+        <span aria-hidden="true" class="text-2xl">📊</span><span>التقرير</span>
       </button>
     </div>
   </div>
@@ -412,37 +635,39 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 <div id="waTestModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" dir="rtl">
   <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4">
     <div class="flex items-center justify-between">
-      <h3 class="text-lg font-extrabold">🧪 إرسال رسالة تجريبية</h3>
-      <button id="waTestModalClose" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 text-xl font-bold">×</button>
+      <h3 class="text-lg font-extrabold text-foreground"><span aria-hidden="true">🧪</span> إرسال رسالة تجريبية</h3>
+      <button id="waTestModalClose" aria-label="إغلاق" class="w-11 h-11 rounded-full bg-secondary/60 flex items-center justify-center text-foreground/70 text-xl font-bold">×</button>
     </div>
-    <p class="text-sm text-slate-600">اختبر الدعوة قبل الإرسال الجماعي. لن يُسجَّل RSVP.</p>
+    <p class="text-sm text-foreground/65">اختبر الدعوة قبل الإرسال الجماعي. لن يُسجَّل RSVP.</p>
     <div class="space-y-3">
+      <label for="waTestPhone" class="sr-only">رقم الجوال</label>
       <input id="waTestPhone" type="tel" inputmode="tel" placeholder="رقم الجوال"
-        class="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-amber-400" />
+        class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
+      <label for="waTestName" class="sr-only">اسم تجريبي</label>
       <input id="waTestName" type="text" placeholder="اسم تجريبي (اختياري)" value="ضيف تجريبي"
-        class="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-amber-400" />
+        class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
     </div>
     <div id="waTestResult" class="hidden text-sm font-semibold rounded-2xl p-3"></div>
     <div class="flex gap-3">
-      <button id="waTestSendConfirmBtn" class="flex-1 h-11 rounded-2xl bg-amber-500 text-sm font-bold text-white">📨 إرسال التجربة</button>
-      <button id="waTestModalClose2" class="h-11 px-4 rounded-2xl border border-slate-200 text-sm font-semibold">إلغاء</button>
+      <button id="waTestSendConfirmBtn" class="flex-1 h-12 rounded-2xl bg-primary text-sm font-bold text-white transition-colors hover:bg-primary-hover">📨 إرسال التجربة</button>
+      <button id="waTestModalClose2" class="h-12 px-4 rounded-2xl border border-border text-sm font-semibold text-foreground/70">إلغاء</button>
     </div>
   </div>
 </div>
 
 <!-- ══ MOBILE BOTTOM NAV ════════════════════════════════════════ -->
-<nav class="bnav lg:hidden">
+<nav class="bnav lg:hidden" aria-label="التنقل السريع">
   <button class="bnav-item active" id="navGuests">
-    <span class="bnav-icon">👥</span><span>الضيوف</span>
+    <span class="bnav-icon" aria-hidden="true">👥</span><span>الضيوف</span>
   </button>
   <button class="bnav-item" id="navAdd">
-    <span class="bnav-icon">➕</span><span>إضافة</span>
+    <span class="bnav-icon" aria-hidden="true">➕</span><span>إضافة</span>
   </button>
   <button class="bnav-item" id="navSend">
-    <span class="bnav-icon">📱</span><span>إرسال</span>
+    <span class="bnav-icon" aria-hidden="true">📱</span><span>إرسال</span>
   </button>
   <button class="bnav-item" id="navMore">
-    <span class="bnav-icon">⚙️</span><span>أكثر</span>
+    <span class="bnav-icon" aria-hidden="true">⚙️</span><span>أكثر</span>
   </button>
 </nav>
 
@@ -467,7 +692,7 @@ let toastTimer;
 function showMsg(type, text) {
     if (!toastEl) return;
     clearTimeout(toastTimer);
-    const colors = { success:'#10b981', info:'#6366f1', error:'#f43f5e' };
+    const colors = { success:'#059669', info:'var(--color-primary)', error:'var(--color-destructive-text)' };
     toastEl.style.background = colors[type] || colors.error;
     toastEl.style.color = '#fff';
     toastEl.textContent = text;
@@ -487,7 +712,7 @@ function openPanel(section) {
     overlay.classList.add('show');
     setNavActive(section === 'add' ? 'navAdd' : 'navMore');
 
-    const targets = { add:'addSection', edit:'editGuestCard', templates:'templatesSection' };
+    const targets = { add:'addSection', edit:'editGuestCard', templates:'templatesSection', bulk:'bulkImportSection' };
     const titles  = { add:'إضافة مدعو', edit:'تعديل المدعو', templates:'رسائل واتساب', bulk:'إضافة جماعية' };
 
     if (panelTitleEl) panelTitleEl.textContent = titles[section] || 'الإعدادات';
@@ -503,6 +728,28 @@ function closePanel() {
     panel.classList.remove('open');
     overlay.classList.remove('show');
     setNavActive('navGuests');
+}
+
+// ── Quick Actions glue (UI-only helpers, no business logic) ───────
+function focusAddGuest() {
+    if (isMobile()) { openPanel('add'); return; }
+    document.getElementById('addSection')?.scrollIntoView({ behavior:'smooth', block:'start' });
+    document.getElementById('addGuestPhone')?.focus();
+}
+function focusBulkImport() {
+    if (isMobile()) { openPanel('bulk'); return; }
+    document.getElementById('bulkImportSection')?.scrollIntoView({ behavior:'smooth', block:'start' });
+    document.getElementById('bulkPhones')?.focus();
+}
+function shareInviteLink() {
+    const url = (cfg.eventUrl || '').toString();
+    if (!url) { showMsg('error','رابط الدعوة غير متوفر.'); return; }
+    if (navigator.share) {
+        navigator.share({ title: cfg.eventTitle || '', url }).catch(() => {});
+        return;
+    }
+    navigator.clipboard?.writeText(url).then(() => showMsg('success','تم نسخ رابط الدعوة.'))
+        .catch(() => showMsg('error','تعذر نسخ الرابط.'));
 }
 
 // WA Send Panel
@@ -661,11 +908,11 @@ statusFilterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         activeStatus = btn.dataset.status || 'all';
         statusFilterBtns.forEach(b => {
-            b.classList.remove('bg-slate-900','text-white');
-            b.classList.add('border','border-slate-200','bg-white');
+            b.classList.remove('bg-primary','text-white');
+            b.classList.add('border','border-border','bg-white','text-foreground/70');
         });
-        btn.classList.add('bg-slate-900','text-white');
-        btn.classList.remove('border','border-slate-200','bg-white');
+        btn.classList.add('bg-primary','text-white');
+        btn.classList.remove('border','border-border','bg-white','text-foreground/70');
         applyFilters();
     });
 });
@@ -692,8 +939,8 @@ document.getElementById('waTestModalClose2')?.addEventListener('click', closeTes
 waTestModal?.addEventListener('click', e => { if (e.target === waTestModal) closeTestModal(); });
 function showTestResult(ok, text) {
     if (!waTestResult) return;
-    waTestResult.classList.remove('hidden','bg-emerald-50','text-emerald-800','bg-rose-50','text-rose-800');
-    waTestResult.classList.add(ok?'bg-emerald-50':'bg-rose-50', ok?'text-emerald-800':'text-rose-800');
+    waTestResult.classList.remove('hidden','bg-emerald-50','text-emerald-800','bg-destructive/10','text-destructive-text');
+    waTestResult.classList.add(ok?'bg-emerald-50':'bg-destructive/10', ok?'text-emerald-800':'text-destructive-text');
     waTestResult.textContent = text;
 }
 document.getElementById('waTestSendConfirmBtn')?.addEventListener('click', async () => {
@@ -728,8 +975,8 @@ const saveWaTplBtn = document.getElementById('saveWaTplBtn');
 const waTplMsg     = document.getElementById('waTplMsg');
 function showWaTplMsg(ok, text) {
     if (!waTplMsg) return;
-    waTplMsg.classList.remove('hidden','bg-emerald-50','text-emerald-800','bg-rose-50','text-rose-800');
-    waTplMsg.classList.add(ok?'bg-emerald-50':'bg-rose-50', ok?'text-emerald-800':'text-rose-800');
+    waTplMsg.classList.remove('hidden','bg-emerald-50','text-emerald-800','bg-destructive/10','text-destructive-text');
+    waTplMsg.classList.add(ok?'bg-emerald-50':'bg-destructive/10', ok?'text-emerald-800':'text-destructive-text');
     waTplMsg.textContent = text;
     waTplMsg.classList.remove('hidden');
     setTimeout(() => waTplMsg.classList.add('hidden'), 3000);
@@ -953,12 +1200,12 @@ async function showWaReport() {
     const m = document.createElement('div');
     m.id='waReportModal';
     m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
-    m.innerHTML=`<div style="background:#fff;border-radius:16px;width:100%;max-width:600px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;" dir="rtl">
-        <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">
-          <h3 style="font-weight:700;font-size:16px;">📊 تقرير الإرسال</h3>
+    m.innerHTML=`<div style="background:#fff;border-radius:20px;width:100%;max-width:600px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;" dir="rtl">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--color-border);display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="font-weight:800;font-size:16px;">📊 تقرير الإرسال</h3>
           <button onclick="document.getElementById('waReportModal').remove()" style="font-size:22px;cursor:pointer;line-height:1;">×</button>
         </div>
-        <div style="padding:12px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;gap:20px;font-size:13px;flex-wrap:wrap;">
+        <div style="padding:12px 20px;background:var(--color-background);border-bottom:1px solid var(--color-border);display:flex;gap:20px;font-size:13px;flex-wrap:wrap;">
           <span>${statusLabel[d.status]??d.status}</span>
           <span>📊 ${d.offset??0} / ${d.total??0}</span>
           <span>✅ ${d.sent??0}</span><span>❌ ${d.failed??0}</span>
@@ -966,7 +1213,7 @@ async function showWaReport() {
         </div>
         <div style="overflow-y:auto;flex:1;">
           <table style="width:100%;font-size:13px;border-collapse:collapse;">
-            <thead style="background:#f3f4f6;position:sticky;top:0;"><tr>
+            <thead style="background:var(--color-secondary);position:sticky;top:0;"><tr>
               <th style="padding:8px 12px;text-align:right;">الاسم</th>
               <th style="padding:8px 12px;text-align:right;">الجوال</th>
               <th style="padding:8px 12px;text-align:right;">الحالة</th>

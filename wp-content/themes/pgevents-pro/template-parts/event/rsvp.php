@@ -176,26 +176,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
 }
 ?>
 
-<section id="rsvp" class="mx-auto max-w-lg px-4 pb-10" dir="rtl">
+<section id="rsvp" class="mx-auto max-w-lg px-4 pb-6" dir="rtl">
 
-    <div class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <div class="overflow-hidden rounded-3xl border border-border bg-white shadow-sm">
 
         <!-- رأس القسم -->
-        <div class="border-b border-slate-100 px-5 py-4">
+        <div class="border-b border-border px-5 py-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <div class="text-base font-extrabold text-slate-900">تأكيد الحضور (RSVP) ✉️</div>
-                    <div class="mt-0.5 text-xs text-slate-500">
-                        <?php echo $already_replied ? 'ردّك مسجّل — يمكنك التعديل' : 'اختر ردّك الآن'; ?>
+                    <div class="text-lg font-extrabold text-foreground">تأكيد الحضور</div>
+                    <div class="mt-0.5 text-xs text-foreground/75">
+                        <?php echo $already_replied ? 'ردّك مسجّل — يمكنك التعديل' : 'يسعدنا معرفة ردّك'; ?>
                     </div>
                 </div>
 
                 <?php if ($guest_limit > 0): ?>
                     <div class="text-right">
-                        <div class="text-xs text-slate-500">المؤكدون</div>
-                        <div class="text-lg font-extrabold text-slate-900">
+                        <div class="text-xs text-foreground/75">المؤكدون</div>
+                        <div class="text-lg font-extrabold text-foreground">
                             <?php echo esc_html($total_attending); ?>
-                            <span class="text-sm font-normal text-slate-400">/ <?php echo esc_html($guest_limit); ?></span>
+                            <span class="text-sm font-normal text-foreground/70">/ <?php echo esc_html($guest_limit); ?></span>
                         </div>
                     </div>
                 <?php endif; ?>
@@ -203,12 +203,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
 
             <?php if ($guest_limit > 0): ?>
                 <!-- شريط التقدم -->
-                <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div class="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-secondary">
+                    <div class="h-full rounded-full bg-gold transition-all duration-500"
                          style="width: <?php echo min(100, round($total_attending / $guest_limit * 100)); ?>%"></div>
                 </div>
                 <?php if ($remaining !== null && $remaining <= 10): ?>
-                    <p class="mt-1.5 text-xs font-semibold text-amber-600">
+                    <p class="mt-1.5 text-xs font-semibold text-gold-text">
                         ⚠️ تبقّى <?php echo esc_html($remaining); ?> مقاعد فقط
                     </p>
                 <?php endif; ?>
@@ -217,18 +217,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
 
         <div class="p-5">
 
+            <!-- بطاقة تأكيد أنيقة إذا كان قد ردّ مسبقاً -->
+            <?php if ($already_replied && !$ok): ?>
+                <div class="mb-5 rounded-2xl border border-border bg-secondary/50 p-4">
+                    <div class="flex items-start gap-3">
+                        <span aria-hidden="true" class="text-xl"><?php echo ($pref_reply === 'yes') ? '✅' : '❌'; ?></span>
+                        <div>
+                            <p class="text-sm font-bold text-foreground">
+                                <?php echo ($pref_reply === 'yes') ? 'أنت مؤكد الحضور' : 'أنت معتذر عن الحضور'; ?>
+                            </p>
+                            <?php if ($pref_reply === 'yes' && $pref_companions > 0): ?>
+                                <p class="mt-1 text-xs text-foreground/75">مع <?php echo (int) $pref_companions; ?> من المرافقين</p>
+                            <?php endif; ?>
+                            <?php if ($pref_note !== ''): ?>
+                                <p class="mt-1 text-xs text-foreground/75">ملاحظتك: «<?php echo esc_html($pref_note); ?>»</p>
+                            <?php endif; ?>
+                            <p class="mt-2 text-xs text-foreground/70">يمكنك تعديل ردّك أدناه في أي وقت</p>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <!-- رسالة نجاح/خطأ -->
             <?php if ($ok): ?>
-                <div class="mb-5 flex items-start gap-3 rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-200">
-                    <span class="text-xl">🎉</span>
-                    <p class="text-sm font-semibold text-emerald-800"><?php echo esc_html($ok); ?></p>
+                <div class="mb-5 flex items-start gap-3 rounded-2xl bg-primary/10 p-4 ring-1 ring-primary/20">
+                    <span aria-hidden="true" class="text-xl">🎉</span>
+                    <p class="text-sm font-semibold text-primary-text"><?php echo esc_html($ok); ?></p>
                 </div>
             <?php endif; ?>
 
             <?php if ($err): ?>
-                <div class="mb-5 flex items-start gap-3 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
-                    <span class="text-xl">⚠️</span>
-                    <p class="text-sm font-semibold text-rose-800"><?php echo esc_html($err); ?></p>
+                <div class="mb-5 flex items-start gap-3 rounded-2xl bg-destructive/10 p-4 ring-1 ring-destructive/20">
+                    <span aria-hidden="true" class="text-xl">⚠️</span>
+                    <p class="text-sm font-semibold text-destructive-text"><?php echo esc_html($err); ?></p>
                 </div>
             <?php endif; ?>
 
@@ -239,15 +260,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
                 <div class="grid grid-cols-2 gap-3">
                     <button type="button" data-rsvp="yes"
                         class="rsvp-btn flex h-16 flex-col items-center justify-center rounded-2xl text-sm font-extrabold transition-all active:scale-[.97]
-                               <?php echo ($pref_reply === 'yes') ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30 ring-2 ring-emerald-600' : 'border-2 border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50'; ?>">
-                        <span class="text-2xl leading-none">✅</span>
+                               <?php echo ($pref_reply === 'yes') ? 'bg-primary text-white shadow-md ring-2 ring-primary' : 'border-2 border-border bg-white text-foreground hover:border-primary/40 hover:bg-primary/5'; ?>">
+                        <span aria-hidden="true" class="text-2xl leading-none">✅</span>
                         <span class="mt-1">سأحضر</span>
                     </button>
 
                     <button type="button" data-rsvp="no"
                         class="rsvp-btn flex h-16 flex-col items-center justify-center rounded-2xl text-sm font-extrabold transition-all active:scale-[.97]
-                               <?php echo ($pref_reply === 'no') ? 'bg-slate-800 text-white shadow-md shadow-slate-500/30 ring-2 ring-slate-800' : 'border-2 border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'; ?>">
-                        <span class="text-2xl leading-none">❌</span>
+                               <?php echo ($pref_reply === 'no') ? 'bg-foreground text-white shadow-md ring-2 ring-foreground' : 'border-2 border-border bg-white text-foreground hover:border-foreground/30 hover:bg-secondary/40'; ?>">
+                        <span aria-hidden="true" class="text-2xl leading-none">❌</span>
                         <span class="mt-1">أعتذر</span>
                     </button>
                 </div>
@@ -256,61 +277,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
 
                 <!-- ─── عدد المرافقين (Stepper) ─── -->
                 <div id="rsvpCompanionsBlock" class="mt-4 <?php echo ($pref_reply === 'no') ? 'hidden' : ''; ?>">
-                    <label class="mb-2 block text-xs font-bold text-slate-700">
+                    <label for="companionsInput" class="mb-2 block text-xs font-bold text-foreground">
                         عدد المرافقين
-                        <span class="ms-1 font-normal text-slate-400">(الحد الأعلى: 20)</span>
+                        <span class="ms-1 font-normal text-foreground/70">(الحد الأعلى: 20)</span>
                     </label>
                     <div class="flex items-center gap-3">
-                        <button type="button" id="companionsMinus"
-                            class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-slate-200 bg-white text-xl font-bold text-slate-700 hover:bg-slate-50 active:scale-95">
+                        <button type="button" id="companionsMinus" aria-label="إنقاص عدد المرافقين"
+                            class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-border bg-white text-xl font-bold text-foreground hover:bg-secondary/40 active:scale-95">
                             −
                         </button>
                         <input type="number" name="companions" id="companionsInput"
                                min="0" max="20"
                                value="<?php echo esc_attr($pref_companions); ?>"
-                               class="h-12 flex-1 rounded-2xl border-2 border-slate-200 bg-white px-4 text-center text-lg font-extrabold text-slate-900 outline-none focus:border-indigo-500">
-                        <button type="button" id="companionsPlus"
-                            class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-slate-200 bg-white text-xl font-bold text-slate-700 hover:bg-slate-50 active:scale-95">
+                               class="h-12 flex-1 rounded-2xl border-2 border-border bg-white px-4 text-center text-lg font-extrabold text-foreground outline-none focus:border-primary">
+                        <button type="button" id="companionsPlus" aria-label="زيادة عدد المرافقين"
+                            class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-border bg-white text-xl font-bold text-foreground hover:bg-secondary/40 active:scale-95">
                             +
                         </button>
                     </div>
-                    <p class="mt-1.5 text-xs text-slate-500">سيتم احتسابك معهم ضمن الطاقة الاستيعابية</p>
+                    <p class="mt-1.5 text-xs text-foreground/75">سيتم احتسابك معهم ضمن الطاقة الاستيعابية</p>
                 </div>
 
                 <!-- ─── ملاحظة للمضيف ─── -->
                 <div class="mt-4">
-                    <label class="mb-2 block text-xs font-bold text-slate-700">
-                        ملاحظة للمضيف <span class="font-normal text-slate-400">(اختياري)</span>
+                    <label for="rsvpNote" class="mb-2 block text-xs font-bold text-foreground">
+                        ملاحظة للمضيف <span class="font-normal text-foreground/70">(اختياري)</span>
                     </label>
-                    <input name="note"
+                    <input name="note" id="rsvpNote"
                            value="<?php echo esc_attr($pref_note); ?>"
-                           class="h-12 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500"
+                           class="h-12 w-full rounded-2xl border-2 border-border bg-white px-4 text-sm text-foreground outline-none placeholder:text-foreground/70 focus:border-primary"
                            placeholder="حساسية طعام، وصول متأخر..." />
                 </div>
 
                 <!-- ─── رقم الجوال (إذا لم يكن محفوظاً) ─── -->
                 <?php if (!$is_host && $guest_phone_cookie === ''): ?>
                     <div class="mt-4">
-                        <label class="mb-2 block text-xs font-bold text-slate-700">رقم الجوال</label>
-                        <input name="guest_phone" type="tel" inputmode="numeric" autocomplete="tel"
-                               class="h-12 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-indigo-500"
+                        <label for="rsvpGuestPhone" class="mb-2 block text-xs font-bold text-foreground">رقم الجوال</label>
+                        <input name="guest_phone" id="rsvpGuestPhone" type="tel" inputmode="numeric" autocomplete="tel"
+                               class="h-12 w-full rounded-2xl border-2 border-border bg-white px-4 text-sm text-foreground outline-none placeholder:text-foreground/70 focus:border-primary"
                                placeholder="05XXXXXXXX" />
-                        <p class="mt-1.5 text-xs text-slate-500">يجب أن يكون ضمن قائمة المدعوين</p>
+                        <p class="mt-1.5 text-xs text-foreground/75">يجب أن يكون ضمن قائمة المدعوين</p>
                     </div>
                 <?php endif; ?>
 
                 <!-- ─── زر الحفظ ─── -->
                 <div class="mt-5">
                     <button type="submit" name="pge_rsvp_submit" value="1"
-                        class="h-14 w-full rounded-2xl bg-gradient-to-l from-indigo-600 to-violet-600 text-base font-extrabold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-500 hover:to-violet-500 active:scale-[.98] transition-transform">
+                        class="h-14 w-full rounded-2xl bg-primary text-base font-extrabold text-white shadow-lg transition-colors hover:bg-primary-hover active:scale-[.98]">
                         <?php echo $already_replied ? 'تحديث ردّي' : 'حفظ الرد'; ?>
                     </button>
-                    <p class="mt-2 text-center text-xs text-slate-400">يمكن تعديل ردّك في أي وقت</p>
+                    <p class="mt-2 text-center text-xs text-foreground/70">يمكن تعديل ردّك في أي وقت</p>
                 </div>
 
             </form>
         </div>
     </div>
+
+    <!-- تذييل بسيط -->
+    <p class="mt-6 text-center text-xs text-foreground/40">
+        مدعوم بـ <span class="font-semibold text-gold-text/80">حلوة</span>
+    </p>
 
 </section>
 
@@ -338,13 +364,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
             b.className = 'rsvp-btn flex h-16 flex-col items-center justify-center rounded-2xl text-sm font-extrabold transition-all active:scale-[.97] ';
 
             if (active && v === 'yes') {
-                b.className += 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30 ring-2 ring-emerald-600';
+                b.className += 'bg-primary text-white shadow-md ring-2 ring-primary';
             } else if (active && v === 'no') {
-                b.className += 'bg-slate-800 text-white shadow-md shadow-slate-500/30 ring-2 ring-slate-800';
+                b.className += 'bg-foreground text-white shadow-md ring-2 ring-foreground';
             } else if (v === 'yes') {
-                b.className += 'border-2 border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50';
+                b.className += 'border-2 border-border bg-white text-foreground hover:border-primary/40 hover:bg-primary/5';
             } else {
-                b.className += 'border-2 border-slate-200 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50';
+                b.className += 'border-2 border-border bg-white text-foreground hover:border-foreground/30 hover:bg-secondary/40';
             }
         });
     }

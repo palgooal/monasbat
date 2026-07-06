@@ -343,7 +343,7 @@ if (!$access_ok) : ?>
 
     <!-- Branding -->
     <p class="mt-6 text-center text-xs text-white/30">
-        مدعوم بـ <span class="font-semibold text-white/50">هلوه</span>
+        مدعوم بـ <span class="font-semibold text-white/50">حلوة</span>
     </p>
 
 </div>
