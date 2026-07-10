@@ -185,16 +185,29 @@ function pge_handle_event_creation()
     // --------------------------------------------------------
 
     // 3. استلام وتنظيف البيانات
-    $title    = sanitize_text_field($_POST['event_title']);
-    $date     = sanitize_text_field($_POST['event_date']);
+    $title    = sanitize_text_field($_POST['event_title'] ?? '');
+    $date     = sanitize_text_field($_POST['event_date'] ?? '');
     $can_google_map = pge_plan_feature_enabled_for_events($plan_limits, 'google_map');
     $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
     $location = $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '';
     $address  = sanitize_text_field($_POST['event_address'] ?? '');
-    $phone    = sanitize_text_field($_POST['host_phone']);
+    $phone    = sanitize_text_field($_POST['host_phone'] ?? '');
     $invite_code = isset($_POST['invite_code']) ? pge_normalize_invite_code(wp_unslash($_POST['invite_code'])) : '';
     if ($invite_code === '') {
         $invite_code = pge_generate_invite_code();
+    }
+
+    // 3.1 التحقق من الحقول المطلوبة على الخادم — لا يجوز الاعتماد على تحقق المتصفح
+    // فقط (novalidate/JS يمكن تجاوزهما بطلب مباشر)، لذا هذا هو حد السلامة الفعلي.
+    if ($title === '') {
+        wp_send_json_error('يرجى إدخال اسم المناسبة.');
+    }
+    if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/', $date) || strtotime($date) === false) {
+        wp_send_json_error('يرجى إدخال تاريخ ووقت صحيح للمناسبة.');
+    }
+    $phone_normalized = function_exists('pge_norm_phone') ? pge_norm_phone($phone) : preg_replace('/\D+/', '', (string) $phone);
+    if ($phone_normalized === '') {
+        wp_send_json_error('يرجى إدخال رقم جوال صحيح للمضيف.');
     }
 
     // 4. إدراج المناسبة في قاعدة البيانات

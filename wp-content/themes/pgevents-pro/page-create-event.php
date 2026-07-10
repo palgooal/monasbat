@@ -130,24 +130,26 @@ get_header();
             </div>
         </section>
 
-        <!-- Progress guidance (visual only, no wizard/JS) -->
+        <!-- Section guide — honest reflection of the single-page form below.
+             No numbers, no step/progress semantics, no "review" claim: this is a plain
+             outline of the three sections that follow, not a wizard. -->
         <section class="mt-6 rounded-[28px] border border-border bg-white px-5 py-5 shadow-sm sm:px-8">
-            <ol class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <ul class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <li class="flex flex-1 items-center gap-3">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-extrabold text-white">١</span>
+                    <span aria-hidden="true" class="h-2 w-2 shrink-0 rounded-full bg-primary"></span>
                     <span class="text-sm font-bold text-foreground">معلومات المناسبة</span>
                 </li>
                 <li aria-hidden="true" class="hidden h-px flex-1 bg-border sm:block"></li>
                 <li class="flex flex-1 items-center gap-3">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-extrabold text-foreground/60 ring-1 ring-border">٢</span>
-                    <span class="text-sm font-bold text-foreground/70">معلومات المضيف</span>
+                    <span aria-hidden="true" class="h-2 w-2 shrink-0 rounded-full bg-primary"></span>
+                    <span class="text-sm font-bold text-foreground">معلومات المضيف</span>
                 </li>
                 <li aria-hidden="true" class="hidden h-px flex-1 bg-border sm:block"></li>
                 <li class="flex flex-1 items-center gap-3">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-extrabold text-foreground/60 ring-1 ring-border">٣</span>
-                    <span class="text-sm font-bold text-foreground/70">المراجعة والإنشاء</span>
+                    <span aria-hidden="true" class="h-2 w-2 shrink-0 rounded-full bg-primary"></span>
+                    <span class="text-sm font-bold text-foreground">خيارات إضافية</span>
                 </li>
-            </ol>
+            </ul>
         </section>
 
         <?php if (!$has_quota): ?>
@@ -173,10 +175,10 @@ get_header();
             </section>
         <?php endif; ?>
 
-        <div id="createEventMsg" class="mt-6 hidden rounded-2xl p-4 text-sm font-semibold"></div>
+        <div id="createEventMsg" class="mt-6 hidden rounded-2xl p-4 text-sm font-semibold" role="status" aria-live="polite"></div>
 
         <div id="event-form-start" class="mt-6 scroll-mt-6 lg:flex lg:items-start lg:gap-8">
-            <form id="createEventForm" class="min-w-0 flex-1 space-y-6" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" method="post" enctype="multipart/form-data" novalidate>
+            <form id="createEventForm" class="min-w-0 flex-1 space-y-6" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>" method="post" enctype="multipart/form-data">
                 <?php wp_nonce_field('pge_create_event_action', 'pge_event_nonce'); ?>
 
                 <!-- Card 1: معلومات المناسبة -->
@@ -198,7 +200,7 @@ get_header();
                                     id="event_title"
                                     name="event_title"
                                     type="text"
-                                    class="h-14 w-full rounded-2xl border border-border bg-white ps-4 pe-12 text-sm text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/35 focus:border-primary disabled:bg-secondary/60 disabled:text-foreground/40"
+                                    class="h-14 w-full rounded-2xl border border-border bg-white ps-4 pe-12 text-sm text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/65 focus:border-primary disabled:bg-secondary/60 disabled:text-foreground/40"
                                     placeholder="مثال: حفل زفاف أحمد"
                                     required
                                     <?php echo $has_quota ? '' : 'disabled'; ?> />
@@ -229,7 +231,7 @@ get_header();
                                     name="event_location"
                                     type="url"
                                     dir="ltr"
-                                    class="h-14 w-full rounded-2xl border border-border bg-white ps-4 pe-12 text-sm text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/35 focus:border-primary disabled:bg-secondary/60 disabled:text-foreground/40"
+                                    class="h-14 w-full rounded-2xl border border-border bg-white ps-4 pe-12 text-sm text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/65 focus:border-primary disabled:bg-secondary/60 disabled:text-foreground/40"
                                     placeholder="https://maps.app.goo.gl/..."
                                     <?php echo ($has_quota && $can_google_map) ? '' : 'disabled'; ?> />
                                 <span aria-hidden="true" class="pointer-events-none absolute inset-y-0 end-4 flex items-center text-foreground/35">
@@ -251,8 +253,9 @@ get_header();
                                     id="event_address"
                                     name="event_address"
                                     type="text"
-                                    class="h-14 w-full rounded-2xl border border-border bg-white ps-4 pe-12 text-sm text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/35 focus:border-primary"
-                                    placeholder="مثال: قاعة الأفراح — شارع الملك فهد، الرياض" />
+                                    class="h-14 w-full rounded-2xl border border-border bg-white ps-4 pe-12 text-sm text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/65 focus:border-primary disabled:bg-secondary/60 disabled:text-foreground/40"
+                                    placeholder="مثال: قاعة الأفراح — شارع الملك فهد، الرياض"
+                                    <?php echo $has_quota ? '' : 'disabled'; ?> />
                                 <span aria-hidden="true" class="pointer-events-none absolute inset-y-0 end-4 flex items-center text-foreground/35">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
                                         <path d="M4 21V8l8-5 8 5v13"/>
@@ -287,7 +290,7 @@ get_header();
                                 inputmode="tel"
                                 dir="ltr"
                                 value="<?php echo esc_attr($saved_phone); ?>"
-                                class="h-14 w-full rounded-2xl border border-border bg-white ps-4 pe-12 text-sm text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/35 focus:border-primary disabled:bg-secondary/60 disabled:text-foreground/40"
+                                class="h-14 w-full rounded-2xl border border-border bg-white ps-4 pe-12 text-sm text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/65 focus:border-primary disabled:bg-secondary/60 disabled:text-foreground/40"
                                 placeholder="05XXXXXXXX"
                                 required
                                 <?php echo $has_quota ? '' : 'disabled'; ?> />
@@ -328,35 +331,6 @@ get_header();
                                 <?php echo $can_header_img ? 'اختياري: ستكون الصورة الرئيسية التي تظهر في المعاينة.' : 'ميزة صورة الهيدر غير متاحة في باقتك الحالية.'; ?>
                             </p>
                         </div>
-
-                        <details class="group rounded-2xl border border-border bg-white">
-                            <summary class="flex cursor-pointer items-center justify-between px-4 py-3.5 text-xs font-semibold text-foreground select-none">
-                                إعدادات متقدمة — رمز الدعوة
-                                <span aria-hidden="true" class="text-foreground/40 transition-transform duration-200 group-open:rotate-180">⌄</span>
-                            </summary>
-                            <div class="border-t border-border px-4 pb-4 pt-3">
-                                <label for="invite_code" class="text-xs font-semibold text-foreground">رمز الدعوة</label>
-                                <div class="mt-2 flex gap-2">
-                                    <input
-                                        id="invite_code"
-                                        name="invite_code"
-                                        type="text"
-                                        dir="ltr"
-                                        maxlength="9"
-                                        class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm font-semibold tracking-widest text-foreground outline-none transition-shadow duration-200 placeholder:text-foreground/35 focus:border-primary disabled:bg-secondary/60 disabled:text-foreground/40"
-                                        placeholder="AB12-CD34"
-                                        <?php echo $has_quota ? '' : 'disabled'; ?> />
-                                    <button
-                                        id="generateInviteCodeBtn"
-                                        type="button"
-                                        <?php echo $has_quota ? '' : 'disabled'; ?>
-                                        class="h-12 shrink-0 rounded-2xl border border-border bg-white px-4 text-sm font-semibold text-primary transition-colors duration-200 hover:bg-secondary/50 disabled:cursor-not-allowed disabled:opacity-60">
-                                        توليد
-                                    </button>
-                                </div>
-                                <p class="mt-2 text-xs text-foreground/65">اتركه فارغًا وسيتم توليده تلقائيًا. يستخدمه الضيوف للدخول لصفحة المناسبة.</p>
-                            </div>
-                        </details>
                     </div>
                 </div>
 
@@ -454,48 +428,11 @@ get_header();
     const createEventSubmit = document.getElementById('createEventSubmit');
     const createEventMsg = document.getElementById('createEventMsg');
     const eventDateInput = document.getElementById('event_date');
-    const inviteCodeInput = document.getElementById('invite_code');
-    const generateInviteCodeBtn = document.getElementById('generateInviteCodeBtn');
 
     if (eventDateInput && !eventDateInput.value) {
         const now = new Date();
         now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
         eventDateInput.min = now.toISOString().slice(0, 16);
-    }
-
-    function normalizeInviteCode(value) {
-        const cleaned = (value || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-        if (cleaned.length > 4) {
-            return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
-        }
-        return cleaned;
-    }
-
-    function generateInviteCode() {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        let out = '';
-        for (let i = 0; i < 8; i += 1) {
-            out += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return `${out.slice(0, 4)}-${out.slice(4)}`;
-    }
-
-    if (inviteCodeInput && !inviteCodeInput.disabled) {
-        if (!inviteCodeInput.value) {
-            inviteCodeInput.value = generateInviteCode();
-        }
-
-        inviteCodeInput.addEventListener('input', () => {
-            inviteCodeInput.value = normalizeInviteCode(inviteCodeInput.value);
-        });
-    }
-
-    if (generateInviteCodeBtn && inviteCodeInput && !generateInviteCodeBtn.disabled) {
-        generateInviteCodeBtn.addEventListener('click', () => {
-            inviteCodeInput.value = generateInviteCode();
-            inviteCodeInput.focus();
-            inviteCodeInput.select();
-        });
     }
 
     function showCreateEventMessage(type, text) {
@@ -513,12 +450,17 @@ get_header();
         createEventForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            if (!createEventForm.checkValidity()) {
+                createEventForm.reportValidity();
+                const firstInvalid = createEventForm.querySelector(':invalid');
+                if (firstInvalid && typeof firstInvalid.focus === 'function') {
+                    firstInvalid.focus();
+                }
+                return;
+            }
+
             createEventSubmit.disabled = true;
             createEventSubmit.textContent = 'جاري الإنشاء...';
-
-            if (inviteCodeInput) {
-                inviteCodeInput.value = normalizeInviteCode(inviteCodeInput.value || '');
-            }
 
             const formData = new FormData(createEventForm);
             formData.append('action', 'pge_create_new_event');

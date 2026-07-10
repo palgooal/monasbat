@@ -67,42 +67,45 @@ if (isset($_COOKIE[$guest_phone_cookie_name])) {
 $guest_phone_cookie = pge_norm_phone($guest_phone_cookie_raw);
 
 // =============================
-// RSVP Records
+// RSVP — من الجدول الحقيقي wp_pge_event_rsvps حصرياً
+// (_pge_rsvp_map / _pge_rsvp_records القديمان لم يعودا يُكتَبان من هنا؛
+//  راجع pge_save_rsvp_response() في rsvp-handler.php لمصدر الحقيقة الوحيد)
 // =============================
-$meta_key = '_pge_rsvp_map';
-$records  = get_post_meta($event_id, $meta_key, true);
-if (!is_array($records)) $records = get_post_meta($event_id, '_pge_rsvp_records', true);
-if (!is_array($records)) $records = [];
+global $wpdb;
+$rsvp_table = $wpdb->prefix . 'pge_event_rsvps';
 
-function pge_rsvp_count_for_record($rec) {
-    if (($rec['reply'] ?? 'no') !== 'yes') return 0;
-    return 1 + max(0, (int) ($rec['companions'] ?? 0));
-}
-
-$total_attending = 0;
-foreach ($records as $rec) $total_attending += pge_rsvp_count_for_record($rec);
+$total_attending = (int) $wpdb->get_var($wpdb->prepare(
+    "SELECT COALESCE(SUM(1 + companions), 0) FROM {$rsvp_table} WHERE event_id = %d AND reply = 'yes'",
+    $event_id
+));
 $remaining = ($guest_limit > 0) ? max(0, $guest_limit - $total_attending) : null;
 
 // =============================
-// الرد الحالي للضيف
+// الرد الحالي للضيف — هوية RSVP هي جوال المضيف نفسه لو كان هو الزائر،
+// أو جوال الضيف من الكوكي الموقّع
 // =============================
-$current_key = '';
-$current_rec = null;
-if ($is_host) {
-    $current_key = 'host_' . (int) get_current_user_id();
-    $current_rec = $records[$current_key] ?? null;
-} elseif ($guest_phone_cookie !== '') {
-    $current_key = 'g_' . $guest_phone_cookie;
-    $current_rec = $records[$current_key] ?? null;
+$identity_phone = $is_host
+    ? pge_norm_phone((string) get_post_meta($event_id, '_pge_host_phone', true))
+    : $guest_phone_cookie;
+
+$current_row = null;
+if ($identity_phone !== '') {
+    $current_row = $wpdb->get_row($wpdb->prepare(
+        "SELECT reply, companions, note FROM {$rsvp_table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
+        $event_id,
+        $identity_phone
+    ), ARRAY_A);
 }
 
-$pref_reply      = $current_rec['reply'] ?? 'yes';
-$pref_companions = isset($current_rec['companions']) ? (int) $current_rec['companions'] : 0;
-$pref_note       = (string) ($current_rec['note'] ?? '');
-$already_replied = ($current_rec !== null);
+// صف قد يكون موجوداً فقط بسبب check-in (reply='pending') — لا يُعتبر "ردّاً" فعلياً
+$already_replied = ($current_row !== null && in_array($current_row['reply'], ['yes', 'no'], true));
+
+$pref_reply      = $already_replied ? $current_row['reply'] : 'yes';
+$pref_companions = $already_replied ? (int) $current_row['companions'] : 0;
+$pref_note       = $already_replied ? (string) $current_row['note'] : '';
 
 // =============================
-// معالجة الإرسال
+// معالجة الإرسال — عبر الدالة المركزية الوحيدة pge_save_rsvp_response()
 // =============================
 $err = '';
 $ok  = '';
@@ -111,66 +114,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
     if (!isset($_POST['pge_rsvp_nonce']) || !wp_verify_nonce($_POST['pge_rsvp_nonce'], 'pge_rsvp_' . $event_id)) {
         $err = 'تعذر التحقق من الطلب. أعد المحاولة.';
     } else {
-        $reply      = in_array($_POST['reply'] ?? '', ['yes','no'], true) ? sanitize_text_field($_POST['reply']) : 'no';
-        $companions = min(max(0, (int) ($_POST['companions'] ?? 0)), 20);
+        $reply      = in_array($_POST['reply'] ?? '', ['yes', 'no'], true) ? sanitize_text_field($_POST['reply']) : 'no';
+        $companions = (int) ($_POST['companions'] ?? 0);
         $note       = trim(sanitize_text_field($_POST['note'] ?? ''));
 
-        $submitted_phone = pge_norm_phone($_POST['guest_phone'] ?? '');
-        $phone = $guest_phone_cookie !== '' ? $guest_phone_cookie : $submitted_phone;
+        $submitted_phone   = pge_norm_phone($_POST['guest_phone'] ?? '');
+        $phone_for_request = $guest_phone_cookie !== '' ? $guest_phone_cookie : $submitted_phone;
 
-        if ($is_host) {
-            $key = 'host_' . (int) get_current_user_id();
+        $result = function_exists('pge_save_rsvp_response')
+            ? pge_save_rsvp_response($event_id, $phone_for_request, $reply, $companions, $note, $is_host)
+            : ['success' => false, 'message' => 'تعذر حفظ الرد، حاول لاحقاً.'];
+
+        if (!$result['success']) {
+            $err = $result['message'];
         } else {
-            if ($phone === '') {
-                $err = 'فضلاً أدخل رقم الجوال.';
-            } else {
-                $invited = pge_get_invited_phones($event_id);
-                if (!in_array($phone, $invited, true)) {
-                    $err = 'رقم الجوال غير موجود ضمن قائمة المدعوين.';
-                }
-                $key = 'g_' . $phone;
+            if (!$is_host && $guest_phone_cookie === '' && $result['guest_phone'] !== '') {
+                $hmac = wp_hash($result['guest_phone'] . '|' . (int) $event_id);
+                setcookie($guest_phone_cookie_name, $result['guest_phone'] . '|' . $hmac, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
             }
-        }
 
-        if ($err === '') {
-            $new_count = ($reply === 'yes') ? (1 + $companions) : 0;
-            $old_count = isset($records[$key]) ? pge_rsvp_count_for_record($records[$key]) : 0;
-            $new_total = $total_attending - $old_count + $new_count;
+            $total_attending = $result['total_attending'];
+            $remaining       = $result['remaining'];
+            $pref_reply      = $result['reply'];
+            $pref_companions = $result['companions'];
+            $pref_note       = $note;
+            $already_replied = true;
 
-            if ($guest_limit > 0 && $reply === 'yes' && $new_total > $guest_limit) {
-                $allowed = max(0, $guest_limit - ($total_attending - $old_count));
-                $err = 'عذرًا، تجاوزت الطاقة المتاحة. الحد المتبقي: ' . (int) $allowed;
-            } else {
-                $records[$key] = [
-                    'reply'      => $reply,
-                    'companions' => $companions,
-                    'note'       => $note,
-                    'updated_at' => current_time('mysql'),
-                ];
-                update_post_meta($event_id, $meta_key, $records);
-                update_post_meta($event_id, '_pge_rsvp_records', $records);
-
-                if (!$is_host && $guest_phone_cookie === '' && $phone !== '') {
-                    $hmac = wp_hash($phone . '|' . (int) $event_id);
-                    setcookie($guest_phone_cookie_name, $phone . '|' . $hmac, time() + 7 * DAY_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true);
-                }
-
-                // Refresh
-                $records = get_post_meta($event_id, $meta_key, true);
-                if (!is_array($records)) $records = [];
-                $total_attending = 0;
-                foreach ($records as $rec) $total_attending += pge_rsvp_count_for_record($rec);
-                $remaining = ($guest_limit > 0) ? max(0, $guest_limit - $total_attending) : null;
-
-                $pref_reply      = $reply;
-                $pref_companions = $companions;
-                $pref_note       = $note;
-                $already_replied = true;
-
-                $ok = ($reply === 'yes')
-                    ? 'تم تأكيد حضورك بنجاح! نراك قريبًا 🎉'
-                    : 'تم حفظ اعتذارك، شكراً لإبلاغنا 🌸';
-            }
+            $ok = ($reply === 'yes')
+                ? 'تم تأكيد حضورك بنجاح! نراك قريبًا 🎉'
+                : 'تم حفظ اعتذارك، شكراً لإبلاغنا 🌸';
         }
     }
 }

@@ -129,20 +129,20 @@ $guest_limit_per_event = isset($plan_limits['guest_limit']) ? (int) $plan_limits
 $wa_messages_limit     = isset($plan_limits['wa_messages']) ? (int) $plan_limits['wa_messages'] : null;
 
 $feature_labels = [
-    'header_img'    => 'صورة غلاف مخصصة',
-    'event_barcode' => 'باركود الدخول',
-    'event_date'    => 'عرض تاريخ المناسبة',
-    'countdown'     => 'العد التنازلي',
-    'google_map'    => 'خرائط قوقل',
-    'stc_pay'       => 'هدايا STC Pay',
-    'guest_photos'  => 'صور من الضيوف',
-    'guest_video'   => 'فيديو من الضيوف',
-    'public_chat'   => 'الدردشة العامة',
-    'private_chat'  => 'الدردشة الخاصة',
-    'prev_events'   => 'عرض المناسبات السابقة',
-    'next_events'   => 'عرض المناسبات القادمة',
-    'guest_history' => 'سجل الضيوف',
-    'archive'       => 'أرشفة المناسبة',
+    'header_img'    => __('صورة غلاف مخصصة', 'pgevents'),
+    'event_barcode' => __('باركود الدخول', 'pgevents'),
+    'event_date'    => __('عرض تاريخ المناسبة', 'pgevents'),
+    'countdown'     => __('العد التنازلي', 'pgevents'),
+    'google_map'    => __('خرائط قوقل', 'pgevents'),
+    'stc_pay'       => __('هدايا STC Pay', 'pgevents'),
+    'guest_photos'  => __('صور من الضيوف', 'pgevents'),
+    'guest_video'   => __('فيديو من الضيوف', 'pgevents'),
+    'public_chat'   => __('الدردشة العامة', 'pgevents'),
+    'private_chat'  => __('الدردشة الخاصة', 'pgevents'),
+    'prev_events'   => __('عرض المناسبات السابقة', 'pgevents'),
+    'next_events'   => __('عرض المناسبات القادمة', 'pgevents'),
+    'guest_history' => __('سجل الضيوف', 'pgevents'),
+    'archive'       => __('أرشفة المناسبة', 'pgevents'),
 ];
 $active_feature_labels = [];
 if (function_exists('pge_plan_feature_enabled_for_events')) {
@@ -176,15 +176,15 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                     </svg>
                 </span>
                 <div class="min-w-0 leading-tight">
-                    <div class="truncate text-sm font-extrabold text-foreground">لوحة المضيف</div>
-                    <div class="truncate text-xs text-foreground/65">إدارة المناسبات • المدعوين • الدعوات</div>
+                    <div class="truncate text-sm font-extrabold text-foreground"><?php esc_html_e('لوحة المضيف', 'pgevents'); ?></div>
+                    <div class="truncate text-xs text-foreground/65"><?php esc_html_e('إدارة المناسبات • المدعوين • الدعوات', 'pgevents'); ?></div>
                 </div>
             </div>
 
             <div class="flex shrink-0 items-center gap-2">
                 <a href="<?php echo esc_url(home_url('/create-event/')); ?>"
                     class="group inline-flex h-11 items-center gap-2 rounded-2xl bg-primary px-4 text-sm font-bold text-white transition-colors duration-200 hover:bg-primary-hover">
-                    إنشاء مناسبة جديدة
+                    <?php esc_html_e('إنشاء مناسبة جديدة', 'pgevents'); ?>
                     <span aria-hidden="true" class="transition-transform duration-200 group-hover:-translate-x-0.5">➜</span>
                 </a>
             </div>
@@ -193,16 +193,9 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
 
     <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
 
-        <!-- Welcome hero -->
-        <section class="relative overflow-hidden rounded-[28px] border border-border bg-white p-6 shadow-[0_20px_60px_-15px_rgba(45,25,20,0.10)] sm:p-8">
-            <svg aria-hidden="true" class="pointer-events-none absolute -top-10 -start-10 h-56 w-56 text-gold opacity-[0.06]" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1.4">
-                <path d="M10 190C40 150 30 90 70 60C100 38 130 45 150 20" stroke-linecap="round"/>
-                <circle cx="70" cy="60" r="5"/>
-                <circle cx="102" cy="46" r="4"/>
-                <circle cx="132" cy="34" r="3.5"/>
-                <path d="M70 60c10-6 18-4 24 4M102 46c8-5 16-3 21 4"/>
-            </svg>
-            <svg aria-hidden="true" class="pointer-events-none absolute -bottom-14 -end-14 h-64 w-64 rotate-180 text-gold opacity-[0.06]" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1.4">
+        <!-- Welcome hero — مضغوطة الحجم، مع لمسة زخرفية واحدة خفيفة تحافظ على هوية حلوة -->
+        <section class="relative overflow-hidden rounded-[28px] border border-border bg-white p-4 shadow-[0_14px_40px_-18px_rgba(45,25,20,0.10)] sm:p-5">
+            <svg aria-hidden="true" class="pointer-events-none absolute -bottom-10 -end-10 h-36 w-36 text-gold opacity-[0.05]" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1.4">
                 <path d="M10 190C40 150 30 90 70 60C100 38 130 45 150 20" stroke-linecap="round"/>
                 <circle cx="70" cy="60" r="5"/>
                 <circle cx="102" cy="46" r="4"/>
@@ -210,27 +203,26 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                 <path d="M70 60c10-6 18-4 24 4M102 46c8-5 16-3 21 4"/>
             </svg>
 
-            <div class="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div class="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div class="min-w-0">
                     <div class="inline-flex items-center gap-2 rounded-full bg-gold/10 px-3 py-1 text-xs font-bold text-gold-text ring-1 ring-gold/20">
-                        أهلاً بك مجدداً
+                        <?php esc_html_e('أهلاً بك مجدداً', 'pgevents'); ?>
                     </div>
-                    <h1 class="mt-3 text-2xl font-extrabold leading-tight tracking-tight text-foreground sm:text-3xl">
-                        مرحباً، <?php echo esc_html($host_display_name); ?>
+                    <h1 class="mt-2 text-xl font-extrabold leading-tight tracking-tight text-foreground sm:text-2xl">
+                        <?php
+                        /* translators: %s: host display name */
+                        echo esc_html(sprintf(__('مرحباً، %s', 'pgevents'), $host_display_name));
+                        ?>
                     </h1>
-                    <p class="mt-2 max-w-lg text-[15px] leading-relaxed text-foreground/70">
-                        إدارة مناسباتك ودعواتك من مكان واحد
+                    <p class="mt-1 max-w-lg text-sm leading-relaxed text-foreground/70">
+                        <?php esc_html_e('إدارة مناسباتك ودعواتك من مكان واحد', 'pgevents'); ?>
                     </p>
                 </div>
 
                 <div class="flex shrink-0 flex-wrap gap-3">
-                    <a href="<?php echo esc_url(home_url('/create-event/')); ?>"
-                        class="flex h-12 items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-white transition-colors duration-200 hover:bg-primary-hover">
-                        إنشاء مناسبة جديدة
-                    </a>
                     <a href="<?php echo esc_url(home_url('/dashboard/?tab=events')); ?>"
-                        class="dashboard-secondary-cta flex h-12 items-center justify-center gap-2 rounded-2xl border-[1.5px] border-gold bg-white px-5 text-sm font-bold text-gold-text transition-colors duration-200 hover:bg-gold/[0.06]">
-                        إدارة المناسبات
+                        class="flex h-11 items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-white transition-colors duration-200 hover:bg-primary-hover">
+                        <?php esc_html_e('إدارة المناسبات', 'pgevents'); ?>
                     </a>
                 </div>
             </div>
@@ -238,15 +230,15 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
 
         <!-- Quick Actions: اختيار المناسبة النشطة للعمل عليها (منفصلة عن الترحيب) -->
         <section class="mt-6">
-            <h2 class="px-1 text-sm font-extrabold text-foreground/70">إجراءات سريعة</h2>
+            <h2 class="px-1 text-sm font-extrabold text-foreground/70"><?php esc_html_e('إجراءات سريعة', 'pgevents'); ?></h2>
             <div class="mt-3 rounded-3xl border border-border bg-white p-4 shadow-sm sm:p-5">
                 <?php if (empty($events)): ?>
                     <div class="rounded-2xl bg-secondary/60 p-4 text-sm text-foreground/70 ring-1 ring-border">
-                        لا توجد مناسبات حتى الآن. أنشئ أول مناسبة للبدء.
+                        <?php esc_html_e('لا توجد مناسبات حتى الآن. أنشئ أول مناسبة للبدء.', 'pgevents'); ?>
                     </div>
                 <?php else: ?>
                     <form method="get" id="dashboardEventForm" class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <label for="dashboardEventSelect" class="sr-only">اختر المناسبة</label>
+                        <label for="dashboardEventSelect" class="sr-only"><?php esc_html_e('اختر المناسبة', 'pgevents'); ?></label>
                         <select id="dashboardEventSelect" name="event"
                             class="h-12 min-w-0 rounded-2xl border border-border bg-white px-4 text-sm text-foreground outline-none focus:border-primary sm:w-72">
                             <?php foreach ($events as $ev):
@@ -261,12 +253,12 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                         </select>
                         <input type="hidden" name="tab" id="dashboardTabField" value="overview" />
                         <button class="h-12 rounded-2xl bg-foreground px-5 text-sm font-bold text-white transition-colors hover:bg-foreground/90">
-                            تطبيق
+                            <?php esc_html_e('تطبيق', 'pgevents'); ?>
                         </button>
                         <?php if ($selected_event_id): ?>
                             <a href="<?php echo esc_url(get_permalink($selected_event_id)); ?>"
                                 class="flex h-12 items-center justify-center rounded-2xl border border-border bg-white px-5 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/60">
-                                فتح الدعوة
+                                <?php esc_html_e('فتح الدعوة', 'pgevents'); ?>
                             </a>
                         <?php endif; ?>
                     </form>
@@ -276,26 +268,28 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
 
         <!-- Package / quota summary -->
         <section class="mt-6">
-            <h2 class="px-1 text-sm font-extrabold text-foreground/70">حالة الباقة والحصص</h2>
+            <h2 class="px-1 text-sm font-extrabold text-foreground/70"><?php esc_html_e('حالة الباقة والحصص', 'pgevents'); ?></h2>
+            <!-- بطاقات معلوماتية (وليست تشغيلية) — حشو ومقاسات أهدأ عمداً لتبقى الأرقام الحيّة
+                 (نظرة عامة أدناه) هي الأقوى بصرياً في الصفحة -->
             <div class="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
 
                 <!-- الباقة الحالية -->
-                <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm sm:p-5">
+                <div class="min-w-0 rounded-3xl border border-border bg-white p-3.5 shadow-sm sm:p-4">
                     <div class="flex items-center gap-2">
-                        <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4.5 w-4.5">
+                        <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
                                 <path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5L12 3Z"></path>
                             </svg>
                         </span>
-                        <span class="text-xs font-bold text-foreground/70">الباقة الحالية</span>
+                        <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('الباقة الحالية', 'pgevents'); ?></span>
                     </div>
                     <?php if ($plan_name || $plan_key): ?>
-                        <div class="mt-3 truncate text-lg font-extrabold text-foreground"><?php echo esc_html($plan_name ?: $plan_key); ?></div>
+                        <div class="mt-3 truncate text-base font-extrabold text-foreground"><?php echo esc_html($plan_name ?: $plan_key); ?></div>
                         <div class="mt-1.5">
                             <?php if ($plan_status === 'active'): ?>
                                 <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
                                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="h-3 w-3"><path d="M20 6 9 17l-5-5"/></svg>
-                                    نشطة
+                                    <?php esc_html_e('نشطة', 'pgevents'); ?>
                                 </span>
                             <?php elseif ($plan_status): ?>
                                 <span class="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-bold text-destructive-text ring-1 ring-destructive/20">
@@ -305,79 +299,82 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                             <?php endif; ?>
                         </div>
                     <?php else: ?>
-                        <div class="mt-3 text-sm font-bold text-foreground/70">لا توجد باقة نشطة</div>
+                        <div class="mt-3 text-sm font-bold text-foreground/70"><?php esc_html_e('لا توجد باقة نشطة', 'pgevents'); ?></div>
                         <a href="<?php echo esc_url(home_url('/packages/')); ?>"
                             class="mt-2 inline-flex h-11 items-center rounded-xl bg-gold-text px-3 text-xs font-bold text-white transition-colors hover:bg-gold-text-hover">
-                            تصفح الباقات
+                            <?php esc_html_e('تصفح الباقات', 'pgevents'); ?>
                         </a>
                     <?php endif; ?>
                 </div>
 
                 <!-- عدد المناسبات المتبقية -->
-                <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm sm:p-5">
+                <div class="min-w-0 rounded-3xl border border-border bg-white p-3.5 shadow-sm sm:p-4">
                     <div class="flex items-center gap-2">
-                        <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4.5 w-4.5">
+                        <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
                                 <rect x="3" y="5" width="18" height="16" rx="3"></rect>
                                 <path d="M3 10h18M8 3v4M16 3v4"></path>
                             </svg>
                         </span>
-                        <span class="text-xs font-bold text-foreground/70">المناسبات المتبقية</span>
+                        <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('المناسبات المتبقية', 'pgevents'); ?></span>
                     </div>
                     <?php if ($events_limit > 0): ?>
-                        <div class="mt-3 text-lg font-extrabold text-foreground">
-                            <?php echo (int) $events_left; ?> <span class="text-sm font-semibold text-foreground/65">من <?php echo (int) $events_limit; ?></span>
+                        <div class="mt-3 text-base font-extrabold text-foreground">
+                            <?php echo (int) $events_left; ?> <span class="text-sm font-semibold text-foreground/65"><?php
+                                /* translators: %d: total events allowed by the plan */
+                                echo esc_html(sprintf(__('من %d', 'pgevents'), (int) $events_limit));
+                            ?></span>
                         </div>
                         <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
                             <div class="h-full bg-primary transition-all" style="width: <?php echo min(100, (int)round(($events_used/$events_limit)*100)); ?>%"></div>
                         </div>
                         <?php if ($events_left <= 0): ?>
                             <div class="mt-2 text-[11px] font-bold text-destructive-text">
-                                استُنفد الحد —
-                                <a href="<?php echo esc_url(home_url('/packages/')); ?>" class="underline">ترقية الباقة</a>
+                                <?php esc_html_e('استُنفد الحد —', 'pgevents'); ?>
+                                <a href="<?php echo esc_url(home_url('/packages/')); ?>" class="underline"><?php esc_html_e('ترقية الباقة', 'pgevents'); ?></a>
                             </div>
                         <?php endif; ?>
                     <?php else: ?>
-                        <div class="mt-3 text-sm font-semibold text-foreground/65">غير محدد</div>
+                        <div class="mt-3 text-sm font-semibold text-foreground/65"><?php esc_html_e('غير محدد', 'pgevents'); ?></div>
                     <?php endif; ?>
                 </div>
 
                 <!-- عدد المدعوين المتاح -->
-                <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm sm:p-5">
+                <div class="min-w-0 rounded-3xl border border-border bg-white p-3.5 shadow-sm sm:p-4">
                     <div class="flex items-center gap-2">
-                        <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4.5 w-4.5">
+                        <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
                                 <circle cx="9" cy="8" r="3.2"></circle>
                                 <path d="M2.5 20v-.8a5.8 5.8 0 0 1 5.8-5.8h1.4a5.8 5.8 0 0 1 5.8 5.8v.8"></path>
                                 <circle cx="17.5" cy="8.5" r="2.4"></circle>
                                 <path d="M15.8 13.6a4.6 4.6 0 0 1 5.7 4.5v.9"></path>
                             </svg>
                         </span>
-                        <span class="text-xs font-bold text-foreground/70">المدعوين لكل مناسبة</span>
+                        <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('المدعوين لكل مناسبة', 'pgevents'); ?></span>
                     </div>
                     <?php if ($guest_limit_per_event > 0): ?>
-                        <div class="mt-3 text-lg font-extrabold text-foreground"><?php echo (int) $guest_limit_per_event; ?></div>
-                        <div class="mt-1 text-[11px] text-foreground/65">الحد الأقصى المسموح به</div>
+                        <div class="mt-3 text-base font-extrabold text-foreground"><?php echo (int) $guest_limit_per_event; ?></div>
+                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('الحد الأقصى المسموح به', 'pgevents'); ?></div>
                     <?php else: ?>
-                        <div class="mt-3 text-sm font-semibold text-foreground/65">غير محدد</div>
+                        <div class="mt-3 text-sm font-semibold text-foreground/65"><?php esc_html_e('غير محدد', 'pgevents'); ?></div>
                     <?php endif; ?>
                 </div>
 
                 <!-- رسائل واتساب المتاحة -->
-                <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm sm:p-5">
+                <div class="min-w-0 rounded-3xl border border-border bg-white p-3.5 shadow-sm sm:p-4">
                     <div class="flex items-center gap-2">
-                        <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4.5 w-4.5">
+                        <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
                                 <path d="M12 3a9 9 0 0 0-7.7 13.6L3 21l4.5-1.2A9 9 0 1 0 12 3Z"></path>
                             </svg>
                         </span>
-                        <span class="text-xs font-bold text-foreground/70">رسائل واتساب المتاحة</span>
+                        <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('رسائل واتساب المتاحة', 'pgevents'); ?></span>
                     </div>
                     <?php if ($wa_messages_limit !== null && $wa_messages_limit > 0): ?>
-                        <div class="mt-3 text-lg font-extrabold text-foreground"><?php echo (int) $wa_messages_limit; ?></div>
-                        <div class="mt-1 text-[11px] text-foreground/65">رسالة ضمن باقتك</div>
+                        <div class="mt-3 text-base font-extrabold text-foreground"><?php echo (int) $wa_messages_limit; ?></div>
+                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('رسالة ضمن باقتك', 'pgevents'); ?></div>
                     <?php else: ?>
-                        <div class="mt-3 text-sm font-semibold text-foreground/65">غير مفعّلة</div>
+                        <div class="mt-3 text-sm font-semibold text-foreground/65"><?php esc_html_e('غير مفعّلة', 'pgevents'); ?></div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -390,7 +387,7 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                                 <path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"></path>
                             </svg>
                         </span>
-                        <span class="text-xs font-bold text-foreground/70">الميزات المفعّلة</span>
+                        <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('الميزات المفعّلة', 'pgevents'); ?></span>
                     </div>
                     <div class="mt-3 flex flex-wrap gap-2">
                         <?php foreach ($active_feature_labels as $flabel): ?>
@@ -407,10 +404,10 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
         <!-- Tabs -->
         <section class="mt-6">
             <div class="flex flex-wrap gap-2 rounded-3xl border border-border bg-white p-3 shadow-sm">
-                <button class="dashboard-tab-btn flex h-11 items-center rounded-2xl bg-primary px-4 text-sm font-bold text-white" data-tab="overview">نظرة عامة</button>
-                <button class="dashboard-tab-btn flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 transition-colors hover:bg-secondary/50" data-tab="events">المناسبات</button>
-                <button class="dashboard-tab-btn flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 transition-colors hover:bg-secondary/50" data-tab="operations">العمليات</button>
-                <button class="dashboard-tab-btn flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 transition-colors hover:bg-secondary/50" data-tab="reports">التقارير</button>
+                <button class="dashboard-tab-btn flex h-11 items-center rounded-2xl bg-primary px-4 text-sm font-bold text-white" data-tab="overview"><?php esc_html_e('نظرة عامة', 'pgevents'); ?></button>
+                <button class="dashboard-tab-btn flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 transition-colors hover:bg-secondary/50" data-tab="events"><?php esc_html_e('المناسبات', 'pgevents'); ?></button>
+                <button class="dashboard-tab-btn flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 transition-colors hover:bg-secondary/50" data-tab="operations"><?php esc_html_e('العمليات', 'pgevents'); ?></button>
+                <button class="dashboard-tab-btn flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 transition-colors hover:bg-secondary/50" data-tab="reports"><?php esc_html_e('التقارير', 'pgevents'); ?></button>
             </div>
         </section>
 
@@ -419,48 +416,50 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
             <section class="grid gap-4 lg:grid-cols-12">
                 <div class="lg:col-span-5">
                     <div class="min-w-0 rounded-3xl border border-border bg-white p-6 shadow-sm">
-                        <div class="text-sm font-extrabold text-foreground">نصيحة لرفع نسبة الحضور</div>
+                        <div class="text-sm font-extrabold text-foreground"><?php esc_html_e('نصيحة لرفع نسبة الحضور', 'pgevents'); ?></div>
                         <p class="mt-2 text-sm leading-relaxed text-foreground/70">
-                            أرسل الدعوة مبكراً مع تذكير تلقائي قبل المناسبة بـ 24 ساعة لرفع نسبة الحضور.
+                            <?php esc_html_e('أرسل الدعوة مبكراً مع تذكير تلقائي قبل المناسبة بـ 24 ساعة لرفع نسبة الحضور.', 'pgevents'); ?>
                         </p>
 
                         <div class="mt-5 grid grid-cols-4 gap-2 text-center">
                             <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                                 <div id="selectedInvitedCount" class="text-lg font-extrabold text-foreground"><?php echo (int) $total_invited; ?></div>
-                                <div class="mt-1 text-[11px] text-foreground/65">مدعو</div>
+                                <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('مدعو', 'pgevents'); ?></div>
                             </div>
                             <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                                 <div id="selectedYesCount" class="text-lg font-extrabold text-emerald-700"><?php echo (int) $yes_count; ?></div>
-                                <div class="mt-1 text-[11px] text-foreground/65">سيحضر</div>
+                                <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('سيحضر', 'pgevents'); ?></div>
                             </div>
                             <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                                 <div id="selectedNoCount" class="text-lg font-extrabold text-destructive-text"><?php echo (int) $no_count; ?></div>
-                                <div class="mt-1 text-[11px] text-foreground/65">اعتذر</div>
+                                <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('اعتذر', 'pgevents'); ?></div>
                             </div>
                             <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                                 <div id="selectedCheckinsCount" class="text-lg font-extrabold text-foreground"><?php echo (int) $checkins_count; ?></div>
-                                <div class="mt-1 text-[11px] text-foreground/65">Check-in</div>
+                                <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('Check-in', 'pgevents'); ?></div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="lg:col-span-7">
+                    <!-- بطاقات تشغيلية حيّة — حدّ علوي ملوّن يطابق دلالة كل رقم يميّزها بصرياً
+                         عن بطاقات "حالة الباقة" المعلوماتية أعلاه، دون تغيير حجم البطاقات نفسها -->
                     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <div class="min-w-0 rounded-3xl border border-border bg-white p-5 shadow-sm">
-                            <div class="text-xs font-bold text-foreground/65">إجمالي المدعوين</div>
+                        <div class="min-w-0 rounded-3xl border border-t-4 border-border border-t-primary bg-white p-5 shadow-sm">
+                            <div class="text-xs font-bold text-foreground/65"><?php esc_html_e('إجمالي المدعوين', 'pgevents'); ?></div>
                             <div class="mt-2 text-3xl font-extrabold text-foreground"><?php echo (int) $all_invited_total; ?></div>
                         </div>
-                        <div class="min-w-0 rounded-3xl border border-border bg-white p-5 shadow-sm">
-                            <div class="text-xs font-bold text-foreground/65">حضور مؤكد</div>
+                        <div class="min-w-0 rounded-3xl border border-t-4 border-border border-t-emerald-500 bg-white p-5 shadow-sm">
+                            <div class="text-xs font-bold text-foreground/65"><?php esc_html_e('حضور مؤكد', 'pgevents'); ?></div>
                             <div class="mt-2 text-3xl font-extrabold text-emerald-700"><?php echo (int) $all_yes_total; ?></div>
                         </div>
-                        <div class="min-w-0 rounded-3xl border border-border bg-white p-5 shadow-sm">
-                            <div class="text-xs font-bold text-foreground/65">اعتذار</div>
+                        <div class="min-w-0 rounded-3xl border border-t-4 border-border border-t-destructive bg-white p-5 shadow-sm">
+                            <div class="text-xs font-bold text-foreground/65"><?php esc_html_e('اعتذار', 'pgevents'); ?></div>
                             <div class="mt-2 text-3xl font-extrabold text-destructive-text"><?php echo (int) $all_no_total; ?></div>
                         </div>
-                        <div class="min-w-0 rounded-3xl border border-border bg-white p-5 shadow-sm">
-                            <div class="text-xs font-bold text-foreground/65">تسجيل دخول</div>
+                        <div class="min-w-0 rounded-3xl border border-t-4 border-border border-t-gold bg-white p-5 shadow-sm">
+                            <div class="text-xs font-bold text-foreground/65"><?php esc_html_e('تسجيل دخول', 'pgevents'); ?></div>
                             <div id="allCheckinsKpiTop" class="mt-2 text-3xl font-extrabold text-foreground"><?php echo (int) $all_checkins_total; ?></div>
                         </div>
                     </div>
@@ -468,21 +467,21 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                     <div class="mt-4 min-w-0 rounded-3xl border border-border bg-white p-5 shadow-sm">
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <div class="min-w-0">
-                                <div class="text-sm font-extrabold text-foreground">المناسبة النشطة</div>
+                                <div class="text-sm font-extrabold text-foreground"><?php esc_html_e('المناسبة النشطة', 'pgevents'); ?></div>
                                 <?php if ($selected_event_id): ?>
                                     <div class="mt-1 truncate text-sm font-bold text-foreground"><?php echo esc_html($selected_event_title); ?></div>
                                     <div class="mt-1 text-xs text-foreground/65">
                                         <?php echo $selected_event_date ? esc_html(date_i18n('j F Y', strtotime($selected_event_date))) : '—'; ?>
                                     </div>
                                 <?php else: ?>
-                                    <div class="mt-1 text-sm text-foreground/70">اختر مناسبة من أعلى الصفحة.</div>
+                                    <div class="mt-1 text-sm text-foreground/70"><?php esc_html_e('اختر مناسبة من أعلى الصفحة.', 'pgevents'); ?></div>
                                 <?php endif; ?>
                             </div>
 
                             <?php if ($selected_event_id): ?>
                                 <a href="<?php echo esc_url(get_permalink($selected_event_id)); ?>"
                                     class="flex h-11 shrink-0 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/60">
-                                    فتح صفحة الدعوة
+                                    <?php esc_html_e('فتح صفحة الدعوة', 'pgevents'); ?>
                                 </a>
                             <?php endif; ?>
                         </div>
@@ -491,7 +490,7 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                             <div class="mt-4 space-y-3">
                                 <div>
                                     <div class="mb-1 flex items-center justify-between text-xs text-foreground/65">
-                                        <span>نسبة التفاعل مع الدعوة</span>
+                                        <span><?php esc_html_e('نسبة التفاعل مع الدعوة', 'pgevents'); ?></span>
                                         <span id="selectedResponseRateText" class="font-extrabold text-foreground/80"><?php echo (int) $selected_response_rate; ?>%</span>
                                     </div>
                                     <div class="h-2 overflow-hidden rounded-full bg-secondary">
@@ -501,7 +500,7 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
 
                                 <div>
                                     <div class="mb-1 flex items-center justify-between text-xs text-foreground/65">
-                                        <span>نسبة تأكيد الحضور</span>
+                                        <span><?php esc_html_e('نسبة تأكيد الحضور', 'pgevents'); ?></span>
                                         <span id="selectedAttendanceRateText" class="font-extrabold text-emerald-700"><?php echo (int) $selected_attendance_rate; ?>%</span>
                                     </div>
                                     <div class="h-2 overflow-hidden rounded-full bg-secondary">
@@ -511,7 +510,7 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
 
                                 <div>
                                     <div class="mb-1 flex items-center justify-between text-xs text-foreground/65">
-                                        <span>نسبة Check-in من المؤكدين</span>
+                                        <span><?php esc_html_e('نسبة Check-in من المؤكدين', 'pgevents'); ?></span>
                                         <span id="selectedCheckinRateText" class="font-extrabold text-foreground/80"><?php echo (int) $selected_checkin_rate; ?>%</span>
                                     </div>
                                     <div class="h-2 overflow-hidden rounded-full bg-secondary">
@@ -530,8 +529,8 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
             <section>
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h2 class="text-xl font-extrabold text-foreground">مناسباتي</h2>
-                        <p class="mt-1 text-sm text-foreground/70">عرض وإدارة كل مناسباتك</p>
+                        <h2 class="text-xl font-extrabold text-foreground"><?php esc_html_e('مناسباتي', 'pgevents'); ?></h2>
+                        <p class="mt-1 text-sm text-foreground/70"><?php esc_html_e('عرض وإدارة كل مناسباتك', 'pgevents'); ?></p>
                     </div>
                 </div>
 
@@ -545,13 +544,13 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                                 <path d="M12 15v3M10.5 16.5h3"></path>
                             </svg>
                         </span>
-                        <h3 class="text-lg font-extrabold text-foreground">لم تنشئ أي مناسبة بعد</h3>
+                        <h3 class="text-lg font-extrabold text-foreground"><?php esc_html_e('لم تنشئ أي مناسبة بعد', 'pgevents'); ?></h3>
                         <p class="mt-2 max-w-sm text-sm leading-relaxed text-foreground/65">
-                            ابدأ الآن وأنشئ دعوتك الأولى في دقائق، وشاركها مع ضيوفك بكل سهولة.
+                            <?php esc_html_e('ابدأ الآن وأنشئ دعوتك الأولى في دقائق، وشاركها مع ضيوفك بكل سهولة.', 'pgevents'); ?>
                         </p>
                         <a href="<?php echo esc_url(home_url('/create-event/')); ?>"
                             class="mt-6 flex h-12 items-center justify-center rounded-2xl bg-primary px-6 text-sm font-bold text-white transition-colors duration-200 hover:bg-primary-hover">
-                            أنشئ مناسبتك الأولى
+                            <?php esc_html_e('أنشئ مناسبتك الأولى', 'pgevents'); ?>
                         </a>
                     </div>
                 <?php else: ?>
@@ -591,49 +590,57 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                                             </div>
                                         <?php endif; ?>
                                     </div>
-                                    <span aria-hidden="true" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
-                                            <circle cx="9" cy="8" r="3"></circle>
-                                            <path d="M2.5 20v-.6a6 6 0 0 1 6-6h1a6 6 0 0 1 6 6v.6"></path>
-                                        </svg>
-                                    </span>
+                                    <?php /* إثراء البطاقة بصورة الغلاف الفعلية إن وُجدت (بيانات موجودة أصلاً عبر رفع الصورة البارزة
+                                             في نموذج إنشاء/تعديل المناسبة) — بدون أي حقل جديد؛ رجوع للأيقونة العامة إذا لم تُرفع صورة */ ?>
+                                    <?php if (has_post_thumbnail($eid)): ?>
+                                        <span aria-hidden="true" class="block h-12 w-12 shrink-0 overflow-hidden rounded-2xl bg-secondary/60 ring-1 ring-border">
+                                            <?php echo get_the_post_thumbnail($eid, 'thumbnail', ['class' => 'h-full w-full object-cover', 'alt' => '']); ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span aria-hidden="true" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+                                                <circle cx="9" cy="8" r="3"></circle>
+                                                <path d="M2.5 20v-.6a6 6 0 0 1 6-6h1a6 6 0 0 1 6 6v.6"></path>
+                                            </svg>
+                                        </span>
+                                    <?php endif; ?>
                                 </div>
 
                                 <div class="mt-4 grid grid-cols-4 gap-2 text-center">
                                     <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                                         <div class="text-lg font-extrabold text-foreground"><?php echo (int) count($inv); ?></div>
-                                        <div class="mt-1 text-[11px] text-foreground/65">مدعو</div>
+                                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('مدعو', 'pgevents'); ?></div>
                                     </div>
                                     <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                                         <div class="text-lg font-extrabold text-emerald-700"><?php echo (int) $yes; ?></div>
-                                        <div class="mt-1 text-[11px] text-foreground/65">حضور</div>
+                                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('حضور', 'pgevents'); ?></div>
                                     </div>
                                     <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                                         <div class="text-lg font-extrabold text-destructive-text"><?php echo (int) $no; ?></div>
-                                        <div class="mt-1 text-[11px] text-foreground/65">اعتذر</div>
+                                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('اعتذر', 'pgevents'); ?></div>
                                     </div>
                                     <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                                         <div class="text-lg font-extrabold text-foreground"><?php echo (int) $ckc; ?></div>
-                                        <div class="mt-1 text-[11px] text-foreground/65">Check-in</div>
+                                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('Check-in', 'pgevents'); ?></div>
                                     </div>
                                 </div>
 
-                                <div class="mt-4 flex flex-wrap gap-2">
+                                <div class="mt-4 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[1.35fr_0.8fr_1fr]">
                                     <a href="<?php echo esc_url(home_url('/event-manage/' . $eid . '/')); ?>"
-                                        class="flex h-11 items-center rounded-2xl bg-primary px-4 text-sm font-bold text-white transition-colors duration-200 hover:bg-primary-hover">
-                                        إدارة المناسبة
+                                        class="flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-2xl bg-primary px-3 text-sm font-bold text-white transition-colors duration-200 hover:bg-primary-hover sm:col-start-1">
+                                        <?php esc_html_e('إدارة المناسبة', 'pgevents'); ?>
                                     </a>
 
                                     <?php if (!$is_archived): ?>
                                         <a href="<?php echo esc_url(home_url('/edit-event/' . $eid . '/')); ?>"
-                                            class="flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/60">
-                                            تعديل
+                                            class="flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-2xl border border-border bg-white px-3 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/60 sm:col-start-2">
+                                            <?php esc_html_e('تعديل', 'pgevents'); ?>
                                         </a>
                                     <?php endif; ?>
 
                                     <a href="<?php echo esc_url(get_permalink($eid)); ?>"
-                                        class="flex h-11 items-center rounded-2xl border-[1.5px] border-gold bg-white px-4 text-sm font-bold text-gold-text transition-colors duration-200 hover:bg-gold/[0.06]">
-                                        عرض الدعوة
+                                        class="flex h-11 min-w-0 items-center justify-center whitespace-nowrap rounded-2xl border-[1.5px] border-gold bg-white px-3 text-sm font-bold text-gold-text transition-colors duration-200 hover:bg-gold/[0.06] sm:col-start-3">
+                                        <?php esc_html_e('عرض الدعوة', 'pgevents'); ?>
                                     </a>
                                 </div>
                             </div>
@@ -651,28 +658,28 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                     <div class="min-w-0 rounded-3xl border border-border bg-white p-6 shadow-sm">
                         <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <h3 class="text-lg font-extrabold text-foreground">المدعوين</h3>
-                                <p class="mt-1 text-sm text-foreground/70">بحث + فلترة (RSVP) — للمناسبة المختارة</p>
+                                <h3 class="text-lg font-extrabold text-foreground"><?php esc_html_e('المدعوين', 'pgevents'); ?></h3>
+                                <p class="mt-1 text-sm text-foreground/70"><?php esc_html_e('بحث + فلترة (RSVP) — للمناسبة المختارة', 'pgevents'); ?></p>
                             </div>
                         </div>
 
                         <?php if (!$selected_event_id): ?>
                             <div class="mt-4 rounded-2xl bg-secondary/60 p-4 text-sm text-foreground/70 ring-1 ring-border">
-                                اختر مناسبة من الأعلى لعرض المدعوين.
+                                <?php esc_html_e('اختر مناسبة من الأعلى لعرض المدعوين.', 'pgevents'); ?>
                             </div>
                         <?php else: ?>
                             <div class="mt-5 grid gap-3 sm:grid-cols-3">
                                 <div class="sm:col-span-2">
-                                    <label for="guestSearch" class="sr-only">بحث برقم الجوال</label>
+                                    <label for="guestSearch" class="sr-only"><?php esc_html_e('بحث برقم الجوال', 'pgevents'); ?></label>
                                     <input id="guestSearch"
                                         class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-foreground outline-none placeholder:text-foreground/35 focus:border-primary"
-                                        placeholder="ابحث برقم الجوال..." />
+                                        placeholder="<?php echo esc_attr__('ابحث برقم الجوال...', 'pgevents'); ?>" />
                                 </div>
                                 <div class="flex flex-wrap gap-2 sm:justify-end">
-                                    <button class="guest-filter flex h-11 items-center rounded-2xl bg-primary px-4 text-sm font-bold text-white" data-status="all">الكل</button>
-                                    <button class="guest-filter flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 hover:bg-secondary/50" data-status="yes">سيحضر</button>
-                                    <button class="guest-filter flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 hover:bg-secondary/50" data-status="no">اعتذر</button>
-                                    <button class="guest-filter flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 hover:bg-secondary/50" data-status="pending">لم يرد</button>
+                                    <button class="guest-filter flex h-11 items-center rounded-2xl bg-primary px-4 text-sm font-bold text-white" data-status="all" aria-pressed="true"><?php esc_html_e('الكل', 'pgevents'); ?></button>
+                                    <button class="guest-filter flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 hover:bg-secondary/50" data-status="yes" aria-pressed="false"><?php esc_html_e('سيحضر', 'pgevents'); ?></button>
+                                    <button class="guest-filter flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 hover:bg-secondary/50" data-status="no" aria-pressed="false"><?php esc_html_e('اعتذر', 'pgevents'); ?></button>
+                                    <button class="guest-filter flex h-11 items-center rounded-2xl border border-border bg-white px-4 text-sm font-bold text-foreground/70 hover:bg-secondary/50" data-status="pending" aria-pressed="false"><?php esc_html_e('لم يرد', 'pgevents'); ?></button>
                                 </div>
                             </div>
 
@@ -681,9 +688,9 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                                     <table class="w-full text-sm">
                                         <thead class="bg-secondary/50 text-foreground/70">
                                             <tr>
-                                                <th class="px-4 py-3 text-start font-bold">الهاتف</th>
-                                                <th class="px-4 py-3 text-start font-bold">الحالة</th>
-                                                <th class="px-4 py-3 text-start font-bold">Check-in</th>
+                                                <th class="px-4 py-3 text-start font-bold"><?php esc_html_e('الهاتف', 'pgevents'); ?></th>
+                                                <th class="px-4 py-3 text-start font-bold"><?php esc_html_e('الحالة', 'pgevents'); ?></th>
+                                                <th class="px-4 py-3 text-start font-bold"><?php esc_html_e('Check-in', 'pgevents'); ?></th>
                                             </tr>
                                         </thead>
                                         <tbody id="guestTbody" class="divide-y divide-border">
@@ -696,16 +703,16 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                                                     <td class="px-4 py-3 font-bold text-foreground"><?php echo esc_html($ph); ?></td>
                                                     <td class="px-4 py-3">
                                                         <?php if ($status === 'yes'): ?>
-                                                            <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">سيحضر</span>
+                                                            <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200"><?php esc_html_e('سيحضر', 'pgevents'); ?></span>
                                                         <?php elseif ($status === 'no'): ?>
-                                                            <span class="rounded-full bg-destructive/10 px-3 py-1 text-xs font-bold text-destructive-text ring-1 ring-destructive/20">اعتذر</span>
+                                                            <span class="rounded-full bg-destructive/10 px-3 py-1 text-xs font-bold text-destructive-text ring-1 ring-destructive/20"><?php esc_html_e('اعتذر', 'pgevents'); ?></span>
                                                         <?php else: ?>
-                                                            <span class="rounded-full bg-secondary/70 px-3 py-1 text-xs font-bold text-foreground/70 ring-1 ring-border">لم يرد</span>
+                                                            <span class="rounded-full bg-secondary/70 px-3 py-1 text-xs font-bold text-foreground/70 ring-1 ring-border"><?php esc_html_e('لم يرد', 'pgevents'); ?></span>
                                                         <?php endif; ?>
                                                     </td>
                                                     <td class="px-4 py-3">
                                                         <?php if ($checked === 'yes'): ?>
-                                                            <span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary-text ring-1 ring-primary/20">تم</span>
+                                                            <span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary-text ring-1 ring-primary/20"><?php esc_html_e('تم', 'pgevents'); ?></span>
                                                         <?php else: ?>
                                                             <span class="text-foreground/65">—</span>
                                                         <?php endif; ?>
@@ -724,24 +731,24 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                 <div class="lg:col-span-5">
                     <div class="min-w-0 rounded-3xl border border-border bg-white p-6 shadow-sm">
                         <div class="flex items-center justify-between">
-                            <h3 class="text-lg font-extrabold text-foreground">إدارة الدخول</h3>
+                            <h3 class="text-lg font-extrabold text-foreground"><?php esc_html_e('إدارة الدخول', 'pgevents'); ?></h3>
                             <span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary-text ring-1 ring-primary/20">QR</span>
                         </div>
-                        <p class="mt-2 text-sm text-foreground/70">أدخل رقم جوال الضيف لتسجيل دخوله (Check-in).</p>
+                        <p class="mt-2 text-sm text-foreground/70"><?php esc_html_e('أدخل رقم جوال الضيف لتسجيل دخوله (Check-in).', 'pgevents'); ?></p>
 
                         <?php if (!$selected_event_id): ?>
                             <div class="mt-4 rounded-2xl bg-secondary/60 p-4 text-sm text-foreground/70 ring-1 ring-border">
-                                اختر مناسبة أولاً.
+                                <?php esc_html_e('اختر مناسبة أولاً.', 'pgevents'); ?>
                             </div>
                         <?php else: ?>
                             <div class="mt-5 rounded-2xl bg-secondary/60 p-4 ring-1 ring-border">
-                                <label for="checkinPhone" class="text-xs font-bold text-foreground/70">رقم الهاتف</label>
+                                <label for="checkinPhone" class="text-xs font-bold text-foreground/70"><?php esc_html_e('رقم الهاتف', 'pgevents'); ?></label>
                                 <input id="checkinPhone"
                                     class="mt-2 h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm text-foreground outline-none placeholder:text-foreground/35 focus:border-primary"
                                     placeholder="05xxxxxxxx" />
                                 <button id="checkinBtn"
                                     class="mt-3 flex h-12 w-full items-center justify-center rounded-2xl bg-emerald-600 text-sm font-bold text-white transition-colors hover:bg-emerald-500">
-                                    تسجيل دخول
+                                    <?php esc_html_e('تسجيل دخول', 'pgevents'); ?>
                                 </button>
                                 <div id="checkinMsg" class="mt-3 text-sm text-foreground/70" role="status" aria-live="polite"></div>
                             </div>
@@ -750,7 +757,15 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                                 window.PGE_CHECKIN = {
                                     ajax: "<?php echo esc_js(admin_url('admin-ajax.php')); ?>",
                                     nonce: "<?php echo esc_js(wp_create_nonce('pge_checkin_nonce')); ?>",
-                                    event_id: "<?php echo (int) $selected_event_id; ?>"
+                                    event_id: "<?php echo (int) $selected_event_id; ?>",
+                                    strings: {
+                                        invalidPhone: "<?php echo esc_js(__('أدخل رقم هاتف صحيح', 'pgevents')); ?>",
+                                        saving: "<?php echo esc_js(__('...جاري الحفظ', 'pgevents')); ?>",
+                                        defaultSuccess: "<?php echo esc_js(__('تم تسجيل الدخول', 'pgevents')); ?>",
+                                        genericError: "<?php echo esc_js(__('حدث خطأ', 'pgevents')); ?>",
+                                        connectionError: "<?php echo esc_js(__('تعذر الاتصال بالخادم', 'pgevents')); ?>",
+                                        checkedInBadge: "<?php echo esc_js(__('تم', 'pgevents')); ?>"
+                                    }
                                 };
                             </script>
                         <?php endif; ?>
@@ -762,40 +777,40 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
         <div id="dashboardPanelReports" class="dashboard-panel mt-4 hidden">
             <section class="grid gap-4 lg:grid-cols-12">
                 <div class="min-w-0 rounded-3xl border border-border bg-white p-6 shadow-sm lg:col-span-7">
-                    <h3 class="text-lg font-extrabold text-foreground">ملخص الأداء</h3>
-                    <p class="mt-1 text-sm text-foreground/70">قراءة سريعة لأداء كل المناسبات على مستوى الدعوات والحضور.</p>
+                    <h3 class="text-lg font-extrabold text-foreground"><?php esc_html_e('ملخص الأداء', 'pgevents'); ?></h3>
+                    <p class="mt-1 text-sm text-foreground/70"><?php esc_html_e('قراءة سريعة لأداء كل المناسبات على مستوى الدعوات والحضور.', 'pgevents'); ?></p>
 
                     <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <div class="min-w-0 rounded-2xl bg-secondary/60 p-4 ring-1 ring-border">
-                            <div class="text-xs font-bold text-foreground/65">إجمالي المدعوين</div>
+                            <div class="text-xs font-bold text-foreground/65"><?php esc_html_e('إجمالي المدعوين', 'pgevents'); ?></div>
                             <div class="mt-2 text-2xl font-extrabold text-foreground"><?php echo (int) $all_invited_total; ?></div>
                         </div>
                         <div class="min-w-0 rounded-2xl bg-secondary/60 p-4 ring-1 ring-border">
-                            <div class="text-xs font-bold text-foreground/65">حضور مؤكد</div>
+                            <div class="text-xs font-bold text-foreground/65"><?php esc_html_e('حضور مؤكد', 'pgevents'); ?></div>
                             <div class="mt-2 text-2xl font-extrabold text-emerald-700"><?php echo (int) $all_yes_total; ?></div>
                         </div>
                         <div class="min-w-0 rounded-2xl bg-secondary/60 p-4 ring-1 ring-border">
-                            <div class="text-xs font-bold text-foreground/65">اعتذار</div>
+                            <div class="text-xs font-bold text-foreground/65"><?php esc_html_e('اعتذار', 'pgevents'); ?></div>
                             <div class="mt-2 text-2xl font-extrabold text-destructive-text"><?php echo (int) $all_no_total; ?></div>
                         </div>
                         <div class="min-w-0 rounded-2xl bg-secondary/60 p-4 ring-1 ring-border">
-                            <div class="text-xs font-bold text-foreground/65">Check-ins</div>
+                            <div class="text-xs font-bold text-foreground/65"><?php esc_html_e('Check-ins', 'pgevents'); ?></div>
                             <div id="allCheckinsKpiReports" class="mt-2 text-2xl font-extrabold text-foreground"><?php echo (int) $all_checkins_total; ?></div>
                         </div>
                     </div>
                 </div>
 
                 <div class="min-w-0 rounded-3xl border border-border bg-white p-6 shadow-sm lg:col-span-5">
-                    <h3 class="text-lg font-extrabold text-foreground">إجراءات سريعة</h3>
-                    <p class="mt-1 text-sm text-foreground/70">انتقل مباشرة للإجراءات الأكثر استخدامًا.</p>
+                    <h3 class="text-lg font-extrabold text-foreground"><?php esc_html_e('إجراءات سريعة', 'pgevents'); ?></h3>
+                    <p class="mt-1 text-sm text-foreground/70"><?php esc_html_e('انتقل مباشرة للإجراءات الأكثر استخدامًا.', 'pgevents'); ?></p>
 
+                    <!-- "إنشاء مناسبة جديدة" أُزيلت من هنا عمداً — موجودة بالفعل في الشريط العلوي
+                         الثابت (أقوى موضع، مرئي دائماً)، تفادياً لتكرار نفس الإجراء بنفس النص ثلاث مرات -->
                     <div class="mt-5 space-y-2">
-                        <a href="<?php echo esc_url(home_url('/create-event/')); ?>"
-                            class="flex h-12 items-center justify-center rounded-2xl bg-primary text-center text-sm font-bold text-white transition-colors duration-200 hover:bg-primary-hover">إنشاء مناسبة جديدة</a>
                         <a href="<?php echo esc_url(home_url('/dashboard/?tab=events')); ?>"
-                            class="flex h-12 items-center justify-center rounded-2xl border border-border bg-white text-center text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/60">عرض كل المناسبات</a>
+                            class="flex h-12 items-center justify-center rounded-2xl bg-primary text-center text-sm font-bold text-white transition-colors duration-200 hover:bg-primary-hover"><?php esc_html_e('عرض كل المناسبات', 'pgevents'); ?></a>
                         <a href="<?php echo esc_url($selected_manage_url); ?>"
-                            class="flex h-12 items-center justify-center rounded-2xl border border-border bg-white text-center text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/60">إدارة المدعوين والدخول</a>
+                            class="flex h-12 items-center justify-center rounded-2xl border border-border bg-white text-center text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/60"><?php esc_html_e('إدارة المدعوين والدخول', 'pgevents'); ?></a>
                     </div>
                 </div>
             </section>
@@ -933,10 +948,12 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
             guestFilters.forEach(b => {
                 b.classList.remove('bg-primary', 'text-white');
                 b.classList.add('border', 'border-border', 'bg-white', 'text-foreground/70');
+                b.setAttribute('aria-pressed', 'false');
             });
 
             btn.classList.add('bg-primary', 'text-white');
             btn.classList.remove('border', 'border-border', 'bg-white', 'text-foreground/70');
+            btn.setAttribute('aria-pressed', 'true');
 
             applyGuestFilters();
         });
@@ -1004,7 +1021,11 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
             row.dataset.checked = 'yes';
             const checkinCell = row.querySelector('td:nth-child(3)');
             if (checkinCell) {
-                checkinCell.innerHTML = '<span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary-text ring-1 ring-primary/20">تم</span>';
+                const badgeText = (window.PGE_CHECKIN && window.PGE_CHECKIN.strings && window.PGE_CHECKIN.strings.checkedInBadge) || 'تم';
+                const badge = document.createElement('span');
+                badge.className = 'rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary-text ring-1 ring-primary/20';
+                badge.textContent = badgeText;
+                checkinCell.replaceChildren(badge);
             }
         }
 
@@ -1015,15 +1036,17 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
     }
 
     if (checkinBtn && checkinPhone && window.PGE_CHECKIN) {
+        const checkinStrings = window.PGE_CHECKIN.strings || {};
+
         checkinBtn.addEventListener('click', async () => {
             const rawPhone = checkinPhone.value || '';
             const normalizedPhone = normalizePhone(rawPhone);
             if (!normalizedPhone) {
-                checkinMsg.textContent = 'أدخل رقم هاتف صحيح';
+                checkinMsg.textContent = checkinStrings.invalidPhone || 'أدخل رقم هاتف صحيح';
                 return;
             }
 
-            checkinMsg.textContent = '...جاري الحفظ';
+            checkinMsg.textContent = checkinStrings.saving || '...جاري الحفظ';
             checkinBtn.disabled = true;
             const fd = new FormData();
             fd.append('action', 'pge_checkin_guest');
@@ -1041,7 +1064,7 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                 if (json && json.success) {
                     const payload = (json.data && typeof json.data === 'object') ? json.data : {};
                     const alreadyOnServer = !!payload.already;
-                    const serverMessage = payload.message || 'تم تسجيل الدخول';
+                    const serverMessage = payload.message || checkinStrings.defaultSuccess || 'تم تسجيل الدخول';
 
                     if (alreadyOnServer) {
                         checkinMsg.textContent = serverMessage;
@@ -1059,11 +1082,11 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                     checkinPhone.value = '';
                     checkinPhone.focus();
                 } else {
-                    const errorText = (json && typeof json.data === 'string') ? json.data : 'حدث خطأ';
+                    const errorText = (json && typeof json.data === 'string') ? json.data : (checkinStrings.genericError || 'حدث خطأ');
                     checkinMsg.textContent = `❌ ${errorText}`;
                 }
             } catch (e) {
-                checkinMsg.textContent = '❌ تعذر الاتصال بالخادم';
+                checkinMsg.textContent = `❌ ${checkinStrings.connectionError || 'تعذر الاتصال بالخادم'}`;
             } finally {
                 checkinBtn.disabled = false;
             }

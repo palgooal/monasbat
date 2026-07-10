@@ -72,6 +72,17 @@ function pgevents_enqueue_assets()
             true
         );
     }
+
+    // ✅ تسجيل (بدون تحميل مباشر) سكربت قائمة الحساب المنسدلة لويدجت PGE Login Button.
+    // التسجيل فقط هنا؛ Elementor هو من يُحمّله فعلياً عبر get_script_depends() في الويدجت
+    // نفسه، وذلك فقط في الصفحات التي يظهر فيها الويدجت — بدون تحميل عام غير ضروري.
+    wp_register_script(
+        'pge-login-button',
+        get_stylesheet_directory_uri() . '/assets/js/pge-login-button.js',
+        [],
+        wp_get_theme()->get('Version'),
+        true
+    );
 }
 add_action('wp_enqueue_scripts', 'pgevents_enqueue_assets');
 
