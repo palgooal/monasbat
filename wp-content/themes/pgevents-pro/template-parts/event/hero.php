@@ -9,7 +9,10 @@ $event_time      = (string) get_post_meta($event_id, '_pge_event_time',     true
 $event_address   = (string) get_post_meta($event_id, '_pge_event_address',  true); // اسم القاعة / العنوان
 $map_url         = (string) get_post_meta($event_id, '_pge_event_location', true); // رابط Google Maps
 
-$cover_url = get_the_post_thumbnail_url($event_id, 'full');
+// معرّف صورة الغلاف — نستخدم wp_get_attachment_image() لاحقاً بدل رابط ثابت
+// واحد، لأنها تُنتج srcset/sizes تلقائياً (صور بدقّات متعددة يختارها المتصفح
+// حسب عرض العمود الفعلي)، فلا نُجبر على تصغير صورة الدعوة الأصلية.
+$cover_id = get_post_thumbnail_id($event_id);
 
 $title     = get_the_title($event_id);
 $share_url = get_permalink($event_id);
@@ -43,9 +46,9 @@ $has_location = ($map_url !== '' || $event_address !== '');
 ?>
 
 <!-- ============================
-     Top Hero — دعوة فاخرة، هادئة
+     رأس الدعوة — شارة + عنوان المناسبة + سطر ترحيبي
 ============================ -->
-<div class="relative overflow-hidden px-4 pt-10 pb-6 text-center" dir="rtl">
+<div class="relative overflow-hidden pt-4 pb-4 text-center lg:pt-0 lg:pb-3" dir="rtl">
 
     <!-- زخرفة زهرية خفيفة -->
     <svg aria-hidden="true" class="pointer-events-none absolute -top-8 start-1/2 h-40 w-40 -translate-x-1/2 text-gold opacity-[0.08] rtl:translate-x-1/2" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1.4">
@@ -62,8 +65,11 @@ $has_location = ($map_url !== '' || $event_address !== '');
             دعوة خاصة
         </div>
 
-        <h1 class="mt-4 text-2xl font-extrabold leading-tight text-foreground sm:text-3xl">
+        <p class="mt-3 text-sm font-semibold text-foreground/60 sm:text-base">
             يسرنا دعوتكم
+        </p>
+        <h1 class="mt-1 text-3xl font-extrabold leading-tight text-foreground sm:text-4xl lg:text-5xl">
+            <?php echo esc_html($title); ?>
         </h1>
         <p class="mt-2 text-sm leading-relaxed text-foreground/75 sm:text-base">
             نتشرف بحضوركم لهذه المناسبة الخاصة
@@ -72,38 +78,49 @@ $has_location = ($map_url !== '' || $event_address !== '');
 </div>
 
 <!-- ============================
-     بطاقة الدعوة (المركز البصري)
+     الدعوة نفسها — العمل الفني كما هو، بلا اقتصاص
+     (ليست صورة بانر: هذه هي بطاقة الدعوة، تُعرَض كاملة بأبعادها الأصلية
+      سواء كانت طولية/مربعة/عرضية — object-contain بلا أي قصّ. العرض
+      يُحدَّده عمود الشبكة في single-pge_event.php وليس هذا الملف.)
 ============================ -->
-<div class="mx-auto max-w-lg px-4 pb-2" dir="rtl">
+<div class="w-full pb-2" dir="rtl">
 
-    <div class="overflow-hidden rounded-[28px] border border-border bg-white shadow-[0_20px_60px_-15px_rgba(45,25,20,0.10)]">
-
-        <!-- صورة الغلاف -->
-        <?php if ($cover_url): ?>
-            <div class="relative">
-                <img src="<?php echo esc_url($cover_url); ?>"
-                     alt="<?php echo esc_attr($title); ?>"
-                     class="h-64 w-full object-cover sm:h-80">
-                <div class="absolute inset-0" style="background:linear-gradient(to top,rgba(20,10,10,.75),rgba(20,10,10,.25) 55%,transparent)"></div>
-
-                <!-- العنوان فوق الصورة -->
-                <div class="absolute bottom-0 w-full p-5">
-                    <h2 class="text-2xl font-extrabold leading-tight text-white drop-shadow-sm sm:text-3xl">
-                        <?php echo esc_html($title); ?>
-                    </h2>
-                </div>
-            </div>
+    <div class="overflow-hidden rounded-[28px] border border-border/70 bg-white p-2.5 shadow-[0_16px_50px_-20px_rgba(45,25,20,0.14)] sm:p-4 lg:p-5">
+        <?php if ($cover_id): ?>
+            <?php
+            echo wp_get_attachment_image(
+                $cover_id,
+                'full',
+                false,
+                [
+                    'class' => 'mx-auto block w-full h-auto max-h-[800px] rounded-2xl object-contain',
+                    'alt'   => $title,
+                    // يعكس عرض عمود الدعوة الفعلي: عمود واسع (~680px) من lg فأعلى،
+                    // وعرض الشاشة تقريباً على الجوال/التابلت (عمود واحد مكدَّس).
+                    'sizes' => '(min-width: 1024px) 680px, 100vw',
+                ]
+            );
+            ?>
         <?php else: ?>
-            <div class="bg-gradient-to-b from-primary/90 to-primary-hover p-8 text-center">
-                <span aria-hidden="true" class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-2xl ring-1 ring-white/25">🎉</span>
+            <div class="flex flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-primary/90 to-primary-hover px-8 py-16 text-center">
+                <span aria-hidden="true" class="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-2xl ring-1 ring-white/25">🎉</span>
                 <h2 class="mt-3 text-2xl font-extrabold text-white sm:text-3xl">
                     <?php echo esc_html($title); ?>
                 </h2>
             </div>
         <?php endif; ?>
+    </div>
+</div>
 
-        <!-- معلومات المناسبة -->
-        <div class="bg-white px-5 py-5">
+<!-- ============================
+     معلومات المناسبة + العد التنازلي — قسم موحّد واحد أسفل الدعوة
+============================ -->
+<div class="w-full pb-2" dir="rtl">
+
+    <div class="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-sm">
+
+        <!-- التاريخ / الوقت / الموقع -->
+        <div class="px-5 py-5">
             <div class="flex flex-wrap gap-2.5">
 
                 <?php if ($display_date): ?>
@@ -131,7 +148,7 @@ $has_location = ($map_url !== '' || $event_address !== '');
                         <?php if ($map_url): ?>
                             <a href="<?php echo esc_url($map_url); ?>"
                                target="_blank" rel="noopener"
-                               class="flex h-8 shrink-0 items-center justify-center rounded-xl bg-foreground px-3 text-xs font-bold text-white hover:opacity-90">
+                               class="flex h-11 shrink-0 items-center justify-center rounded-xl bg-foreground px-4 text-xs font-bold text-white hover:opacity-90">
                                 الخريطة
                             </a>
                         <?php endif; ?>
@@ -140,67 +157,67 @@ $has_location = ($map_url !== '' || $event_address !== '');
 
             </div>
         </div>
-    </div>
 
-    <!-- العد التنازلي -->
-    <?php if ($iso_datetime):
-        // ── حالة المناسبة بناءً على التاريخ الحالي ──
-        $event_ts  = strtotime(str_replace('T', ' ', $iso_datetime));
-        $now       = time();
-        $is_past   = $event_ts && $event_ts < $now;
-        $is_today  = $event_ts && date('Y-m-d', $event_ts) === date('Y-m-d');
-        $days_left = (!$is_past && $event_ts) ? (int) ceil(($event_ts - $now) / 86400) : 0;
-    ?>
-        <div class="mt-3 overflow-hidden rounded-3xl border border-border bg-white shadow-sm">
+        <!-- العد التنازلي — امتداد لنفس البطاقة، بلا حدود/ظل منفصلين -->
+        <?php if ($iso_datetime):
+            // ── حالة المناسبة بناءً على التاريخ الحالي ──
+            $event_ts  = strtotime(str_replace('T', ' ', $iso_datetime));
+            $now       = time();
+            $is_past   = $event_ts && $event_ts < $now;
+            $is_today  = $event_ts && date('Y-m-d', $event_ts) === date('Y-m-d');
+            $days_left = (!$is_past && $event_ts) ? (int) ceil(($event_ts - $now) / 86400) : 0;
+        ?>
+            <div class="border-t border-border/70">
 
-        <?php if ($is_past): ?>
-            <!-- ── المناسبة انتهت ── -->
-            <div class="flex items-center justify-between px-5 py-4">
-                <div>
-                    <div class="text-sm font-extrabold text-foreground">انتهت المناسبة</div>
-                    <div class="mt-0.5 text-xs text-foreground/75">شكراً للحضور 🎉</div>
+            <?php if ($is_past): ?>
+                <!-- ── المناسبة انتهت ── -->
+                <div class="flex items-center justify-between px-5 py-4">
+                    <div>
+                        <div class="text-sm font-extrabold text-foreground">انتهت المناسبة</div>
+                        <div class="mt-0.5 text-xs text-foreground/75">شكراً للحضور 🎉</div>
+                    </div>
+                    <span class="rounded-full bg-secondary px-3 py-1 text-[11px] font-bold text-foreground/75">مضت</span>
                 </div>
-                <span class="rounded-full bg-secondary px-3 py-1 text-[11px] font-bold text-foreground/75">مضت</span>
-            </div>
 
-        <?php else: ?>
-            <!-- ── العد التنازلي ── -->
-            <div class="flex items-center justify-between px-5 pt-4 pb-2">
-                <span class="text-sm font-extrabold text-foreground">
-                    <?php echo $is_today ? 'اليوم! 🎉' : 'الوقت المتبقي'; ?>
-                </span>
-                <?php if ($is_today): ?>
-                    <span class="animate-pulse rounded-full bg-destructive px-2.5 py-0.5 text-[11px] font-bold text-white">الآن 🔴</span>
-                <?php elseif ($days_left <= 3): ?>
-                    <span class="rounded-full bg-gold px-2.5 py-0.5 text-[11px] font-bold text-white">قريباً ⚡</span>
-                <?php else: ?>
-                    <span class="rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-bold text-white"><?php echo (int)$days_left; ?> يوم</span>
-                <?php endif; ?>
-            </div>
+            <?php else: ?>
+                <!-- ── العد التنازلي ── -->
+                <div class="flex items-center justify-between px-5 pt-4 pb-2">
+                    <span class="text-sm font-extrabold text-foreground">
+                        <?php echo $is_today ? 'اليوم! 🎉' : 'الوقت المتبقي'; ?>
+                    </span>
+                    <?php if ($is_today): ?>
+                        <span class="animate-pulse rounded-full bg-destructive px-2.5 py-0.5 text-[11px] font-bold text-white">الآن 🔴</span>
+                    <?php elseif ($days_left <= 3): ?>
+                        <span class="rounded-full bg-gold px-2.5 py-0.5 text-[11px] font-bold text-white">قريباً ⚡</span>
+                    <?php else: ?>
+                        <span class="rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-bold text-white"><?php echo (int)$days_left; ?> يوم</span>
+                    <?php endif; ?>
+                </div>
 
-            <div class="grid grid-cols-4 gap-2 px-4 pb-4"
-                 data-countdown="<?php echo esc_attr($iso_datetime); ?>">
-                <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
-                    <span class="cd-days text-2xl font-extrabold text-foreground">—</span>
-                    <span class="mt-1 text-[11px] text-foreground/75">يوم</span>
+                <div class="grid grid-cols-4 gap-2 px-5 pb-4"
+                     data-countdown="<?php echo esc_attr($iso_datetime); ?>">
+                    <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
+                        <span class="cd-days text-2xl font-extrabold text-foreground">—</span>
+                        <span class="mt-1 text-[11px] text-foreground/75">يوم</span>
+                    </div>
+                    <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
+                        <span class="cd-hours text-2xl font-extrabold text-foreground">—</span>
+                        <span class="mt-1 text-[11px] text-foreground/75">ساعة</span>
+                    </div>
+                    <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
+                        <span class="cd-mins text-2xl font-extrabold text-foreground">—</span>
+                        <span class="mt-1 text-[11px] text-foreground/75">دقيقة</span>
+                    </div>
+                    <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
+                        <span class="cd-secs text-2xl font-extrabold text-foreground">—</span>
+                        <span class="mt-1 text-[11px] text-foreground/75">ثانية</span>
+                    </div>
                 </div>
-                <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
-                    <span class="cd-hours text-2xl font-extrabold text-foreground">—</span>
-                    <span class="mt-1 text-[11px] text-foreground/75">ساعة</span>
-                </div>
-                <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
-                    <span class="cd-mins text-2xl font-extrabold text-foreground">—</span>
-                    <span class="mt-1 text-[11px] text-foreground/75">دقيقة</span>
-                </div>
-                <div class="flex flex-col items-center rounded-2xl bg-secondary/60 py-3 ring-1 ring-border">
-                    <span class="cd-secs text-2xl font-extrabold text-foreground">—</span>
-                    <span class="mt-1 text-[11px] text-foreground/75">ثانية</span>
-                </div>
+            <?php endif; ?>
+
             </div>
         <?php endif; ?>
-
-        </div>
-    <?php endif; ?>
+    </div>
 
     <!-- أزرار الإجراءات -->
     <div class="mt-3 grid grid-cols-2 gap-3">
@@ -210,27 +227,11 @@ $has_location = ($map_url !== '' || $event_address !== '');
         </a>
 
         <button type="button"
-            class="js-add-to-calendar flex h-14 items-center justify-center rounded-2xl border-2 border-border bg-white text-sm font-bold text-foreground hover:bg-secondary/40 active:scale-[.98]"
+            class="js-add-to-calendar flex h-14 items-center justify-center rounded-2xl border border-border bg-white text-sm font-bold text-foreground hover:bg-secondary/40 active:scale-[.98]"
             data-title="<?php echo esc_attr($title); ?>"
             data-location="<?php echo esc_attr($event_address ?: 'الموقع على الخريطة'); ?>"
             data-start="<?php echo esc_attr($iso_datetime); ?>">
             📅 أضف للتقويم
-        </button>
-    </div>
-
-    <!-- زر المشاركة (واتساب + نسخ رابط) -->
-    <div class="mt-3 grid grid-cols-2 gap-3">
-        <button type="button"
-            class="js-share-wa flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-border bg-white text-sm font-semibold text-foreground/80 hover:bg-secondary/40"
-            data-title="<?php echo esc_attr($title); ?>"
-            data-url="<?php echo esc_attr($share_url); ?>">
-            <span aria-hidden="true">📲</span> واتساب
-        </button>
-
-        <button type="button"
-            class="js-copy-link flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-border bg-white text-sm font-semibold text-foreground/80 hover:bg-secondary/40"
-            data-copy="<?php echo esc_attr($share_url); ?>">
-            <span aria-hidden="true">🔗</span> نسخ الرابط
         </button>
     </div>
 

@@ -921,7 +921,12 @@ document.addEventListener('change', e => { if (e.target?.classList.contains('gue
 if (selectAllGuests) {
     selectAllGuests.addEventListener('change', () => {
         const checked = !!selectAllGuests.checked;
-        document.querySelectorAll('.guest-checkbox').forEach(el => { el.checked = checked; });
+        // نحدد فقط الصفوف الظاهرة حالياً (بعد تطبيق الفلتر/البحث)، بنفس منطق
+        // whatsappAllBtn — لتفادي تحديد/حذف مدعوين مخفيّين لا يراهم المستخدم.
+        getRows().filter(r => r.style.display !== 'none').forEach(row => {
+            const cb = row.querySelector('.guest-checkbox');
+            if (cb) cb.checked = checked;
+        });
         refreshBulkDeleteState();
     });
 }

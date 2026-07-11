@@ -49,10 +49,14 @@ if (!function_exists('pge_migrate_legacy_rsvp_meta')) {
             'skipped'                        => 0,
             'conflicts'                      => 0,
             'invalid'                        => 0,
+            'db_errors'                      => 0,
             'events'                         => [],
             'has_more'                       => false,
             'next_offset'                    => null,
             'total_events_with_legacy_data'  => 0,
+            // عيّنة (حتى 10) من القيم الخام غير القابلة للتفسير — لتشخيص reply_map الناقص
+            // بدل الاكتفاء بعدّاد "invalid" بدون معرفة السبب الفعلي.
+            'invalid_samples'                => [],
         ];
 
         // فقط المناسبات التي تحمل فعلياً بيانات RSVP قديمة (تحسين أداء)
@@ -83,7 +87,7 @@ if (!function_exists('pge_migrate_legacy_rsvp_meta')) {
         foreach ($event_ids as $event_id) {
             $event_id = (int) $event_id;
             $report['events_scanned']++;
-            $event_detail = ['event_id' => $event_id, 'migrated' => 0, 'skipped' => 0, 'conflicts' => 0, 'invalid' => 0];
+            $event_detail = ['event_id' => $event_id, 'migrated' => 0, 'skipped' => 0, 'conflicts' => 0, 'invalid' => 0, 'db_errors' => 0];
 
             $records = get_post_meta($event_id, '_pge_rsvp_map', true);
             if (!is_array($records)) $records = get_post_meta($event_id, '_pge_rsvp_records', true);
@@ -108,20 +112,37 @@ if (!function_exists('pge_migrate_legacy_rsvp_meta')) {
                 if ($phone === '') {
                     $report['invalid']++;
                     $event_detail['invalid']++;
+                    if (count($report['invalid_samples']) < 10) {
+                        $report['invalid_samples'][] = [
+                            'event_id' => $event_id,
+                            'key'      => (string) $key,
+                            'reason'   => 'empty_phone',
+                        ];
+                    }
                     continue;
                 }
 
-                $legacy_reply = strtolower(trim((string) ($rec['reply'] ?? '')));
+                $legacy_reply_raw = trim((string) ($rec['reply'] ?? ''));
+                $legacy_reply     = strtolower($legacy_reply_raw);
                 $reply = $reply_map[$legacy_reply] ?? null;
 
                 if ($reply === null) {
                     $report['invalid']++;
                     $event_detail['invalid']++;
+                    if (count($report['invalid_samples']) < 10) {
+                        $report['invalid_samples'][] = [
+                            'event_id' => $event_id,
+                            'phone'    => $phone,
+                            'reason'   => 'unmapped_reply',
+                            'raw'      => $legacy_reply_raw,
+                        ];
+                    }
                     continue;
                 }
 
                 $companions = max(0, min(20, (int) ($rec['companions'] ?? 0)));
                 $note       = trim((string) ($rec['note'] ?? ''));
+                $note       = ($note === '') ? null : $note; // لا تُخزّن سلسلة فارغة — استخدم NULL لتفادي تلويث العمود
                 $legacy_ts  = !empty($rec['updated_at']) ? strtotime((string) $rec['updated_at']) : 0;
 
                 $existing = $wpdb->get_row($wpdb->prepare(
@@ -130,11 +151,16 @@ if (!function_exists('pge_migrate_legacy_rsvp_meta')) {
                     $phone
                 ));
 
+                // طبّع NULL والسلسلة الفارغة إلى نفس القيمة عند المقارنة فقط (لا يؤثر على ما يُكتَب)
+                $existing_note_normalized = ($existing && $existing->note !== null && $existing->note !== '')
+                    ? (string) $existing->note
+                    : null;
+
                 if ($existing) {
                     // مطابق أصلاً — لا شيء لفعله
                     if ((string) $existing->reply === $reply
                         && (int) $existing->companions === $companions
-                        && (string) $existing->note === $note) {
+                        && $existing_note_normalized === $note) {
                         $report['skipped']++;
                         $event_detail['skipped']++;
                         continue;
@@ -156,18 +182,36 @@ if (!function_exists('pge_migrate_legacy_rsvp_meta')) {
                         continue;
                     }
 
+                    $db_ok = true;
                     if (!$args['dry_run']) {
-                        $wpdb->update(
+                        $result = $wpdb->update(
                             $table,
                             ['reply' => $reply, 'companions' => $companions, 'note' => $note],
                             ['id' => (int) $existing->id],
                             ['%s', '%d', '%s'],
                             ['%d']
                         );
+                        // false = فشل الاستعلام فعلياً؛ 0 = لم يتغيّر شيء (نادر هنا لأن التطابق التام يُستبعَد أعلاه)
+                        $db_ok = ($result !== false);
                     }
-                    $report['migrated']++;
-                    $event_detail['migrated']++;
+
+                    if ($db_ok) {
+                        $report['migrated']++;
+                        $event_detail['migrated']++;
+                    } else {
+                        $report['db_errors']++;
+                        $event_detail['db_errors']++;
+                        if (count($report['invalid_samples']) < 10) {
+                            $report['invalid_samples'][] = [
+                                'event_id' => $event_id,
+                                'phone'    => $phone,
+                                'reason'   => 'db_error_update',
+                                'raw'      => (string) $wpdb->last_error,
+                            ];
+                        }
+                    }
                 } else {
+                    $db_ok = true;
                     if (!$args['dry_run']) {
                         $insert_data = [
                             'event_id'    => $event_id,
@@ -185,10 +229,27 @@ if (!function_exists('pge_migrate_legacy_rsvp_meta')) {
                             $formats[] = '%s';
                         }
 
-                        $wpdb->insert($table, $insert_data, $formats);
+                        // إدخال أو upsert آمن: لو أدخل تشغيل آخر نفس الصف بين الفحص والتنفيذ (سباق نادر)،
+                        // UNIQUE KEY (event_id, guest_phone) يمنع التكرار على مستوى قاعدة البيانات نفسها.
+                        $result = $wpdb->insert($table, $insert_data, $formats);
+                        $db_ok  = ($result !== false);
                     }
-                    $report['migrated']++;
-                    $event_detail['migrated']++;
+
+                    if ($db_ok) {
+                        $report['migrated']++;
+                        $event_detail['migrated']++;
+                    } else {
+                        $report['db_errors']++;
+                        $event_detail['db_errors']++;
+                        if (count($report['invalid_samples']) < 10) {
+                            $report['invalid_samples'][] = [
+                                'event_id' => $event_id,
+                                'phone'    => $phone,
+                                'reason'   => 'db_error_insert',
+                                'raw'      => (string) $wpdb->last_error,
+                            ];
+                        }
+                    }
                 }
             }
 
@@ -267,7 +328,20 @@ function pge_render_rsvp_migration_page()
         echo '<tr><td>تم تخطيها (مطابقة أصلاً أو بيانات SQL أحدث)</td><td><strong>' . (int) $report['skipped'] . '</strong></td></tr>';
         echo '<tr style="color:#b45309;"><td>تعارضات (تحتاج مراجعة يدوية)</td><td><strong>' . (int) $report['conflicts'] . '</strong></td></tr>';
         echo '<tr style="color:#dc2626;"><td>غير صالحة (رقم/رد غير قابل للتفسير)</td><td><strong>' . (int) $report['invalid'] . '</strong></td></tr>';
+        if (!empty($report['db_errors'])) {
+            echo '<tr style="color:#dc2626;"><td>أخطاء قاعدة بيانات (لم تُكتب فعلياً)</td><td><strong>' . (int) $report['db_errors'] . '</strong></td></tr>';
+        }
         echo '</tbody></table>';
+
+        if (!empty($report['invalid_samples'])) {
+            echo '<details style="margin-top:16px;"><summary style="cursor:pointer; font-weight:bold;">عيّنة من الحالات غير الصالحة/الأخطاء (لتشخيص السبب)</summary>';
+            echo '<table class="widefat striped" style="margin-top:8px;"><thead><tr><th>Event ID</th><th>السبب</th><th>القيمة الخام</th></tr></thead><tbody>';
+            foreach ($report['invalid_samples'] as $s) {
+                $label = (string) ($s['phone'] ?? $s['key'] ?? '');
+                echo '<tr><td>#' . (int) $s['event_id'] . '</td><td>' . esc_html($s['reason']) . '</td><td>' . esc_html($label . ' — ' . ($s['raw'] ?? '')) . '</td></tr>';
+            }
+            echo '</tbody></table></details>';
+        }
 
         if ($report['has_more']) {
             echo '<form method="post" style="margin-top:16px;">';
@@ -282,12 +356,12 @@ function pge_render_rsvp_migration_page()
             echo '<p style="color:#16a34a; margin-top:12px;"><strong>✅ اكتمل فحص جميع المناسبات التي تحمل بيانات RSVP قديمة.</strong></p>';
         }
 
-        if (!empty($report['conflicts']) || !empty($report['invalid'])) {
+        if (!empty($report['conflicts']) || !empty($report['invalid']) || !empty($report['db_errors'])) {
             echo '<details style="margin-top:16px;"><summary style="cursor:pointer; font-weight:bold;">تفاصيل حسب المناسبة</summary>';
-            echo '<table class="widefat striped" style="margin-top:8px;"><thead><tr><th>Event ID</th><th>مُرحَّل</th><th>مُتخطَّى</th><th>تعارض</th><th>غير صالح</th></tr></thead><tbody>';
+            echo '<table class="widefat striped" style="margin-top:8px;"><thead><tr><th>Event ID</th><th>مُرحَّل</th><th>مُتخطَّى</th><th>تعارض</th><th>غير صالح</th><th>خطأ DB</th></tr></thead><tbody>';
             foreach ($report['events'] as $ev) {
-                if ($ev['conflicts'] === 0 && $ev['invalid'] === 0) continue;
-                echo '<tr><td><a href="' . esc_url(get_edit_post_link($ev['event_id'])) . '">#' . (int) $ev['event_id'] . '</a></td><td>' . (int) $ev['migrated'] . '</td><td>' . (int) $ev['skipped'] . '</td><td>' . (int) $ev['conflicts'] . '</td><td>' . (int) $ev['invalid'] . '</td></tr>';
+                if ($ev['conflicts'] === 0 && $ev['invalid'] === 0 && empty($ev['db_errors'])) continue;
+                echo '<tr><td><a href="' . esc_url(get_edit_post_link($ev['event_id'])) . '">#' . (int) $ev['event_id'] . '</a></td><td>' . (int) $ev['migrated'] . '</td><td>' . (int) $ev['skipped'] . '</td><td>' . (int) $ev['conflicts'] . '</td><td>' . (int) $ev['invalid'] . '</td><td>' . (int) ($ev['db_errors'] ?? 0) . '</td></tr>';
             }
             echo '</tbody></table></details>';
         }

@@ -148,32 +148,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
 }
 ?>
 
-<section id="rsvp" class="mx-auto max-w-lg px-4 pb-6" dir="rtl" data-pref-reply="<?php echo esc_attr($pref_reply); ?>">
+<section id="rsvp" class="w-full pb-5" dir="rtl" data-pref-reply="<?php echo esc_attr($pref_reply); ?>">
 
-    <div class="overflow-hidden rounded-3xl border border-border bg-white shadow-sm">
+    <!-- عنوان القسم يتقدّم بصرياً على غيره من العناوين — هذا هو الإجراء الأساسي في الصفحة -->
+    <div class="mb-3 px-1 text-center">
+        <h2 class="text-xl font-extrabold text-foreground sm:text-2xl">تأكيد الحضور</h2>
+        <p class="mt-1 text-sm text-foreground/70">
+            <?php echo $already_replied ? 'ردّك مسجّل — يمكنك التعديل في أي وقت' : 'يسعدنا معرفة ردّك'; ?>
+        </p>
+    </div>
+
+    <div class="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-[0_16px_50px_-24px_rgba(45,25,20,0.16)]">
 
         <!-- رأس القسم -->
-        <div class="border-b border-border px-5 py-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <div class="text-lg font-extrabold text-foreground">تأكيد الحضور</div>
-                    <div class="mt-0.5 text-xs text-foreground/75">
-                        <?php echo $already_replied ? 'ردّك مسجّل — يمكنك التعديل' : 'يسعدنا معرفة ردّك'; ?>
+        <?php if ($guest_limit > 0): ?>
+            <div class="border-b border-border/70 px-5 py-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-foreground/75">عدد المؤكدين حتى الآن</span>
+                    <div class="text-lg font-extrabold text-foreground">
+                        <?php echo esc_html($total_attending); ?>
+                        <span class="text-sm font-normal text-foreground/70">/ <?php echo esc_html($guest_limit); ?></span>
                     </div>
                 </div>
 
-                <?php if ($guest_limit > 0): ?>
-                    <div class="text-right">
-                        <div class="text-xs text-foreground/75">المؤكدون</div>
-                        <div class="text-lg font-extrabold text-foreground">
-                            <?php echo esc_html($total_attending); ?>
-                            <span class="text-sm font-normal text-foreground/70">/ <?php echo esc_html($guest_limit); ?></span>
-                        </div>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <?php if ($guest_limit > 0): ?>
                 <!-- شريط التقدم -->
                 <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-secondary">
                     <div class="h-full rounded-full bg-gold transition-all duration-500"
@@ -184,10 +181,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
                         ⚠️ تبقّى <?php echo esc_html($remaining); ?> مقاعد فقط
                     </p>
                 <?php endif; ?>
-            <?php endif; ?>
-        </div>
+            </div>
+        <?php endif; ?>
 
-        <div class="p-5">
+        <div class="p-6">
 
             <!-- بطاقة تأكيد أنيقة إذا كان قد ردّ مسبقاً -->
             <?php if ($already_replied && !$ok): ?>

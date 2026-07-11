@@ -403,11 +403,17 @@ add_action('wp_ajax_pge_event_guest_update', function () {
         wp_send_json_error('رقم الجوال الجديد مستخدم بالفعل');
     }
 
+    // نحفظ سجل المدعو القديم قبل حذفه — تحديداً رمز الدعوة الشخصي (code)،
+    // حتى لا يُفقَد ويُولَّد رمز جديد بالخطأ داخل save_map() لمجرد تعديل
+    // الاسم/الملاحظة. تجديد الرمز يجب أن يحدث فقط عبر pge_event_guest_regen_code.
+    $existing_guest = $guests_map[$old_phone] ?? [];
+
     unset($guests_map[$old_phone]);
     $guests_map[$new_phone] = [
         'phone' => $new_phone,
         'name'  => $name,
         'note'  => $note,
+        'code'  => (string) ($existing_guest['code'] ?? ''),
     ];
 
     pge_event_guests_migrate_phone_refs($event_id, $old_phone, $new_phone);

@@ -47,15 +47,16 @@ if ($invite_code !== '' && function_exists('pge_generate_qr_url')) {
 }
 ?>
 
-<div class="mx-auto max-w-lg px-4 pb-4" dir="rtl">
+<div class="w-full pt-4 pb-4" dir="rtl">
 
     <!-- ===========================
-         بطاقة الدخول (QR + رمز الدعوة)
+         بطاقة الدخول (QR + رمز الدعوة + مشاركة)
+         — كل ما يخص "الدخول والمشاركة" مجمّع هنا في مكان واحد بدل تشتيته
     =========================== -->
-    <div class="overflow-hidden rounded-3xl border border-border bg-white shadow-sm">
+    <div class="overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-[0_1px_3px_rgba(20,10,10,0.04)]">
 
         <!-- رأس البطاقة -->
-        <div class="flex items-center justify-between border-b border-border px-5 py-4">
+        <div class="flex items-center justify-between border-b border-border/70 px-5 py-4">
             <div>
                 <div class="text-lg font-extrabold text-foreground">بطاقة دخولك 🎟</div>
                 <div class="mt-0.5 text-xs text-foreground/75">أرِها عند الباب للدخول السريع</div>
@@ -64,16 +65,16 @@ if ($invite_code !== '' && function_exists('pge_generate_qr_url')) {
         </div>
 
         <!-- QR Image -->
-        <div class="flex flex-col items-center px-5 py-6">
+        <div class="flex flex-col items-center px-5 py-5">
             <?php if ($qr_img_url): ?>
                 <div class="overflow-hidden rounded-3xl bg-white p-3 shadow-inner ring-1 ring-border">
                     <img src="<?php echo esc_url($qr_img_url); ?>"
                          alt="QR رمز الدعوة"
-                         class="h-52 w-52 object-contain">
+                         class="h-44 w-44 object-contain">
                 </div>
 
                 <?php if ($invite_code): ?>
-                    <div class="mt-4 flex items-center gap-2 rounded-2xl bg-secondary/60 px-5 py-3 ring-1 ring-border">
+                    <div class="mt-3 flex items-center gap-2 rounded-2xl bg-secondary/60 px-5 py-3 ring-1 ring-border">
                         <span class="text-xs text-foreground/75">رمز الدعوة:</span>
                         <span class="text-base font-extrabold tracking-widest text-foreground">
                             <?php echo esc_html($invite_code); ?>
@@ -83,7 +84,7 @@ if ($invite_code !== '' && function_exists('pge_generate_qr_url')) {
 
             <?php else: ?>
                 <!-- placeholder إذا لم يكن هناك رمز -->
-                <div class="flex h-52 w-52 items-center justify-center rounded-3xl bg-secondary/60 ring-1 ring-border">
+                <div class="flex h-44 w-44 items-center justify-center rounded-3xl bg-secondary/60 ring-1 ring-border">
                     <div class="text-center">
                         <div aria-hidden="true" class="text-4xl">🎟</div>
                         <div class="mt-2 text-xs text-foreground/75">لم يُضَف رمز الدعوة بعد</div>
@@ -91,66 +92,37 @@ if ($invite_code !== '' && function_exists('pge_generate_qr_url')) {
                 </div>
             <?php endif; ?>
 
-            <!-- أزرار تحت QR -->
-            <div class="mt-5 grid w-full grid-cols-2 gap-3">
+            <!-- أزرار الدخول والمشاركة — كل الإجراءات المرتبطة مجمّعة معاً -->
+            <div class="mt-4 grid w-full grid-cols-2 gap-3">
                 <button type="button"
                     class="js-open-qr flex h-11 items-center justify-center gap-2 rounded-2xl bg-foreground text-sm font-semibold text-white hover:opacity-90">
                     🔍 تكبير QR
                 </button>
 
                 <button type="button"
-                    class="js-copy-link flex h-11 items-center justify-center gap-2 rounded-2xl border-2 border-border bg-white text-sm font-semibold text-foreground hover:bg-secondary/40"
+                    class="js-share-wa flex h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-white text-sm font-semibold text-foreground/80 hover:bg-secondary/40"
+                    data-title="<?php echo esc_attr(get_the_title()); ?>"
+                    data-url="<?php echo esc_attr($share_url); ?>">
+                    <span aria-hidden="true">📲</span> واتساب
+                </button>
+
+                <button type="button"
+                    class="js-copy-link col-span-2 flex h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-white text-sm font-semibold text-foreground/80 hover:bg-secondary/40"
                     data-copy="<?php echo esc_attr($share_url); ?>">
-                    🔗 نسخ الرابط
+                    🔗 نسخ رابط الدعوة
                 </button>
             </div>
         </div>
     </div>
 
     <!-- ===========================
-         رسالة المضيف
-    =========================== -->
-    <div class="mt-3 overflow-hidden rounded-3xl border border-border bg-white p-5 shadow-sm">
-        <div class="flex items-center gap-2">
-            <span aria-hidden="true" class="text-base">📝</span>
-            <span class="text-lg font-extrabold text-foreground">رسالة المضيف</span>
-        </div>
-        <div class="mt-3 rounded-2xl bg-secondary/60 p-4 text-sm leading-relaxed text-foreground/80 ring-1 ring-border">
-            <?php echo $notes !== '' ? nl2br(esc_html($notes)) : '<span class="italic text-foreground/75">لا توجد رسالة إضافية من المضيف حاليًا</span>'; ?>
-        </div>
-    </div>
-
-    <!-- ===========================
-         الموقع
-    =========================== -->
-    <?php if ($has_location): ?>
-        <div class="mt-3 overflow-hidden rounded-3xl border border-border bg-white p-5 shadow-sm">
-            <div class="flex items-center gap-2">
-                <span aria-hidden="true" class="text-base">📍</span>
-                <span class="text-lg font-extrabold text-foreground">الموقع</span>
-            </div>
-            <div class="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-secondary/60 p-4 ring-1 ring-border">
-                <span class="truncate text-sm font-semibold text-foreground">
-                    <?php echo $event_address !== '' ? esc_html($event_address) : 'الموقع على الخريطة'; ?>
-                </span>
-                <?php if ($map_url): ?>
-                    <a href="<?php echo esc_url($map_url); ?>"
-                       target="_blank" rel="noopener"
-                       class="flex h-11 shrink-0 items-center justify-center rounded-xl bg-foreground px-4 text-xs font-bold text-white hover:opacity-90">
-                        فتح الخريطة
-                    </a>
-                <?php endif; ?>
-            </div>
-        </div>
-    <?php endif; ?>
-
-    <!-- ===========================
          تبويبات إضافية (الألبوم / الدردشة)
+         (الموقع مُدرَج أصلاً ضمن بطاقة الدعوة الرئيسية أعلى الصفحة — لا داعي لتكراره هنا)
     =========================== -->
-    <div class="mt-3 overflow-hidden rounded-3xl border border-border bg-white shadow-sm">
+    <div class="mt-4 overflow-hidden rounded-[28px] border border-border/70 bg-white shadow-[0_1px_3px_rgba(20,10,10,0.04)]">
 
         <!-- شريط التبويبات (قابل للتمرير) -->
-        <div class="flex gap-2 overflow-x-auto border-b border-border px-4 py-3 scrollbar-hide">
+        <div class="flex gap-2 overflow-x-auto border-b border-border/70 px-4 py-3 scrollbar-hide">
             <button type="button"
                 class="event-tab-btn flex h-11 shrink-0 items-center rounded-xl bg-foreground px-5 text-sm font-bold text-white"
                 data-tab="details" aria-selected="true">
@@ -264,6 +236,22 @@ if ($invite_code !== '' && function_exists('pge_generate_qr_url')) {
         </div>
 
     </div>
+
+    <!-- ===========================
+         رسالة المضيف — تُخفى بالكامل إن لم توجد رسالة (لا بطاقة فارغة)
+    =========================== -->
+    <?php if ($notes !== ''): ?>
+        <div class="mt-4 overflow-hidden rounded-[28px] border border-border/70 bg-white p-5 shadow-[0_1px_3px_rgba(20,10,10,0.04)]">
+            <div class="flex items-center gap-2">
+                <span aria-hidden="true" class="text-base">📝</span>
+                <span class="text-lg font-extrabold text-foreground">رسالة المضيف</span>
+            </div>
+            <div class="mt-3 rounded-2xl bg-secondary/60 p-4 text-sm leading-relaxed text-foreground/80 ring-1 ring-border">
+                <?php echo nl2br(esc_html($notes)); ?>
+            </div>
+        </div>
+    <?php endif; ?>
+
 </div>
 
 <!-- ============================
