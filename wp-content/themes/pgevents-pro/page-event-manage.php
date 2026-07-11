@@ -64,6 +64,33 @@ $manage_events_used_q = new WP_Query([
 $manage_events_used  = (int) $manage_events_used_q->found_posts;
 $manage_events_left  = max(0, $manage_events_limit - $manage_events_used);
 
+// ============================================================
+// حالة مساحة العمل (Workspace State) — لتحديد أي لوحة في الشريط
+// الجانبي تكون "أساسية" الآن مقابل "ثانوية". هذا منطق عرض فقط
+// (view-state)، مبني على بيانات مقروءة أصلاً في الأعلى ($stats)
+// أو حقل post-meta موجود مسبقاً ويُكتب من مكان آخر في المشروع
+// (_pge_wa_sent_at يُكتب في class-cartat-handler.php عند اكتمال
+// طابور الإرسال). لا استعلامات جديدة، لا كتابة، لا تغيير لأي منطق
+// أعمال — فقط متغيّر مشتق يقرر ترتيب/انفتاح لوحات الشريط الجانبي،
+// وقابل للاستبدال لاحقاً بمنطق أدق دون تغيير الواجهة.
+// ============================================================
+$mon_guests_total = (int) ($stats['total'] ?? 0);
+$mon_rsvp_replies = (int) ($stats['yes'] ?? 0) + (int) ($stats['no'] ?? 0);
+$mon_wa_sent_at    = get_post_meta($event_id, '_pge_wa_sent_at', true); // قراءة فقط لحقل موجود مسبقاً
+$mon_is_event_day  = ($manage_event_ts && date('Y-m-d', $manage_event_ts) === date('Y-m-d', current_time('timestamp')));
+
+if ($mon_is_event_day) {
+    $mon_workspace_state = 'event_day';
+} elseif ($mon_guests_total === 0) {
+    $mon_workspace_state = 'no_guests';
+} elseif (empty($mon_wa_sent_at)) {
+    $mon_workspace_state = 'not_invited';
+} elseif ($mon_rsvp_replies === 0) {
+    $mon_workspace_state = 'invited';
+} else {
+    $mon_workspace_state = 'responses';
+}
+
 get_header();
 ?>
 <style>
@@ -74,11 +101,11 @@ get_header();
 .noscroll { -ms-overflow-style:none; scrollbar-width:none; }
 
 /* ── Guest Card ───────────────────────────────────── */
-.guest-card { background:#fff; border-radius:18px; border:1px solid var(--color-border); transition:box-shadow .15s; overflow:hidden; }
+.guest-card { background:#fff; border-radius:20px; border:1px solid var(--color-border); transition:box-shadow .15s; overflow:hidden; }
 .guest-card:active { background:var(--color-background); }
 
 /* ── Avatar ───────────────────────────────────────── */
-.g-avatar { width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:#fff;flex-shrink:0; }
+.g-avatar { width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;color:#fff;flex-shrink:0; }
 .av-yes    { background:linear-gradient(135deg,#10b981,#059669); }
 .av-no     { background:linear-gradient(135deg, var(--color-destructive-text), #8f2d20); }
 .av-pending{ background:linear-gradient(135deg, color-mix(in srgb, var(--color-foreground) 38%, white), color-mix(in srgb, var(--color-foreground) 55%, white)); }
@@ -146,7 +173,7 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
     </a>
     <div class="flex-1 min-w-0">
       <div class="font-bold text-sm truncate text-foreground"><?= esc_html(get_the_title($event_id)) ?></div>
-      <div class="text-[10px] text-foreground/65"><?= esc_html($event_date_label) ?></div>
+      <div class="text-[11px] text-foreground/65"><?= esc_html($event_date_label) ?></div>
     </div>
     <a href="<?= esc_url($event_url) ?>" target="_blank" rel="noopener" class="px-3 py-2 rounded-xl bg-primary text-white text-xs font-bold flex-shrink-0">فتح</a>
     <a href="<?= esc_url($edit_url) ?>" aria-label="تعديل المناسبة" class="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary/60 text-foreground/70">
@@ -154,61 +181,6 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
     </a>
   </div>
 </header>
-
-<!-- ══ HERO (desktop) ═════════════════════════════════════════ -->
-<div class="hidden lg:block max-w-7xl mx-auto px-6 pt-8">
-  <section class="relative overflow-hidden rounded-[28px] border border-border bg-white p-8 shadow-[0_20px_60px_-15px_rgba(45,25,20,0.10)]">
-    <svg aria-hidden="true" class="pointer-events-none absolute -top-10 -start-10 h-56 w-56 text-gold opacity-[0.06]" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1.4">
-      <path d="M10 190C40 150 30 90 70 60C100 38 130 45 150 20" stroke-linecap="round"/>
-      <circle cx="70" cy="60" r="5"/><circle cx="102" cy="46" r="4"/><circle cx="132" cy="34" r="3.5"/>
-      <path d="M70 60c10-6 18-4 24 4M102 46c8-5 16-3 21 4"/>
-    </svg>
-
-    <div class="relative flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="inline-flex items-center gap-1.5 rounded-full <?= $manage_is_upcoming ? 'bg-primary/10 text-primary-text ring-primary/20' : 'bg-secondary/70 text-foreground/70 ring-border' ?> ring-1 px-3 py-1 text-xs font-bold">
-            <span aria-hidden="true">●</span> <?= esc_html($manage_status_label) ?>
-          </span>
-          <?php if ($invite_code): ?>
-            <span class="inline-flex items-center gap-1.5 rounded-full bg-gold/10 text-gold-text ring-1 ring-gold/20 px-3 py-1 text-xs font-bold font-mono tracking-widest"><?= esc_html($invite_code) ?></span>
-          <?php endif; ?>
-        </div>
-        <h1 class="mt-3 text-2xl font-extrabold leading-tight tracking-tight text-foreground sm:text-3xl"><?= esc_html(get_the_title($event_id)) ?></h1>
-        <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-foreground/70">
-          <span class="inline-flex items-center gap-1.5">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><rect x="3" y="5" width="18" height="16" rx="3"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>
-            <?= esc_html($event_date_label) ?>
-          </span>
-          <?php if ($event_address_manage !== ''): ?>
-            <span class="inline-flex items-center gap-1.5 min-w-0">
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4 flex-shrink-0"><path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-6h6v6"/></svg>
-              <span class="truncate"><?= esc_html($event_address_manage) ?></span>
-            </span>
-          <?php elseif ($event_location_manage !== ''): ?>
-            <a href="<?= esc_url($event_location_manage) ?>" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 underline underline-offset-4">
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-              الموقع على الخريطة
-            </a>
-          <?php endif; ?>
-        </div>
-      </div>
-
-      <div class="flex flex-shrink-0 flex-wrap gap-2.5">
-        <button type="button" onclick="focusAddGuest()" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-white shadow-sm shadow-primary/30 transition-colors duration-200 hover:bg-primary-hover">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4.5 w-4.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
-          إضافة مدعو
-        </button>
-        <a href="<?= esc_url($edit_url) ?>" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border-[1.5px] border-gold bg-white px-5 text-sm font-bold text-gold-text transition-colors duration-200 hover:bg-gold/[0.06]">
-          تعديل المناسبة
-        </a>
-        <a href="<?= esc_url($event_url) ?>" target="_blank" rel="noopener" class="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-border bg-white px-5 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
-          عرض الدعوة
-        </a>
-      </div>
-    </div>
-  </section>
-</div>
 
 <!-- ══ STATS STRIP (mobile: horizontal chips) ═════════════════ -->
 <div class="stats-outer max-w-7xl mx-auto lg:hidden">
@@ -221,91 +193,129 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
   </div>
 </div>
 
-<!-- ══ STATS KPI CARDS (desktop) + QUICK ACTIONS ══════════════ -->
-<div class="hidden lg:block max-w-7xl mx-auto px-6 mt-6 space-y-6">
+<!-- ══ DASHBOARD HEADER (desktop) ═══════════════════════════════
+     ملخص المناسبة + إجراءات سريعة + إحصائيات + RSVP كوحدة بصرية واحدة
+     (بدل أربع بطاقات منفصلة) — بلا أي تغيير في البيانات أو المنطق. -->
+<div class="hidden lg:block max-w-7xl mx-auto px-6 pt-6">
+  <section class="relative overflow-hidden rounded-[28px] border border-border bg-white shadow-[0_20px_60px_-15px_rgba(45,25,20,0.10)]">
+    <svg aria-hidden="true" class="pointer-events-none absolute -top-10 -start-10 h-56 w-56 text-gold opacity-[0.06]" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M10 190C40 150 30 90 70 60C100 38 130 45 150 20" stroke-linecap="round"/>
+      <circle cx="70" cy="60" r="5"/><circle cx="102" cy="46" r="4"/><circle cx="132" cy="34" r="3.5"/>
+      <path d="M70 60c10-6 18-4 24 4M102 46c8-5 16-3 21 4"/>
+    </svg>
 
-  <!-- Quick Actions -->
-  <section class="rounded-[28px] border border-border bg-white p-6 shadow-sm">
-    <h2 class="text-sm font-extrabold text-foreground/70">إجراءات سريعة</h2>
-    <div class="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <button type="button" onclick="focusAddGuest()" class="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl bg-primary text-sm font-bold text-white transition-colors hover:bg-primary-hover">
-        <span aria-hidden="true" class="text-lg">➕</span> إضافة مدعو
-      </button>
-      <button type="button" onclick="focusBulkImport()" class="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border-[1.5px] border-gold bg-white text-sm font-bold text-gold-text transition-colors hover:bg-gold/[0.06]">
-        <span aria-hidden="true" class="text-lg">📋</span> استيراد المدعوين
-      </button>
-      <button type="button" onclick="shareInviteLink()" class="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border border-border bg-white text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
-        <span aria-hidden="true" class="text-lg">📤</span> مشاركة الدعوة
-      </button>
-      <button type="button" onclick="document.getElementById('exportCsvBtn')?.click()" class="flex h-16 flex-col items-center justify-center gap-1 rounded-2xl border border-border bg-white text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
-        <span aria-hidden="true" class="text-lg">⬇️</span> تصدير القائمة
-      </button>
+    <!-- ملخص المناسبة: العنوان + الحالة + رمز الدعوة + التاريخ -->
+    <div class="relative px-8 pt-6 pb-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="inline-flex items-center gap-1.5 rounded-full <?= $manage_is_upcoming ? 'bg-primary/10 text-primary-text ring-primary/20' : 'bg-secondary/70 text-foreground/70 ring-border' ?> ring-1 px-3 py-1 text-xs font-bold">
+          <span aria-hidden="true">●</span> <?= esc_html($manage_status_label) ?>
+        </span>
+        <?php if ($invite_code): ?>
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-gold/10 text-gold-text ring-1 ring-gold/20 px-3 py-1 text-xs font-bold font-mono tracking-widest"><?= esc_html($invite_code) ?></span>
+        <?php endif; ?>
+      </div>
+      <h1 class="mt-2.5 text-2xl font-extrabold leading-tight tracking-tight text-foreground sm:text-3xl"><?= esc_html(get_the_title($event_id)) ?></h1>
+      <div class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-foreground/70">
+        <span class="inline-flex items-center gap-1.5">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><rect x="3" y="5" width="18" height="16" rx="3"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>
+          <?= esc_html($event_date_label) ?>
+        </span>
+        <?php if ($event_address_manage !== ''): ?>
+          <span class="inline-flex items-center gap-1.5 min-w-0">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4 flex-shrink-0"><path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-6h6v6"/></svg>
+            <span class="truncate"><?= esc_html($event_address_manage) ?></span>
+          </span>
+        <?php elseif ($event_location_manage !== ''): ?>
+          <a href="<?= esc_url($event_location_manage) ?>" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 underline underline-offset-4">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            الموقع على الخريطة
+          </a>
+        <?php endif; ?>
+      </div>
     </div>
-  </section>
 
-  <!-- Statistics -->
-  <section>
-    <h2 class="px-1 text-sm font-extrabold text-foreground/70">الإحصائيات</h2>
-    <div class="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-5">
-      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
-        <div class="flex items-center gap-2">
-          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary/70 text-foreground/70">👥</span>
-          <span class="text-xs font-bold text-foreground/70">إجمالي المدعوين</span>
-        </div>
-        <div class="mt-2 text-2xl font-extrabold text-foreground"><?= (int)$stats['total'] ?></div>
-        <p class="mt-1 text-[11px] text-foreground/65">كل من أُضيف لقائمة هذه المناسبة</p>
-      </div>
-      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
-        <div class="flex items-center gap-2">
-          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">✅</span>
-          <span class="text-xs font-bold text-foreground/70">أكد الحضور</span>
-        </div>
-        <div class="mt-2 text-2xl font-extrabold text-emerald-700"><?= (int)$stats['yes'] ?></div>
-        <p class="mt-1 text-[11px] text-foreground/65">ردّوا بـ «سأحضر»</p>
-      </div>
-      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
-        <div class="flex items-center gap-2">
-          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive-text">❌</span>
-          <span class="text-xs font-bold text-foreground/70">اعتذر</span>
-        </div>
-        <div class="mt-2 text-2xl font-extrabold text-destructive-text"><?= (int)$stats['no'] ?></div>
-        <p class="mt-1 text-[11px] text-foreground/65">ردّوا بالاعتذار عن الحضور</p>
-      </div>
-      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
-        <div class="flex items-center gap-2">
-          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold-text">⏳</span>
-          <span class="text-xs font-bold text-foreground/70">بانتظار الرد</span>
-        </div>
-        <div class="mt-2 text-2xl font-extrabold text-gold-text"><?= (int)$stats['pending'] ?></div>
-        <p class="mt-1 text-[11px] text-foreground/65">لم يردّوا على الدعوة بعد</p>
-      </div>
-      <div class="min-w-0 rounded-3xl border border-border bg-white p-4 shadow-sm">
-        <div class="flex items-center gap-2">
-          <span aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">🏷️</span>
-          <span class="text-xs font-bold text-foreground/70">تم تسجيل الحضور</span>
-        </div>
-        <div class="mt-2 text-2xl font-extrabold text-primary-text"><?= (int)$stats['checked'] ?></div>
-        <p class="mt-1 text-[11px] text-foreground/65">حضروا فعلياً يوم المناسبة</p>
+    <!-- إجراءات سريعة: شريط أفقي واحد بارتفاع موحّد، مباشرة أسفل ملخص المناسبة -->
+    <div class="relative border-t border-border/70 px-8 py-3.5">
+      <h2 class="sr-only">إجراءات سريعة</h2>
+      <div class="flex flex-wrap items-center gap-2.5">
+        <button type="button" onclick="focusAddGuest()" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white shadow-sm shadow-primary/30 transition-colors duration-200 hover:bg-primary-hover">
+          <span aria-hidden="true">➕</span> إضافة مدعو
+        </button>
+        <button type="button" onclick="focusBulkImport()" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">📋</span> استيراد المدعوين
+        </button>
+        <button type="button" onclick="shareInviteLink()" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">📤</span> مشاركة الدعوة
+        </button>
+        <a href="<?= esc_url($event_url) ?>" target="_blank" rel="noopener" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          عرض الدعوة
+        </a>
+        <a href="<?= esc_url($edit_url) ?>" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-[1.5px] border-gold bg-white px-4 text-sm font-bold text-gold-text transition-colors duration-200 hover:bg-gold/[0.06]">
+          تعديل المناسبة
+        </a>
       </div>
     </div>
-  </section>
 
-  <!-- RSVP summary strip -->
-  <section class="rounded-3xl border border-border bg-white p-5 shadow-sm">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <h2 class="text-sm font-extrabold text-foreground/70">ملخص الردود (RSVP)</h2>
-      <span class="text-xs text-foreground/65"><?= (int)$stats['total'] ?> مدعو إجمالاً</span>
-    </div>
-    <?php $rsvp_total = max(1, (int)$stats['total']); ?>
-    <div class="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-secondary/60">
-      <div class="h-full bg-emerald-500" style="width: <?= round(((int)$stats['yes'] / $rsvp_total) * 100) ?>%"></div>
-      <div class="h-full bg-destructive" style="width: <?= round(((int)$stats['no'] / $rsvp_total) * 100) ?>%"></div>
-      <div class="h-full bg-gold" style="width: <?= round(((int)$stats['pending'] / $rsvp_total) * 100) ?>%"></div>
-    </div>
-    <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] font-semibold text-foreground/60">
-      <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-emerald-500"></span> سيحضر</span>
-      <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-destructive"></span> اعتذر</span>
-      <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-gold"></span> لم يرد</span>
+    <!-- الإحصائيات + ملخص الردود (RSVP): ثانوية بصرياً (Visual Priority) لكن دائمة
+         الظهور بلا أي تفاعل — مضغوطة (padding/ارتفاع أقل) بدل الطي خلف <details>،
+         حتى يظهر أول صف مدعو أعلى على الشاشة مع بقاء كل رقم ظاهراً فوراً. -->
+    <div class="relative border-t border-border/70 px-8 py-4">
+      <h2 class="sr-only">الإحصائيات</h2>
+      <div class="grid grid-cols-2 gap-2 xl:grid-cols-5">
+        <div class="min-w-0 rounded-2xl bg-secondary/40 p-2">
+          <div class="flex items-center gap-2">
+            <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary/70 text-foreground/70 text-sm">👥</span>
+            <span class="text-[11px] font-semibold text-foreground/70">إجمالي المدعوين</span>
+          </div>
+          <div class="mt-1 text-xl font-extrabold text-foreground"><?= (int)$stats['total'] ?></div>
+        </div>
+        <div class="min-w-0 rounded-2xl bg-emerald-50/70 p-2">
+          <div class="flex items-center gap-2">
+            <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 text-sm">✅</span>
+            <span class="text-[11px] font-semibold text-foreground/70">أكد الحضور</span>
+          </div>
+          <div class="mt-1 text-xl font-extrabold text-emerald-700"><?= (int)$stats['yes'] ?></div>
+        </div>
+        <div class="min-w-0 rounded-2xl bg-destructive/5 p-2">
+          <div class="flex items-center gap-2">
+            <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive-text text-sm">❌</span>
+            <span class="text-[11px] font-semibold text-foreground/70">اعتذر</span>
+          </div>
+          <div class="mt-1 text-xl font-extrabold text-destructive-text"><?= (int)$stats['no'] ?></div>
+        </div>
+        <div class="min-w-0 rounded-2xl bg-gold/5 p-2">
+          <div class="flex items-center gap-2">
+            <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gold/10 text-gold-text text-sm">⏳</span>
+            <span class="text-[11px] font-semibold text-foreground/70">بانتظار الرد</span>
+          </div>
+          <div class="mt-1 text-xl font-extrabold text-gold-text"><?= (int)$stats['pending'] ?></div>
+        </div>
+        <div class="min-w-0 rounded-2xl bg-primary/5 p-2">
+          <div class="flex items-center gap-2">
+            <span aria-hidden="true" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary text-sm">🏷️</span>
+            <span class="text-[11px] font-semibold text-foreground/70">تم تسجيل الحضور</span>
+          </div>
+          <div class="mt-1 text-xl font-extrabold text-primary-text"><?= (int)$stats['checked'] ?></div>
+        </div>
+      </div>
+
+      <div class="mt-3 border-t border-border/60 pt-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-sm font-extrabold text-foreground/70">ملخص الردود (RSVP)</h2>
+          <span class="text-xs text-foreground/65"><?= (int)$stats['total'] ?> مدعو إجمالاً</span>
+        </div>
+        <?php $rsvp_total = max(1, (int)$stats['total']); ?>
+        <div class="mt-2.5 flex h-2 w-full overflow-hidden rounded-full bg-secondary/60">
+          <div class="h-full bg-emerald-500" style="width: <?= round(((int)$stats['yes'] / $rsvp_total) * 100) ?>%"></div>
+          <div class="h-full bg-destructive" style="width: <?= round(((int)$stats['no'] / $rsvp_total) * 100) ?>%"></div>
+          <div class="h-full bg-gold" style="width: <?= round(((int)$stats['pending'] / $rsvp_total) * 100) ?>%"></div>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] font-semibold text-foreground/70">
+          <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-emerald-500"></span> سيحضر</span>
+          <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-destructive"></span> اعتذر</span>
+          <span class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="h-2 w-2 rounded-full bg-gold"></span> لم يرد</span>
+        </div>
+      </div>
     </div>
   </section>
 </div>
@@ -328,26 +338,52 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
         </span>
       </div>
-      <div class="flex gap-1.5 mt-2.5 overflow-x-auto noscroll pb-0.5" role="group" aria-label="تصفية حسب حالة الرد">
-        <button class="status-filter flex-shrink-0 flex h-11 items-center rounded-full bg-primary px-4 text-xs font-bold text-white" data-status="all">الكل</button>
-        <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="yes"><span aria-hidden="true">✅</span> سيحضر</button>
-        <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="no"><span aria-hidden="true">❌</span> اعتذر</button>
-        <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="pending"><span aria-hidden="true">⏳</span> لم يرد</button>
+      <div class="flex items-center gap-1.5 mt-2.5">
+        <div class="flex flex-1 min-w-0 gap-1.5 overflow-x-auto noscroll pb-0.5" role="group" aria-label="تصفية حسب حالة الرد">
+          <button class="status-filter flex-shrink-0 flex h-11 items-center rounded-full bg-primary px-4 text-xs font-bold text-white" data-status="all">الكل</button>
+          <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="yes"><span aria-hidden="true">✅</span> سيحضر</button>
+          <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="no"><span aria-hidden="true">❌</span> اعتذر</button>
+          <button class="status-filter flex-shrink-0 flex h-11 items-center gap-1 rounded-full border border-border bg-white text-foreground/70 px-4 text-xs font-bold" data-status="pending"><span aria-hidden="true">⏳</span> لم يرد</button>
+        </div>
+        <!-- ترتيب حسب: تحضير واجهة فقط (بلا ربط جافاسكربت وبلا فرز فعلي)،
+             تمهيداً لدعم فرز المدعوين لاحقاً في القوائم الكبيرة. معطّل عمداً. -->
+        <button type="button" disabled aria-disabled="true" title="قريباً"
+          class="hidden lg:flex flex-shrink-0 h-11 items-center gap-1.5 rounded-full border border-border bg-white px-4 text-xs font-bold text-foreground/40 cursor-not-allowed">
+          <span aria-hidden="true">↕️</span> ترتيب حسب
+        </button>
       </div>
     </div>
 
-    <!-- Bulk Action Bar -->
-    <div class="flex flex-wrap gap-2 px-4 lg:px-0 py-2.5 items-center">
-      <label class="flex items-center gap-2 px-3 h-11 rounded-xl bg-secondary/60 text-xs font-bold cursor-pointer text-foreground/70">
+    <!-- Bulk Action Bar: تحديد | إجراءات جماعية | تصدير -->
+    <div class="flex flex-wrap items-center gap-3 px-4 py-2.5 lg:px-0">
+      <!-- تحديد -->
+      <label class="flex h-11 items-center gap-2 rounded-xl bg-secondary/60 px-3 text-xs font-bold text-foreground/70 cursor-pointer transition-colors hover:bg-secondary">
         <input id="selectAllGuests" type="checkbox" class="h-4 w-4 rounded border-border accent-primary" />الكل
       </label>
-      <button id="bulkDeleteBtn" type="button" disabled class="h-11 rounded-xl bg-destructive/10 px-3 text-xs font-bold text-destructive-text ring-1 ring-destructive/20 disabled:opacity-40"><span aria-hidden="true">🗑</span> حذف</button>
-      <button id="bulkWhatsappBtn" type="button" disabled class="h-11 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-40"><span aria-hidden="true">📲</span> WA</button>
-      <button id="whatsappAllBtn" type="button" class="h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800"><span aria-hidden="true">📲</span> للكل</button>
-      <button id="waTestSendBtn" type="button" class="h-11 rounded-xl border border-gold/30 bg-gold/10 px-3 text-xs font-bold text-gold-text"><span aria-hidden="true">🧪</span> تجريبي</button>
-      <button id="sendWaInvitesBtn" type="button" class="h-11 rounded-xl bg-primary px-3 text-xs font-bold text-white"><span aria-hidden="true">📨</span> إرسال تلقائي</button>
-      <button id="waReportBtn" type="button" class="h-11 rounded-xl border border-border bg-white px-3 text-xs font-bold text-foreground/70"><span aria-hidden="true">📊</span> تقرير</button>
-      <button id="exportCsvBtn" type="button" class="h-11 rounded-xl border border-border bg-white px-3 text-xs font-bold text-foreground/70"><span aria-hidden="true">⬇</span> CSV</button>
+      <!-- عدّاد التحديد: نص ثابت (view-only) يعكس المبدأ العام — "لا تحديد = لا إجراءات جماعية بارزة".
+           لا يتحدّث حياً عبر جافاسكربت؛ الحالة الفعلية للأزرار تبقى محكومة بـ disabled
+           الموجود مسبقاً وبمنطق refreshBulkDeleteState() غير المُعدَّل. -->
+      <span class="hidden lg:inline text-xs font-semibold text-foreground/70">٠ مدعو محدد</span>
+
+      <div class="hidden h-6 w-px bg-border/60 lg:block" aria-hidden="true"></div>
+
+      <!-- إجراءات جماعية: bulkDeleteBtn وbulkWhatsappBtn فقط مرتبطان فعلياً بالتحديد
+           (عبر disabled + refreshBulkDeleteState الموجودة مسبقاً)، لذا هما فقط من
+           يتراجعان بصرياً حتى يتم التحديد. بقية الأزرار (للكل/تجريبي/تلقائي/تقرير)
+           تعمل بلا اعتماد على التحديد فلا تُخفى. -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="bulkDeleteBtn" type="button" disabled class="h-11 rounded-xl bg-destructive/10 px-3 text-xs font-bold text-destructive-text ring-1 ring-destructive/20 transition-colors hover:bg-destructive/20 disabled:opacity-40 disabled:hover:bg-destructive/10"><span aria-hidden="true">🗑</span> حذف</button>
+        <button id="bulkWhatsappBtn" type="button" disabled class="h-11 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40 disabled:hover:bg-emerald-600"><span aria-hidden="true">📲</span> WA</button>
+        <button id="whatsappAllBtn" type="button" class="h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100"><span aria-hidden="true">📲</span> للكل</button>
+        <button id="waTestSendBtn" type="button" class="h-11 rounded-xl border border-gold/30 bg-gold/10 px-3 text-xs font-bold text-gold-text transition-colors hover:bg-gold/20"><span aria-hidden="true">🧪</span> تجريبي</button>
+        <button id="sendWaInvitesBtn" type="button" class="h-11 rounded-xl bg-primary px-3 text-xs font-bold text-white transition-colors hover:bg-primary-hover"><span aria-hidden="true">📨</span> إرسال تلقائي</button>
+        <button id="waReportBtn" type="button" class="h-11 rounded-xl border border-border bg-white px-3 text-xs font-bold text-foreground/70 transition-colors hover:bg-secondary/50"><span aria-hidden="true">📊</span> تقرير</button>
+      </div>
+
+      <div class="hidden h-6 w-px bg-border/60 lg:block" aria-hidden="true"></div>
+
+      <!-- تصدير -->
+      <button id="exportCsvBtn" type="button" class="h-11 rounded-xl border border-border bg-white px-3 text-xs font-bold text-foreground/70 transition-colors hover:bg-secondary/50"><span aria-hidden="true">⬇</span> CSV</button>
     </div>
 
     <!-- Guest Cards -->
@@ -356,7 +392,7 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
         <div class="rounded-[28px] border border-border bg-white px-6 py-14 text-center">
           <span aria-hidden="true" class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-3xl">👥</span>
           <div class="mt-4 font-extrabold text-foreground">لا يوجد مدعوون بعد</div>
-          <p class="mx-auto mt-1.5 max-w-xs text-sm text-foreground/60">ابدأ بإضافة أول مدعو لمناسبتك، أو استورد قائمة أرقام دفعة واحدة.</p>
+          <p class="mx-auto mt-1.5 max-w-xs text-sm text-foreground/70">ابدأ بإضافة أول مدعو لمناسبتك، أو استورد قائمة أرقام دفعة واحدة.</p>
           <button type="button" onclick="focusAddGuest()" class="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-primary px-6 text-sm font-bold text-white transition-colors hover:bg-primary-hover">
             <span aria-hidden="true">➕</span> إضافة أول مدعو
           </button>
@@ -376,7 +412,7 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
           $avc      = $g_status === 'yes' ? 'av-yes' : ($g_status === 'no' ? 'av-no' : 'av-pending');
           $sbg      = $g_status === 'yes' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
                     : ($g_status === 'no'  ? 'bg-destructive/10 text-destructive-text ring-destructive/20'
-                    :                        'bg-secondary/60 text-foreground/60 ring-border');
+                    :                        'bg-secondary/60 text-foreground/70 ring-border');
           $status_icon = $g_status === 'yes' ? '✅' : ($g_status === 'no' ? '❌' : '⏳');
         ?>
         <div class="guest-row"
@@ -387,39 +423,44 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
           data-status="<?= esc_attr($g_status) ?>"
           data-checked="<?= esc_attr($g_check) ?>">
           <div class="guest-card overflow-hidden">
-            <!-- صف علوي: checkbox + avatar + معلومات + حالة -->
-            <div class="flex items-center gap-3 p-3 pb-2">
+            <!-- صف علوي: checkbox + avatar + الاسم (الأقوى بصرياً) + شارة الرد + الجوال (ثانوي) -->
+            <div class="flex items-center gap-3 p-3.5 pb-2.5">
               <label class="flex-shrink-0">
                 <span class="sr-only">تحديد <?= $g_name !== '' ? esc_html($g_name) : esc_html($phone) ?></span>
                 <input type="checkbox" class="guest-checkbox h-5 w-5 rounded-md border-border accent-primary flex-shrink-0" data-phone="<?= esc_attr($phone) ?>" />
               </label>
               <div class="g-avatar <?= $avc ?> text-base" aria-hidden="true"><?= esc_html($initial) ?></div>
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <span class="font-bold text-sm text-foreground leading-tight"><?= $g_name !== '' ? esc_html($g_name) : '<span class="text-foreground/65 font-normal text-xs">بدون اسم</span>' ?></span>
-                  <span class="text-[10px] font-bold rounded-full px-2 py-0.5 ring-1 <?= $sbg ?>"><span aria-hidden="true"><?= $status_icon ?></span> <?= esc_html($g_label) ?><?= $g_check === 'yes' ? ' <span aria-hidden="true">🏷️</span><span class="sr-only">تم تسجيل الحضور</span>' : '' ?></span>
+                <!-- xl: الاسم + الشارة + الجوال في سطر واحد بدل التكديس، لاستغلال العرض
+                     الإضافي بمعلومات حقيقية بدل فراغ (متطلب استغلال مساحة الديسكتوب). -->
+                <div class="flex items-center gap-2 flex-wrap xl:gap-x-3">
+                  <span class="text-[15px] font-extrabold text-foreground leading-tight"><?= $g_name !== '' ? esc_html($g_name) : '<span class="text-foreground/65 font-normal text-xs">بدون اسم</span>' ?></span>
+                  <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 <?= $sbg ?>"><span aria-hidden="true"><?= $status_icon ?></span> <?= esc_html($g_label) ?><?= $g_check === 'yes' ? ' <span aria-hidden="true">🏷️</span><span class="sr-only">تم تسجيل الحضور</span>' : '' ?></span>
+                  <span class="hidden xl:inline text-xs text-foreground/70 font-mono" dir="ltr"><?= esc_html($phone) ?></span>
                 </div>
-                <div class="text-xs text-foreground/65 font-mono mt-0.5" dir="ltr"><?= esc_html($phone) ?></div>
+                <div class="mt-1 text-xs text-foreground/70 font-mono xl:hidden" dir="ltr"><?= esc_html($phone) ?></div>
               </div>
             </div>
-            <!-- صف أسفل: رمز الدعوة + أزرار الإجراءات -->
-            <div class="flex items-center justify-between px-3 pb-3 gap-2">
-              <div class="flex items-center gap-1.5 min-w-0">
+            <!-- صف أسفل: رمز الدعوة (شارة مصغّرة موحّدة) + مجموعة أزرار الإجراءات المدمجة.
+                 xl: تجميع العنصرين قرب بعضهما بدل justify-between التي تمدّهما لطرفي
+                 الصف وتترك فراغاً فارغاً بينهما على الشاشات الواسعة. -->
+            <div class="flex items-center justify-between xl:justify-start gap-2 xl:gap-6 border-t border-border/60 px-3.5 py-2">
+              <div class="flex items-center gap-1.5 min-w-0 xl:flex-1">
                 <?php if ($g_code !== ''): ?>
-                <span class="guest-code-display font-mono text-[11px] font-bold tracking-widest text-gold-text bg-gold/10 px-2 py-1 rounded-lg ring-1 ring-gold/20 whitespace-nowrap"><?= esc_html($g_code) ?></span>
-                <button type="button" class="guest-copy-code-btn w-11 h-11 rounded-lg bg-secondary/60 flex items-center justify-center text-sm" data-code="<?= esc_attr($g_code) ?>" aria-label="نسخ رمز الدعوة">📋</button>
-                <button type="button" class="guest-regen-code-btn w-11 h-11 rounded-lg bg-secondary/60 flex items-center justify-center text-sm" data-phone="<?= esc_attr($phone) ?>" aria-label="توليد رمز جديد">🔄</button>
+                <span class="guest-code-display inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold font-mono tracking-widest text-gold-text bg-gold/10 ring-1 ring-gold/20 whitespace-nowrap"><?= esc_html($g_code) ?></span>
+                <button type="button" class="guest-copy-code-btn w-11 h-11 rounded-lg bg-secondary/60 flex items-center justify-center text-sm transition-colors hover:bg-secondary" data-code="<?= esc_attr($g_code) ?>" aria-label="نسخ رمز الدعوة">📋</button>
+                <button type="button" class="guest-regen-code-btn w-11 h-11 rounded-lg bg-secondary/60 flex items-center justify-center text-sm transition-colors hover:bg-secondary" data-phone="<?= esc_attr($phone) ?>" aria-label="توليد رمز جديد">🔄</button>
                 <?php else: ?>
-                <button type="button" class="guest-regen-code-btn text-[11px] text-primary-text underline font-semibold" data-phone="<?= esc_attr($phone) ?>">+ توليد رمز</button>
+                <button type="button" class="guest-regen-code-btn text-xs text-primary-text underline font-semibold" data-phone="<?= esc_attr($phone) ?>">+ توليد رمز</button>
                 <?php endif; ?>
                 <?php if ($g_note !== ''): ?>
-                <span class="text-[10px] text-foreground/65 truncate">· <?= esc_html($g_note) ?></span>
+                <span class="text-[11px] text-foreground/70 truncate">· <?= esc_html($g_note) ?></span>
                 <?php endif; ?>
               </div>
-              <div class="flex items-center gap-1.5 flex-shrink-0">
-                <button type="button" class="guest-wa-btn h-11 px-3 rounded-xl bg-emerald-600 flex items-center gap-1 text-white text-xs font-bold" data-phone="<?= esc_attr($phone) ?>" data-name="<?= esc_attr($g_name) ?>"><span aria-hidden="true">📱</span><span class="hidden sm:inline">واتساب</span></button>
-                <button type="button" class="guest-edit-btn w-11 h-11 rounded-xl border border-border bg-white flex items-center justify-center text-foreground/60" data-phone="<?= esc_attr($phone) ?>" aria-label="تعديل بيانات المدعو">✏️</button>
-                <button type="button" class="guest-delete-btn w-11 h-11 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive-text" data-phone="<?= esc_attr($phone) ?>" aria-label="حذف المدعو">🗑️</button>
+              <div class="flex flex-shrink-0 items-center gap-1.5 rounded-2xl p-1 ring-1 ring-border/60">
+                <button type="button" class="guest-wa-btn h-11 px-3 rounded-xl bg-emerald-600 flex items-center gap-1 text-white text-xs font-bold transition-colors hover:bg-emerald-700" data-phone="<?= esc_attr($phone) ?>" data-name="<?= esc_attr($g_name) ?>"><span aria-hidden="true">📱</span><span class="hidden sm:inline">واتساب</span></button>
+                <button type="button" class="guest-edit-btn w-11 h-11 rounded-xl border border-border bg-white flex items-center justify-center text-foreground/60 transition-colors hover:bg-secondary/60" data-phone="<?= esc_attr($phone) ?>" aria-label="تعديل بيانات المدعو">✏️</button>
+                <button type="button" class="guest-delete-btn w-11 h-11 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive-text transition-colors hover:bg-destructive/20" data-phone="<?= esc_attr($phone) ?>" aria-label="حذف المدعو">🗑️</button>
               </div>
             </div>
           </div>
@@ -441,165 +482,211 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 
     <div class="p-4 space-y-4">
 
-      <!-- ملخص المناسبة (سايدبار الديسكتوب) -->
+      <!-- ══ مساحة العمل (Workspace Status) — لوحة أساسية أعلى الشريط الجانبي،
+           محتواها مشتق من $mon_workspace_state (منطق عرض فقط، انظر تعريفه
+           أعلى الملف). عناصر الاستدعاء تُشغّل أزراراً موجودة فعلاً بالنقر
+           البرمجي (نفس أسلوب الاستدعاء المستخدم أصلاً في هذا الملف)، أو
+           روابط تثبيت (#anchor) قياسية — بلا أي جافاسكربت جديد. ══ -->
+      <?php
+      $mon_ws_copy = [
+          'no_guests'   => ['icon' => '👥', 'title' => 'ابدأ بإضافة أول مدعو', 'desc' => 'لا يوجد مدعوون بعد لهذه المناسبة.', 'cta_label' => 'إضافة مدعو', 'cta_href' => '#addSection'],
+          'not_invited' => ['icon' => '📨', 'title' => 'المدعوون جاهزون — أرسل الدعوات', 'desc' => 'تمت إضافة المدعوين، الخطوة التالية إرسال دعوات واتساب.', 'cta_label' => 'إرسال الدعوات الآن', 'cta_proxy' => 'sendWaInvitesBtn'],
+          'invited'     => ['icon' => '⏳', 'title' => 'بانتظار ردود المدعوين', 'desc' => 'تم إرسال الدعوات، ولم تصل ردود بعد.', 'cta_label' => 'عرض تقرير الإرسال', 'cta_proxy' => 'waReportBtn'],
+          'responses'   => ['icon' => '📊', 'title' => 'الردود بدأت تصل', 'desc' => (int)$stats['yes'] . ' سيحضر · ' . (int)$stats['no'] . ' اعتذر · ' . (int)$stats['pending'] . ' لم يرد بعد.'],
+          'event_day'   => ['icon' => '🎉', 'title' => 'يوم المناسبة!', 'desc' => 'استخدم البحث في قائمة المدعوين لتسجيل الحضور، ورمز الدعوة أدناه للتحقق من الضيوف.', 'cta_label' => 'البحث في المدعوين', 'cta_href' => '#guestSearch'],
+      ];
+      $mon_ws = $mon_ws_copy[$mon_workspace_state] ?? $mon_ws_copy['no_guests'];
+      ?>
+      <div class="hidden lg:block rounded-[24px] border border-primary/20 bg-primary/5 p-5">
+        <div class="flex items-start gap-3">
+          <span aria-hidden="true" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-xl ring-1 ring-primary/20"><?= esc_html($mon_ws['icon']) ?></span>
+          <div class="min-w-0">
+            <div class="text-[11px] font-bold text-primary-text">مساحة العمل</div>
+            <h3 class="mt-0.5 text-sm font-extrabold text-foreground"><?= esc_html($mon_ws['title']) ?></h3>
+            <p class="mt-1 text-xs text-foreground/65"><?= esc_html($mon_ws['desc']) ?></p>
+          </div>
+        </div>
+        <?php if (!empty($mon_ws['cta_href'])): ?>
+        <a href="<?= esc_attr($mon_ws['cta_href']) ?>" class="mt-3 flex h-11 items-center justify-center rounded-xl bg-primary text-sm font-bold text-white transition-colors hover:bg-primary-hover"><?= esc_html($mon_ws['cta_label']) ?></a>
+        <?php elseif (!empty($mon_ws['cta_proxy'])): ?>
+        <button type="button" onclick="document.getElementById('<?= esc_js($mon_ws['cta_proxy']) ?>')?.click()" class="mt-3 flex h-11 w-full items-center justify-center rounded-xl bg-primary text-sm font-bold text-white transition-colors hover:bg-primary-hover"><?= esc_html($mon_ws['cta_label']) ?></button>
+        <?php endif; ?>
+      </div>
+
+      <!-- ══ ملخص المناسبة (سايدبار الديسكتوب فقط — لم يتغيّر ظهوره على الجوال) ══ -->
       <div class="hidden lg:block rounded-[24px] border border-border bg-white p-5 lg:sticky lg:top-6">
         <h3 class="text-sm font-extrabold text-foreground/70">ملخص المناسبة</h3>
-        <div class="mt-3 space-y-2 text-sm">
+        <div class="mt-2.5 space-y-2 text-sm">
           <div class="flex items-center justify-between gap-2">
-            <span class="text-foreground/60">التاريخ</span>
+            <span class="text-foreground/70">التاريخ</span>
             <span class="font-semibold text-foreground text-left"><?= esc_html($event_date_label) ?></span>
           </div>
           <?php if ($invite_code): ?>
           <div class="flex items-center justify-between gap-2">
-            <span class="text-foreground/60">رمز الدعوة</span>
+            <span class="text-foreground/70">رمز الدعوة</span>
             <span class="font-mono font-bold tracking-widest text-gold-text"><?= esc_html($invite_code) ?></span>
           </div>
           <?php endif; ?>
           <div class="flex items-center justify-between gap-2">
-            <span class="text-foreground/60">الحالة</span>
+            <span class="text-foreground/70">الحالة</span>
             <span class="font-semibold text-foreground"><?= esc_html($manage_status_label) ?></span>
           </div>
         </div>
 
-        <div class="mt-4 border-t border-gold/30"></div>
+        <div class="mt-3 border-t border-border/60"></div>
 
-        <h3 class="mt-4 text-sm font-extrabold text-foreground/70">ملخص الباقة</h3>
-        <div class="mt-3 flex items-center justify-between gap-2">
-          <span class="text-xs font-semibold text-foreground/65">الباقة الحالية</span>
-          <span class="truncate rounded-full bg-secondary/60 px-3 py-1 text-xs font-bold text-foreground ring-1 ring-border"><?= esc_html($manage_plan_name) ?></span>
-        </div>
-        <?php if ($manage_events_limit > 0): ?>
-        <div class="mt-2 flex items-center justify-between gap-2">
-          <span class="text-xs font-semibold text-foreground/65">المناسبات المتبقية</span>
-          <span class="text-sm font-extrabold text-foreground"><?= (int)$manage_events_left ?> <span class="text-xs font-semibold text-foreground/65">/ <?= (int)$manage_events_limit ?></span></span>
-        </div>
-        <?php endif; ?>
-
-        <div class="mt-4 border-t border-gold/30"></div>
-
-        <h3 class="mt-4 text-sm font-extrabold text-foreground/70">روابط سريعة</h3>
-        <div class="mt-3 flex flex-col gap-2">
+        <div class="mt-3 grid grid-cols-2 gap-2">
           <a href="<?= esc_url($dashboard_url) ?>" class="flex h-11 items-center justify-center rounded-xl border border-border bg-white text-xs font-bold text-foreground/70 hover:bg-secondary/50">لوحة التحكم</a>
           <a href="<?= esc_url(home_url('/packages/')) ?>" class="flex h-11 items-center justify-center rounded-xl border-[1.5px] border-gold bg-white text-xs font-bold text-gold-text hover:bg-gold/[0.06]">إدارة الباقة</a>
         </div>
       </div>
 
-      <!-- تعديل مدعو -->
-      <div id="editGuestCard" class="hidden rounded-2xl border border-primary/20 bg-primary/5 p-4">
-        <h3 class="font-bold text-sm text-primary-text mb-3"><span aria-hidden="true">✏️</span> تعديل المدعو</h3>
-        <form id="editGuestForm" class="space-y-2.5">
-          <input type="hidden" id="editOldPhone" name="old_phone" />
-          <label for="editGuestName" class="sr-only">الاسم</label>
-          <input id="editGuestName" name="name" type="text" placeholder="الاسم"
-            class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
-          <label for="editGuestPhone" class="sr-only">رقم الجوال</label>
-          <input id="editGuestPhone" name="phone" type="tel" inputmode="tel" placeholder="رقم الجوال" required
-            class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
-          <label for="editGuestNote" class="sr-only">ملاحظة</label>
-          <input id="editGuestNote" name="note" type="text" placeholder="ملاحظة"
-            class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
-          <div class="flex gap-2">
-            <button type="submit" class="flex-1 h-12 rounded-2xl bg-primary text-sm font-bold text-white hover:bg-primary-hover">حفظ</button>
-            <button id="cancelEditGuestBtn" type="button" class="h-12 px-4 rounded-2xl border border-border bg-white text-sm font-semibold text-foreground/70">إلغاء</button>
+      <!-- ══ إدارة المدعوين: تعديل (مشروط) + إضافة + استيراد جماعي — بطاقة واحدة على الديسكتوب فقط.
+           بطاقة عادية دائمة الظهور (لا تفاعل طي) — هذه مساحة عمل تطبيقية وليست
+           توثيقاً، فأُعيدت لبطاقة ثابتة. التجميع البصري والارتفاع المضغوط من
+           التمريرة السابقة محفوظان بالكامل. ══ -->
+      <div class="space-y-4 lg:space-y-0 lg:rounded-2xl lg:border lg:border-border lg:bg-white lg:p-1">
+        <h3 class="hidden px-3 pt-2 text-xs font-bold text-foreground/70 lg:block">إدارة المدعوين</h3>
+
+        <!-- تعديل مدعو -->
+        <div id="editGuestCard" class="hidden rounded-2xl border border-primary/20 bg-primary/5 p-4 lg:rounded-xl lg:border-0 lg:p-3">
+          <h3 class="font-bold text-sm text-primary-text mb-3"><span aria-hidden="true">✏️</span> تعديل المدعو</h3>
+          <form id="editGuestForm" class="space-y-2.5">
+            <input type="hidden" id="editOldPhone" name="old_phone" />
+            <label for="editGuestName" class="sr-only">الاسم</label>
+            <input id="editGuestName" name="name" type="text" placeholder="الاسم"
+              class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
+            <label for="editGuestPhone" class="sr-only">رقم الجوال</label>
+            <input id="editGuestPhone" name="phone" type="tel" inputmode="tel" placeholder="رقم الجوال" required
+              class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
+            <label for="editGuestNote" class="sr-only">ملاحظة</label>
+            <input id="editGuestNote" name="note" type="text" placeholder="ملاحظة"
+              class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
+            <div class="flex gap-2">
+              <button type="submit" class="flex-1 h-12 rounded-2xl bg-primary text-sm font-bold text-white hover:bg-primary-hover">حفظ</button>
+              <button id="cancelEditGuestBtn" type="button" class="h-12 px-4 rounded-2xl border border-border bg-white text-sm font-semibold text-foreground/70">إلغاء</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- إضافة مدعو -->
+        <div class="rounded-2xl border border-border bg-white p-4 lg:rounded-xl lg:border-0 lg:border-t lg:border-border/60 lg:p-3 lg:pt-3" id="addSection">
+          <h3 class="text-base font-bold text-foreground mb-3 lg:text-sm lg:mb-2"><span aria-hidden="true">➕</span> إضافة مدعو</h3>
+          <form id="addGuestForm" class="space-y-2.5">
+            <label for="addGuestName" class="sr-only">الاسم (اختياري)</label>
+            <input id="addGuestName" name="name" type="text" placeholder="الاسم (اختياري)"
+              class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
+            <label for="addGuestPhone" class="sr-only">رقم الجوال</label>
+            <input id="addGuestPhone" name="phone" type="tel" inputmode="tel" placeholder="رقم الجوال" required
+              class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
+            <label for="addGuestNote" class="sr-only">ملاحظة (اختياري)</label>
+            <input id="addGuestNote" name="note" type="text" placeholder="ملاحظة (اختياري)"
+              class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
+            <button type="submit" class="w-full h-12 rounded-2xl bg-primary text-sm font-bold text-white hover:bg-primary-hover">إضافة المدعو</button>
+          </form>
+        </div>
+
+        <!-- إضافة جماعية -->
+        <div class="rounded-2xl border border-border bg-white p-4 lg:rounded-xl lg:border-0 lg:border-t lg:border-border/60 lg:p-3 lg:pt-3" id="bulkImportSection">
+          <h3 class="text-base font-bold text-foreground mb-1 lg:text-sm"><span aria-hidden="true">📋</span> إضافة جماعية</h3>
+          <p class="text-sm text-foreground/70 mb-3">ضع كل رقم في سطر منفصل.</p>
+          <form id="bulkGuestForm" class="space-y-2.5">
+            <label for="bulkPhones" class="sr-only">أرقام الجوال</label>
+            <textarea id="bulkPhones" name="phones_text" rows="5"
+              class="w-full rounded-2xl border border-border px-4 py-3 text-sm outline-none focus:border-primary"
+              placeholder="05XXXXXXXX&#10;9665XXXXXXXX"></textarea>
+            <button type="submit" class="w-full h-12 rounded-2xl bg-emerald-600 text-sm font-bold text-white">إضافة الأرقام</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ══ التواصل عبر واتساب: القوالب التلقائية + قالب الإرسال اليدوي — بطاقة واحدة على الديسكتوب فقط.
+           بطاقة عادية دائمة الظهور (لا تفاعل طي على مستوى المجموعة) — التجميع
+           البصري والارتفاع المضغوط من التمريرة السابقة محفوظان. القوالب الداخلية
+           (templatesSection وقالب الإرسال اليدوي) تبقى كما هي: <details> داخلية
+           كانت موجودة قبل تمريرة العمارة، ولم تُنشأ في هذه التمريرة، فلا تُلمَس. ══ -->
+      <div class="space-y-4 lg:space-y-0 lg:rounded-2xl lg:border lg:border-emerald-200 lg:bg-white lg:p-1">
+        <h3 class="hidden px-3 pt-2 text-xs font-bold text-emerald-700 lg:block">التواصل عبر واتساب</h3>
+
+        <!-- رسائل واتساب التلقائية -->
+        <details class="rounded-2xl border border-emerald-200 bg-white lg:rounded-xl lg:border-0" id="templatesSection">
+          <summary class="flex items-center justify-between px-4 py-3.5 cursor-pointer select-none list-none lg:px-3 lg:py-2.5">
+            <span class="font-bold text-sm text-foreground"><span aria-hidden="true">📝</span> رسائل واتساب التلقائية</span>
+            <span class="text-[11px] font-bold rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 px-2 py-0.5">تخصيص</span>
+          </summary>
+          <div class="border-t border-border p-4 space-y-4 lg:px-3 lg:pb-3">
+            <p class="text-sm text-foreground/70">اتركها فارغة لاستخدام النص الافتراضي.</p>
+            <?php
+            $wa_tpl_fields = [
+              'invite'  => ['label' => '📨 رسالة الدعوة', 'vars' => ['guest_name','event_name','event_date','event_date_line','guest_phone'], 'val' => $wa_tpl_invite],
+              'yes'     => ['label' => '✅ رد الحضور',    'vars' => ['event_name','event_url','invite_code','guest_phone'], 'val' => $wa_tpl_yes],
+              'no'      => ['label' => '❌ رد الاعتذار',  'vars' => ['event_name'], 'val' => $wa_tpl_no],
+              'invalid' => ['label' => '❓ رد غير معروف', 'vars' => [], 'val' => $wa_tpl_invalid],
+            ];
+            foreach ($wa_tpl_fields as $tpl_key => $tpl_info): ?>
+            <div>
+              <label for="wa_tpl_<?= esc_attr($tpl_key) ?>" class="text-xs font-bold text-foreground/80 block mb-1"><?= esc_html($tpl_info['label']) ?></label>
+              <?php if ($tpl_info['vars']): ?>
+              <div class="flex flex-wrap gap-1 mb-1.5">
+                <?php foreach ($tpl_info['vars'] as $v): ?>
+                <button type="button" class="wa-var-insert rounded-full px-2 py-1 text-[11px] font-mono bg-secondary/60 text-foreground/70 hover:bg-emerald-100 hover:text-emerald-700 ring-1 ring-border transition-colors"
+                  data-var="{{<?= $v ?>}}" data-target="wa_tpl_<?= esc_attr($tpl_key) ?>">{{<?= $v ?>}}</button>
+                <?php endforeach; ?>
+              </div>
+              <?php endif; ?>
+              <textarea id="wa_tpl_<?= esc_attr($tpl_key) ?>" name="tpl_<?= esc_attr($tpl_key) ?>" rows="3"
+                placeholder="اتركه فارغاً للنص الافتراضي"
+                class="w-full rounded-xl border border-border px-3 py-2 text-xs font-mono outline-none focus:border-emerald-400 resize-y"
+              ><?= esc_textarea($tpl_info['val']) ?></textarea>
+            </div>
+            <?php endforeach; ?>
+            <div id="waTplMsg" class="hidden text-xs font-semibold rounded-xl px-3 py-2"></div>
+            <div class="flex gap-2">
+              <button id="saveWaTplBtn" class="flex-1 h-11 rounded-2xl bg-emerald-600 text-sm font-bold text-white"><span aria-hidden="true">💾</span> حفظ القوالب</button>
+              <button id="resetWaTplBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70"><span aria-hidden="true">↩️</span> استعادة الافتراضي</button>
+            </div>
           </div>
-        </form>
-      </div>
+        </details>
 
-      <!-- إضافة مدعو -->
-      <div class="rounded-2xl border border-border bg-white p-4" id="addSection">
-        <h3 class="text-base font-bold text-foreground mb-3"><span aria-hidden="true">➕</span> إضافة مدعو</h3>
-        <form id="addGuestForm" class="space-y-2.5">
-          <label for="addGuestName" class="sr-only">الاسم (اختياري)</label>
-          <input id="addGuestName" name="name" type="text" placeholder="الاسم (اختياري)"
-            class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
-          <label for="addGuestPhone" class="sr-only">رقم الجوال</label>
-          <input id="addGuestPhone" name="phone" type="tel" inputmode="tel" placeholder="رقم الجوال" required
-            class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
-          <label for="addGuestNote" class="sr-only">ملاحظة (اختياري)</label>
-          <input id="addGuestNote" name="note" type="text" placeholder="ملاحظة (اختياري)"
-            class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
-          <button type="submit" class="w-full h-12 rounded-2xl bg-primary text-sm font-bold text-white hover:bg-primary-hover">إضافة المدعو</button>
-        </form>
-      </div>
-
-      <!-- إضافة جماعية -->
-      <div class="rounded-2xl border border-border bg-white p-4" id="bulkImportSection">
-        <h3 class="text-base font-bold text-foreground mb-1"><span aria-hidden="true">📋</span> إضافة جماعية</h3>
-        <p class="text-xs text-foreground/60 mb-3">ضع كل رقم في سطر منفصل.</p>
-        <form id="bulkGuestForm" class="space-y-2.5">
-          <label for="bulkPhones" class="sr-only">أرقام الجوال</label>
-          <textarea id="bulkPhones" name="phones_text" rows="5"
-            class="w-full rounded-2xl border border-border px-4 py-3 text-sm outline-none focus:border-primary"
-            placeholder="05XXXXXXXX&#10;9665XXXXXXXX"></textarea>
-          <button type="submit" class="w-full h-12 rounded-2xl bg-emerald-600 text-sm font-bold text-white">إضافة الأرقام</button>
-        </form>
-      </div>
-
-      <!-- رسائل واتساب التلقائية -->
-      <details class="rounded-2xl border border-emerald-200 bg-white" id="templatesSection">
-        <summary class="flex items-center justify-between px-4 py-3.5 cursor-pointer select-none list-none">
-          <span class="font-bold text-sm text-foreground"><span aria-hidden="true">📝</span> رسائل واتساب التلقائية</span>
-          <span class="text-[10px] font-bold rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 px-2 py-0.5">تخصيص</span>
-        </summary>
-        <div class="border-t border-border p-4 space-y-4">
-          <p class="text-xs text-foreground/60">اتركها فارغة لاستخدام النص الافتراضي.</p>
-          <?php
-          $wa_tpl_fields = [
-            'invite'  => ['label' => '📨 رسالة الدعوة', 'vars' => ['guest_name','event_name','event_date','event_date_line','guest_phone'], 'val' => $wa_tpl_invite],
-            'yes'     => ['label' => '✅ رد الحضور',    'vars' => ['event_name','event_url','invite_code','guest_phone'], 'val' => $wa_tpl_yes],
-            'no'      => ['label' => '❌ رد الاعتذار',  'vars' => ['event_name'], 'val' => $wa_tpl_no],
-            'invalid' => ['label' => '❓ رد غير معروف', 'vars' => [], 'val' => $wa_tpl_invalid],
-          ];
-          foreach ($wa_tpl_fields as $tpl_key => $tpl_info): ?>
-          <div>
-            <label for="wa_tpl_<?= esc_attr($tpl_key) ?>" class="text-xs font-bold text-foreground/80 block mb-1"><?= esc_html($tpl_info['label']) ?></label>
-            <?php if ($tpl_info['vars']): ?>
-            <div class="flex flex-wrap gap-1 mb-1.5">
-              <?php foreach ($tpl_info['vars'] as $v): ?>
-              <button type="button" class="wa-var-insert rounded px-1.5 py-0.5 text-[9px] font-mono bg-secondary/60 text-foreground/60 hover:bg-emerald-100 hover:text-emerald-700 ring-1 ring-border"
-                data-var="{{<?= $v ?>}}" data-target="wa_tpl_<?= esc_attr($tpl_key) ?>">{{<?= $v ?>}}</button>
+        <!-- قالب الإرسال اليدوي -->
+        <details class="rounded-2xl border border-border bg-white lg:rounded-xl lg:border-0 lg:border-t lg:border-emerald-200/60">
+          <summary class="flex items-center justify-between px-4 py-3.5 cursor-pointer select-none list-none lg:px-3 lg:py-2.5">
+            <span class="font-bold text-sm text-foreground"><span aria-hidden="true">✏️</span> قالب الإرسال اليدوي</span>
+            <span class="text-[11px] font-bold rounded-full bg-secondary/60 text-foreground/70 ring-1 ring-border px-2 py-0.5">Template</span>
+          </summary>
+          <div class="border-t border-border p-4 space-y-3 lg:px-3 lg:pb-3">
+            <label for="whatsappTemplateInput" class="sr-only">قالب رسالة الدعوة</label>
+            <textarea id="whatsappTemplateInput" rows="6"
+              class="w-full rounded-2xl border border-border px-4 py-3 text-sm outline-none focus:border-primary"
+              placeholder="نص رسالة الدعوة..."></textarea>
+            <div class="flex flex-wrap gap-1.5">
+              <?php foreach (['guest_name','event_title','event_url','image_url','invite_code','guest_phone'] as $var): ?>
+              <span class="cursor-pointer rounded-full bg-secondary/60 px-2 py-1 ring-1 ring-border text-[11px] font-mono text-foreground/70 hover:bg-secondary"
+                onclick="navigator.clipboard.writeText('{{<?= $var ?>}}')">{{<?= $var ?>}}</span>
               <?php endforeach; ?>
             </div>
-            <?php endif; ?>
-            <textarea id="wa_tpl_<?= esc_attr($tpl_key) ?>" name="tpl_<?= esc_attr($tpl_key) ?>" rows="3"
-              placeholder="اتركه فارغاً للنص الافتراضي"
-              class="w-full rounded-xl border border-border px-3 py-2 text-xs font-mono outline-none focus:border-emerald-400 resize-y"
-            ><?= esc_textarea($tpl_info['val']) ?></textarea>
+            <div class="flex gap-2">
+              <button id="resetWhatsappTemplateBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70">استعادة الافتراضي</button>
+              <button id="copyWhatsappPreviewBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70">نسخ المعاينة</button>
+            </div>
+            <div class="rounded-xl bg-secondary/40 p-3 ring-1 ring-border">
+              <div class="text-[11px] font-semibold text-foreground/65 mb-1">معاينة</div>
+              <pre id="whatsappPreviewText" class="whitespace-pre-wrap break-words font-sans text-xs leading-6 text-foreground/70"></pre>
+            </div>
           </div>
-          <?php endforeach; ?>
-          <div id="waTplMsg" class="hidden text-xs font-semibold rounded-xl px-3 py-2"></div>
-          <button id="saveWaTplBtn" class="w-full h-11 rounded-2xl bg-emerald-600 text-sm font-bold text-white"><span aria-hidden="true">💾</span> حفظ القوالب</button>
-          <button id="resetWaTplBtn" class="w-full h-10 rounded-2xl border border-border text-xs font-semibold text-foreground/60 mt-1"><span aria-hidden="true">↩️</span> استعادة الافتراضي</button>
-        </div>
-      </details>
+        </details>
+      </div>
 
-      <!-- قالب الإرسال اليدوي -->
-      <details class="rounded-2xl border border-border bg-white">
-        <summary class="flex items-center justify-between px-4 py-3.5 cursor-pointer select-none list-none">
-          <span class="font-bold text-sm text-foreground"><span aria-hidden="true">✏️</span> قالب الإرسال اليدوي</span>
-          <span class="text-[10px] font-bold rounded-full bg-secondary/60 text-foreground/60 ring-1 ring-border px-2 py-0.5">Template</span>
-        </summary>
-        <div class="border-t border-border p-4 space-y-3">
-          <label for="whatsappTemplateInput" class="sr-only">قالب رسالة الدعوة</label>
-          <textarea id="whatsappTemplateInput" rows="6"
-            class="w-full rounded-2xl border border-border px-4 py-3 text-sm outline-none focus:border-primary"
-            placeholder="نص رسالة الدعوة..."></textarea>
-          <div class="flex flex-wrap gap-1.5">
-            <?php foreach (['guest_name','event_title','event_url','image_url','invite_code','guest_phone'] as $var): ?>
-            <span class="cursor-pointer rounded-full bg-secondary/60 px-2 py-1 ring-1 ring-border text-[10px] font-mono text-foreground/60 hover:bg-secondary"
-              onclick="navigator.clipboard.writeText('{{<?= $var ?>}}')">{{<?= $var ?>}}</span>
-            <?php endforeach; ?>
-          </div>
-          <div class="flex gap-2">
-            <button id="resetWhatsappTemplateBtn" class="flex-1 h-10 rounded-2xl border border-border text-xs font-semibold text-foreground/70">استعادة الافتراضي</button>
-            <button id="copyWhatsappPreviewBtn" class="flex-1 h-10 rounded-2xl border border-border text-xs font-semibold text-foreground/70">نسخ المعاينة</button>
-          </div>
-          <div class="rounded-xl bg-secondary/40 p-3 ring-1 ring-border">
-            <div class="text-[10px] font-semibold text-foreground/65 mb-1">معاينة</div>
-            <pre id="whatsappPreviewText" class="whitespace-pre-wrap break-words font-sans text-xs leading-6 text-foreground/70"></pre>
-          </div>
+      <!-- ══ الباقة الحالية — معلوماتية فقط، وزن بصري أقل، سايدبار الديسكتوب فقط ══ -->
+      <div class="hidden lg:block rounded-2xl bg-secondary/30 p-4">
+        <h3 class="text-xs font-bold text-foreground/70">الباقة الحالية</h3>
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <span class="truncate rounded-full bg-white px-3 py-1 text-xs font-bold text-foreground/70 ring-1 ring-border"><?= esc_html($manage_plan_name) ?></span>
+          <?php if ($manage_events_limit > 0): ?>
+          <span class="text-xs font-semibold text-foreground/70"><?= (int)$manage_events_left ?> / <?= (int)$manage_events_limit ?> مناسبة</span>
+          <?php endif; ?>
         </div>
-      </details>
+      </div>
 
     </div><!-- /panel inner -->
   </div><!-- /actionsPanel -->
@@ -633,10 +720,10 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 
 <!-- ══ WA Test Modal ════════════════════════════════════════════ -->
 <div id="waTestModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" dir="rtl">
-  <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4">
+  <div class="bg-white rounded-3xl shadow-[0_25px_70px_-20px_rgba(45,25,20,0.35)] w-full max-w-md p-6 space-y-4">
     <div class="flex items-center justify-between">
       <h3 class="text-lg font-extrabold text-foreground"><span aria-hidden="true">🧪</span> إرسال رسالة تجريبية</h3>
-      <button id="waTestModalClose" aria-label="إغلاق" class="w-11 h-11 rounded-full bg-secondary/60 flex items-center justify-center text-foreground/70 text-xl font-bold">×</button>
+      <button id="waTestModalClose" aria-label="إغلاق" class="w-11 h-11 rounded-full bg-secondary/60 flex items-center justify-center text-foreground/70 text-lg font-bold">×</button>
     </div>
     <p class="text-sm text-foreground/65">اختبر الدعوة قبل الإرسال الجماعي. لن يُسجَّل RSVP.</p>
     <div class="space-y-3">
@@ -807,7 +894,14 @@ let activeStatus = 'all';
 function normPhone(v) { return (v || '').toString().replace(/\D+/g, ''); }
 function getRows()    { return Array.from(document.querySelectorAll('.guest-row')); }
 function getSelectedPhones() {
-    return Array.from(document.querySelectorAll('.guest-checkbox:checked'))
+    // نقتصر على المدعوين ضمن صفوف ظاهرة حالياً فقط (نفس منطق الظهور المستخدم
+    // في كل مكان آخر بالصفحة: row.style.display !== 'none')، حتى لا تشارك
+    // صفوف مخفيّة بفلتر/بحث في أي إجراء جماعي (حذف/واتساب) عبر هذه الدالة —
+    // وبما أن bulkDeleteBtn وbulkWhatsappBtn وrefreshBulkDeleteState تعتمد
+    // جميعها على getSelectedPhones()، يكفي إصلاحها هنا مرة واحدة.
+    return getRows()
+        .filter(row => row.style.display !== 'none')
+        .flatMap(row => Array.from(row.querySelectorAll('.guest-checkbox:checked')))
         .map(el => normPhone(el.dataset.phone || '')).filter(Boolean);
 }
 function refreshBulkDeleteState() {
@@ -1133,7 +1227,9 @@ bulkDeleteBtn?.addEventListener('click', async () => {
 
 // ── CSV Export ────────────────────────────────────────────────────
 exportCsvBtn?.addEventListener('click', () => {
-    const rows = getRows();
+    // نصدّر الصفوف الظاهرة فقط (بعد تطبيق الفلتر/البحث الحالي)، بنفس منطق
+    // whatsappAllBtn وselectAllGuests — بدل تصدير كل المدعوين دوماً.
+    const rows = getRows().filter(r => r.style.display !== 'none');
     if (!rows.length) { showMsg('error','لا توجد بيانات.'); return; }
     const data = [['الاسم','الجوال','الملاحظة','RSVP','Check-in']];
     rows.forEach(row => {
