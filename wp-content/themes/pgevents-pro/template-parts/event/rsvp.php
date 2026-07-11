@@ -148,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
 }
 ?>
 
-<section id="rsvp" class="mx-auto max-w-lg px-4 pb-6" dir="rtl">
+<section id="rsvp" class="mx-auto max-w-lg px-4 pb-6" dir="rtl" data-pref-reply="<?php echo esc_attr($pref_reply); ?>">
 
     <div class="overflow-hidden rounded-3xl border border-border bg-white shadow-sm">
 
@@ -312,58 +312,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pge_rsvp_submit'])) {
 
 </section>
 
-<script>
-(function() {
-    const btns      = document.querySelectorAll('.rsvp-btn');
-    const input     = document.getElementById('rsvpReply');
-    const block     = document.getElementById('rsvpCompanionsBlock');
-    const cInput    = document.getElementById('companionsInput');
-    const cMinus    = document.getElementById('companionsMinus');
-    const cPlus     = document.getElementById('companionsPlus');
-
-    if (!input) return;
-
-    function setActive(val) {
-        input.value = val;
-
-        // أُظهر/أُخفي المرافقين
-        if (block) block.classList.toggle('hidden', val === 'no');
-
-        btns.forEach(function(b) {
-            const v = b.getAttribute('data-rsvp');
-            const active = (v === val);
-
-            b.className = 'rsvp-btn flex h-16 flex-col items-center justify-center rounded-2xl text-sm font-extrabold transition-all active:scale-[.97] ';
-
-            if (active && v === 'yes') {
-                b.className += 'bg-primary text-white shadow-md ring-2 ring-primary';
-            } else if (active && v === 'no') {
-                b.className += 'bg-foreground text-white shadow-md ring-2 ring-foreground';
-            } else if (v === 'yes') {
-                b.className += 'border-2 border-border bg-white text-foreground hover:border-primary/40 hover:bg-primary/5';
-            } else {
-                b.className += 'border-2 border-border bg-white text-foreground hover:border-foreground/30 hover:bg-secondary/40';
-            }
-        });
-    }
-
-    btns.forEach(function(b) {
-        b.addEventListener('click', function() { setActive(b.getAttribute('data-rsvp')); });
-    });
-
-    // Stepper (+/-)
-    if (cMinus && cPlus && cInput) {
-        cMinus.addEventListener('click', function() {
-            const v = parseInt(cInput.value, 10) || 0;
-            cInput.value = Math.max(0, v - 1);
-        });
-        cPlus.addEventListener('click', function() {
-            const v = parseInt(cInput.value, 10) || 0;
-            cInput.value = Math.min(20, v + 1);
-        });
-    }
-
-    // التهيئة الأولية
-    setActive(<?php echo wp_json_encode($pref_reply); ?>);
-})();
-</script>
+<?php // السلوك (JS) موحَّد بالكامل في assets/js/event.js — لا سكربت مكرر هنا.
+// القيمة المفضّلة الأولية تصل عبر data-pref-reply على <section id="rsvp"> أعلاه. ?>

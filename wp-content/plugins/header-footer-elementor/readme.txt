@@ -4,7 +4,7 @@ Tags: elementor, elementor addons, elementor widgets, elementor template, header
 Requires at least: 5.0  
 Tested up to: 7.0
 Requires PHP: 7.4  
-Stable tag: 2.9.0
+Stable tag: 2.9.1
 License: GPLv2 or later  
 License URI: https://www.gnu.org/licenses/gpl-2.0.html  
 
@@ -310,6 +310,10 @@ You can report the issue through our [Bug Bounty Program](https://brainstormforc
 ---
 
 == Changelog ==
+= 2.9.1 =
+- New: UAE now includes translations for 15 additional languages - Indonesian, Brazilian Portuguese, Russian, Italian, Turkish, Japanese, Simplified Chinese, Polish, Arabic, Swedish, Vietnamese, Hebrew, Thai, Greek, and Czech - alongside refreshed Dutch, French, Spanish, and German, enhancing multilingual accessibility.
+- Improvement: Compatibility with latest Elementor and Elementor Pro 4.2 version.
+
 = 2.9.0 =
 - New: AI Tools - Connect AI assistants like Claude to your site and build or manage your headers, footers, and templates using plain-English commands, powered by the new MCP (Model Context Protocol) integration. (https://ultimateelementor.com/docs/uae-ai-tools-connect-ai-to-your-elementor-site/)
 - Fix: Accessibility - Skip to main content link is now retained when HFE replaces the theme header, restoring keyboard navigation on themes that are not natively supported.

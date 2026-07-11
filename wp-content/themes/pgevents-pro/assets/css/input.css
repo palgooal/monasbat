@@ -74,6 +74,27 @@ summary:focus-visible {
     border: 0 !important;
 }
 
+/* بوابة الدخول (Access Gate) — template-parts/event/access-gate.php هو مستند
+   HTML مستقل (DOCTYPE خاص به، منفصل عن header.php/footer.php) لذا يحتاج خلفية
+   وحركة دخول خاصتين به لا تتكرر في أي مكان آخر من الموقع. نُقلَت هنا بدل تكرارها
+   كـ <style> inline داخل القالب نفسه (وكانت أيضاً تحمل تدرّجاً بألوان hex عشوائية
+   لا علاقة لها بهوية الموقع — استُبدلت بنفس درجة اللون الأساسي لـ --color-foreground
+   مع تفاوت في الإضاءة لعمل التدرّج البصري، دون إدخال هوية لونية جديدة). */
+.gate-bg {
+    min-height: 100vh;
+    background: linear-gradient(135deg, hsl(220, 25%, 14%) 0%, hsl(220, 30%, 10%) 50%, hsl(220, 25%, 14%) 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+}
+@keyframes pge-gate-slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.gate-card { animation: pge-gate-slide-up .4s ease both; }
+
 .hfe-skip-link:focus {
     position: fixed !important;
     left: auto !important;

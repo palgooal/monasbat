@@ -221,7 +221,9 @@ $has_location = ($map_url !== '' || $event_address !== '');
     <!-- زر المشاركة (واتساب + نسخ رابط) -->
     <div class="mt-3 grid grid-cols-2 gap-3">
         <button type="button"
-            class="js-share-wa flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-border bg-white text-sm font-semibold text-foreground/80 hover:bg-secondary/40">
+            class="js-share-wa flex h-12 items-center justify-center gap-2 rounded-2xl border-2 border-border bg-white text-sm font-semibold text-foreground/80 hover:bg-secondary/40"
+            data-title="<?php echo esc_attr($title); ?>"
+            data-url="<?php echo esc_attr($share_url); ?>">
             <span aria-hidden="true">📲</span> واتساب
         </button>
 
@@ -234,93 +236,4 @@ $has_location = ($map_url !== '' || $event_address !== '');
 
 </div>
 
-<script>
-// ──────────────────────────────
-// Countdown Timer
-// ──────────────────────────────
-(function() {
-    const el = document.querySelector('[data-countdown]');
-    if (!el) return;
-
-    const target = new Date(el.dataset.countdown).getTime();
-
-    function pad(n) { return String(n).padStart(2, '0'); }
-
-    function tick() {
-        const diff = target - Date.now();
-        if (diff <= 0) {
-            el.querySelector('.cd-days').textContent  = '00';
-            el.querySelector('.cd-hours').textContent = '00';
-            el.querySelector('.cd-mins').textContent  = '00';
-            el.querySelector('.cd-secs').textContent  = '00';
-            return;
-        }
-        el.querySelector('.cd-days').textContent  = pad(Math.floor(diff / 86400000));
-        el.querySelector('.cd-hours').textContent = pad(Math.floor((diff % 86400000) / 3600000));
-        el.querySelector('.cd-mins').textContent  = pad(Math.floor((diff % 3600000) / 60000));
-        el.querySelector('.cd-secs').textContent  = pad(Math.floor((diff % 60000) / 1000));
-    }
-    tick();
-    setInterval(tick, 1000);
-})();
-
-// ──────────────────────────────
-// نسخ الرابط
-// ──────────────────────────────
-document.querySelectorAll('.js-copy-link').forEach(function(el) {
-    el.addEventListener('click', async function() {
-        const txt = el.getAttribute('data-copy') || '';
-        if (!txt) return;
-        try {
-            await navigator.clipboard.writeText(txt);
-        } catch(e) {
-            const ta = document.createElement('textarea');
-            ta.value = txt;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            ta.remove();
-        }
-        const orig = el.innerHTML;
-        el.innerHTML = '<span aria-hidden="true">✅</span> تم النسخ';
-        setTimeout(function() { el.innerHTML = orig; }, 1500);
-    });
-});
-
-// ──────────────────────────────
-// مشاركة واتساب
-// ──────────────────────────────
-document.querySelectorAll('.js-share-wa').forEach(function(el) {
-    el.addEventListener('click', function() {
-        const url = <?php echo wp_json_encode(get_permalink($event_id)); ?>;
-        const title = <?php echo wp_json_encode($title); ?>;
-        window.open('https://wa.me/?text=' + encodeURIComponent('أنت مدعو: ' + title + '\n' + url), '_blank');
-    });
-});
-
-// ──────────────────────────────
-// إضافة للتقويم
-// ──────────────────────────────
-document.querySelectorAll('.js-add-to-calendar').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        const title    = encodeURIComponent(btn.dataset.title || '');
-        const location = encodeURIComponent(btn.dataset.location || '');
-        const startRaw = btn.dataset.start || '';
-        if (!startRaw) return;
-
-        const startDate = new Date(startRaw);
-        const endDate   = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // +3 ساعات
-
-        function toGcalDate(d) {
-            return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-        }
-
-        const gcal = 'https://www.google.com/calendar/render?action=TEMPLATE'
-            + '&text='     + title
-            + '&dates='    + toGcalDate(startDate) + '/' + toGcalDate(endDate)
-            + '&location=' + location;
-
-        window.open(gcal, '_blank');
-    });
-});
-</script>
+<?php // السلوك (JS) موحَّد بالكامل في assets/js/event.js — لا سكربت مكرر هنا. ?>
