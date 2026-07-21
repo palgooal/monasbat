@@ -58,6 +58,7 @@ class Loader {
 	 */
 	private static function initialize_services(): void {
 		\ElementorOne\Admin\Services\Editor::instance();
+		\ElementorOne\Admin\Services\Licenses::instance();
 		\ElementorOne\Admin\Services\Migration::instance();
 	}
 
@@ -71,6 +72,7 @@ class Loader {
 		\ElementorOne\Admin\Components\Assets::instance();
 		\ElementorOne\Admin\Components\Fields::instance();
 		\ElementorOne\Admin\Components\Onboarding::instance();
+		\ElementorOne\Admin\Components\ManageDashboardWidget::instance();
 	}
 
 	/**
@@ -83,6 +85,7 @@ class Loader {
 		new \ElementorOne\Admin\Controllers\Themes();
 		new \ElementorOne\Admin\Controllers\Plugins();
 		new \ElementorOne\Admin\Controllers\Settings();
+		new \ElementorOne\Admin\Controllers\ManageDashboardWidget();
 		new \ElementorOne\Admin\Controllers\Logs();
 	}
 

@@ -74,6 +74,8 @@
 }
 .e-pro-promotion-placeholder__unlock-btn:hover {
   background: #7a0032;
+  color: #fff;
+  text-decoration: none;
 }
 
 /*# sourceMappingURL=editor.css.map */

@@ -1291,7 +1291,9 @@ var _defineProperty2 = _interopRequireDefault(__webpack_require__(/*! @babel/run
 var _classCallCheck2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/classCallCheck */ "../node_modules/@babel/runtime/helpers/classCallCheck.js"));
 var _createClass2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/createClass */ "../node_modules/@babel/runtime/helpers/createClass.js"));
 var _app = _interopRequireDefault(__webpack_require__(/*! ./app */ "../modules/promotions/assets/js/react/app.js"));
+var _atomicPromotionMedia = __webpack_require__(/*! ./atomic-promotion-media */ "../modules/promotions/assets/js/react/atomic-promotion-media.js");
 var _previewIframeListeners = __webpack_require__(/*! elementor-editor-utils/preview-iframe-listeners */ "../assets/dev/js/editor/utils/preview-iframe-listeners.js");
+var _i18n = __webpack_require__(/*! @wordpress/i18n */ "@wordpress/i18n");
 var _client = __webpack_require__(/*! react-dom/client */ "../node_modules/react-dom/client.js");
 function ownKeys(e, r) { var t = Object.keys(e); if (Object.getOwnPropertySymbols) { var o = Object.getOwnPropertySymbols(e); r && (o = o.filter(function (r) { return Object.getOwnPropertyDescriptor(e, r).enumerable; })), t.push.apply(t, o); } return t; }
 function _objectSpread(e) { for (var r = 1; r < arguments.length; r++) { var t = null != arguments[r] ? arguments[r] : {}; r % 2 ? ownKeys(Object(t), !0).forEach(function (r) { (0, _defineProperty2.default)(e, r, t[r]); }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) { Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r)); }); } return e; }
@@ -1302,7 +1304,7 @@ var AppManager = exports.AppManager = /*#__PURE__*/function () {
     this.promotionWrapper = null;
     this.onRoute = function () {};
     this.unbindIframeEvents = function () {};
-    this.attachAtomicFormListeners();
+    this.attachAtomicWidgetPromotionListeners();
     this.attachWidgetPromotionListeners();
   }
   return (0, _createClass2.default)(AppManager, [{
@@ -1311,27 +1313,22 @@ var AppManager = exports.AppManager = /*#__PURE__*/function () {
       return elementorPromotionsData[promotionType] || {};
     }
   }, {
-    key: "getAtomicFormPromotionData",
-    value: function getAtomicFormPromotionData() {
-      var _elementor;
-      return ((_elementor = elementor) === null || _elementor === void 0 || (_elementor = _elementor.config) === null || _elementor === void 0 ? void 0 : _elementor.atomicFormPromotion) || {};
-    }
-  }, {
     key: "resolveWidgetPromotionData",
     value: function resolveWidgetPromotionData(detail) {
-      var _elementor2, _elementor$config$pro, _elementsPromotion$ac, _elementsPromotion$ac2, _elementsPromotion$ti, _elementsPromotion$co;
-      var promotions = ((_elementor2 = elementor) === null || _elementor2 === void 0 || (_elementor2 = _elementor2.config) === null || _elementor2 === void 0 ? void 0 : _elementor2.v4Promotions) || {};
-      var normalizedType = detail.widgetType.replace(/[-_]/g, '').toLowerCase();
+      var _elementor, _elementor$config$pro, _elementsPromotion$ac, _elementsPromotion$ac2, _elementsPromotion$ti, _elementsPromotion$co;
+      var promotions = ((_elementor = elementor) === null || _elementor === void 0 || (_elementor = _elementor.config) === null || _elementor === void 0 ? void 0 : _elementor.v4Promotions) || {};
+      var widgetType = detail.widgetType || '';
+      var normalizedType = widgetType.replace(/[-_]/g, '').toLowerCase();
       var key = Object.keys(promotions).find(function (promotionKey) {
         return promotionKey.replace(/[-_]/g, '').toLowerCase() === normalizedType;
       });
       var promotionData = key ? promotions[key] : null;
       var elementsPromotion = ((_elementor$config$pro = elementor.config.promotion) === null || _elementor$config$pro === void 0 ? void 0 : _elementor$config$pro.elements) || {};
-      var fallbackCtaUrl = detail.ctaUrl || ((_elementsPromotion$ac = elementsPromotion.action_button) === null || _elementsPromotion$ac === void 0 || (_elementsPromotion$ac = _elementsPromotion$ac.url) === null || _elementsPromotion$ac === void 0 ? void 0 : _elementsPromotion$ac.replace('%s', detail.widgetType || '')) || '';
+      var fallbackCtaUrl = detail.ctaUrl || ((_elementsPromotion$ac = elementsPromotion.action_button) === null || _elementsPromotion$ac === void 0 || (_elementsPromotion$ac = _elementsPromotion$ac.url) === null || _elementsPromotion$ac === void 0 ? void 0 : _elementsPromotion$ac.replace('%s', widgetType)) || '';
       var fallbackCtaText = detail.ctaText || ((_elementsPromotion$ac2 = elementsPromotion.action_button) === null || _elementsPromotion$ac2 === void 0 ? void 0 : _elementsPromotion$ac2.text) || '';
       var widgetName = detail.widgetTitle || detail.title || '';
       var hideProTag = detail.hideProTag || false;
-      return promotionData ? _objectSpread(_objectSpread({}, promotionData), {}, {
+      var resolvedPromotionData = promotionData ? _objectSpread(_objectSpread({}, promotionData), {}, {
         ctaUrl: promotionData.ctaUrl || fallbackCtaUrl,
         ctaText: promotionData.ctaText || fallbackCtaText,
         hideProTag: hideProTag
@@ -1342,12 +1339,13 @@ var AppManager = exports.AppManager = /*#__PURE__*/function () {
         ctaText: fallbackCtaText,
         hideProTag: hideProTag
       };
+      return applyProConnectPromotionOverrides(resolvedPromotionData);
     }
   }, {
     key: "mount",
     value: function mount(targetNode, selectors) {
-      var _elementor3,
-        _elementor3$getPrefer,
+      var _elementor2,
+        _elementor2$getPrefer,
         _rootElement$getAttri,
         _this = this;
       if (this.promotionInfoTip) {
@@ -1360,7 +1358,7 @@ var AppManager = exports.AppManager = /*#__PURE__*/function () {
       }
       this.attachEditorEventListeners();
       this.promotionInfoTip = (0, _client.createRoot)(rootElement);
-      var colorScheme = ((_elementor3 = elementor) === null || _elementor3 === void 0 || (_elementor3$getPrefer = _elementor3.getPreferences) === null || _elementor3$getPrefer === void 0 ? void 0 : _elementor3$getPrefer.call(_elementor3, 'ui_theme')) || 'auto';
+      var colorScheme = ((_elementor2 = elementor) === null || _elementor2 === void 0 || (_elementor2$getPrefer = _elementor2.getPreferences) === null || _elementor2$getPrefer === void 0 ? void 0 : _elementor2$getPrefer.call(_elementor2, 'ui_theme')) || 'auto';
       var isRTL = elementorCommon.config.isRTL;
       var promotionType = (_rootElement$getAttri = rootElement.getAttribute('data-promotion')) === null || _rootElement$getAttri === void 0 ? void 0 : _rootElement$getAttri.replace('_promotion', '');
       this.promotionInfoTip.render(/*#__PURE__*/_react.default.createElement(_app.default, {
@@ -1375,8 +1373,8 @@ var AppManager = exports.AppManager = /*#__PURE__*/function () {
   }, {
     key: "mountCard",
     value: function mountCard(targetEl, wrapperClassName, appProps) {
-      var _elementor4,
-        _elementor4$getPrefer,
+      var _elementor3,
+        _elementor3$getPrefer,
         _this2 = this;
       this.unmount();
       this.promotionWrapper = document.createElement('span');
@@ -1385,7 +1383,7 @@ var AppManager = exports.AppManager = /*#__PURE__*/function () {
       this.attachEditorEventListeners();
       this.promotionInfoTip = (0, _client.createRoot)(this.promotionWrapper);
       this.promotionInfoTip.render(/*#__PURE__*/_react.default.createElement(_app.default, (0, _extends2.default)({
-        colorScheme: ((_elementor4 = elementor) === null || _elementor4 === void 0 || (_elementor4$getPrefer = _elementor4.getPreferences) === null || _elementor4$getPrefer === void 0 ? void 0 : _elementor4$getPrefer.call(_elementor4, 'ui_theme')) || 'auto',
+        colorScheme: ((_elementor3 = elementor) === null || _elementor3 === void 0 || (_elementor3$getPrefer = _elementor3.getPreferences) === null || _elementor3$getPrefer === void 0 ? void 0 : _elementor3$getPrefer.call(_elementor3, 'ui_theme')) || 'auto',
         isRTL: elementorCommon.config.isRTL,
         anchorTarget: targetEl,
         doClose: function doClose() {
@@ -1394,15 +1392,37 @@ var AppManager = exports.AppManager = /*#__PURE__*/function () {
       }, appProps)));
     }
   }, {
-    key: "attachAtomicFormListeners",
-    value: function attachAtomicFormListeners() {
-      var _this3 = this;
-      document.addEventListener('atomic-form-promotion:open', function (event) {
-        var promotionData = _this3.getAtomicFormPromotionData();
-        _this3.mountCard(event.detail.target, 'e-atomic-form-promotion-wrapper', {
-          cardType: 'atomicForm',
-          promotionData: promotionData,
-          ctaUrl: promotionData.widgetCtaUrl
+    key: "resolveAtomicWidgetPromotionCardProps",
+    value: function resolveAtomicWidgetPromotionCardProps(_ref) {
+      var cardType = _ref.cardType,
+        content = _ref.content;
+      return {
+        cardType: cardType,
+        promotionData: applyProConnectPromotionOverrides({
+          title: content.title,
+          content: content.content,
+          ctaText: content.ctaText,
+          ctaUrl: content.widgetCtaUrl,
+          image: content.image,
+          animationData: (0, _atomicPromotionMedia.resolvePromotionAnimation)(content.animation)
+        })
+      };
+    }
+  }, {
+    key: "attachAtomicWidgetPromotionListeners",
+    value: function attachAtomicWidgetPromotionListeners() {
+      var _elementor4,
+        _this3 = this;
+      var promotions = ((_elementor4 = elementor) === null || _elementor4 === void 0 || (_elementor4 = _elementor4.config) === null || _elementor4 === void 0 ? void 0 : _elementor4.atomicWidgetPromotions) || [];
+      promotions.forEach(function (_ref2) {
+        var type = _ref2.type,
+          cardType = _ref2.cardType,
+          content = _ref2.content;
+        document.addEventListener("".concat(type, "-promotion:open"), function (event) {
+          _this3.mountCard(event.detail.target, "e-".concat(type, "-promotion-wrapper"), _this3.resolveAtomicWidgetPromotionCardProps({
+            cardType: cardType,
+            content: content
+          }));
         });
       });
     }
@@ -1452,6 +1472,15 @@ var AppManager = exports.AppManager = /*#__PURE__*/function () {
     }
   }]);
 }();
+function applyProConnectPromotionOverrides(promotionData) {
+  if (!elementor.helpers.hasProAndNotConnected()) {
+    return promotionData;
+  }
+  return _objectSpread(_objectSpread({}, promotionData), {}, {
+    ctaUrl: elementorProEditorConfig.urls.connect,
+    ctaText: (0, _i18n.__)('Connect & Activate', 'elementor')
+  });
+}
 
 /***/ }),
 
@@ -1474,7 +1503,7 @@ var _react = _interopRequireDefault(__webpack_require__(/*! react */ "react"));
 var _defineProperty2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/defineProperty */ "../node_modules/@babel/runtime/helpers/defineProperty.js"));
 var _objectWithoutProperties2 = _interopRequireDefault(__webpack_require__(/*! @babel/runtime/helpers/objectWithoutProperties */ "../node_modules/@babel/runtime/helpers/objectWithoutProperties.js"));
 var _ui = __webpack_require__(/*! @elementor/ui */ "@elementor/ui");
-var _atomicFormPromotionCard = _interopRequireDefault(__webpack_require__(/*! ./components/atomic-form-promotion-card */ "../modules/promotions/assets/js/react/components/atomic-form-promotion-card.js"));
+var _atomicPromotionCard = _interopRequireDefault(__webpack_require__(/*! ./components/atomic-promotion-card */ "../modules/promotions/assets/js/react/components/atomic-promotion-card.js"));
 var _promotionCard = _interopRequireDefault(__webpack_require__(/*! ./components/promotion-card */ "../modules/promotions/assets/js/react/components/promotion-card.js"));
 var _widgetPromotionCard = _interopRequireDefault(__webpack_require__(/*! ./components/widget-promotion-card */ "../modules/promotions/assets/js/react/components/widget-promotion-card.js"));
 var _excluded = ["colorScheme", "isRTL", "anchorTarget"];
@@ -1493,11 +1522,10 @@ function getPlacement(anchorTarget, isRTL) {
   return isRTL ? 'left-start' : 'right-start';
 }
 function getCardContent(props) {
-  if ('atomicForm' === props.cardType) {
-    return /*#__PURE__*/_react.default.createElement(_atomicFormPromotionCard.default, {
+  if ('atomic' === props.cardType) {
+    return /*#__PURE__*/_react.default.createElement(_atomicPromotionCard.default, {
       doClose: props.doClose,
-      promotionData: props.promotionData,
-      ctaUrl: props.ctaUrl
+      promotionData: props.promotionData
     });
   }
   if ('widgetPromotion' === props.cardType) {
@@ -1565,14 +1593,13 @@ module.exports = /*#__PURE__*/JSON.parse('{"v":"5.7.5","fr":100,"ip":0,"op":876,
 
 /***/ }),
 
-/***/ "../modules/promotions/assets/js/react/components/atomic-form-promotion-card.js":
-/*!**************************************************************************************!*\
-  !*** ../modules/promotions/assets/js/react/components/atomic-form-promotion-card.js ***!
-  \**************************************************************************************/
+/***/ "../modules/promotions/assets/js/react/atomic-promotion-media.js":
+/*!***********************************************************************!*\
+  !*** ../modules/promotions/assets/js/react/atomic-promotion-media.js ***!
+  \***********************************************************************/
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
-/* provided dependency */ var PropTypes = __webpack_require__(/*! prop-types */ "../node_modules/prop-types/index.js");
 
 
 var _interopRequireDefault = __webpack_require__(/*! @babel/runtime/helpers/interopRequireDefault */ "../node_modules/@babel/runtime/helpers/interopRequireDefault.js");
@@ -1580,27 +1607,105 @@ var _typeof = __webpack_require__(/*! @babel/runtime/helpers/typeof */ "../node_
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
-exports["default"] = void 0;
+exports.AtomicPromotionMedia = AtomicPromotionMedia;
+exports.resolvePromotionAnimation = resolvePromotionAnimation;
 var _react = _interopRequireDefault(__webpack_require__(/*! react */ "react"));
 var _lottieReact = _interopRequireDefault(__webpack_require__(/*! lottie-react */ "../node_modules/lottie-react/build/index.umd.js"));
+var _propTypes = _interopRequireDefault(__webpack_require__(/*! prop-types */ "../node_modules/prop-types/index.js"));
+var _ui = __webpack_require__(/*! @elementor/ui */ "@elementor/ui");
+var atomicFormAnimationData = _interopRequireWildcard(__webpack_require__(/*! ./assets/atomic-form-animation.json */ "../modules/promotions/assets/js/react/assets/atomic-form-animation.json"));
+function _interopRequireWildcard(e, t) { if ("function" == typeof WeakMap) var r = new WeakMap(), n = new WeakMap(); return (_interopRequireWildcard = function _interopRequireWildcard(e, t) { if (!t && e && e.__esModule) return e; var o, i, f = { __proto__: null, default: e }; if (null === e || "object" != _typeof(e) && "function" != typeof e) return f; if (o = t ? n : r) { if (o.has(e)) return o.get(e); o.set(e, f); } for (var _t in e) "default" !== _t && {}.hasOwnProperty.call(e, _t) && ((i = (o = Object.defineProperty) && Object.getOwnPropertyDescriptor(e, _t)) && (i.get || i.set) ? o(f, _t, i) : f[_t] = e[_t]); return f; })(e, t); }
+var CARD_WIDTH = 296;
+var IMAGE_HEIGHT = 176;
+var ANIMATION_HEIGHT = 150;
+var PROMOTION_ANIMATIONS = {
+  'atomic-form-animation': atomicFormAnimationData
+};
+function resolvePromotionAnimation(animationKey) {
+  var _PROMOTION_ANIMATIONS;
+  return (_PROMOTION_ANIMATIONS = PROMOTION_ANIMATIONS[animationKey]) !== null && _PROMOTION_ANIMATIONS !== void 0 ? _PROMOTION_ANIMATIONS : null;
+}
+function AtomicPromotionMedia(_ref) {
+  var image = _ref.image,
+    animationData = _ref.animationData;
+  if (image) {
+    return /*#__PURE__*/_react.default.createElement(_ui.Image, {
+      src: image,
+      alt: "",
+      sx: {
+        width: CARD_WIDTH,
+        height: IMAGE_HEIGHT
+      }
+    });
+  }
+  if (animationData) {
+    return /*#__PURE__*/_react.default.createElement(_ui.Box, {
+      sx: {
+        height: ANIMATION_HEIGHT,
+        width: '100%',
+        overflow: 'hidden'
+      },
+      "data-testid": "e-atomic-form-animation"
+    }, /*#__PURE__*/_react.default.createElement(_lottieReact.default, {
+      animationData: animationData,
+      loop: true,
+      autoplay: true,
+      rendererSettings: {
+        preserveAspectRatio: 'xMidYMid slice'
+      },
+      style: {
+        width: '100%',
+        height: '100%'
+      }
+    }));
+  }
+  return null;
+}
+AtomicPromotionMedia.propTypes = {
+  animationData: _propTypes.default.object,
+  image: _propTypes.default.string
+};
+
+/***/ }),
+
+/***/ "../modules/promotions/assets/js/react/components/atomic-promotion-card.js":
+/*!*********************************************************************************!*\
+  !*** ../modules/promotions/assets/js/react/components/atomic-promotion-card.js ***!
+  \*********************************************************************************/
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+"use strict";
+
+
+var _interopRequireDefault = __webpack_require__(/*! @babel/runtime/helpers/interopRequireDefault */ "../node_modules/@babel/runtime/helpers/interopRequireDefault.js");
+Object.defineProperty(exports, "__esModule", ({
+  value: true
+}));
+exports["default"] = void 0;
+var _react = _interopRequireDefault(__webpack_require__(/*! react */ "react"));
+var _propTypes = _interopRequireDefault(__webpack_require__(/*! prop-types */ "../node_modules/prop-types/index.js"));
 var _icons = __webpack_require__(/*! @elementor/icons */ "@elementor/icons");
 var _ui = __webpack_require__(/*! @elementor/ui */ "@elementor/ui");
-var animationData = _interopRequireWildcard(__webpack_require__(/*! ../assets/atomic-form-animation.json */ "../modules/promotions/assets/js/react/assets/atomic-form-animation.json"));
-function _interopRequireWildcard(e, t) { if ("function" == typeof WeakMap) var r = new WeakMap(), n = new WeakMap(); return (_interopRequireWildcard = function _interopRequireWildcard(e, t) { if (!t && e && e.__esModule) return e; var o, i, f = { __proto__: null, default: e }; if (null === e || "object" != _typeof(e) && "function" != typeof e) return f; if (o = t ? n : r) { if (o.has(e)) return o.get(e); o.set(e, f); } for (var _t in e) "default" !== _t && {}.hasOwnProperty.call(e, _t) && ((i = (o = Object.defineProperty) && Object.getOwnPropertyDescriptor(e, _t)) && (i.get || i.set) ? o(f, _t, i) : f[_t] = e[_t]); return f; })(e, t); }
-var AtomicFormPromotionCard = function AtomicFormPromotionCard(props) {
-  var _props$promotionData;
-  var _ref = (_props$promotionData = props.promotionData) !== null && _props$promotionData !== void 0 ? _props$promotionData : {},
-    title = _ref.title,
-    content = _ref.content,
-    ctaText = _ref.ctaText;
+var _atomicPromotionMedia = __webpack_require__(/*! ../atomic-promotion-media */ "../modules/promotions/assets/js/react/atomic-promotion-media.js");
+var CARD_WIDTH = 296;
+var AtomicPromotionCard = function AtomicPromotionCard(_ref) {
+  var doClose = _ref.doClose,
+    promotionData = _ref.promotionData;
+  var _ref2 = promotionData !== null && promotionData !== void 0 ? promotionData : {},
+    title = _ref2.title,
+    content = _ref2.content,
+    ctaText = _ref2.ctaText,
+    ctaUrl = _ref2.ctaUrl,
+    image = _ref2.image,
+    animationData = _ref2.animationData;
   return /*#__PURE__*/_react.default.createElement(_ui.ClickAwayListener, {
     disableReactTree: true,
     mouseEvent: "onMouseDown",
     touchEvent: "onTouchStart",
-    onClickAway: props.doClose
+    onClickAway: doClose
   }, /*#__PURE__*/_react.default.createElement(_ui.Box, {
     sx: {
-      width: 296
+      width: CARD_WIDTH
     }
   }, /*#__PURE__*/_react.default.createElement(_ui.Stack, {
     direction: "row",
@@ -1619,25 +1724,11 @@ var AtomicFormPromotionCard = function AtomicFormPromotionCard(props) {
         fontSize: 'small'
       }
     },
-    onClick: props.doClose
-  })), /*#__PURE__*/_react.default.createElement(_ui.Box, {
-    sx: {
-      height: 150,
-      width: '100%',
-      overflow: 'hidden'
-    }
-  }, /*#__PURE__*/_react.default.createElement(_lottieReact.default, {
-    animationData: animationData,
-    loop: true,
-    autoplay: true,
-    rendererSettings: {
-      preserveAspectRatio: 'xMidYMid slice'
-    },
-    style: {
-      width: '100%',
-      height: '100%'
-    }
-  })), /*#__PURE__*/_react.default.createElement(_ui.Stack, {
+    onClick: doClose
+  })), /*#__PURE__*/_react.default.createElement(_atomicPromotionMedia.AtomicPromotionMedia, {
+    image: image,
+    animationData: animationData
+  }), /*#__PURE__*/_react.default.createElement(_ui.Stack, {
     px: 2
   }, /*#__PURE__*/_react.default.createElement(_ui.Typography, {
     variant: "body2",
@@ -1656,17 +1747,16 @@ var AtomicFormPromotionCard = function AtomicFormPromotionCard(props) {
     size: "small",
     color: "promotion",
     startIcon: /*#__PURE__*/_react.default.createElement(_icons.CrownFilledIcon, null),
-    href: props.ctaUrl,
+    href: ctaUrl,
     target: "_blank",
     rel: "noopener noreferrer"
   }, ctaText))));
 };
-AtomicFormPromotionCard.propTypes = {
-  doClose: PropTypes.func,
-  promotionData: PropTypes.object,
-  ctaUrl: PropTypes.string
+AtomicPromotionCard.propTypes = {
+  doClose: _propTypes.default.func,
+  promotionData: _propTypes.default.object
 };
-var _default = exports["default"] = AtomicFormPromotionCard;
+var _default = exports["default"] = AtomicPromotionCard;
 
 /***/ }),
 

@@ -1434,9 +1434,6 @@ body.elementor-panel-loading #elementor-panel-state-loading {
   inset-inline-end: 5px;
   color: var(--e-a-color-txt);
 }
-.elementor-panel .elementor-element[data-library-element-type=e-birthday-easter-egg] .icon {
-  color: #C00BB9;
-}
 .elementor-panel .elementor-element:hover, .elementor-panel .elementor-element:focus {
   background-color: var(--e-a-bg-hover);
   border-color: var(--e-a-border-color-bold);
@@ -5173,7 +5170,7 @@ body.e-is-device-mode:not(.elementor-device-desktop) #elementor-preview-responsi
   overflow-y: scroll;
 }
 #elementor-template-library-modal:has(#elementor-template-library-save-template) .dialog-message, #elementor-template-library-modal:has(#elementor-template-library-save-template-variant-b) .dialog-message {
-  overflow-y: hidden;
+  overflow-y: auto;
 }
 #elementor-template-library-modal .e-back-to-editor {
   color: var(--e-a-color-txt);

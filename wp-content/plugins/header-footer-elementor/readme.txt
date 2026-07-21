@@ -4,7 +4,7 @@ Tags: elementor, elementor addons, elementor widgets, elementor template, header
 Requires at least: 5.0  
 Tested up to: 7.0
 Requires PHP: 7.4  
-Stable tag: 2.9.1
+Stable tag: 2.9.2
 License: GPLv2 or later  
 License URI: https://www.gnu.org/licenses/gpl-2.0.html  
 
@@ -310,6 +310,9 @@ You can report the issue through our [Bug Bounty Program](https://brainstormforc
 ---
 
 == Changelog ==
+= 2.9.2 =
+- Fix: Security - A security vulnerability in UAE has been identified and patched. We recommend updating to 2.9.2 immediately. Props to Asaf Mozes from WPScan for responsibly disclosing this to our team.
+
 = 2.9.1 =
 - New: UAE now includes translations for 15 additional languages - Indonesian, Brazilian Portuguese, Russian, Italian, Turkish, Japanese, Simplified Chinese, Polish, Arabic, Swedish, Vietnamese, Hebrew, Thai, Greek, and Czech - alongside refreshed Dutch, French, Spanish, and German, enhancing multilingual accessibility.
 - Improvement: Compatibility with latest Elementor and Elementor Pro 4.2 version.
