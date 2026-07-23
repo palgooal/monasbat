@@ -1,5 +1,15 @@
 {
-  "description": "Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders.",
+  "permissions": {
+    "allow": [
+      "Bash(php -l \"wp-content/plugins/pgevents-core/includes/class-pge-catalog.php\")",
+      "Bash(php \"C:/Users/lenovo/AppData/Local/Temp/claude/f--laragon-www-monasbat/913c411a-46ea-4f6c-a68c-c7f72edacef0/scratchpad/test_get_service_by_salla.php\")",
+      "Bash(grep -v \"^$\\\\|Warning\\\\|Call Stack\\\\|0\\\\.000\\\\|main\\(\\)\\\\|require\\(\\\\|require_once\\(\")",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(php \"C:/Users/lenovo/AppData/Local/Temp/claude/f--laragon-www-monasbat/913c411a-46ea-4f6c-a68c-c7f72edacef0/scratchpad/test_constants.php\")",
+      "Bash(echo \"diff --check exit: $?\")",
+      "Bash(php \"C:/Users/lenovo/AppData/Local/Temp/claude/f--laragon-www-monasbat/913c411a-46ea-4f6c-a68c-c7f72edacef0/scratchpad/test_normalize_plan_type.php\")"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -14,5 +24,6 @@
         ]
       }
     ]
-  }
+  },
+  "description": "Impeccable design detector: runs after Edit/Write/MultiEdit on UI files and surfaces findings as system reminders."
 }

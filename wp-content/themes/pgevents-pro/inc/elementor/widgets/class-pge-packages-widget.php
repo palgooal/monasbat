@@ -47,6 +47,15 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
             'default' => 'اختر الباقة المناسبة لك',
             'condition' => ['show_heading' => 'yes'],
         ]);
+        $this->add_control('data_source', [
+            'label' => __('مصدر البيانات', 'pgevents'),
+            'type' => \Elementor\Controls_Manager::SELECT,
+            'default' => 'manual',
+            'options' => [
+                'manual'  => __('يدوي — النظام القديم', 'pgevents'),
+                'catalog' => __('الكتالوج', 'pgevents'),
+            ],
+        ]);
         $this->add_control('featured_plan', [
             'label' => __('Featured Plan', 'pgevents'),
             'type' => \Elementor\Controls_Manager::SELECT,
@@ -57,6 +66,7 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
                 'plan_3' => 'Plan 3',
                 'plan_4' => 'Plan 4',
             ],
+            'condition' => ['data_source' => 'manual'],
         ]);
         $this->add_control('featured_badge', [
             'label' => __('Featured Badge', 'pgevents'),
@@ -67,6 +77,7 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
             'label' => __('Currency', 'pgevents'),
             'type' => \Elementor\Controls_Manager::TEXT,
             'default' => 'ريال',
+            'condition' => ['data_source' => 'manual'],
         ]);
         $this->add_control('button_text', [
             'label' => __('Button Text', 'pgevents'),
@@ -96,7 +107,7 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
             'type' => \Elementor\Controls_Manager::SLIDER,
             'range' => ['px' => ['min' => 8, 'max' => 48]],
             'default' => ['size' => 24],
-            'selectors' => ['{{WRAPPER}} .pge-pkg-grid' => 'gap: {{SIZE}}px;'],
+            'selectors' => ['{{WRAPPER}} .pge-pkg-grid' => 'gap: {{SIZE}}px; --pge-pkg-gap: {{SIZE}}px;'],
         ]);
         $this->add_control('card_bg', [
             'label' => __('Card Background', 'pgevents'),
@@ -203,9 +214,15 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
         $this->end_controls_section();
     }
 
-    protected function render()
+    /**
+     * يبني مصفوفة الباقات الأربع الثابتة من النظام القديم (mon_packages_settings)
+     * بلا أي تغيير في القيم أو المنطق — نفس الكود الذي كان مباشرة داخل render()
+     * قبل إضافة وضع Catalog، منقولاً كما هو ضمن مصفوفة موحّدة الشكل
+     * (key/name/price_text/currency/features/url/is_featured) ليشترك مع وضع
+     * Catalog في حلقة الطباعة نفسها دون تكرار HTML.
+     */
+    private function build_manual_packages($settings)
     {
-        $settings = $this->get_settings_for_display();
         $defaults = (class_exists('PGE_Packages') && method_exists('PGE_Packages', 'get_default_plans'))
             ? (array) PGE_Packages::get_default_plans()
             : [];
@@ -252,9 +269,162 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
 
         $featured = (string) ($settings['featured_plan'] ?? 'plan_2');
         $fallback_url = !empty($settings['fallback_url']['url']) ? $settings['fallback_url']['url'] : home_url('/packages/');
-        $btn_text = trim((string) ($settings['button_text'] ?? '')) ?: 'اختر هذه الباقة';
         $currency = trim((string) ($settings['currency'] ?? '')) ?: 'ريال';
+
+        $packages = [];
+        foreach ($plans as $key => $plan) {
+            $packages[] = [
+                'key'         => $key,
+                'name'        => (string) ($plan['name'] ?? $key),
+                'price_text'  => (string) ($plan['price'] ?? '0'),
+                'currency'    => $currency,
+                'features'    => $make_features($plan),
+                'url'         => (!empty($plan['salla_url']) && $plan['salla_url'] !== '#') ? $plan['salla_url'] : $fallback_url,
+                'is_featured' => ($key === $featured),
+                'has_starting_price' => false,
+            ];
+        }
+
+        return $packages;
+    }
+
+    /**
+     * يبني مصفوفة الباقات من PGE_Catalog (الباقات النشطة فقط، بترتيب
+     * get_plans() نفسه). تُعيد [] إن لم يوجد الكلاس أصلاً أو لم توجد أي باقة
+     * نشطة — الاستدعاء في render() يُترجم [] إلى fallback فوري للوضع اليدوي
+     * في نفس الطلب، دون لمس إعداد data_source المحفوظ في Elementor.
+     */
+    private function build_catalog_packages($settings)
+    {
+        if (!class_exists('PGE_Catalog')) {
+            return [];
+        }
+
+        try {
+            $plans = PGE_Catalog::get_plans();
+        } catch (\Throwable $e) {
+            return [];
+        }
+        if (!is_array($plans)) {
+            $plans = [];
+        }
+
+        $fallback_url = !empty($settings['fallback_url']['url'])
+            ? esc_url_raw($settings['fallback_url']['url'])
+            : '';
+        if ($fallback_url === '') {
+            $fallback_url = '#';
+        }
+        $max_features = max(3, (int) ($settings['max_features'] ?? 7));
+
+        $packages = [];
+        foreach ($plans as $plan) {
+            if (!is_array($plan) || ($plan['status'] ?? '') !== 'active') {
+                continue;
+            }
+
+            try {
+                $tiers = PGE_Catalog::get_plan_tiers($plan['id'] ?? 0);
+            } catch (\Throwable $e) {
+                $tiers = [];
+            }
+            if (!is_array($tiers)) {
+                $tiers = [];
+            }
+
+            $min_price = null;
+            $min_currency = '';
+            foreach ($tiers as $tier) {
+                if (!is_array($tier) || ($tier['status'] ?? '') !== 'active') {
+                    continue;
+                }
+                if (!isset($tier['price']) || !is_numeric($tier['price'])) {
+                    continue;
+                }
+                $tier_price = (float) $tier['price'];
+                if ($min_price === null || $tier_price < $min_price) {
+                    $min_price = $tier_price;
+                    $min_currency = trim((string) ($tier['currency'] ?? ''));
+                }
+            }
+
+            if ($min_price === null) {
+                $price_text = __('تواصل معنا', 'pgevents');
+                $currency_text = '';
+            } elseif (floor($min_price) === $min_price) {
+                $price_text = number_format_i18n($min_price, 0);
+                $currency_text = $min_currency;
+            } else {
+                $price_text = number_format_i18n($min_price, 2);
+                if (substr($price_text, -1) === '0') {
+                    $price_text = substr($price_text, 0, -1);
+                }
+                $currency_text = $min_currency;
+            }
+
+            $decoded = null;
+            $features_raw = $plan['features'] ?? null;
+            if (is_string($features_raw) && trim($features_raw) !== '') {
+                $decoded = json_decode($features_raw, true);
+            }
+            $features = [];
+            if (is_array($decoded)) {
+                foreach ($decoded as $item) {
+                    if (is_string($item)) {
+                        $features[] = $item;
+                    }
+                }
+            }
+            $features = array_slice($features, 0, $max_features);
+
+            $plan_key = sanitize_key((string) ($plan['plan_key'] ?? ''));
+            $details_url = $fallback_url;
+            if ($plan_key !== '') {
+                $details_url = add_query_arg(
+                    'plan',
+                    $plan_key,
+                    home_url('/packages/')
+                );
+            }
+
+            $packages[] = [
+                'plan_key'    => $plan_key,
+                'name'        => (string) ($plan['name'] ?? ''),
+                'price_text'  => $price_text,
+                'currency'    => $currency_text,
+                'features'    => $features,
+                'url'         => $details_url,
+                'is_featured' => false,
+                'has_starting_price' => ($min_price !== null),
+            ];
+        }
+
+        return $packages;
+    }
+
+    protected function render()
+    {
+        $settings = $this->get_settings_for_display();
+
+        $data_source = $settings['data_source'] ?? 'manual';
+        if (!in_array($data_source, ['manual', 'catalog'], true)) {
+            $data_source = 'manual';
+        }
+
+        $packages = null;
+        $is_catalog = false;
+        if ($data_source === 'catalog') {
+            $packages = $this->build_catalog_packages($settings);
+            $is_catalog = !empty($packages);
+        }
+        if (empty($packages)) {
+            $packages = $this->build_manual_packages($settings);
+        }
+
+        $btn_text = trim((string) ($settings['button_text'] ?? '')) ?: 'اختر هذه الباقة';
+        $display_btn_text = $is_catalog ? __('عرض التفاصيل', 'pgevents') : $btn_text;
         $badge = trim((string) ($settings['featured_badge'] ?? '')) ?: 'الأكثر طلبا';
+        $center_catalog_cards = $is_catalog && count($packages) < 4;
 
         echo '<div class="pge-packages" dir="rtl">';
         if (($settings['show_heading'] ?? '') === 'yes') {
@@ -263,23 +433,28 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
             echo '<p class="pge-pkg-head-sub">' . esc_html((string) ($settings['subtitle'] ?? '')) . '</p>';
             echo '</div>';
         }
-        echo '<div class="pge-pkg-grid">';
-        foreach ($plans as $key => $plan) {
-            $name = (string) ($plan['name'] ?? $key);
-            $price = (string) ($plan['price'] ?? '0');
-            $url = (!empty($plan['salla_url']) && $plan['salla_url'] !== '#') ? $plan['salla_url'] : $fallback_url;
-            $is_featured = ($key === $featured);
-            $features = $make_features($plan);
+        echo '<div class="pge-pkg-grid' . ($center_catalog_cards ? ' is-catalog-centered' : '') . '">';
+        foreach ($packages as $pkg) {
+            $is_featured = !empty($pkg['is_featured']);
             echo '<article class="pge-pkg-card' . ($is_featured ? ' is-featured' : '') . '">';
             if ($is_featured) echo '<span class="pge-pkg-badge">' . esc_html($badge) . '</span>';
-            echo '<h3 class="pge-pkg-title">' . esc_html($name) . '</h3>';
-            echo '<div class="pge-pkg-price"><span class="pge-pkg-price-value">' . esc_html($price) . '</span><span class="pge-pkg-price-currency">' . esc_html($currency) . '</span></div>';
+            echo '<h3 class="pge-pkg-title">' . esc_html($pkg['name']) . '</h3>';
+            $has_starting_price = !empty($pkg['has_starting_price']);
+            echo '<div class="pge-pkg-price' . ($has_starting_price ? ' has-starting-price' : '') . '">';
+            if ($has_starting_price) {
+                echo '<span class="pge-pkg-price-prefix">' . esc_html__('ابتداءً من', 'pgevents') . '</span>';
+            }
+            echo '<span class="pge-pkg-price-value">' . esc_html($pkg['price_text']) . '</span>';
+            if ((string) $pkg['currency'] !== '') {
+                echo '<span class="pge-pkg-price-currency">' . esc_html($pkg['currency']) . '</span>';
+            }
+            echo '</div>';
             echo '<ul class="pge-pkg-features">';
-            foreach ($features as $text) {
+            foreach ($pkg['features'] as $text) {
                 echo '<li class="pge-pkg-feature"><span class="pge-pkg-feature-text">' . esc_html($text) . '</span><span class="pge-pkg-check">✓</span></li>';
             }
             echo '</ul>';
-            echo '<a class="pge-pkg-btn' . ($is_featured ? ' is-featured-btn' : '') . '" href="' . esc_url($url) . '">' . esc_html($btn_text) . '</a>';
+            echo '<a class="pge-pkg-btn' . ($is_featured ? ' is-featured-btn' : '') . '" href="' . esc_url($pkg['url']) . '">' . esc_html($display_btn_text) . '</a>';
             echo '</article>';
         }
         echo '</div></div>';
@@ -297,7 +472,8 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
             .pge-pkg-feature{display:flex;align-items:center;justify-content:space-between;gap:12px}.pge-pkg-feature-text{color:#4b5563;line-height:1.5}
             .pge-pkg-check{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:#f5d9de;color:#cf4f69;font-size:13px;font-weight:700;flex:none}
             .pge-pkg-btn{margin-top:auto;display:block;text-align:center;text-decoration:none;border:1px solid #e5e7eb;border-radius:14px;background:#fff;color:#1f2937;padding:14px 16px;font-weight:700;transition:.2s}
-            .pge-pkg-btn:hover{background:#f8fafc;border-color:#d1d5db}.pge-pkg-btn.is-featured-btn{border-color:transparent;color:#fff;background:linear-gradient(90deg,var(--pge-fbtn-start),var(--pge-fbtn-end))}
+            .pge-pkg-btn:hover{background:#f8fafc;border-color:#d1d5db}.pge-pkg-btn.is-featured-btn{border-color:transparent;color:#fff;background:linear-gradient(90deg,var(--pge-fbtn-start),var(--pge-fbtn-end))}<?php if ($is_catalog) echo '.pge-pkg-price.has-starting-price{flex-wrap:wrap}.pge-pkg-price-prefix{flex:0 0 100%;text-align:center;font-size:.9rem;color:#6b7280;line-height:1.5}.pge-pkg-grid.is-catalog-centered{display:flex;flex-wrap:wrap;justify-content:center}.pge-pkg-grid.is-catalog-centered .pge-pkg-card{flex:0 1 100%;min-width:0}@media(min-width:768px){.pge-pkg-grid.is-catalog-centered .pge-pkg-card{flex-basis:calc((100% - var(--pge-pkg-gap,24px))/2)}}@media(min-width:1280px){.pge-pkg-grid.is-catalog-centered .pge-pkg-card{flex-basis:calc((100% - var(--pge-pkg-gap,24px) - var(--pge-pkg-gap,24px) - var(--pge-pkg-gap,24px))/4)}}'; ?>
+
         </style>
         <?php
     }

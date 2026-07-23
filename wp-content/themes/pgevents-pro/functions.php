@@ -150,6 +150,10 @@ add_action('elementor/widgets/register', function ($widgets_manager) {
             'file'  => get_stylesheet_directory() . '/inc/elementor/widgets/class-pge-packages-widget.php',
             'class' => '\PGE_Packages_Widget',
         ],
+        [
+            'file'  => get_stylesheet_directory() . '/inc/elementor/widgets/class-pge-package-details-widget.php',
+            'class' => '\PGE_Package_Details_Widget',
+        ],
     ];
 
     foreach ($widgets as $widget) {
