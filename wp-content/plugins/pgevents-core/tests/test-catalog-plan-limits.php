@@ -642,6 +642,147 @@ reset_test_user(514);
 set_test_user_meta(514, '_mon_package_source', 123); // نوع غير نصي تماماً بدل 'catalog'
 check('9.12 _mon_package_source برقم بدل نص → يُعامَل كغير Catalog (Legacy/بدون اشتراك) بلا Fatal', pge_resolve_admin_user_package_source(514), 'بدون اشتراك');
 
+// ============================================================================
+// 10) ملخص الباقة في صفحة /create-event/ (theme's page-create-event.php)
+//     نختبر عبر دالة صغيرة تُطابق حرفياً المنطق الجديد المضاف في الصفحة
+//     (استدعاء pge_resolve_admin_user_package_name() ثم تحويل '—'/فارغ إلى
+//     "بدون باقة" في هذا الموضع فقط) بدل تحميل قالب wp-admin/theme كاملاً —
+//     نفس الأسلوب المستخدم في قسم 7 لاختبار منطق event-factory.php.
+// ============================================================================
+echo "\n10) ملخص الباقة في create-event (page-create-event.php)\n";
+
+function resolve_create_event_plan_name($user_id)
+{
+    $name = function_exists('pge_resolve_admin_user_package_name')
+        ? pge_resolve_admin_user_package_name($user_id)
+        : (string) get_user_meta($user_id, '_mon_package_name', true);
+
+    if ($name === '' || $name === '—') {
+        $name = 'بدون باقة';
+    }
+
+    return $name;
+}
+
+// 10.1) Catalog active يظهر اسم Catalog في الملخص
+reset_test_user(601);
+set_test_user_meta(601, '_mon_package_source', 'catalog');
+set_test_user_meta(601, '_mon_package_status', 'active');
+set_test_user_meta(601, '_mon_catalog_plan_name', 'حلوة كلاسيك');
+set_test_user_meta(601, '_mon_catalog_tier_name', '100 مدعو');
+check('10.1 create-event: Catalog active → "حلوة كلاسيك — 100 مدعو"', resolve_create_event_plan_name(601), 'حلوة كلاسيك — 100 مدعو');
+
+// 10.2) Catalog مع Legacy meta قديمة لا يعرض اسم Legacy
+reset_test_user(602);
+set_test_user_meta(602, '_mon_package_source', 'catalog');
+set_test_user_meta(602, '_mon_package_status', 'active');
+set_test_user_meta(602, '_mon_catalog_plan_name', 'حلوة كلاسيك');
+set_test_user_meta(602, '_mon_catalog_tier_name', '100 مدعو');
+set_test_user_meta(602, '_mon_package_name', 'باقة Legacy قديمة يجب ألا تظهر');
+set_test_user_meta(602, '_mon_package_key', 'plan_4');
+check('10.2 create-event: Catalog مع بقايا Legacy → لا يظهر اسم Legacy إطلاقاً', resolve_create_event_plan_name(602), 'حلوة كلاسيك — 100 مدعو');
+
+// 10.3) Legacy يظهر اسمه القديم كما كان تماماً (بلا تحويل لـ"بدون باقة")
+reset_test_user(603);
+set_test_user_meta(603, '_mon_package_name', 'الباقة الذهبية');
+check('10.3 create-event: Legacy → "الباقة الذهبية" كما كان', resolve_create_event_plan_name(603), 'الباقة الذهبية');
+
+// 10.4) مستخدم بلا اشتراك يظهر "بدون باقة" (تحويل '—' الخاص بهذا الموضع فقط)
+reset_test_user(604);
+check('10.4 create-event: بلا اشتراك → "بدون باقة" (وليس "—")', resolve_create_event_plan_name(604), 'بدون باقة');
+
+// 10.5) حدود الأحداث والمدعوين في الملخص تأتي من pge_get_user_plan_limits_for_events()
+// (نفس $plan_limits/$allowed_limit/$guest_limit_display المستخدمة فعلياً في page-create-event.php)
+PGE_Catalog::$tiers[20] = [
+    'id' => 20, 'plan_id' => 7, 'tier_key' => 'classic-100',
+    'events_count' => 5, 'host_photos_limit' => 20, 'wa_messages_limit' => 10,
+];
+reset_test_user(605);
+set_test_user_meta(605, '_mon_package_source', 'catalog');
+set_test_user_meta(605, '_mon_package_status', 'active');
+set_test_user_meta(605, '_mon_catalog_plan_id', 7);
+set_test_user_meta(605, '_mon_catalog_tier_id', 20);
+set_test_user_meta(605, '_mon_guest_limit', 100);
+set_test_user_meta(605, '_mon_catalog_features', ['google_map']);
+// قيم Legacy مضلِّلة يجب ألا تُقرأ إطلاقاً هنا
+set_test_user_meta(605, '_mon_events_limit', 999);
+set_test_user_meta(605, '_mon_active_features', ['stc_pay']);
+
+$plan_limits_605 = pge_get_user_plan_limits_for_events(605); // نفس سطر الصفحة تماماً
+$allowed_limit_605 = (int) ($plan_limits_605['events_count'] ?? 0); // نفس تعبير الصفحة
+$guest_limit_display_605 = isset($plan_limits_605['guest_limit']) ? (int) $plan_limits_605['guest_limit'] : null; // نفس تعبير الصفحة
+check('10.5 create-event: events_count = 5 من tier (وليس 999 من Legacy)', $allowed_limit_605, 5);
+check('10.5 create-event: guest_limit = 100 من Snapshot Catalog', $guest_limit_display_605, 100);
+check_true('10.5 create-event: google_map مفعّلة عبر _mon_catalog_features', pge_plan_feature_enabled_for_events($plan_limits_605, 'google_map'));
+check_true('10.5 create-event: stc_pay غير مفعّلة رغم وجودها في _mon_active_features القديم', !pge_plan_feature_enabled_for_events($plan_limits_605, 'stc_pay'));
+
+// 10.6) Catalog expired لا يرجع إلى Legacy، ويظهر اسم Catalog + حدود صفرية آمنة
+reset_test_user(606);
+set_test_user_meta(606, '_mon_package_source', 'catalog');
+set_test_user_meta(606, '_mon_package_status', 'expired');
+set_test_user_meta(606, '_mon_catalog_plan_name', 'حلوة كلاسيك');
+set_test_user_meta(606, '_mon_catalog_tier_name', '100 مدعو');
+set_test_user_meta(606, '_mon_package_name', 'باقة Legacy قديمة');
+set_test_user_meta(606, '_mon_events_limit', 999);
+
+check('10.6 create-event: Catalog expired → الاسم يبقى Catalog وليس "بدون باقة" ولا Legacy', resolve_create_event_plan_name(606), 'حلوة كلاسيك — 100 مدعو');
+$plan_limits_606 = pge_get_user_plan_limits_for_events(606);
+check('10.6 create-event: Catalog expired → events_count = 0 (لا 999 من Legacy، ولا خطأ)', (int) ($plan_limits_606['events_count'] ?? 0), 0);
+check('10.6 create-event: Catalog expired → guest_limit = 0 (سلوك آمن حالي)', (int) ($plan_limits_606['guest_limit'] ?? 0), 0);
+
+// 10.7) لا Fatal أو Warning عند قيم ناقصة/غير متوقعة
+reset_test_user(607); // مستخدم فارغ تماماً
+check('10.7 create-event: مستخدم فارغ تماماً → "بدون باقة" بلا Fatal', resolve_create_event_plan_name(607), 'بدون باقة');
+$plan_limits_607 = pge_get_user_plan_limits_for_events(607);
+check('10.7 create-event: حدود مستخدم فارغ = events_count صفر بلا Fatal', (int) ($plan_limits_607['events_count'] ?? 0), 0);
+
+reset_test_user(608);
+set_test_user_meta(608, '_mon_package_source', 'catalog');
+set_test_user_meta(608, '_mon_package_status', 'active');
+set_test_user_meta(608, '_mon_catalog_plan_name', ['نوع' => 'غير متوقع']); // نفس فحص 9.12 لكن عبر مسار create-event
+check('10.7 create-event: نوع array غير متوقع لاسم الخطة → "بيانات Catalog غير مكتملة" بلا Fatal (لا تُحوَّل لـ"بدون باقة" لأنها ليست "—")', resolve_create_event_plan_name(608), 'بيانات Catalog غير مكتملة');
+
+// ============================================================================
+// 11) مهمة "كل عملية شراء = مناسبة واحدة" — سيناريو 6 فقط: التأكد أن الدالة
+// المركزية (وpage-create-event.php من خلالها) تقرأ events_count=1 (القيمة
+// الحقيقية الجديدة بعد إصلاح class-pge-catalog.php/class-mon-catalog-schema.php)
+// من tier.events_count كما هي، دون أي "fallback" مُضاف — event-factory.php
+// لم يُلمَس إطلاقاً في هذه المهمة (ممنوع صراحة)، وهذا القسم يثبت أن نفس
+// السطر القديم غير المعدَّل:
+//   if (array_key_exists('events_count', $tier) && $tier['events_count'] !== null) {
+//       $limits['events_count'] = (int) $tier['events_count'];
+//   }
+// يكفي وحده لقراءة القيمة الصحيحة الجديدة بمجرد أن يصبح مصدرها (صف الـ tier
+// نفسه) صحيحاً — بقية اختبارات CRUD/الترحيل الفعلية لهذا الإصلاح موجودة في
+// ملف منفصل: tests/test-catalog-tier-events-count.php (راجع توثيقه لسبب
+// الفصل: يحتاج $wpdb حقيقياً لا يمكن دمجه مع PGE_Catalog الوهمي هنا).
+// ============================================================================
+echo "\n11) Central function reads the new events_count=1 default with no fallback\n";
+PGE_Catalog::$tiers[30] = [
+    'id' => 30, 'plan_id' => 9, 'tier_key' => 'single-event-default',
+    'events_count' => 1, 'host_photos_limit' => 5, 'wa_messages_limit' => 0,
+];
+reset_test_user(609);
+set_test_user_meta(609, '_mon_package_source', 'catalog');
+set_test_user_meta(609, '_mon_package_status', 'active');
+set_test_user_meta(609, '_mon_catalog_plan_id', 9);
+set_test_user_meta(609, '_mon_catalog_tier_id', 30);
+set_test_user_meta(609, '_mon_guest_limit', 40);
+
+$limits_609 = pge_get_user_plan_limits_for_events(609);
+check('11.1 events_count = 1 من tier.events_count الجديدة (بلا أي fallback مضاف)', (int) $limits_609['events_count'], 1);
+
+$plan_limits_for_create_event_609 = pge_get_user_plan_limits_for_events(609); // نفس سطر page-create-event.php تماماً
+$allowed_limit_609 = (int) ($plan_limits_for_create_event_609['events_count'] ?? 0); // نفس تعبير الصفحة تماماً، بلا أي "إذا صفر اجعلها 1"
+check('11.2 create-event: allowed_limit = 1 (نفس تعبير الصفحة الأصلي دون أي تعديل عليه)', $allowed_limit_609, 1);
+
+// تأكيد أن عدم وجود اشتراك Catalog فعّال يبقى يُعيد صفراً كما كان تماماً —
+// أي لم يُضَف أي "حد أدنى 1 دائماً" في أي مكان من الدالة المركزية أو نتيجة
+// لهذا الإصلاح (الإصلاح في مصدر بيانات Tier فقط، لا في القراءة).
+reset_test_user(610);
+$limits_no_sub_610 = pge_get_user_plan_limits_for_events(610);
+check('11.3 مستخدم بلا اشتراك يبقى events_count = 0 (لا فرض حد أدنى 1 في القراءة)', (int) $limits_no_sub_610['events_count'], 0);
+
 // ── الخلاصة ─────────────────────────────────────────────────────────────
 echo "\n----------------------------------------\n";
 echo "Total checks: {$GLOBALS['__total']}, Failures: {$GLOBALS['__failures']}\n";

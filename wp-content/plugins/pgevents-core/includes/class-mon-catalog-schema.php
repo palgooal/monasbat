@@ -35,7 +35,7 @@ class Mon_Catalog_Schema
      * رقم الإصدار الحالي لبنية كتالوج الباقات والخدمات.
      * أي تغيير مستقبلي في البنية أو ترحيل بيانات يرفع هذا الرقم.
      */
-    const DB_VERSION = '1.2.0';
+    const DB_VERSION = '1.3.0';
 
     /**
      * اسم الـ option الذي يخزّن آخر إصدار تم تطبيقه فعلياً على قاعدة البيانات.
@@ -128,6 +128,7 @@ class Mon_Catalog_Schema
         return [
             '1.1.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_1_0'],
             '1.2.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_2_0'],
+            '1.3.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_3_0'],
         ];
     }
 
@@ -248,6 +249,58 @@ class Mon_Catalog_Schema
     }
 
     /**
+     * ترقية 1.3.0: تعبئة (Backfill) عمود mon_plan_tiers.events_count للمستويات
+     * القديمة التي لم يُحدَّد لها عدد مناسبات صراحة (NULL) أو خُزِّنت بقيمة
+     * صفر (0) — كلتا الحالتين تعنيان عملياً "غير محدَّد" وليس "صفر مناسبات
+     * فعلي"، إذ لم يكن أي مسار CRUD في class-pge-catalog.php يكتب هذا العمود
+     * إطلاقاً قبل هذا الإصدار (راجع normalize_events_count() الجديدة في تلك
+     * الدالة). القرار التجاري: كل عملية شراء لأي Tier = مناسبة واحدة بالضبط
+     * بغض النظر عن حدود المدعوين أو السعر أو المميزات — لذا القيمة الافتراضية
+     * الصحيحة لأي صف "غير محدَّد" هي 1، وليس أي رقم آخر.
+     *
+     * لا تلمس أي صف events_count فيه قيمة > 0 فعلاً (5 مثلاً تبقى 5 دون أي
+     * تغيير) — شرط WHERE في كل من SELECT وUPDATE يضمن ذلك، بنفس أسلوب
+     * upgrade_to_1_1_0() تماماً، مما يجعل تشغيل هذه الدالة مرة ثانية بلا أي
+     * أثر إضافي (Idempotent): بعد التنفيذ الأول لن يبقى أي صف events_count
+     * فيه NULL أو 0، فلن يطابق أي صف شرط SELECT في أي تشغيل لاحق.
+     *
+     * تُعيد false فقط إذا فشل استعلام SELECT الأولي فشلاً فعلياً (يوقف
+     * الترقية بالكامل عبر maybe_upgrade())؛ فشل تحديث صف واحد فعلياً
+     * ($wpdb->update() يُعيد false) يُسجَّل كفشل أيضاً لنفس السبب — لا يجوز
+     * الادّعاء بنجاح ترقية تركت صفوفاً بقيمة events_count خاطئة. لا تُلمَس
+     * أي أعمدة أخرى (guest_limit، host_photos_limit، wa_messages_limit) هنا
+     * إطلاقاً — خارج نطاق القرار التجاري لهذه المرحلة.
+     */
+    private static function upgrade_to_1_3_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_plan_tiers';
+
+        $rows = $wpdb->get_results("SELECT id, events_count FROM $table WHERE events_count IS NULL OR events_count = 0", ARRAY_A);
+
+        if ($rows === null) {
+            return false;
+        }
+
+        foreach ($rows as $row) {
+            $updated = $wpdb->update(
+                $table,
+                ['events_count' => 1],
+                ['id' => (int) $row['id']],
+                ['%d'],
+                ['%d']
+            );
+
+            if ($updated === false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * صياغة SQL للجداول الثلاثة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
      * مستقل، بلا FOREIGN KEY، بلا ENGINE، بلا ENUM).
      */
@@ -285,7 +338,7 @@ class Mon_Catalog_Schema
             tier_key VARCHAR(64) NOT NULL,
             name VARCHAR(190) NOT NULL DEFAULT '',
             guest_limit INT UNSIGNED NULL DEFAULT NULL,
-            events_count INT UNSIGNED NULL DEFAULT NULL,
+            events_count INT UNSIGNED NULL DEFAULT 1,
             host_photos_limit INT UNSIGNED NULL DEFAULT NULL,
             wa_messages_limit INT UNSIGNED NULL DEFAULT NULL,
             price DECIMAL(10,2) NOT NULL DEFAULT 0.00,

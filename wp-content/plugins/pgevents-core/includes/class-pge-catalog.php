@@ -542,6 +542,53 @@ class PGE_Catalog
     }
 
     /**
+     * تطبيع والتحقق من قيمة events_count (عمود mon_plan_tiers.events_count،
+     * INT UNSIGNED NULL). حسب القرار التجاري لمرحلة "كل عملية شراء = مناسبة
+     * واحدة": هذا الحقل اختياري عند الإنشاء/التحديث وله قيمة افتراضية 1 —
+     * ليس لأن 1 "قيمة صحيحة عشوائية"، بل لأنه لا يوجد مسار CRUD قبل هذه
+     * الدالة كان يكتب هذا العمود إطلاقاً (كان يبقى NULL دائماً)، وهذا بالضبط
+     * سبب ظهور events_count = 0 لكل مستويات Catalog الحالية. القيم التالية
+     * تُعامَل كـ"غير محدَّدة" وتُعيد 1 مباشرة دون رفض العملية: null، 0 (int
+     * أو النص "0")، أو نص فارغ بعد trim(). أي قيمة أخرى غير صالحة (سالبة،
+     * عشرية، نص غير رقمي بالكامل، bool، array، object) تُعيد false وتوقف
+     * العملية بالكامل — نفس نمط false = رفض المدخل في بقية normalize_* هنا.
+     * قيمة موجبة صريحة (int أو نص رقمي صحيح مثل "5") تُقبَل كما هي دون أي
+     * تعديل — هذا يسمح صراحة للمسؤول بتغيير القيمة لاحقاً لأي رقم آخر أكبر
+     * من الافتراضي، دون أي قفل أو فرض دائم على القيمة 1. عند النجاح تُعاد
+     * قيمة int صريحة (>= 1 دائماً؛ لا تُعاد 0 أو قيمة سالبة أبداً من هذه
+     * الدالة تحديداً — على عكس normalize_sort_order() التي تقبل صفراً).
+     */
+    private static function normalize_events_count($value)
+    {
+        if ($value === null) {
+            return 1;
+        }
+
+        if (is_int($value)) {
+            if ($value === 0) {
+                return 1;
+            }
+            if ($value < 0) {
+                return false;
+            }
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '' || $trimmed === '0') {
+                return 1;
+            }
+            if (!preg_match('/^[1-9][0-9]*$/', $trimmed)) {
+                return false;
+            }
+            return (int) $trimmed;
+        }
+
+        return false;
+    }
+
+    /**
      * قراءة باقة واحدة برقمها فقط. لا تقبل إلا:
      *  - عدداً صحيحاً (int) موجباً (>= 1)، أو
      *  - نصاً (string) يحتوي على عدد صحيح موجب فقط بلا فاصلة عشرية وبلا أي
@@ -855,6 +902,14 @@ class PGE_Catalog
     }
 
     /**
+     * ملاحظة (إصلاح "كل عملية شراء = مناسبة واحدة"): events_count هو الحقل
+     * الاختياري الوحيد في هذه الدالة إلى جانب salla_sku/salla_url (راجع
+     * أسفله) — غيابه الكامل من $data يُعامَل مثل null فيُطبَّع عبر
+     * normalize_events_count() إلى القيمة الافتراضية 1 تلقائياً. هذا مختلف
+     * عمداً عن سلوك name (الذي يبقى إلزامياً هنا رغم اختياريته في
+     * update_tier()) لأن events_count لم يكن له أصلاً أي مسار كتابة قبل هذا
+     * الإصلاح، فلا معنى لجعله "إلزامياً" على مستدعين قدامى لا يعرفون به.
+     *
      * إنشاء صف واحد في mon_plan_tiers. $data يجب أن تكون array تحتوي جميع
      * الحقول الثمانية (plan_id, tier_key, name, price, currency,
      * salla_product_id, status, sort_order) عبر array_key_exists() — أي حقل
@@ -955,6 +1010,19 @@ class PGE_Catalog
             return null;
         }
 
+        // events_count اختياري عن قصد (على عكس الحقول الثمانية الإلزامية
+        // أعلاه): غيابه بالكامل من $data يُعامَل مثل إرساله null — تُعيد
+        // normalize_events_count() القيمة الافتراضية 1 مباشرة (راجع توثيق
+        // تلك الدالة لسبب اختيار 1 تحديداً). هذا يضمن أن كل Tier جديدة تُنشَأ
+        // عبر أي مسار (لوحة إدارة حالية بلا حقل لهذا العمود، أو أي كود
+        // مستقبلي) تحصل تلقائياً على events_count = 1 دون أي حاجة للمستدعي
+        // لتمرير القيمة صراحةً — وفي الوقت نفسه، تمرير قيمة > 1 صراحةً يبقى
+        // مدعوماً بالكامل ولا يُفرَض عليه 1 أبداً.
+        $normalized_events_count = self::normalize_events_count($data['events_count'] ?? null);
+        if ($normalized_events_count === false) {
+            return null;
+        }
+
         if (self::get_tier_by_key($normalized_plan_id, $normalized_tier_key) !== null) {
             return null;
         }
@@ -971,6 +1039,7 @@ class PGE_Catalog
                 'plan_id'           => $normalized_plan_id,
                 'tier_key'          => $normalized_tier_key,
                 'name'              => $normalized_name,
+                'events_count'      => $normalized_events_count,
                 'price'             => $normalized_price,
                 'currency'          => $normalized_currency,
                 'salla_product_id'  => $normalized_salla_product_id,
@@ -979,7 +1048,7 @@ class PGE_Catalog
                 'status'            => $normalized_status,
                 'sort_order'        => $normalized_sort_order,
             ],
-            ['%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d']
+            ['%d', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d']
         );
 
         if (!$inserted) {
@@ -990,6 +1059,12 @@ class PGE_Catalog
     }
 
     /**
+     * ملاحظة (إصلاح "كل عملية شراء = مناسبة واحدة"): events_count اختياري
+     * هنا بنفس أسلوب name بالضبط (array_key_exists — غياب المفتاح كلياً لا
+     * يُغيّر القيمة الحالية إطلاقاً؛ وجوده يُطبَّع عبر normalize_events_count()
+     * ويُحدَّث). هذا يسمح للمسؤول بتغيير القيمة لاحقاً لأي رقم يريده، ولا
+     * يفرض 1 إلا عند إرسال قيمة "غير محدَّدة" صراحةً (null/0/'').
+     *
      * تحديث ذري كامل لصف مستوى موجود عبر استدعاء $wpdb->update() واحد فقط،
      * بعد التحقق الكامل من جميع القيم مسبقاً — لا تحديث جزئي بأي حال (نفس
      * فلسفة update_plan()). tier_id يخضع لنفس شرط get_tier() الصارم (int
@@ -1134,6 +1209,25 @@ class PGE_Catalog
             }
         }
 
+        // events_count اختياري هنا بنفس أسلوب name أعلاه بالضبط (لا نمط
+        // create_tier() الذي يُعيد الافتراضي 1 عند الغياب الكامل): إن كان
+        // المفتاح غائباً كلياً عن $data، لا يُلمَس عمود events_count إطلاقاً
+        // والقيمة الحالية للمستوى تبقى كما هي دون أي تغيير — هذا يحمي مثلاً
+        // مستوى events_count = 5 من أن يتحول لـ1 بالخطأ بسبب تحديث لا علاقة
+        // له بهذا العمود إطلاقاً (كتحديث السعر فقط). إن كان المفتاح موجوداً
+        // صراحةً (حتى لو null/0/'')، تُطبَّق normalize_events_count() كاملة:
+        // القيم "غير المحدَّدة" (null/0/'') تُصبح 1 عمداً، والقيم الصحيحة
+        // الأخرى تُقبَل كما هي — هذا يسمح للمسؤول بتغيير القيمة لاحقاً لأي
+        // رقم يريده دون أي قفل، تماماً كما يتطلب القرار التجاري لهذه المرحلة.
+        $events_count_provided = array_key_exists('events_count', $data);
+        $normalized_events_count = null;
+        if ($events_count_provided) {
+            $normalized_events_count = self::normalize_events_count($data['events_count']);
+            if ($normalized_events_count === false) {
+                return null;
+            }
+        }
+
         $key_owner = self::get_tier_by_key($normalized_plan_id, $normalized_tier_key);
         if ($key_owner !== null && (int) $key_owner['id'] !== $normalized_tier_id) {
             return null;
@@ -1164,6 +1258,11 @@ class PGE_Catalog
         if ($name_provided) {
             $update_data['name'] = $normalized_name;
             $update_formats[] = '%s';
+        }
+
+        if ($events_count_provided) {
+            $update_data['events_count'] = $normalized_events_count;
+            $update_formats[] = '%d';
         }
 
         $updated = $wpdb->update(
