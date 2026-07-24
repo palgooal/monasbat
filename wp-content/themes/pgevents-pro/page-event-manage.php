@@ -52,8 +52,9 @@ $manage_plan_name    = (string) get_user_meta($manage_user_id, '_mon_package_nam
 if ($manage_plan_name === '') {
     $manage_plan_name = (string) ($manage_plan_limits['name'] ?? 'بدون باقة');
 }
-$manage_events_limit_meta = get_user_meta($manage_user_id, '_mon_events_limit', true);
-$manage_events_limit = $manage_events_limit_meta !== '' ? (int) $manage_events_limit_meta : (int) ($manage_plan_limits['events_count'] ?? 0);
+// الحد المسموح يأتي حصراً من الدالة المركزية — بلا أي شرط Legacy إضافي
+// (كان يقرأ _mon_events_limit مباشرة كأولوية، ما قد يتجاوز حد Catalog).
+$manage_events_limit = (int) ($manage_plan_limits['events_count'] ?? 0);
 $manage_events_used_q = new WP_Query([
     'post_type'      => 'pge_event',
     'post_status'    => ['publish', 'draft', 'pending'],

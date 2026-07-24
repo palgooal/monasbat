@@ -15,14 +15,23 @@ $limits = [
     'google_map'   => 0,
 ];
 
-if (class_exists('PGE_Packages') && $author_id > 0) {
-    $limits = array_merge($limits, (array) PGE_Packages::get_user_plan_limits($author_id));
+// عبر الدالة المركزية حصراً (Catalog-aware/Legacy-aware) بدل استدعاء
+// PGE_Packages::get_user_plan_limits() مباشرة — كانت تُهمِل ميزات مضيف
+// Catalog بالكامل لأنها لا تعرف إلا مفاتيح Legacy.
+if ($author_id > 0 && function_exists('pge_get_user_plan_limits_for_events')) {
+    $limits = array_merge($limits, (array) pge_get_user_plan_limits_for_events($author_id));
 }
 
-$can_album_photos = !empty($limits['guest_photos']);
-$can_album_video  = !empty($limits['guest_video']);
-$can_public_chat  = !empty($limits['public_chat']);
-$can_private_chat = !empty($limits['private_chat']);
+$feature_on = static function ($limits, $key) {
+    return function_exists('pge_plan_feature_enabled_for_events')
+        ? pge_plan_feature_enabled_for_events($limits, $key)
+        : !empty($limits[$key]);
+};
+
+$can_album_photos = $feature_on($limits, 'guest_photos');
+$can_album_video  = $feature_on($limits, 'guest_video');
+$can_public_chat  = $feature_on($limits, 'public_chat');
+$can_private_chat = $feature_on($limits, 'private_chat');
 
 // =============================
 // Data

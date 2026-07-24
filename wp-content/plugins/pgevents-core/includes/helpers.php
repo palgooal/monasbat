@@ -271,3 +271,126 @@ if (!function_exists('pge_is_host_or_admin')) {
         return $uid === (int) get_post_field('post_author', (int) $event_id);
     }
 }
+
+if (!function_exists('pge_admin_safe_meta_string')) {
+    /**
+     * قراءة آمنة لمفتاح User Meta كنص، تُستخدم داخل الدوال الآتية المخصصة
+     * لعرض بيانات الاشتراك في /wp-admin/users.php. لا تفترض أن القيمة
+     * المخزَّنة نصّية دائماً (قد تكون فارغة، أو array عالقة من بيانات قديمة
+     * تالفة، أو أي نوع آخر غير متوقع) — أي شيء غير نصي/رقمي بسيط يُعامَل
+     * كنص فارغ بدل تمريره لأي (string) cast مباشر قد يُصدر تحذير
+     * "Array to string conversion" على مصفوفة. تُعيد دائماً نصاً مُقلَّم
+     * (trim) بلا أي Warning أو Notice في كل الحالات.
+     */
+    function pge_admin_safe_meta_string($user_id, $key)
+    {
+        $raw = get_user_meta((int) $user_id, $key, true);
+
+        if (is_string($raw)) {
+            return trim($raw);
+        }
+        if (is_scalar($raw)) {
+            return trim((string) $raw);
+        }
+
+        return '';
+    }
+}
+
+if (!function_exists('pge_resolve_admin_user_package_name')) {
+    /**
+     * اسم الباقة المعروض في عمود "الباقة الحالية" بصفحة /wp-admin/users.php.
+     * قراءة فقط — لا تكتب أي شيء، ولا تدمج بيانات Catalog وLegacy لنفس
+     * المستخدم إطلاقاً.
+     *
+     * إن كان _mon_package_source === 'catalog': الاسم يُبنى حصراً من
+     * _mon_catalog_plan_name/_mon_catalog_plan_key و
+     * _mon_catalog_tier_name/_mon_catalog_tier_key بصيغة "الخطة — المستوى"،
+     * بلا أي رجوع إلى _mon_package_name القديم مهما كان موجوداً.
+     * خلاف ذلك (Legacy أو بلا مصدر): _mon_package_name كما كان تماماً، أو
+     * '—' إن كانت فارغة.
+     */
+    function pge_resolve_admin_user_package_name($user_id)
+    {
+        $source = pge_admin_safe_meta_string($user_id, '_mon_package_source');
+
+        if ($source === 'catalog') {
+            $plan_name = pge_admin_safe_meta_string($user_id, '_mon_catalog_plan_name');
+            $plan_key  = pge_admin_safe_meta_string($user_id, '_mon_catalog_plan_key');
+            $tier_name = pge_admin_safe_meta_string($user_id, '_mon_catalog_tier_name');
+            $tier_key  = pge_admin_safe_meta_string($user_id, '_mon_catalog_tier_key');
+
+            $plan_part = $plan_name !== '' ? $plan_name : $plan_key;
+            $tier_part = $tier_name !== '' ? $tier_name : $tier_key;
+
+            if ($plan_part !== '' && $tier_part !== '') {
+                return $plan_part . ' — ' . $tier_part;
+            }
+            if ($plan_part !== '') {
+                return $plan_part;
+            }
+            if ($tier_part !== '') {
+                return $tier_part;
+            }
+
+            return 'بيانات Catalog غير مكتملة';
+        }
+
+        $legacy_name = pge_admin_safe_meta_string($user_id, '_mon_package_name');
+        return $legacy_name !== '' ? $legacy_name : '—';
+    }
+}
+
+if (!function_exists('pge_resolve_admin_user_package_source')) {
+    /**
+     * تسمية "مصدر الاشتراك" المعروضة بصفحة /wp-admin/users.php.
+     *
+     * _created_via_salla لا يُستخدم هنا إطلاقاً — هو يصف طريقة إنشاء
+     * الحساب (سلة/يدوي) وليس مصدر الاشتراك، ويبقى كما هو لأي استخدام آخر
+     * قائم في المشروع.
+     *
+     * القاعدة: catalog → 'Catalog'. غير ذلك مع وجود مؤشر Legacy فعلي
+     * (_mon_package_key أو _mon_package_name أو _mon_package_status غير
+     * فارغة) → 'Legacy'. لا شيء من ذلك → 'بدون اشتراك'.
+     */
+    function pge_resolve_admin_user_package_source($user_id)
+    {
+        $source = pge_admin_safe_meta_string($user_id, '_mon_package_source');
+
+        if ($source === 'catalog') {
+            return 'Catalog';
+        }
+
+        $has_legacy_indicator = (
+            pge_admin_safe_meta_string($user_id, '_mon_package_key') !== ''
+            || pge_admin_safe_meta_string($user_id, '_mon_package_name') !== ''
+            || pge_admin_safe_meta_string($user_id, '_mon_package_status') !== ''
+        );
+
+        return $has_legacy_indicator ? 'Legacy' : 'بدون اشتراك';
+    }
+}
+
+if (!function_exists('pge_is_legacy_write_allowed_for_user')) {
+    /**
+     * هل يُسمح لأي مسار Legacy (إسناد باقة يدوياً، إلغاء طلب Legacy قديم،
+     * ...) بالكتابة على مفاتيح اشتراك هذا المستخدم؟
+     *
+     * القرار المعماري: إن كان مصدر الاشتراك الحالي لدى المستخدم Catalog
+     * (_mon_package_source === 'catalog')، فـCatalog هو مصدر الحقيقة الوحيد
+     * لاشتراكه — بصرف النظر عن كون هذا الاشتراك active أو expired حالياً —
+     * ويُمنع أي مسار Legacy من الكتابة فوقه إطلاقاً. لا يوجد أي fallback أو
+     * مزج بين النظامين. هذه الدالة قراءة فقط ولا تُعدّل أي شيء؛ الاستدعاء
+     * يجب أن يحدث قبل أي update_user_meta/delete_user_meta في المسار
+     * المستدعي، وعلى المستدعي هو من يوقف التنفيذ إن أعادت false.
+     */
+    function pge_is_legacy_write_allowed_for_user($user_id)
+    {
+        $user_id = (int) $user_id;
+        if ($user_id <= 0) {
+            return true; // لا مستخدم صالح لحمايته أصلاً — القرار يعود للمستدعي
+        }
+
+        return get_user_meta($user_id, '_mon_package_source', true) !== 'catalog';
+    }
+}

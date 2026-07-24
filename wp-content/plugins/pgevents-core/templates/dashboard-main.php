@@ -115,16 +115,21 @@ foreach ($events as $ev) {
     $all_checkins_total += $ev_stats['checkins'];
 }
 
-// معلومات الباقة
+// معلومات الباقة — اسم/حالة الباقة تبقى من مفاتيح Legacy للعرض فقط (خارج
+// نطاق التوحيد الحالي: عرض اسم فقط، لا قرار صلاحية ولا حد فعلي).
 $plan_key    = (string) get_user_meta($user_id, '_mon_package_key', true);
 $plan_name   = (string) get_user_meta($user_id, '_mon_package_name', true);
 $plan_status = (string) get_user_meta($user_id, '_mon_package_status', true);
-$events_limit= (int)   get_user_meta($user_id, '_mon_events_limit', true);
+
+// حدود الباقة الفعلية (الحد المسموح بالمناسبات وغيره) — عبر الدالة المركزية
+// حصراً، حتى تعمل بشكل صحيح لمستخدمي Catalog وLegacy معاً بلا أي قراءة
+// مباشرة لـ_mon_events_limit هنا.
+$plan_limits           = function_exists('pge_get_user_plan_limits_for_events') ? pge_get_user_plan_limits_for_events($user_id) : [];
+$events_limit          = (int) ($plan_limits['events_count'] ?? 0);
 $events_used = (new WP_Query(['post_type'=>'pge_event','author'=>$user_id,'post_status'=>['publish','draft','pending'],'posts_per_page'=>-1,'fields'=>'ids']))->found_posts;
 $events_left = max(0, $events_limit - $events_used);
 
 // معلومات إضافية للعرض فقط (الباقة/الميزات) — قراءة فقط عبر الدوال المساعدة الحالية، بدون أي حساب جديد
-$plan_limits           = function_exists('pge_get_user_plan_limits_for_events') ? pge_get_user_plan_limits_for_events($user_id) : [];
 $guest_limit_per_event = isset($plan_limits['guest_limit']) ? (int) $plan_limits['guest_limit'] : 0;
 $wa_messages_limit     = isset($plan_limits['wa_messages']) ? (int) $plan_limits['wa_messages'] : null;
 

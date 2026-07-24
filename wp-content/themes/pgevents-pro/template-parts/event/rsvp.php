@@ -39,10 +39,12 @@ if (!function_exists('pge_is_host_or_admin')) {
 // =============================
 // Plan limits
 // =============================
-$plan_limits = ['guest_limit' => 0];
-if (class_exists('PGE_Packages')) {
-    $plan_limits = array_merge($plan_limits, (array) PGE_Packages::get_user_plan_limits($author_id));
-}
+// عبر الدالة المركزية حصراً (Catalog-aware/Legacy-aware) بدل استدعاء
+// PGE_Packages::get_user_plan_limits() مباشرة (كانت تتجاهل حالة انتهاء
+// اشتراك Catalog ولا تصفّر الحد تلقائياً).
+$plan_limits = function_exists('pge_get_user_plan_limits_for_events')
+    ? pge_get_user_plan_limits_for_events($author_id)
+    : ['guest_limit' => 0];
 $guest_limit = (int) ($plan_limits['guest_limit'] ?? 0);
 $is_host     = pge_is_host_or_admin($event_id);
 

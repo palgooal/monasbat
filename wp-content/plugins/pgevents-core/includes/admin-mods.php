@@ -212,6 +212,22 @@ class PGE_Admin_Controller
                     $assign_user = get_user_by('email', $assign_email);
                     if (!$assign_user) {
                         $assign_msg = '<div class="notice notice-error is-dismissible"><p>❌ لم يُعثر على مستخدم بهذا البريد: ' . esc_html($assign_email) . '</p></div>';
+                    } elseif (
+                        function_exists('pge_is_legacy_write_allowed_for_user')
+                        && !pge_is_legacy_write_allowed_for_user($assign_user->ID)
+                    ) {
+                        // حاجز حماية Catalog — يُفحَص قبل أي update_user_meta بلا استثناء.
+                        // اشتراك هذا المستخدم مُدار بواسطة Catalog، فلا يجوز لأي إسناد Legacy
+                        // يدوي أن يكتب فوقه أو يغيّر مصدره أو حدوده، بصرف النظر عن active/expired.
+                        $assign_msg = '<div class="notice notice-error is-dismissible"><p>❌ لا يمكن إسناد باقة Legacy لهذا المستخدم لأن اشتراكه الحالي مُدار بواسطة Catalog.</p></div>';
+
+                        error_log(sprintf(
+                            '⛔ [legacy_manual_assignment_blocked_for_catalog] user_id=%d admin_user_id=%d action=%s reason=%s',
+                            $assign_user->ID,
+                            get_current_user_id(),
+                            'manual_assign_package',
+                            'subscription_source_is_catalog'
+                        ));
                     } else {
                         // تطبيق نفس منطق activate_user_package مباشرة
                         update_user_meta($assign_user->ID, '_mon_package_status', 'active');

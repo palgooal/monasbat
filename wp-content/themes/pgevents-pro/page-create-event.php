@@ -8,16 +8,18 @@ if (!is_user_logged_in()) {
 $user_id = get_current_user_id();
 $user = wp_get_current_user();
 
-$user_plan_key = (string) get_user_meta($user_id, '_mon_package_key', true);
-if ($user_plan_key === '') {
-    $user_plan_key = (string) get_user_meta($user_id, 'pge_current_plan', true);
-}
-
-$active_features = get_user_meta($user_id, '_mon_active_features', true);
-$has_plan_context = ($user_plan_key !== '') || (is_array($active_features) && !empty($active_features));
-$plan_limits = ($has_plan_context && class_exists('PGE_Packages')) ? (array) PGE_Packages::get_user_plan_limits($user_id) : [];
+// حدود وميزات الباقة — الدالة المركزية حصراً (Catalog-aware/Legacy-aware
+// حسب _mon_package_source داخلها)، بلا أي قراءة مباشرة لمفاتيح Legacy أو
+// شرط مسبق على وجودها. كانت هذه الصفحة تعيد بناء نفس منطق Legacy يدوياً
+// هنا (بشرط $user_plan_key/$active_features)، ما يعني أن مستخدم Catalog
+// كان يحصل دائماً على $has_plan_context=false ويُعطَّل له نموذج الإنشاء
+// بالكامل بصرف النظر عن حدوده الفعلية.
+$plan_limits = function_exists('pge_get_user_plan_limits_for_events') ? pge_get_user_plan_limits_for_events($user_id) : [];
 
 $feature_enabled = static function (array $limits, $key) {
+    if (function_exists('pge_plan_feature_enabled_for_events')) {
+        return pge_plan_feature_enabled_for_events($limits, $key);
+    }
     if (class_exists('PGE_Packages') && method_exists('PGE_Packages', 'is_feature_enabled')) {
         return PGE_Packages::is_feature_enabled($limits, $key);
     }
@@ -29,16 +31,14 @@ $feature_enabled = static function (array $limits, $key) {
     return in_array($value, ['1', 'on', 'yes', 'true'], true);
 };
 
-$allowed_limit_meta = get_user_meta($user_id, '_mon_events_limit', true);
+// الحد المسموح يأتي حصراً من الدالة المركزية. حالة Catalog منتهية أو
+// مستخدم بلا باقة تعود أصلاً بـ events_count = 0 من داخلها، فلا حاجة لأي
+// شرط إضافي هنا ولا لأي صلاحية افتراضية عند غياب البيانات.
+$allowed_limit = (int) ($plan_limits['events_count'] ?? 0);
 
-if ($allowed_limit_meta !== '') {
-    $allowed_limit = (int) $allowed_limit_meta;
-} else {
-    $allowed_limit = $user_plan_key !== '' ? (int) ($plan_limits['events_count'] ?? 0) : 0;
-}
 $plan_name = (string) get_user_meta($user_id, '_mon_package_name', true);
 if ($plan_name === '') {
-    $plan_name = (string) ($has_plan_context ? ($plan_limits['name'] ?? 'الباقة الحالية') : 'بدون باقة');
+    $plan_name = (string) ($plan_limits['name'] ?? 'بدون باقة');
 }
 
 $can_google_map = $feature_enabled($plan_limits, 'google_map');
@@ -47,7 +47,7 @@ $can_public_chat = $feature_enabled($plan_limits, 'public_chat');
 $can_private_chat = $feature_enabled($plan_limits, 'private_chat');
 $can_guest_photos = $feature_enabled($plan_limits, 'guest_photos');
 $can_guest_video = $feature_enabled($plan_limits, 'guest_video');
-$wa_limit = isset($plan_limits['wa_messages']) ? (int) $plan_limits['wa_messages'] : (int) get_user_meta($user_id, '_mon_wa_limit', true);
+$wa_limit = (int) ($plan_limits['wa_messages'] ?? 0);
 
 // نستثني 'private' لأنها مناسبات مؤرشفة ولا تُحسب في الحصة
 $user_events_query = new WP_Query([

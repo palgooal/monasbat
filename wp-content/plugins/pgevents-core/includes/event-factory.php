@@ -71,10 +71,27 @@ if (!function_exists('pge_handle_featured_image_upload')) {
 }
 
 if (!function_exists('pge_get_user_plan_limits_for_events')) {
+    /**
+     * نقطة الدخول الموحّدة لحدود/صلاحيات المستخدم — تبقى نفس الاسم وشكل
+     * المخرجات كما كانت (events_count, guest_limit, host_photos, wa_messages
+     * + مفاتيح الميزات كـ 0/1)، لكنها الآن تتفرّع أولاً حسب مصدر الباقة:
+     *
+     * - إن كان _mon_package_source === 'catalog': يُستخدم مسار Catalog حصراً
+     *   (pge_get_catalog_user_plan_limits_for_events) — بلا أي قراءة أو دمج
+     *   مع مفاتيح Legacy إطلاقاً، حتى لو كانت موجودة لدى نفس المستخدم.
+     * - أي قيمة أخرى لـ _mon_package_source (بما فيها الفراغ لمستخدمي
+     *   Legacy القدامى الذين لم يُكتب لهم هذا المفتاح أصلاً): يستمر مسار
+     *   Legacy الحالي دون أي تغيير في السلوك أو الترتيب.
+     */
     function pge_get_user_plan_limits_for_events($user_id)
     {
         $user_id = (int) $user_id;
         if ($user_id <= 0) return [];
+
+        $package_source = (string) get_user_meta($user_id, '_mon_package_source', true);
+        if ($package_source === 'catalog') {
+            return pge_get_catalog_user_plan_limits_for_events($user_id);
+        }
 
         $plan_key = (string) get_user_meta($user_id, '_mon_package_key', true);
         if ($plan_key === '') {
@@ -105,6 +122,153 @@ if (!function_exists('pge_get_user_plan_limits_for_events')) {
         }
 
         return $limits;
+    }
+}
+
+if (!function_exists('pge_get_catalog_user_plan_limits_for_events')) {
+    /**
+     * مسار Catalog المعزول تماماً عن Legacy. تُستدعى فقط من داخل
+     * pge_get_user_plan_limits_for_events() عندما يكون
+     * _mon_package_source === 'catalog'. ممنوع هنا أي قراءة لمفاتيح Legacy
+     * (لا _mon_package_key، لا _mon_active_features، لا pge_current_plan) —
+     * القرار المعماري الحاسم هو عدم دمج المصدرين إطلاقاً لنفس المستخدم.
+     *
+     * عقد المخرجات مطابق تماماً لما يعيده المسار Legacy: نفس المفاتيح
+     * (events_count, guest_limit, host_photos, wa_messages) ونفس مفاتيح
+     * الميزات (0/1) التي تقرأها pge_plan_feature_enabled_for_events() لاحقاً.
+     *
+     * ملاحظة تصميم مهمة (راجع أيضاً تعليق activate_catalog_tier() حول
+     * القيمة الفارغة الممثِّلة لـNULL): أعمدة events_count/host_photos_limit/
+     * wa_messages_limit في mon_plan_tiers هي INT UNSIGNED NULL — أي أن NULL
+     * محتمل معمارياً (احتمال دعم "غير محدود" مستقبلاً). لا يوجد حالياً أي
+     * تمثيل فعلي لـ"غير محدود" في أي مكان من نظام Legacy الحالي (كل حدوده
+     * أرقام صريحة، وأي قيمة meta فارغة تُحوَّل بالفعل إلى 0 عبر (int) في كل
+     * نقاط الاستخدام الحالية). لذلك، وتفادياً لاختراع قيمة جديدة غير موجودة
+     * في النظام، تُعامَل قيمة NULL هنا كصفر (0) تماماً كما يُعامَل أي حد
+     * Legacy غائب — وهذا سلوك آمن (يمنع الوصول بدل أن يسمح به خطأً) وليس
+     * افتراضاً بأن "غير محدود = رقم عشوائي". إن احتاج المنتج لاحقاً لدعم
+     * "غير محدود" فعلياً فهذا قرار تصميم منفصل يتطلب تعديل نقاط الاستهلاك
+     * أيضاً (event-factory.php وغيره تقارن حالياً بـ >= رقم صريح)، خارج نطاق
+     * هذه المرحلة.
+     */
+    function pge_get_catalog_user_plan_limits_for_events($user_id)
+    {
+        $limits = [
+            'events_count' => 0,
+            'guest_limit'  => 0,
+            'host_photos'  => 0,
+            'wa_messages'  => 0,
+        ];
+
+        if (class_exists('PGE_Packages')) {
+            foreach (PGE_Packages::get_feature_keys() as $feature_key) {
+                $limits[(string) $feature_key] = 0;
+            }
+        }
+
+        // البوابة الحاسمة: حالة غير active تعني صلاحيات صفرية آمنة، بلا أي
+        // رجوع لبيانات Legacy مهما كانت موجودة لدى نفس المستخدم.
+        $status = (string) get_user_meta($user_id, '_mon_package_status', true);
+        if ($status !== 'active') {
+            return $limits;
+        }
+
+        // guest_limit: مصدره الوحيد Snapshot _mon_guest_limit المكتوب وقت
+        // activate_catalog_tier() — لا حاجة لأي استعلام إضافي هنا. القيمة
+        // الفارغة (NULL في tier وقت التفعيل) تُعامَل كـ0 (انظر ملاحظة أعلى
+        // الدالة).
+        $guest_limit_meta = get_user_meta($user_id, '_mon_guest_limit', true);
+        if ($guest_limit_meta !== '' && $guest_limit_meta !== false) {
+            $limits['guest_limit'] = (int) $guest_limit_meta;
+        }
+
+        // بقية الحدود (events_count/host_photos/wa_messages) غير مخزَّنة في
+        // أي User Meta من Catalog، فمصدرها الوحيد صف الـ tier نفسه.
+        $catalog_plan_id = absint(get_user_meta($user_id, '_mon_catalog_plan_id', true));
+        $catalog_tier_id = absint(get_user_meta($user_id, '_mon_catalog_tier_id', true));
+
+        if ($catalog_tier_id > 0 && class_exists('PGE_Catalog')) {
+            $tier = PGE_Catalog::get_tier($catalog_tier_id);
+
+            // فحص اتساق دفاعي: إن كان الـ tier موجوداً لكنه لا يتبع نفس
+            // الباقة المخزَّنة لدى المستخدم، تُعتبر البيانات غير موثوقة
+            // ويُكتفى بالحدود الصفرية الآمنة بدل قراءة أرقام قد لا تخص
+            // اشتراك المستخدم فعلياً.
+            if (is_array($tier) && $catalog_plan_id > 0 && absint($tier['plan_id'] ?? 0) !== $catalog_plan_id) {
+                $tier = null;
+            }
+
+            if (is_array($tier)) {
+                if (array_key_exists('events_count', $tier) && $tier['events_count'] !== null) {
+                    $limits['events_count'] = (int) $tier['events_count'];
+                }
+                if (array_key_exists('host_photos_limit', $tier) && $tier['host_photos_limit'] !== null) {
+                    $limits['host_photos'] = (int) $tier['host_photos_limit'];
+                }
+                if (array_key_exists('wa_messages_limit', $tier) && $tier['wa_messages_limit'] !== null) {
+                    $limits['wa_messages'] = (int) $tier['wa_messages_limit'];
+                }
+            }
+        }
+
+        // الميزات: من _mon_catalog_features حصراً (Snapshot وقت التفعيل)،
+        // وليس _mon_active_features (Legacy). قراءة آمنة فقط — بلا أي كتابة.
+        $catalog_features = pge_normalize_catalog_features_meta(
+            get_user_meta($user_id, '_mon_catalog_features', true)
+        );
+        foreach ($catalog_features as $feature_key) {
+            $limits[$feature_key] = 1;
+        }
+
+        return $limits;
+    }
+}
+
+if (!function_exists('pge_normalize_catalog_features_meta')) {
+    /**
+     * تطبيع آمن لقيمة _mon_catalog_features مهما كان شكلها الفعلي في
+     * القاعدة (array عادية — الحالة الطبيعية عبر update_user_meta/
+     * get_user_meta، أو نص JSON، أو نص serialized، أو قيمة فارغة/تالفة).
+     * لا تُغيّر أي بيانات مخزَّنة — قراءة فقط. أي شكل غير معروف يُعيد []
+     * بدل أي خطأ، لضمان عدم حدوث Fatal Error.
+     */
+    function pge_normalize_catalog_features_meta($raw_value)
+    {
+        if (is_array($raw_value)) {
+            $list = $raw_value;
+        } elseif (is_string($raw_value)) {
+            $trimmed = trim($raw_value);
+            if ($trimmed === '') {
+                $list = [];
+            } else {
+                $maybe_unserialized = function_exists('maybe_unserialize')
+                    ? maybe_unserialize($trimmed)
+                    : @unserialize($trimmed);
+
+                if (is_array($maybe_unserialized)) {
+                    $list = $maybe_unserialized;
+                } else {
+                    $decoded = json_decode($trimmed, true);
+                    $list = is_array($decoded) ? $decoded : [];
+                }
+            }
+        } else {
+            $list = [];
+        }
+
+        $features = [];
+        foreach ($list as $feature) {
+            if (!is_scalar($feature)) {
+                continue;
+            }
+            $feature = trim((string) $feature);
+            if ($feature === '') {
+                continue;
+            }
+            $features[] = $feature;
+        }
+
+        return array_values(array_unique($features));
     }
 }
 
@@ -144,19 +308,12 @@ function pge_handle_event_creation()
 
     // --- [نظام فحص الحصة الديناميكي - Dynamic Quota System] ---
 
-    // جلب صلاحيات الباقة الفعلية للمستخدم
+    // جلب صلاحيات الباقة الفعلية للمستخدم — الدالة المركزية هي المرجع
+    // الوحيد والنهائي للحد المسموح، بلا أي شرط مسبق على وجود مفتاح Legacy.
+    // حالة Catalog منتهية أو مستخدم بلا باقة تعود أصلاً بـ events_count = 0
+    // من داخل الدالة المركزية نفسها، فلا حاجة لأي شرط إضافي هنا.
     $plan_limits = pge_get_user_plan_limits_for_events($user_id);
-    $meta_limit = get_user_meta($user_id, '_mon_events_limit', true);
-    $user_plan_key = (string) get_user_meta($user_id, '_mon_package_key', true);
-    if ($user_plan_key === '') {
-        $user_plan_key = (string) get_user_meta($user_id, 'pge_current_plan', true);
-    }
-
-    if ($meta_limit !== '') {
-        $allowed_limit = (int) $meta_limit;
-    } else {
-        $allowed_limit = $user_plan_key !== '' ? (int) ($plan_limits['events_count'] ?? 0) : 0;
-    }
+    $allowed_limit = (int) ($plan_limits['events_count'] ?? 0);
 
     // جلب عدد المناسبات الفعّالة للمستخدم (نستثني المؤرشفة — status=private + meta _pge_archived=1)
     $user_events_query = new WP_Query(array(

@@ -167,12 +167,33 @@ class Mon_Salla_Handler
     }
 
     /**
-     * دالة إلغاء تفعيل الباقة
+     * دالة إلغاء تفعيل الباقة (مسار Legacy فقط).
+     *
+     * $order_id اختياري وللتسجيل فقط (Backward-compatible: القيمة الافتراضية
+     * '' لا تُغيّر سلوك أي استدعاء قديم لم يُمرِّره).
      */
-    private function deactivate_user_package($email)
+    private function deactivate_user_package($email, $order_id = '')
     {
         $user = get_user_by('email', $email);
         if ($user) {
+            // حاجز حماية Catalog — يجب أن يكون أول شيء يُفحَص، قبل أي
+            // update_user_meta/delete_user_meta، بلا استثناء: إن كان مصدر
+            // اشتراك هذا المستخدم Catalog (بصرف النظر عن كونه active أو
+            // expired حالياً)، فإن Catalog هو مصدر الحقيقة الوحيد ويُمنع أي
+            // مسار Legacy — بما فيه إلغاء طلب Legacy قديم يصل بعد تفعيل
+            // Catalog أحدث — من تغيير حالته أو تصفير حدوده أو مسح ميزاته.
+            $legacy_write_allowed = function_exists('pge_is_legacy_write_allowed_for_user')
+                ? pge_is_legacy_write_allowed_for_user($user->ID)
+                : (get_user_meta($user->ID, '_mon_package_source', true) !== 'catalog');
+
+            if (!$legacy_write_allowed) {
+                $this->log_catalog_event('legacy_deactivation_blocked_for_catalog', [
+                    'user_id'  => $user->ID,
+                    'order_id' => $order_id,
+                ]);
+                return;
+            }
+
             update_user_meta($user->ID, '_mon_package_status', 'expired'); // أو canceled
             // تصفير الحدود لضمان عدم قدرته على استخدام النظام
             update_user_meta($user->ID, '_mon_guest_limit', 0);
@@ -246,7 +267,7 @@ class Mon_Salla_Handler
         }
 
         if ($action === 'deactivate') {
-            $this->deactivate_user_package($customer_email);
+            $this->deactivate_user_package($customer_email, $order_id);
             return;
         }
 
@@ -1012,21 +1033,33 @@ class Mon_Salla_Handler
             }
         });
 
-        // إضافة أعمدة في جدول المستخدمين لمراقبة الاشتراكات
+        // إضافة أعمدة في جدول المستخدمين لمراقبة الاشتراكات — منطق العرض
+        // نفسه معزول في helpers.php (pge_resolve_admin_user_package_name/
+        // pge_resolve_admin_user_package_source) لا داخل هذا الملف، حتى لا
+        // يبقى منطق العرض داخل كلاس الـWebhook.
         add_filter('manage_users_columns', function ($cols) {
             $cols['mon_plan'] = 'الباقة الحالية';
-            $cols['mon_source'] = 'المصدر';
+            $cols['mon_source'] = 'مصدر الاشتراك';
             return $cols;
         });
 
         add_filter('manage_users_custom_column', function ($val, $col, $user_id) {
             if ($col === 'mon_plan') {
-                $plan_name = get_user_meta($user_id, '_mon_package_name', true);
-                return $plan_name ? "<mark><strong>$plan_name</strong></mark>" : '--';
+                $name = function_exists('pge_resolve_admin_user_package_name')
+                    ? pge_resolve_admin_user_package_name($user_id)
+                    : (string) get_user_meta($user_id, '_mon_package_name', true);
+
+                $is_placeholder = ($name === '' || $name === '—' || $name === 'بيانات Catalog غير مكتملة');
+                if ($is_placeholder) {
+                    return $name !== '' ? esc_html($name) : '—';
+                }
+                return '<mark><strong>' . esc_html($name) . '</strong></mark>';
             }
             if ($col === 'mon_source') {
-                $source = get_user_meta($user_id, '_created_via_salla', true);
-                return ($source === 'yes') ? '🛒 سلة' : '👤 يدوي';
+                $source_label = function_exists('pge_resolve_admin_user_package_source')
+                    ? pge_resolve_admin_user_package_source($user_id)
+                    : 'Legacy';
+                return esc_html($source_label);
             }
             return $val;
         }, 10, 3);

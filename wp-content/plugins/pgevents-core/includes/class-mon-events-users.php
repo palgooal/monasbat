@@ -18,6 +18,30 @@ class Mon_Events_Users
                 return new WP_REST_Response(['status' => 'error', 'message' => 'Plan details not found'], 404);
             }
 
+            // حاجز حماية Catalog — يُفحَص قبل أي update_user_meta بلا استثناء.
+            // هذا مسار تفعيل Legacy (نظير deactivate_user_package())، وقد
+            // يصل فعلياً عبر Webhook طلب Legacy لمستخدم مصدر اشتراكه الحالي
+            // Catalog (مثلاً عميل اشترى منتج Legacy قديم بنفس بريده بعد أن
+            // فعّل Catalog). Catalog يبقى مصدر الحقيقة الوحيد، بصرف النظر عن
+            // active/expired — بلا أي مزج أو fallback.
+            $legacy_write_allowed = function_exists('pge_is_legacy_write_allowed_for_user')
+                ? pge_is_legacy_write_allowed_for_user($user->ID)
+                : (get_user_meta($user->ID, '_mon_package_source', true) !== 'catalog');
+
+            if (!$legacy_write_allowed) {
+                error_log(sprintf(
+                    '⛔ [legacy_activation_blocked_for_catalog] user_id=%d order_id=%s reason=subscription_source_is_catalog',
+                    $user->ID,
+                    sanitize_text_field((string) ($data['order_id'] ?? ''))
+                ));
+
+                return new WP_REST_Response([
+                    'status'  => 'blocked',
+                    'message' => 'لا يمكن تفعيل باقة Legacy لهذا المستخدم لأن اشتراكه الحالي مُدار بواسطة Catalog.',
+                    'user_id' => $user->ID,
+                ], 409);
+            }
+
             // 2. تفعيل الحالة وتخزين البيانات الأساسية
             update_user_meta($user->ID, '_mon_package_status', 'active');
             update_user_meta($user->ID, '_mon_package_key', $plan_key); // تخزين المفتاح البرمجي
