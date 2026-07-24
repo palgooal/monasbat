@@ -184,12 +184,24 @@ class Fake_Wpdb
         if ($id === null) {
             return false;
         }
-        $store = &($which === 'tiers' ? $this->tiers : $this->plans);
-        if (!isset($store[$id])) {
-            return 0;
-        }
-        foreach ($data as $k => $v) {
-            $store[$id][$k] = $v;
+        // ملاحظة إصلاح: لا يجوز أخذ مرجع (&) لنتيجة تعبير ثلاثي (ternary)
+        // مباشرة في PHP الحقيقي — "$x = &($cond ? $a : $b);" خطأ صياغة
+        // (Parse error)، رغم أن بعض محلّلات AST المتساهلة قد تقبله. الحل:
+        // فرعان منفصلان صريحان بدل محاولة توحيدهما عبر مرجع لتعبير شرطي.
+        if ($which === 'tiers') {
+            if (!isset($this->tiers[$id])) {
+                return 0;
+            }
+            foreach ($data as $k => $v) {
+                $this->tiers[$id][$k] = $v;
+            }
+        } else {
+            if (!isset($this->plans[$id])) {
+                return 0;
+            }
+            foreach ($data as $k => $v) {
+                $this->plans[$id][$k] = $v;
+            }
         }
         return 1;
     }
@@ -218,6 +230,29 @@ global $wpdb;
 $wpdb = $GLOBALS['wpdb'];
 
 // ── تحميل الملفين الحقيقيين من المشروع (بلا أي تعديل عليهما) ───────────────
+
+// class-mon-catalog-schema.php يستخدم PGE_PATH على مستوى الملف مباشرة (في
+// register_activation_hook() بالسطر الأخير) — هذا الثابت يُعرَّف عادة في
+// pgevents-core.php الرئيسي، وهو غير مُحمَّل هنا عمداً (تحميل كامل الإضافة
+// غير مطلوب لهذا الاختبار). عرّفه هنا فقط إن لم يكن معرَّفاً مسبقاً، بمسار
+// محسوب من __DIR__ (جذر مجلد tests) لا مسار ثابت خاص بجهاز: dirname(__DIR__)
+// هو جذر مجلد الإضافة pgevents-core نفسه (أب مباشر لمجلد tests)، بنفس صيغة
+// PGE_PATH الحقيقية المنتهية بفاصل مسار (يطابق شكل الاستخدام
+// PGE_PATH . 'pgevents-core.php' في الملف الحقيقي).
+if (!defined('PGE_PATH')) {
+    define('PGE_PATH', dirname(__DIR__) . DIRECTORY_SEPARATOR);
+}
+
+// ARRAY_A هو وضع الإرجاع الوحيد المستخدَم فعلياً في class-pge-catalog.php
+// وclass-mon-catalog-schema.php (كل استدعاءات $wpdb->get_row()/get_results()
+// في الملفين تمرّره صراحةً؛ لا وجود إطلاقاً لـOBJECT ولا ARRAY_N في أي منهما
+// — تأكَّدتُ بالبحث الكامل في الملفين قبل الإضافة). ووردبريس تُعرِّفه عادة
+// كـ wpdb::ARRAY_A = 'ARRAY_A' (قيمة نصية وليست رقماً)، وFake_Wpdb في هذا
+// الملف أصلاً لا يفرّق بين أوضاع الإرجاع (يعيد Array ترابطي دائماً)، فقيمة
+// الثابت غير مهمة عملياً هنا — التعريف مطلوب فقط لمنع Fatal عند الاستدعاء.
+if (!defined('ARRAY_A')) {
+    define('ARRAY_A', 'ARRAY_A');
+}
 
 require_once __DIR__ . '/../includes/class-pge-catalog.php';
 require_once __DIR__ . '/../includes/class-mon-catalog-schema.php';
