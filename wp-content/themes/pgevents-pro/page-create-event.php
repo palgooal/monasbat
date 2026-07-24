@@ -36,9 +36,17 @@ $feature_enabled = static function (array $limits, $key) {
 // شرط إضافي هنا ولا لأي صلاحية افتراضية عند غياب البيانات.
 $allowed_limit = (int) ($plan_limits['events_count'] ?? 0);
 
-$plan_name = (string) get_user_meta($user_id, '_mon_package_name', true);
-if ($plan_name === '') {
-    $plan_name = (string) ($plan_limits['name'] ?? 'بدون باقة');
+// اسم الباقة المعروض في "ملخص الباقة" — عبر الـresolver المركزي حصراً
+// (Catalog-aware/Legacy-aware عبر _mon_package_source داخله)، بدل القراءة
+// المباشرة لـ_mon_package_name التي تبقى فارغة دائماً لمستخدم Catalog.
+// الدالة قد تعيد '—' أو نصاً فارغاً لمستخدم بلا اشتراك؛ في هذا الموضع
+// تحديداً (ملخص صفحة الإنشاء) تُحوَّل هذه الحالة إلى "بدون باقة" فقط.
+$plan_name = function_exists('pge_resolve_admin_user_package_name')
+    ? pge_resolve_admin_user_package_name($user_id)
+    : (string) get_user_meta($user_id, '_mon_package_name', true);
+
+if ($plan_name === '' || $plan_name === '—') {
+    $plan_name = 'بدون باقة';
 }
 
 $can_google_map = $feature_enabled($plan_limits, 'google_map');
