@@ -115,11 +115,37 @@ foreach ($events as $ev) {
     $all_checkins_total += $ev_stats['checkins'];
 }
 
-// معلومات الباقة — اسم/حالة الباقة تبقى من مفاتيح Legacy للعرض فقط (خارج
-// نطاق التوحيد الحالي: عرض اسم فقط، لا قرار صلاحية ولا حد فعلي).
+// معلومات الباقة — Catalog أولاً، ثم Legacy كـFallback دفاعي، دون كتابة أي
+// User Meta هنا وبلا أي قرار صلاحية (قراءة/عرض فقط).
 $plan_key    = (string) get_user_meta($user_id, '_mon_package_key', true);
 $plan_name   = (string) get_user_meta($user_id, '_mon_package_name', true);
 $plan_status = (string) get_user_meta($user_id, '_mon_package_status', true);
+
+// اسم الباقة المعروض: Catalog أولاً (Tier الحي عبر PGE_Catalog::get_tier()،
+// وإلا أي اسم محفوظ في الـSnapshot نفسه وقت التفعيل)، ثم Legacy كـFallback —
+// حتى لا تظهر «لا توجد باقة نشطة» خطأً لمستخدم Catalog مشترك فعلياً.
+$package_source    = (string) get_user_meta($user_id, '_mon_package_source', true);
+$display_plan_name = '';
+
+if ($package_source === 'catalog') {
+    $catalog_tier_id = absint(get_user_meta($user_id, '_mon_catalog_tier_id', true));
+    $catalog_tier    = ($catalog_tier_id > 0 && class_exists('PGE_Catalog')) ? PGE_Catalog::get_tier($catalog_tier_id) : null;
+
+    if (is_array($catalog_tier) && !empty($catalog_tier['name'])) {
+        $display_plan_name = (string) $catalog_tier['name'];
+    } else {
+        // تعذّر تحميل الـTier (محذوف/تغيّر لاحقاً) — استخدم أي اسم محفوظ في
+        // الـSnapshot بدل إظهار «لا توجد باقة نشطة» خطأً.
+        $snapshot_tier_name = (string) get_user_meta($user_id, '_mon_catalog_tier_name', true);
+        $snapshot_plan_name = (string) get_user_meta($user_id, '_mon_catalog_plan_name', true);
+        $display_plan_name  = $snapshot_tier_name !== '' ? $snapshot_tier_name : $snapshot_plan_name;
+    }
+}
+
+if ($display_plan_name === '') {
+    // Legacy Fallback — نفس السلوك القديم تماماً، بلا أي تغيير.
+    $display_plan_name = $plan_name ?: $plan_key;
+}
 
 // حدود الباقة الفعلية (الحد المسموح بالمناسبات وغيره) — عبر الدالة المركزية
 // حصراً، حتى تعمل بشكل صحيح لمستخدمي Catalog وLegacy معاً بلا أي قراءة
@@ -131,7 +157,34 @@ $events_left = max(0, $events_limit - $events_used);
 
 // معلومات إضافية للعرض فقط (الباقة/الميزات) — قراءة فقط عبر الدوال المساعدة الحالية، بدون أي حساب جديد
 $guest_limit_per_event = isset($plan_limits['guest_limit']) ? (int) $plan_limits['guest_limit'] : 0;
-$wa_messages_limit     = isset($plan_limits['wa_messages']) ? (int) $plan_limits['wa_messages'] : null;
+
+// رصيد الدعوات (Invitation Credits) — من الدالة المركزية حصراً؛ تُعيد صفراً
+// آمناً لكل مصدر لا يملك رصيداً فعلياً (Legacy، أو Catalog غير نشط/ناقص).
+$invitation_credit_total     = isset($plan_limits['invitation_credit_total']) ? (int) $plan_limits['invitation_credit_total'] : 0;
+$invitation_credit_used      = isset($plan_limits['invitation_credit_used']) ? (int) $plan_limits['invitation_credit_used'] : 0;
+$invitation_credit_remaining = isset($plan_limits['invitation_credit_remaining'])
+    ? (int) $plan_limits['invitation_credit_remaining']
+    : max(0, $invitation_credit_total - $invitation_credit_used);
+
+// بطاقة «المدعوين لكل مناسبة»: guest_limit هو حد مستقل فعلي لكل مناسبة إن
+// وُجد. لا يوجد حالياً أي مسار كتابة لعمود guest_limit في مستويات Catalog
+// (غائب عن حقول نموذج إضافة/تعديل المستوى وعن create_tier()/update_tier())،
+// فيبقى صفراً دائماً لكل مستخدمي Catalog الحاليين. في هذه الحالة فقط نعرض
+// رصيد الدعوات الإجمالي (المشترك بين كل مناسبات المستخدم) تحت عنوان يعكس
+// معناه الحقيقي، بدل تسميته خطأً «لكل مناسبة».
+if ($guest_limit_per_event > 0) {
+    $guest_card_title = __('المدعوين لكل مناسبة', 'pgevents');
+    $guest_card_value = $guest_limit_per_event;
+    $guest_card_note  = __('الحد الأقصى المسموح به', 'pgevents');
+} elseif ($invitation_credit_total > 0) {
+    $guest_card_title = __('إجمالي رصيد الدعوات', 'pgevents');
+    $guest_card_value = $invitation_credit_total;
+    $guest_card_note  = __('رصيد مشترك بين كل مناسباتك', 'pgevents');
+} else {
+    $guest_card_title = __('المدعوين لكل مناسبة', 'pgevents');
+    $guest_card_value = 0;
+    $guest_card_note  = '';
+}
 
 $feature_labels = [
     'header_img'    => __('صورة غلاف مخصصة', 'pgevents'),
@@ -288,8 +341,8 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                         </span>
                         <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('الباقة الحالية', 'pgevents'); ?></span>
                     </div>
-                    <?php if ($plan_name || $plan_key): ?>
-                        <div class="mt-3 truncate text-base font-extrabold text-foreground"><?php echo esc_html($plan_name ?: $plan_key); ?></div>
+                    <?php if ($display_plan_name !== ''): ?>
+                        <div class="mt-3 truncate text-base font-extrabold text-foreground"><?php echo esc_html($display_plan_name); ?></div>
                         <div class="mt-1.5">
                             <?php if ($plan_status === 'active'): ?>
                                 <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
@@ -355,11 +408,11 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                                 <path d="M15.8 13.6a4.6 4.6 0 0 1 5.7 4.5v.9"></path>
                             </svg>
                         </span>
-                        <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('المدعوين لكل مناسبة', 'pgevents'); ?></span>
+                        <span class="text-xs font-bold text-foreground/70"><?php echo esc_html($guest_card_title); ?></span>
                     </div>
-                    <?php if ($guest_limit_per_event > 0): ?>
-                        <div class="mt-3 text-base font-extrabold text-foreground"><?php echo (int) $guest_limit_per_event; ?></div>
-                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('الحد الأقصى المسموح به', 'pgevents'); ?></div>
+                    <?php if ($guest_card_value > 0): ?>
+                        <div class="mt-3 text-base font-extrabold text-foreground"><?php echo (int) $guest_card_value; ?></div>
+                        <div class="mt-1 text-[11px] text-foreground/65"><?php echo esc_html($guest_card_note); ?></div>
                     <?php else: ?>
                         <div class="mt-3 text-sm font-semibold text-foreground/65"><?php esc_html_e('غير محدد', 'pgevents'); ?></div>
                     <?php endif; ?>
@@ -375,9 +428,14 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                         </span>
                         <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('رسائل واتساب المتاحة', 'pgevents'); ?></span>
                     </div>
-                    <?php if ($wa_messages_limit !== null && $wa_messages_limit > 0): ?>
-                        <div class="mt-3 text-base font-extrabold text-foreground"><?php echo (int) $wa_messages_limit; ?></div>
-                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('رسالة ضمن باقتك', 'pgevents'); ?></div>
+                    <?php if ($invitation_credit_total > 0): ?>
+                        <div class="mt-3 text-base font-extrabold text-foreground">
+                            <?php echo (int) $invitation_credit_remaining; ?> <span class="text-sm font-semibold text-foreground/65"><?php
+                                /* translators: %d: total invitation credit included in the plan */
+                                echo esc_html(sprintf(__('من %d', 'pgevents'), (int) $invitation_credit_total));
+                            ?></span>
+                        </div>
+                        <div class="mt-1 text-[11px] text-foreground/65"><?php esc_html_e('رسالة متاحة ضمن رصيدك', 'pgevents'); ?></div>
                     <?php else: ?>
                         <div class="mt-3 text-sm font-semibold text-foreground/65"><?php esc_html_e('غير مفعّلة', 'pgevents'); ?></div>
                     <?php endif; ?>
