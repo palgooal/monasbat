@@ -139,10 +139,21 @@ if (!function_exists('pge_save_rsvp_response')) {
         ];
         $formats = ['%d', '%s', '%d', '%s', '%s'];
 
+        $old_reply = $existing ? $existing->reply : null;
+
         if ($existing) {
             $wpdb->update($table, $data, ['id' => (int) $existing->id], $formats, ['%d']);
         } else {
             $wpdb->insert($table, $data, $formats);
+        }
+
+        // المرحلة 4B: منح Replacement Entitlement عند انتقال RSVP حقيقي إلى
+        // اعتذار — بعد نجاح الحفظ أعلاه فقط، وSide Effect لاحق لا يؤثر على
+        // نتيجة/عقد هذه الدالة إطلاقاً (pge_maybe_grant_replacement_entitlement
+        // مُحصَّنة بالكامل ضد أي استثناء داخلها، راجع includes/replacement-
+        // entitlement-grant.php).
+        if ($reply === 'no' && function_exists('pge_maybe_grant_replacement_entitlement')) {
+            pge_maybe_grant_replacement_entitlement($event_id, $phone, $old_reply, $reply);
         }
 
         $total_attending = (int) $wpdb->get_var($wpdb->prepare(

@@ -794,6 +794,75 @@ class PGE_Invitation_Credit_Ledger
     }
 
     /**
+     * ============================================================================
+     * عدّ الصفوف status=reserved "المملوكة فعلياً حالياً" فقط (المرحلة 4C).
+     * ============================================================================
+     * إضافة جديدة ضيقة النطاق ومتوافقة خلفياً بالكامل — لا تُعدِّل
+     * count_reserved() أعلاه ولا سلوكها الحالي بأي شكل (تُستخدَم count_reserved()
+     * حصرياً من مسارات التقارير/التدقيق القديمة كما هي).
+     *
+     * الفرق الوحيد عن count_reserved(): تستبعد أي صف reserved انتهت مهلة
+     * Lease محاولته (is_lease_expired()) أو لا يملك attempt_token نشطاً أصلاً
+     * — أي صف "متروك" فعلياً وقابل لإعادة المطالبة به عبر claim_for_delivery()
+     * القادمة (تماماً بنفس المعيار الذي يستخدمه claim_for_delivery() داخلياً
+     * لتقرير in_progress مقابل "غير مملوك"، راجع التوثيق هناك)، فلا يُحتسَب
+     * ضمن "الاستهلاك الفعلي الجاري" لأي حساب سقف يعتمد على هذه الدالة.
+     *
+     * غرضها الوحيد حالياً: حساب Replacement Credits الذري (المرحلة 4C) في
+     * Mon_Cartat_Handler، حيث الفرق بين معدود Ledger القديم (count_reserved
+     * البسيطة، تشمل صفوفاً متروكة قد تُحجب سعة فعلية بلا داعٍ) ومعدود دقيق
+     * "نشط حقيقة الآن" مهم لتفادي رفض حجوزات مشروعة بسبب صف Lease منتهٍ لم
+     * يُستبدَل بعد. القراءة نفسها لا تُعدِّل أي صف ولا تُبطل أي Lease — هي
+     * قراءة بحتة فقط؛ الإبطال الفعلي يبقى حصراً من اختصاص claim_for_delivery().
+     *
+     * تُنفَّذ عبر مسح صفوف reserved المرشَّحة كاملة (نطاق ضيق أصلاً: مستخدم +
+     * دورة + نوع رصيد واحد، غالباً صفر أو صف واحد على الأكثر عملياً) ثم
+     * استدعاء is_lease_expired() الخاصة لكل صف — نفس الكلاس، فلا حاجة لتكرار
+     * منطقها أو جعلها عامة.
+     */
+    public static function count_active_reserved($user_id, $credit_cycle_id, $credit_type): int
+    {
+        $normalized_user_id = self::normalize_positive_id($user_id);
+        if ($normalized_user_id === 0) {
+            return 0;
+        }
+
+        $credit_cycle_id = is_string($credit_cycle_id) ? trim($credit_cycle_id) : '';
+        if ($credit_cycle_id === '') {
+            return 0;
+        }
+
+        $normalized_type = self::normalize_credit_type($credit_type);
+        if ($normalized_type === false) {
+            return 0;
+        }
+
+        global $wpdb;
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT attempt_token, attempt_started_at FROM " . self::table_name() . " WHERE user_id = %d AND credit_cycle_id = %s AND credit_type = %s AND status = %s",
+            $normalized_user_id,
+            $credit_cycle_id,
+            $normalized_type,
+            'reserved'
+        ), ARRAY_A);
+
+        if (!is_array($rows)) {
+            return 0;
+        }
+
+        $active_count = 0;
+        foreach ($rows as $row) {
+            $has_active_token = !empty($row['attempt_token']);
+            if ($has_active_token && !self::is_lease_expired($row['attempt_started_at'] ?? null)) {
+                $active_count++;
+            }
+        }
+
+        return $active_count;
+    }
+
+    /**
      * المنطق المشترك الفعلي بين count_consumed()/count_reserved() — status
      * ثابتة مضمونة الصحة دوماً (تُمرَّر داخلياً فقط من الدالتين أعلاه، لا من
      * أي مستدعٍ خارجي)، فلا حاجة لتطبيعها هنا.

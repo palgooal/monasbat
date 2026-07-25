@@ -663,11 +663,13 @@ class Mon_Cartat_Handler
         $table = $wpdb->prefix . 'pge_event_rsvps';
         $phone = pge_norm_phone($phone);
 
-        $existing_id = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
+        $existing_row = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, reply FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
             $event_id,
             $phone
         ));
+        $existing_id = $existing_row->id ?? null;
+        $old_reply   = $existing_row->reply ?? null;
 
         if ($existing_id) {
             $wpdb->update(
@@ -686,6 +688,14 @@ class Mon_Cartat_Handler
                 'created_at'  => current_time('mysql'),
             ]);
         }
+
+        // المرحلة 4B: منح Replacement Entitlement عند انتقال RSVP حقيقي إلى
+        // اعتذار — بعد نجاح تخزين الرد أعلاه فقط. لا يغيّر شيئاً في السلوك
+        // اللاحق لهذه الدالة (المستدعي يواصل بناء رسالة التأكيد وQR/الخريطة
+        // كما هو تماماً بعد هذا الاستدعاء) ولا في عقد Webhook Response.
+        if ($reply === 'no' && function_exists('pge_maybe_grant_replacement_entitlement')) {
+            pge_maybe_grant_replacement_entitlement($event_id, $phone, $old_reply, $reply);
+        }
     }
 
     private function get_reminder_text(): string
@@ -701,6 +711,89 @@ class Mon_Cartat_Handler
     private function queue_key(int $event_id): string
     {
         return 'pge_wa_queue_' . $event_id;
+    }
+
+    /**
+     * ============================================================================
+     * حساب "الحد الفعّال" لرصيد الدعوات البديلة (Replacement Credits) — المرحلة
+     * 4C: Replacement Credit Consumption During Cartat Queue Delivery.
+     * ============================================================================
+     * effective_limit = MIN(replacement_credit_limit من الـResolver المركزي
+     * pge_get_user_plan_limits_for_events()['replacement_credit_total'],
+     * عدد الاستحقاقات الممنوحة إجمالاً granted_count عبر
+     * PGE_Replacement_Entitlements::count_granted()). لا اعتماد إطلاقاً على
+     * أي قيمة يرسلها المتصفح — كل شيء هنا يُعاد حسابه من مصادر الحقيقة
+     * الفعلية فقط، بنفس منهج قسم invitation_credit_total الحالي أعلاه تماماً.
+     *
+     * used_or_reserved = عدد الصفوف reserved "النشطة فعلاً" (عبر
+     * PGE_Invitation_Credit_Ledger::count_active_reserved() الجديدة — لا
+     * count_reserved() البسيطة؛ راجع توثيقها هناك لسبب هذا الاختيار تحديداً)
+     * + عدد الصفوف consumed، كلاهما لـcredit_type='replacement' فقط ضمن نفس
+     * (subscriber_user_id, credit_cycle_id).
+     *
+     * تُستدعى من موقعين مختلفين تماماً بغرضين مختلفين تماماً:
+     *  1. ajax_queue_start(): فحص إرشادي مبكر **غير ذري** (بلا أي قفل) —
+     *     فقط لرفض بدء Queue ميؤوس منها فوراً (تجربة استخدام أفضل للمضيف)
+     *     بدل تركها تفشل لاحقاً بصمت في الـCron. القيمة المُعادة هنا **لا**
+     *     تُعتبر نهائية أو ملزمة، ولا تُستخدَم لحجز أي شيء فعلياً.
+     *  2. cron_process_queue(): الفحص الذري الفعلي والملزم — يُستدعى **تحت**
+     *     قفل PGE_Replacement_Entitlements::build_replacement_credit_lock_name()،
+     *     ونتيجته هي التي تقرر فعلياً هل يُستدعى claim_for_delivery() أم لا.
+     *
+     * دالة قراءة بحتة بالكامل — لا تعديل أو كتابة من هنا إطلاقاً.
+     */
+    private function compute_replacement_effective_limit(int $subscriber_user_id, string $credit_cycle_id): array
+    {
+        if ($subscriber_user_id <= 0 || $credit_cycle_id === '') {
+            return [
+                'package_limit'    => 0,
+                'granted_count'    => 0,
+                'reserved_active'  => 0,
+                'consumed_count'   => 0,
+                'used_or_reserved' => 0,
+                'effective_limit'  => 0,
+                'available'        => false,
+                'reason'           => 'no_available_entitlement',
+            ];
+        }
+
+        $resolved_limits   = function_exists('pge_get_user_plan_limits_for_events')
+            ? (array) pge_get_user_plan_limits_for_events($subscriber_user_id)
+            : [];
+        $raw_package_limit = $resolved_limits['replacement_credit_total'] ?? null;
+        $package_limit     = (is_int($raw_package_limit) && $raw_package_limit >= 0) ? $raw_package_limit : 0;
+
+        $granted_count = class_exists('PGE_Replacement_Entitlements')
+            ? (int) PGE_Replacement_Entitlements::count_granted($subscriber_user_id, $credit_cycle_id)
+            : 0;
+
+        $reserved_active = class_exists('PGE_Invitation_Credit_Ledger')
+            ? (int) PGE_Invitation_Credit_Ledger::count_active_reserved($subscriber_user_id, $credit_cycle_id, 'replacement')
+            : 0;
+
+        $consumed_count = class_exists('PGE_Invitation_Credit_Ledger')
+            ? (int) PGE_Invitation_Credit_Ledger::count_consumed($subscriber_user_id, $credit_cycle_id, 'replacement')
+            : 0;
+
+        $effective_limit  = min($package_limit, $granted_count);
+        $used_or_reserved = $reserved_active + $consumed_count;
+        $available        = $used_or_reserved < $effective_limit;
+
+        // سبب الرفض عند عدم التوفر: إن كان granted_count هو القيد المُلزِم
+        // (مساوٍ أو أصغر من package_limit) فالسبب "لا استحقاق متاح"؛ وإلا
+        // فالسبب "بلوغ حد الباقة نفسه".
+        $reason = ($granted_count <= $package_limit) ? 'no_available_entitlement' : 'limit_exceeded';
+
+        return [
+            'package_limit'    => $package_limit,
+            'granted_count'    => $granted_count,
+            'reserved_active'  => $reserved_active,
+            'consumed_count'   => $consumed_count,
+            'used_or_reserved' => $used_or_reserved,
+            'effective_limit'  => $effective_limit,
+            'available'        => $available,
+            'reason'           => $available ? null : $reason,
+        ];
     }
 
     /** AJAX — بدء الإرسال في الخلفية */
@@ -733,6 +826,21 @@ class Mon_Cartat_Handler
         $phones = pge_get_invited_phones($event_id);
         if (empty($phones)) {
             wp_send_json_error(['message' => 'لا يوجد مدعوون']);
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // عقد credit_type الخادمي الصريح (المرحلة 4C)
+        // ══════════════════════════════════════════════════════════════
+        // القيمة الافتراضية عند غياب الحقل أو فراغه: 'primary' (السلوك
+        // الحالي تماماً، بلا أي تغيير). أي قيمة أخرى غير 'primary'/'replacement'
+        // بالضبط تُرفَض صراحةً — لا Queue يُنشأ، لا حجز Ledger من أي نوع. لا
+        // ثقة إطلاقاً بأي حد/دورة/entitlement_id يرسله المتصفح — هذه القيم
+        // كلها تُعاد حسابها من مصادر الخادم فقط أدناه بصرف النظر عمّا وصل
+        // ضمن $_POST.
+        $credit_type_raw = isset($_POST['credit_type']) ? sanitize_text_field(wp_unslash($_POST['credit_type'])) : '';
+        $credit_type      = ($credit_type_raw === '') ? 'primary' : $credit_type_raw;
+        if (!in_array($credit_type, ['primary', 'replacement'], true)) {
+            wp_send_json_error(['message' => '⛔ نوع رصيد غير صالح.']);
         }
 
         // ══════════════════════════════════════════════════════════════
@@ -769,21 +877,60 @@ class Mon_Cartat_Handler
                     wp_send_json_error(['message' => '⛔ لا يمكن بدء الإرسال: لا توجد دورة رصيد صالحة لاشتراك صاحب المناسبة.']);
                 }
 
-                $resolved_limits = function_exists('pge_get_user_plan_limits_for_events')
-                    ? (array) pge_get_user_plan_limits_for_events($subscriber_user_id)
-                    : [];
-                $raw_total = $resolved_limits['invitation_credit_total'] ?? null;
+                if ($credit_type === 'primary') {
+                    // === السلوك الحالي، بلا أي تغيير إطلاقاً (المرحلة الثالثة A) ===
+                    $resolved_limits = function_exists('pge_get_user_plan_limits_for_events')
+                        ? (array) pge_get_user_plan_limits_for_events($subscriber_user_id)
+                        : [];
+                    $raw_total = $resolved_limits['invitation_credit_total'] ?? null;
 
-                if (!is_int($raw_total) || $raw_total < 0) {
-                    wp_send_json_error(['message' => '⛔ لا يمكن بدء الإرسال: تعذّر تحديد رصيد الدعوات المتاح لصاحب المناسبة.']);
+                    if (!is_int($raw_total) || $raw_total < 0) {
+                        wp_send_json_error(['message' => '⛔ لا يمكن بدء الإرسال: تعذّر تحديد رصيد الدعوات المتاح لصاحب المناسبة.']);
+                    }
+
+                    $invitation_credit_total = $raw_total;
+                    $is_catalog = true;
+                } else {
+                    // credit_type === 'replacement' (المرحلة 4C) — فحص إرشادي
+                    // مبكر غير ذري (راجع توثيق compute_replacement_effective_limit()):
+                    // رفض فوري وواضح للمضيف بدل ترك Queue تُنشأ لتفشل بصمت
+                    // لاحقاً في كل دفعة Cron. القيمة الفعلية الملزمة تُعاد
+                    // حسابها ذرياً من جديد داخل cron_process_queue() تحت قفل
+                    // مخصص — هذا الفحص هنا للتجربة/الرفض المبكر فقط.
+                    $rc = $this->compute_replacement_effective_limit($subscriber_user_id, $credit_cycle_id);
+
+                    if ($rc['package_limit'] <= 0) {
+                        wp_send_json_error(['message' => '⛔ لا يوجد رصيد دعوات بديلة (Replacement) ضمن باقة صاحب المناسبة.']);
+                    }
+
+                    if (!$rc['available']) {
+                        $msg = ($rc['reason'] === 'no_available_entitlement')
+                            ? '⛔ لا يوجد استحقاق دعوة بديلة متاح حالياً لصاحب المناسبة (لم يعتذر أحد بعد إرسال دعوة أساسية).'
+                            : '⛔ تم بلوغ الحد الأقصى لرصيد الدعوات البديلة ضمن الباقة.';
+                        wp_send_json_error(['message' => $msg]);
+                    }
+
+                    // Snapshot إرشادي فقط عند بدء الـQueue — القيمة الملزمة
+                    // النهائية تُعاد حسابها من جديد داخل cron_process_queue()
+                    // (راجع القسم 3 من مواصفة المرحلة 4C: "أعد الحساب"، لا
+                    // تثق بقيمة قديمة قد تغيّرت بين بدء الـQueue وتنفيذ الـCron
+                    // الفعلي — مثلاً استحقاق جديد مُنح، أو استحقاقات أخرى
+                    // استُهلكت من مناسبة أخرى لنفس المستخدم بالتزامن).
+                    $invitation_credit_total = $rc['effective_limit'];
+                    $is_catalog = true;
                 }
-
-                $invitation_credit_total = $raw_total;
-                $is_catalog = true;
+            } elseif ($credit_type === 'replacement') {
+                // مستخدم بلا اشتراك Catalog (Legacy أو بلا اشتراك مسجَّل) —
+                // مفهوم Replacement Credits غير موجود إطلاقاً خارج نظام
+                // الباقات (Catalog)؛ رفض صريح، لا Queue، لا Ledger.
+                wp_send_json_error(['message' => '⛔ رصيد الدعوات البديلة متاح فقط لمستخدمي نظام الباقات (Catalog).']);
             }
             // أي قيمة أخرى (بما فيها الفراغ) = Legacy أو مستخدم بلا اشتراك
-            // مسجَّل بعد — يستمر بالسلوك الحالي تماماً، بلا Ledger وبلا أي
-            // منع جديد (خارج نطاق هذه المرحلة صراحةً).
+            // مسجَّل بعد، مع credit_type=primary — يستمر بالسلوك الحالي
+            // تماماً، بلا Ledger وبلا أي منع جديد (خارج نطاق هذه المرحلة صراحةً).
+        } elseif ($credit_type === 'replacement') {
+            // لا مالك صالح للمناسبة أصلاً — لا معنى لأي رصيد Replacement.
+            wp_send_json_error(['message' => '⛔ تعذّر تحديد صاحب المناسبة.']);
         }
 
         // تجميع بيانات المناسبة مرة واحدة
@@ -819,7 +966,7 @@ class Mon_Cartat_Handler
             'is_catalog'                => $is_catalog,
             'subscriber_user_id'        => $subscriber_user_id,
             'credit_cycle_id'           => $credit_cycle_id,
-            'credit_type'               => 'primary',
+            'credit_type'               => $credit_type,
             'invitation_credit_total'   => $invitation_credit_total,
         ];
 
@@ -917,6 +1064,185 @@ class Mon_Cartat_Handler
         }
     }
 
+    /**
+     * ============================================================================
+     * استهلاك استحقاق Replacement وربطه بصف Ledger مُستهلَك فعلياً (المرحلة
+     * 4C، القسمان 4-5) — تُستدعى **فقط** بعد نجاح mark_consumed_with_token()
+     * على صف replacement فعلي، لا قبل ذلك إطلاقاً.
+     * ============================================================================
+     * غلاف رقيق حول PGE_Replacement_Entitlements::claim_oldest_granted_for_ledger()
+     * + التسجيل + مزامنة العدّاد. لا تُعيد أي قيمة تؤثر على $queue['results'] —
+     * نجاح Cartat/الـLedger مكتمل ونهائي بصرف النظر عن نتيجة هذه الدالة (راجع
+     * القسم 10 من المواصفة): فشل الربط هنا يُسجَّل كـ
+     * replacement_entitlement_link_error ويُترَك لـ
+     * reconcile_consumed_replacement_ledger() لاحقاً — لا يُعاد أي شيء إلى
+     * الوراء في Cartat أو الـLedger أبداً.
+     *
+     * مُغلَّفة بالكامل بـtry/catch(\Throwable) دفاعياً — أي استثناء غير
+     * متوقع هنا يُسجَّل فقط ولا يُعاد رميه أبداً، بنفس فلسفة
+     * pge_maybe_grant_replacement_entitlement() في المرحلة 4B تماماً (لا
+     * يجوز لأي خطأ في هذه الطبقة الثانوية أن يُسقِط دفعة Cron كاملة).
+     */
+    private function consume_replacement_entitlement_for_ledger(int $subscriber_user_id, string $credit_cycle_id, int $ledger_id, int $event_id, string $phone): void
+    {
+        try {
+            if (!class_exists('PGE_Replacement_Entitlements')) {
+                $this->log("❌ replacement_entitlement_link_error: PGE_Replacement_Entitlements غير محمَّلة | ledger_id=$ledger_id | event=$event_id | phone=$phone");
+                return;
+            }
+
+            $result  = PGE_Replacement_Entitlements::claim_oldest_granted_for_ledger($subscriber_user_id, $credit_cycle_id, $ledger_id);
+            $outcome = $result['result'] ?? 'error';
+
+            if ($outcome === 'consumed') {
+                $this->log("✅ replacement_entitlement_consumed: entitlement_id={$result['id']} | ledger_id=$ledger_id | user=$subscriber_user_id | cycle=$credit_cycle_id | event=$event_id | phone=$phone");
+                $this->sync_replacement_credit_used($subscriber_user_id, $credit_cycle_id);
+                return;
+            }
+
+            if ($outcome === 'already_linked') {
+                $this->log("ℹ️ replacement_entitlement_already_linked: entitlement_id={$result['id']} | ledger_id=$ledger_id | user=$subscriber_user_id | cycle=$credit_cycle_id");
+                $this->sync_replacement_credit_used($subscriber_user_id, $credit_cycle_id);
+                return;
+            }
+
+            // 'error' — فشل ربط حرج (القسم 10 من المواصفة): Cartat نجح
+            // والـLedger consumed فعلاً، لكن تعذّر ربط/استهلاك أي استحقاق. لا
+            // نعكس أي شيء هنا — reconcile_consumed_replacement_ledger($ledger_id)
+            // قابلة لإعادة التشغيل لاحقاً لإصلاح هذه الحالة بالذات يدوياً.
+            $reason = $result['reason'] ?? 'unknown';
+            $this->log("❌ replacement_entitlement_link_error: ledger_id=$ledger_id | user=$subscriber_user_id | cycle=$credit_cycle_id | event=$event_id | phone=$phone | reason=$reason");
+        } catch (\Throwable $e) {
+            $this->log("❌ replacement_entitlement_link_error: استثناء غير متوقع | ledger_id=$ledger_id | user=$subscriber_user_id | " . $e->getMessage());
+        }
+    }
+
+    /**
+     * مزامنة _mon_replacement_credit_used من Ledger/Entitlements مباشرة
+     * (المرحلة 4C، القسم 6) — دالة **مستقلة تماماً** عن
+     * sync_invitation_credit_used() الحالية أعلاه؛ لا يجوز إعادة استخدام
+     * تلك الدالة هنا: تكتب دائماً على _mon_invitation_credit_used حصراً بصرف
+     * النظر عن credit_type المُمرَّر إليها، وهو مفتاح User Meta خاطئ تماماً
+     * لعدّاد Replacement (تأكّدنا من هذا بالتدقيق قبل الكتابة — راجع تعليق
+     * update_user_meta() هناك).
+     *
+     * COUNT حقيقي دائماً عبر PGE_Replacement_Entitlements::count_consumed()
+     * (عدد الاستحقاقات المُستهلَكة فعلياً — لا Ledger::count_consumed() على
+     * صفوف replacement مباشرة؛ العدّاد يعكس عمداً استحقاقات مربوطة فعلياً لا
+     * صفوف Ledger مستهلكة قد تنتظر ربطاً بعد عبر reconcile) — لا زيادة/نقصان
+     * تراكمي إطلاقاً، بنفس فلسفة sync_invitation_credit_used() تماماً. لا
+     * تلمس _mon_replacement_credit_total مطلقاً — ذلك حد الباقة الأقصى
+     * (Snapshot عند التفعيل)، مستقل كلياً عن هذه الدالة.
+     */
+    private function sync_replacement_credit_used(int $subscriber_user_id, string $credit_cycle_id): void
+    {
+        if ($subscriber_user_id <= 0 || $credit_cycle_id === '') {
+            return;
+        }
+
+        // نفس احتياط sync_invitation_credit_used(): لا كتابة على دورة لم
+        // تعد سارية (قد تكون تغيّرت بين claim/mark_consumed وهذه اللحظة
+        // بالذات).
+        $current_cycle = (string) get_user_meta($subscriber_user_id, '_mon_credit_cycle_id', true);
+        if ($current_cycle === '' || $current_cycle !== $credit_cycle_id) {
+            return;
+        }
+
+        if (!class_exists('PGE_Replacement_Entitlements')) {
+            return;
+        }
+
+        $actual_count = PGE_Replacement_Entitlements::count_consumed($subscriber_user_id, $credit_cycle_id);
+        update_user_meta($subscriber_user_id, '_mon_replacement_credit_used', $actual_count);
+
+        $verify = (int) get_user_meta($subscriber_user_id, '_mon_replacement_credit_used', true);
+        if ($verify !== $actual_count) {
+            $this->log("⚠️ replacement_credit_used_sync_error: تعذّر تحديث _mon_replacement_credit_used فعلياً | user=$subscriber_user_id | expected=$actual_count | actual=$verify (Entitlements يبقى مصدر الحقيقة)");
+            return;
+        }
+
+        $this->log("✅ replacement_credit_used_synced: user=$subscriber_user_id | cycle=$credit_cycle_id | used=$actual_count");
+    }
+
+    /**
+     * ============================================================================
+     * إصلاح ربط استحقاق Replacement لصف Ledger مُستهلَك فعلياً — قابلة
+     * لإعادة التشغيل، تُستدعى يدوياً أو لاحقاً (المرحلة 4C، القسم 10؛ لا
+     * Cron دوري مطلوب في هذه المرحلة).
+     * ============================================================================
+     * تُعالِج بالتحديد حالة "Cartat نجح + الـLedger consumed فعلاً، لكن تعذّر
+     * ربط/استهلاك أي Entitlement وقتها" (سُجِّلت كـ
+     * replacement_entitlement_link_error وقت حدوثها في
+     * consume_replacement_entitlement_for_ledger() أعلاه). Idempotent بالكامل
+     * عبر PGE_Replacement_Entitlements::claim_oldest_granted_for_ledger()
+     * نفسها — استدعاء متكرر بنفس $ledger_id بعد نجاح سابق يُعيد
+     * 'already_linked' بأمان دون أي تأثير إضافي، فيصلح استدعاء هذه الدالة
+     * أكثر من مرة على نفس $ledger_id بلا أي خطر.
+     *
+     * public عمداً: أداة تشغيلية مستقلة (WP-CLI مستقبلاً، أو زر لوحة تحكم
+     * لاحقاً — لا شيء من هذا مطلوب في هذه المرحلة) لا تتطلب سياق Queue/Cron
+     * حي لتُستدعى.
+     *
+     * القيم المُعادة:
+     *  - ['result'=>'reconciled','entitlement_id'=>int]: ربط جديد نجح الآن.
+     *  - ['result'=>'already_linked','entitlement_id'=>int]: كان مربوطاً
+     *    فعلاً مسبقاً (لا شيء لإصلاحه).
+     *  - ['result'=>'error','reason'=>string]: صف Ledger غير موجود/ليس
+     *    replacement/ليس consumed (رفض صريح — لا يجوز "إصلاح" صف لم يُستهلَك
+     *    فعلاً أصلاً)، أو لا استحقاق granted متاح حتى الآن
+     *    (no_entitlement_available)، أو الكلاسات المطلوبة غير محمَّلة.
+     */
+    public function reconcile_consumed_replacement_ledger(int $ledger_id): array
+    {
+        if ($ledger_id <= 0) {
+            return ['result' => 'error', 'reason' => 'invalid_ledger_id'];
+        }
+
+        if (!class_exists('PGE_Invitation_Credit_Ledger') || !class_exists('PGE_Replacement_Entitlements')) {
+            return ['result' => 'error', 'reason' => 'required_classes_missing'];
+        }
+
+        global $wpdb;
+        $ledger_table = PGE_Invitation_Credit_Ledger::table_name();
+        $ledger_row   = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM $ledger_table WHERE id = %d LIMIT 1", $ledger_id),
+            ARRAY_A
+        );
+
+        if (!$ledger_row) {
+            return ['result' => 'error', 'reason' => 'ledger_not_found'];
+        }
+
+        if ((string) ($ledger_row['credit_type'] ?? '') !== 'replacement') {
+            return ['result' => 'error', 'reason' => 'not_replacement'];
+        }
+
+        if ((string) ($ledger_row['status'] ?? '') !== 'consumed') {
+            return ['result' => 'error', 'reason' => 'not_consumed'];
+        }
+
+        $user_id         = (int) ($ledger_row['user_id'] ?? 0);
+        $credit_cycle_id = (string) ($ledger_row['credit_cycle_id'] ?? '');
+
+        $result  = PGE_Replacement_Entitlements::claim_oldest_granted_for_ledger($user_id, $credit_cycle_id, $ledger_id);
+        $outcome = $result['result'] ?? 'error';
+
+        if ($outcome === 'consumed') {
+            $this->sync_replacement_credit_used($user_id, $credit_cycle_id);
+            $this->log("✅ replacement_reconciliation_success: ledger_id=$ledger_id | entitlement_id={$result['id']} | user=$user_id | cycle=$credit_cycle_id");
+            return ['result' => 'reconciled', 'entitlement_id' => (int) $result['id']];
+        }
+
+        if ($outcome === 'already_linked') {
+            $this->log("ℹ️ replacement_reconciliation_success: ledger_id=$ledger_id | already_linked | entitlement_id={$result['id']}");
+            return ['result' => 'already_linked', 'entitlement_id' => (int) $result['id']];
+        }
+
+        $reason = $result['reason'] ?? 'unknown';
+        $this->log("❌ replacement_reconciliation_error: ledger_id=$ledger_id | user=$user_id | cycle=$credit_cycle_id | reason=$reason");
+        return ['result' => 'error', 'reason' => $reason];
+    }
+
     /** WP Cron — معالجة دفعة واحدة في الخلفية */
     public function cron_process_queue(int $event_id): void
     {
@@ -987,7 +1313,142 @@ class Mon_Cartat_Handler
                 // Invitation Credits Engine — claim قبل أي استدعاء لكارتات
                 // ══════════════════════════════════════════════════════
                 $claim = null;
-                if ($is_catalog) {
+                if ($is_catalog && $credit_type === 'replacement') {
+                    // ══════════════════════════════════════════════════
+                    // فحص مسبق: هل يوجد صف Ledger سابق لهذا المدعو بالذات،
+                    // وما status ه الفعلي؟ (إصلاح Blocker مُبلَّغ صراحةً: لا
+                    // يجوز اعتماد قاعدة "أي صف موجود يتجاوز بوابة التوفر" —
+                    // فحصت هذا فعلياً بناءً على تنبيه المستخدم ووجدت السيناريو
+                    // التالي حقيقياً: Entitlement واحد → A يفشل (Ledger A
+                    // يصبح failed، الاستحقاق يبقى granted) → B ينجح ويستهلك
+                    // الاستحقاق الوحيد → إعادة محاولة A كانت (قبل هذا الإصلاح)
+                    // تتجاوز البوابة لمجرّد وجود صف Ledger سابق لها، فتنجح
+                    // وتستهلك Cartat فعلياً بلا أي استحقاق متبقٍّ لربطه —
+                    // Overbooking فعلي (2 صفوف replacement مُستهلَكة مقابل
+                    // استحقاق واحد فقط). السبب الجذري: status='failed' لا
+                    // يمثّل حجزاً نشطاً (غير مُستثنى من count_reserved_or_
+                    // consumed_unsafe() أصلاً) ولا استهلاكاً فعلياً — فلا
+                    // مبرّر لإعفائه من بوابة التوفر كما يُعفى consumed/reserved
+                    // بحق. القاعدة الصحيحة إذاً حسب status الفعلي للصف
+                    // الموجود (إن وُجد):
+                    //  - consumed: يمرّ مباشرة إلى claim_for_delivery() (تُعيد
+                    //    already_consumed) — بلا حجز جديد، بلا بوابة توفر.
+                    //  - reserved (Lease صالح أو منتهياً على حدٍّ سواء): يمرّ
+                    //    مباشرة إلى claim_for_delivery() (تُعيد in_progress
+                    //    أو تستعيد نفس الصف بتوكن جديد عند انتهاء المهلة) —
+                    //    بلا بوابة توفر؛ إعادة الاستعادة لا تُنشئ صفاً جديداً
+                    //    ولا تحتاج استحقاقاً إضافياً.
+                    //  - failed، أو لا صف إطلاقاً: **يجب** المرور عبر بوابة
+                    //    التوفر الذرية أدناه أولاً (نفس معاملة "مطالبة جديدة"
+                    //    تماماً) — لأن failed لا يحجز أي سعة فعلية حالياً، وقد
+                    //    تكون السعة نفدت لصالح مطالبة أخرى منذ الفشل.
+                    // ══════════════════════════════════════════════════
+                    $existing_entry = class_exists('PGE_Invitation_Credit_Ledger')
+                        ? PGE_Invitation_Credit_Ledger::find_entry($credit_cycle_id, $event_id, $phone, 'replacement')
+                        : null;
+                    $existing_status = $existing_entry !== null ? (string) ($existing_entry['status'] ?? '') : '';
+                    $bypasses_availability_gate = in_array($existing_status, ['consumed', 'reserved'], true);
+
+                    if ($bypasses_availability_gate) {
+                        $claim = PGE_Invitation_Credit_Ledger::claim_for_delivery(
+                            $subscriber_user_id,
+                            $credit_cycle_id,
+                            $event_id,
+                            $phone,
+                            $credit_type,
+                            0 // غير مُستخدَم: صف consumed/reserved، فرع "لا صف" وحده يقرأ الحد
+                        );
+                    } else {
+                        // ══════════════════════════════════════════════
+                        // حجز ذري لمطالبة replacement **جديدة فعلاً، أو إعادة
+                        // محاولة صف failed** (المرحلة 4C، القسم 3 + إصلاح
+                        // Blocker) — قفل مخصص لمنع Overbooking عبر مناسبات
+                        // مختلفة لنفس (user_id, credit_cycle_id) تعمل
+                        // بالتوازي، **ويمنع أيضاً سباق "إعادة محاولة failed"
+                        // مقابل "مطالبة جديدة أخرى"**: كلا المسارين يمرّان
+                        // الآن عبر نفس هذا القفل بالذات (لا فرق بينهما في
+                        // الكود من هذه النقطة فصاعداً)، فيُسلسلهما GET_LOCK
+                        // تلقائياً بصرف النظر عن أيهما وصل أولاً. قفل
+                        // pge_credit_ الداخلي في claim_for_delivery() وحده
+                        // غير كافٍ هنا: effective_limit نفسه مُشتق من عدّ
+                        // خارجي (Entitlements الممنوحة) يجب حسابه وتثبيته
+                        // ذرياً قبل أي claim_for_delivery، لا فقط حماية
+                        // الحجز نفسه.
+                        // ══════════════════════════════════════════════
+                        $rep_lock_name = class_exists('PGE_Replacement_Entitlements')
+                            ? PGE_Replacement_Entitlements::build_replacement_credit_lock_name($subscriber_user_id, $credit_cycle_id)
+                            : '';
+                        $rep_got_lock = ($rep_lock_name !== '')
+                            ? (int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $rep_lock_name, 5))
+                            : 0;
+
+                        if ($rep_got_lock !== 1) {
+                            $queue['results'][$phone] = ['status' => 'ledger_error', 'time' => current_time('mysql')];
+                            $this->log("⚠️ replacement_claim: تعذّر الحصول على قفل الرصيد البديل | event=$event_id | phone=$phone | user=$subscriber_user_id | cycle=$credit_cycle_id");
+                            continue;
+                        }
+
+                        try {
+                            $rc = $this->compute_replacement_effective_limit($subscriber_user_id, $credit_cycle_id);
+
+                            if (!$rc['available']) {
+                                $status    = ($rc['reason'] === 'no_available_entitlement') ? 'skipped_no_entitlement' : 'skipped_limit_exceeded';
+                                $log_event = ($rc['reason'] === 'no_available_entitlement') ? 'replacement_claim_no_entitlement' : 'replacement_claim_limit_exceeded';
+                                $queue['results'][$phone] = ['status' => $status, 'time' => current_time('mysql')];
+                                $this->log("🛑 $log_event: event=$event_id | phone=$phone | user=$subscriber_user_id | cycle=$credit_cycle_id | package_limit={$rc['package_limit']} | granted={$rc['granted_count']} | used_or_reserved={$rc['used_or_reserved']}");
+                                $limit_reached_early = true;
+                                continue; // finally أدناه يُحرِّر القفل قبل الانتقال فعلياً
+                            }
+
+                            $claim = class_exists('PGE_Invitation_Credit_Ledger')
+                                ? PGE_Invitation_Credit_Ledger::claim_for_delivery(
+                                    $subscriber_user_id,
+                                    $credit_cycle_id,
+                                    $event_id,
+                                    $phone,
+                                    $credit_type,
+                                    $rc['effective_limit']
+                                )
+                                : ['result' => 'error', 'reason' => 'ledger_class_missing'];
+                        } finally {
+                            $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $rep_lock_name));
+                        }
+                    }
+
+                    $claim_result = $claim['result'] ?? 'error';
+
+                    if ($claim_result === 'claimed') {
+                        $this->log("✅ replacement_claim_created: event=$event_id | phone=$phone | ledger_id={$claim['id']} | user=$subscriber_user_id | cycle=$credit_cycle_id");
+                    } elseif ($claim_result === 'already_consumed') {
+                        $this->log("ℹ️ replacement_claim_already_consumed: event=$event_id | phone=$phone | ledger_id={$claim['id']}");
+                    } elseif ($claim_result === 'in_progress') {
+                        $this->log("⏳ replacement_claim_in_progress: event=$event_id | phone=$phone | ledger_id={$claim['id']}");
+                    }
+
+                    if ($claim_result === 'already_consumed') {
+                        $queue['results'][$phone] = ['status' => 'skipped_already_consumed', 'time' => current_time('mysql')];
+                        continue;
+                    }
+                    if ($claim_result === 'in_progress') {
+                        $queue['results'][$phone] = ['status' => 'skipped_in_progress', 'time' => current_time('mysql')];
+                        continue;
+                    }
+                    if ($claim_result === 'limit_exceeded') {
+                        // احتياط نظري فقط: القفل أعلاه يجعل هذا شبه مستحيل عملياً
+                        // (effective_limit أُعيد حسابه وثُبِّت تحت نفس القفل قبل
+                        // claim_for_delivery مباشرة) — يُعامَل بنفس منطق أعلاه.
+                        $queue['results'][$phone] = ['status' => 'skipped_limit_exceeded', 'time' => current_time('mysql')];
+                        $this->log("🛑 replacement_claim_limit_exceeded: event=$event_id | phone=$phone (داخل claim_for_delivery نفسها رغم إعادة الحساب)");
+                        $limit_reached_early = true;
+                        continue;
+                    }
+                    if ($claim_result === 'error') {
+                        $queue['results'][$phone] = ['status' => 'ledger_error', 'time' => current_time('mysql')];
+                        $this->log("⚠️ Ledger claim error (replacement): event=$event_id | phone=$phone | reason=" . ($claim['reason'] ?? 'unknown'));
+                        continue;
+                    }
+                    // 'claimed' فقط تتابع إلى الإرسال الفعلي أدناه.
+                } elseif ($is_catalog) {
                     $claim = class_exists('PGE_Invitation_Credit_Ledger')
                         ? PGE_Invitation_Credit_Ledger::claim_for_delivery(
                             $subscriber_user_id,
@@ -1071,7 +1532,24 @@ class Mon_Cartat_Handler
                     if ($is_catalog && $claim !== null && ($claim['result'] ?? '') === 'claimed') {
                         $marked = PGE_Invitation_Credit_Ledger::mark_consumed_with_token((int) $claim['id'], (string) ($claim['attempt_token'] ?? ''));
                         if ($marked) {
-                            $this->sync_invitation_credit_used($subscriber_user_id, $credit_cycle_id, $credit_type);
+                            if ($credit_type === 'replacement') {
+                                // ══════════════════════════════════════════
+                                // استهلاك Entitlement فعلي (المرحلة 4C، القسم
+                                // 4-5) — فقط **بعد** نجاح mark_consumed_with_token()
+                                // أعلاه بالذات. لا sync_invitation_credit_used()
+                                // هنا إطلاقاً (تكتب على _mon_invitation_credit_used
+                                // الخاطئ لهذا النوع تماماً — راجع توثيقها).
+                                // ══════════════════════════════════════════
+                                $this->consume_replacement_entitlement_for_ledger(
+                                    $subscriber_user_id,
+                                    $credit_cycle_id,
+                                    (int) $claim['id'],
+                                    $event_id,
+                                    $phone
+                                );
+                            } else {
+                                $this->sync_invitation_credit_used($subscriber_user_id, $credit_cycle_id, $credit_type);
+                            }
                         } else {
                             $this->log("⚠️ mark_consumed_with_token فشل رغم قبول Cartat: event=$event_id | phone=$phone | ledger_id={$claim['id']}");
                         }

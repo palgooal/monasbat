@@ -28,6 +28,15 @@ require_once PGE_PATH . 'includes/class-pge-catalog.php';
 // الثانية: تأسيس بنية فقط). لا يُستدعى من أي مسار إرسال/RSVP/مدعوين بعد.
 require_once PGE_PATH . 'includes/class-pge-invitation-credit-ledger.php';
 
+// سجل استحقاقات Replacement Credits (Invitation Credits Engine — المرحلة
+// 4A: تأسيس بنية الاستحقاقات فقط). لا يُستدعى من أي مسار RSVP/Queue/Cartat بعد.
+require_once PGE_PATH . 'includes/class-pge-replacement-entitlements.php';
+
+// ربط منح Replacement Entitlement من مسارات RSVP الحية (المرحلة 4B) — دالة
+// مركزية واحدة تُستدعى من pge_save_rsvp_response() وMon_Cartat_Handler::
+// record_rsvp() فقط. لا إرسال Replacement فعلي، لا لمس لـQueue/Cron/Ledger.
+require_once PGE_PATH . 'includes/replacement-entitlement-grant.php';
+
 // صفحة إدارة الباقات (خطوة النموذج فقط — عرض HTML بلا معالجة $_POST وبلا
 // استدعاء لـ PGE_Catalog::create_plan() بعد؛ لا حفظ ولا رسائل نجاح/فشل)
 add_action('admin_menu', function () {

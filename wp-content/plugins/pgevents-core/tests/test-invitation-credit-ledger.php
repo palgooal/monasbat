@@ -707,7 +707,12 @@ echo "\n=== المرحلة الثالثة A: Schema 1.6.0 (محاولة تسلي
 
 // ── Schema 1.6.0 (1-5) ──────────────────────────────────────────────────────
 
-check('المرحلة 3A - 1. DB_VERSION = 1.6.0', Mon_Catalog_Schema::DB_VERSION, '1.6.0');
+// DB_VERSION الحالي أصبح 1.7.0 (رُفع لاحقاً في المرحلة 4A عند إضافة جدول
+// mon_replacement_entitlements — راجع class-mon-catalog-schema.php) — أعمدة
+// attempt_token/attempt_started_at/last_attempt_at أدناه أُضيفت أصلاً ضمن
+// 1.6.0، لكن الثابت نفسه لم يعد يحمل تلك القيمة، فالتحقق يجب أن يطابق القيمة
+// الفعلية الحالية للثابت لا القيمة التاريخية وقت كتابة هذا القسم.
+check('المرحلة 3A - 1. DB_VERSION = 1.7.0 (القيمة الحالية للثابت)', Mon_Catalog_Schema::DB_VERSION, '1.7.0');
 
 $has_new_columns_in_sql = strpos($ledger_sql, 'attempt_token') !== false
     && strpos($ledger_sql, 'attempt_started_at') !== false
@@ -804,7 +809,7 @@ $mf_14_correct = PGE_Invitation_Credit_Ledger::mark_failed_with_token($claim_14[
 check_true('المرحلة 3A - 14. mark_failed_with_token بتوكن صحيح يتطلب تطابقاً وينجح فعلاً', $mf_14_correct === true);
 check('المرحلة 3A - 14. status أصبحت failed', PGE_Invitation_Credit_Ledger::find_entry('CLAIM-CYCLE-A', 706, '0566666666', 'primary')['status'] ?? null, 'failed');
 
-$claim_15 = PGE_Invitation_Credit_Ledger::claim_for_delivery(9202, 'CLAIM-CYCLE-LIMIT0', 710, '0570000000', 'primary', 0);
+$claim_15 = PGE_Invitation_Credit_Ledger::claim_for_delivery(9202, 'CLAIM-CYCLE-CAP-ZERO', 710, '0570000000', 'primary', 0);
 check('المرحلة 3A - 15. limit=0 يعيد limit_exceeded فوراً لأي صف جديد', $claim_15['result'] ?? null, 'limit_exceeded');
 
 $user_1617  = 9203;

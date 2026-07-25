@@ -7,9 +7,13 @@ if (!defined('ABSPATH')) exit;
  * ============================================================================
  *
  * هذا الملف مسؤول حصرياً عن:
- *  - إنشاء/مزامنة 4 جداول: mon_plans, mon_plan_tiers, mon_services,
+ *  - إنشاء/مزامنة 5 جداول: mon_plans, mon_plan_tiers, mon_services,
  *    mon_invitation_credit_ledger (أُضيف في 1.5.0 — سجل ذري لاستهلاك رصيد
- *    الدعوات، راجع includes/class-pge-invitation-credit-ledger.php) عبر dbDelta().
+ *    الدعوات، راجع includes/class-pge-invitation-credit-ledger.php)،
+ *    mon_replacement_entitlements (أُضيف في 1.7.0 — سجل استحقاقات
+ *    Replacement Credits، راجع includes/class-pge-replacement-entitlements.php.
+ *    تأسيس بنية فقط في هذه المرحلة — غير مربوط بأي مسار RSVP/Queue/Cartat بعد)
+ *    عبر dbDelta().
  *  - إدارة رقم إصدار قاعدة البيانات (mon_catalog_db_version) وتشغيل دوال
  *    الترقية المستقبلية بالترتيب عند الحاجة.
  *
@@ -37,7 +41,7 @@ class Mon_Catalog_Schema
      * رقم الإصدار الحالي لبنية كتالوج الباقات والخدمات.
      * أي تغيير مستقبلي في البنية أو ترحيل بيانات يرفع هذا الرقم.
      */
-    const DB_VERSION = '1.6.0';
+    const DB_VERSION = '1.7.0';
 
     /**
      * اسم الـ option الذي يخزّن آخر إصدار تم تطبيقه فعلياً على قاعدة البيانات.
@@ -134,6 +138,7 @@ class Mon_Catalog_Schema
             '1.4.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_4_0'],
             '1.5.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_5_0'],
             '1.6.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_6_0'],
+            '1.7.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_7_0'],
         ];
     }
 
@@ -462,7 +467,76 @@ class Mon_Catalog_Schema
     }
 
     /**
-     * صياغة SQL للجداول الأربعة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
+     * ترقية 1.7.0: إضافة جدول mon_replacement_entitlements — سجل استحقاقات
+     * Replacement Credits (راجع PGE_Replacement_Entitlements). المرحلة 4A من
+     * Invitation Credits Engine: "تأسيس بنية الاستحقاقات فقط" — لا ربط بمسار
+     * RSVP، لا Queue، لا Cartat، لا إرسال replacement فعلي بعد. الجدول فارغ
+     * عند إنشائه، والقيد UNIQUE (credit_cycle_id, event_id, source_guest_phone)
+     * هو الحماية الذرية ضد منح استحقاق مزدوج لنفس المعتذر، بنفس فلسفة
+     * unique_credit_consumption في mon_invitation_credit_ledger تماماً.
+     *
+     * نفس فلسفة upgrade_to_1_5_0(): تحقّق فعلي (SHOW COLUMNS + SHOW INDEX)
+     * بدل الافتراض الأعمى بنجاح dbDelta() في sync_schema() (التي أضافت
+     * الجدول عبر CREATE TABLE ضمن get_schema_sql() قبل استدعاء هذه الدالة).
+     * قراءة فقط بلا أي كتابة — Idempotent بديهياً.
+     *
+     * التحقق من القيد UNIQUE يقارن ترتيب أعمدته بالضبط (عبر Seq_in_index) مع
+     * الترتيب المطلوب صراحة: credit_cycle_id ثم event_id ثم source_guest_phone
+     * — أي انحراف في الترتيب أو نقص أي عمود منها يُعيد false ويمنع تقدّم رقم
+     * الإصدار. لا تحقّق هنا من الفهارس العادية الثلاثة (user_cycle_status/
+     * source_ledger_id/consumed_by_ledger_id) — بنفس نطاق upgrade_to_1_5_0()
+     * التي لم تتحقق من الفهارس العادية لجدول Ledger أيضاً، فقط الأعمدة
+     * والقيد UNIQUE.
+     */
+    private static function upgrade_to_1_7_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_replacement_entitlements';
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        if ($columns === null) {
+            return false;
+        }
+
+        $required_columns = [
+            'id', 'user_id', 'credit_cycle_id', 'event_id', 'source_guest_phone',
+            'source_ledger_id', 'status', 'consumed_by_ledger_id', 'granted_at',
+            'consumed_at', 'created_at', 'updated_at',
+        ];
+
+        $found_columns = [];
+        foreach ($columns as $column) {
+            $found_columns[] = (string) ($column['Field'] ?? '');
+        }
+
+        foreach ($required_columns as $required_column) {
+            if (!in_array($required_column, $found_columns, true)) {
+                return false;
+            }
+        }
+
+        $indexes = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
+        if ($indexes === null) {
+            return false;
+        }
+
+        $unique_columns_by_seq = [];
+        foreach ($indexes as $index) {
+            if (($index['Key_name'] ?? '') === 'unique_replacement_entitlement') {
+                $seq = (int) ($index['Seq_in_index'] ?? 0);
+                $unique_columns_by_seq[$seq] = (string) ($index['Column_name'] ?? '');
+            }
+        }
+        ksort($unique_columns_by_seq);
+
+        $expected_unique_columns = ['credit_cycle_id', 'event_id', 'source_guest_phone'];
+
+        return array_values($unique_columns_by_seq) === $expected_unique_columns;
+    }
+
+    /**
+     * صياغة SQL للجداول الخمسة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
      * مستقل، بلا FOREIGN KEY، بلا ENGINE، بلا ENUM).
      */
     private static function get_schema_sql(): array
@@ -471,10 +545,11 @@ class Mon_Catalog_Schema
 
         $charset_collate = $wpdb->get_charset_collate();
 
-        $table_plans    = $wpdb->prefix . 'mon_plans';
-        $table_tiers    = $wpdb->prefix . 'mon_plan_tiers';
-        $table_services = $wpdb->prefix . 'mon_services';
-        $table_ledger   = $wpdb->prefix . 'mon_invitation_credit_ledger';
+        $table_plans        = $wpdb->prefix . 'mon_plans';
+        $table_tiers        = $wpdb->prefix . 'mon_plan_tiers';
+        $table_services     = $wpdb->prefix . 'mon_services';
+        $table_ledger       = $wpdb->prefix . 'mon_invitation_credit_ledger';
+        $table_entitlements = $wpdb->prefix . 'mon_replacement_entitlements';
 
         $sql_plans = "CREATE TABLE $table_plans (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -589,7 +664,60 @@ class Mon_Catalog_Schema
             UNIQUE KEY unique_credit_consumption (credit_cycle_id, event_id, guest_phone, credit_type)
         ) $charset_collate;";
 
-        return [$sql_plans, $sql_tiers, $sql_services, $sql_ledger];
+        // ═══════════════════════════════════════════════════════════════════
+        // mon_replacement_entitlements — أُضيف في 1.7.0. سجل استحقاقات
+        // Replacement Credits (Invitation Credits Engine، المرحلة 4A: "تأسيس
+        // بنية الاستحقاقات فقط" — راجع includes/class-pge-replacement-
+        // entitlements.php). هذا الجدول مستقل تماماً عن mon_invitation_credit_
+        // ledger (قرار معماري نهائي: لا عمود replacement_granted داخل جدول
+        // Ledger) — يفصل بوضوح بين مفهومين مختلفين: "محاولة تسليم" (Ledger)
+        // و"استحقاق مُكتسَب" (هذا الجدول)، لكل منهما دورة حياة وقواعد مختلفة.
+        //
+        // source_ledger_id: معرّف صف primary/consumed في mon_invitation_
+        // credit_ledger الذي وَلَّد هذا الاستحقاق (الضيف الذي اعتذر بعد إرسال
+        // ناجح فعلياً له). consumed_by_ledger_id: معرّف صف replacement/consumed
+        // في نفس الجدول الذي استهلك هذا الاستحقاق لاحقاً بإرسال فعلي لضيف
+        // بديل. كلاهما بلا FOREIGN KEY فعلية (بنفس نمط بقية المشروع) — التحقق
+        // من صحتهما يتم بالكامل على مستوى التطبيق (PGE_Replacement_Entitlements).
+        //
+        // القيد UNIQUE (credit_cycle_id, event_id, source_guest_phone) هو
+        // الحماية الذرية الحقيقية ضد منح استحقاق مزدوج لنفس المعتذر (اعتذار
+        // متكرر، أو ضغط رابط RSVP عدة مرات) — بنفس فلسفة unique_credit_
+        // consumption بالضبط: محاولة INSERT فعلية أولاً، لا فحص "افحص ثم
+        // أدرج" بمفرده.
+        //
+        // status نصّي (VARCHAR) لا ENUM، بنفس نمط status في بقية جداول
+        // المشروع — القيم المسموحة (granted/consumed/voided) تُفرَض على مستوى
+        // التطبيق فقط. لا منطق voiding تجاري في هذه المرحلة — فقط الانتقال
+        // الآمن (granted→voided) كأداة مُعدّة للاستخدام لاحقاً.
+        //
+        // granted_at/consumed_at/created_at/updated_at كلها NOT NULL بلا
+        // DEFAULT CURRENT_TIMESTAMP (باستثناء consumed_at وهو NULL-able بطبيعته
+        // قبل الاستهلاك) — القيم تُكتَب صراحة من التطبيق دائماً عبر
+        // current_time('mysql', true)، بنفس فلسفة Ledger (created_at هناك DEFAULT
+        // CURRENT_TIMESTAMP لكن consumed_at/refunded_at بلا DEFAULT ويُكتَبان
+        // صراحة)، وهنا التزاماً بالمواصفة المطلوبة حرفياً.
+        $sql_entitlements = "CREATE TABLE $table_entitlements (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT(20) UNSIGNED NOT NULL,
+            credit_cycle_id VARCHAR(64) NOT NULL,
+            event_id BIGINT(20) UNSIGNED NOT NULL,
+            source_guest_phone VARCHAR(32) NOT NULL,
+            source_ledger_id BIGINT(20) UNSIGNED NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'granted',
+            consumed_by_ledger_id BIGINT(20) UNSIGNED NULL,
+            granted_at DATETIME NOT NULL,
+            consumed_at DATETIME NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            KEY user_cycle_status (user_id, credit_cycle_id, status),
+            KEY source_ledger_id (source_ledger_id),
+            KEY consumed_by_ledger_id (consumed_by_ledger_id),
+            UNIQUE KEY unique_replacement_entitlement (credit_cycle_id, event_id, source_guest_phone)
+        ) $charset_collate;";
+
+        return [$sql_plans, $sql_tiers, $sql_services, $sql_ledger, $sql_entitlements];
     }
 }
 
