@@ -58,6 +58,113 @@ if (!function_exists('esc_url_raw')) {
     function esc_url_raw($url, $protocols = null) { return $url; }
 }
 
+// ── Stubs إضافية لتحميل includes/class-mon-events-users.php الحقيقي (قسم
+// Snapshot) — نفس الأسلوب المستخدم في tests/test-catalog-plan-limits.php
+// لكن بمخزن ذاكرة منفصل خاص بهذا الملف، لأن هذا ملف عملية PHP مستقل تماماً.
+
+if (!function_exists('absint')) {
+    function absint($value) { return abs((int) $value); }
+}
+
+if (!function_exists('current_time')) {
+    function current_time($type = 'mysql', $gmt = 0) { return '2026-01-01 00:00:00'; }
+}
+
+$GLOBALS['__test_user_meta']       = [];
+$GLOBALS['__test_users_by_id']     = [];
+$GLOBALS['__test_users_by_email']  = [];
+$GLOBALS['__test_options']         = [];
+
+function get_option($name, $default = false)
+{
+    return $GLOBALS['__test_options'][$name] ?? $default;
+}
+
+function set_test_user_email($email, $user_id)
+{
+    $GLOBALS['__test_users_by_email'][$email] = $user_id;
+    $GLOBALS['__test_users_by_id'][$user_id] = true;
+}
+
+if (!class_exists('WP_REST_Response')) {
+    class WP_REST_Response
+    {
+        public $data;
+        public $status;
+        public function __construct($data = [], $status = 200)
+        {
+            $this->data = $data;
+            $this->status = $status;
+        }
+    }
+}
+
+function get_user_meta($user_id, $key, $single = false)
+{
+    $value = $GLOBALS['__test_user_meta'][$user_id][$key] ?? '';
+    return $single ? $value : ($value === '' ? [] : [$value]);
+}
+
+function update_user_meta($user_id, $key, $value)
+{
+    $GLOBALS['__test_user_meta'][$user_id][$key] = $value;
+    return true;
+}
+
+function delete_user_meta($user_id, $key)
+{
+    unset($GLOBALS['__test_user_meta'][$user_id][$key]);
+    return true;
+}
+
+function metadata_exists($type, $object_id, $meta_key)
+{
+    $value = $GLOBALS['__test_user_meta'][$object_id][$meta_key] ?? '';
+    return $value !== '';
+}
+
+function set_test_user_meta($user_id, $key, $value)
+{
+    $GLOBALS['__test_user_meta'][$user_id][$key] = $value;
+}
+
+function reset_test_user($user_id)
+{
+    $GLOBALS['__test_user_meta'][$user_id] = [];
+}
+
+function set_test_user_id($user_id)
+{
+    $GLOBALS['__test_users_by_id'][$user_id] = true;
+}
+
+function get_user_by($field, $value)
+{
+    if ($field === 'id') {
+        return !empty($GLOBALS['__test_users_by_id'][$value]) ? (object) ['ID' => (int) $value] : false;
+    }
+    if ($field === 'email') {
+        $id = $GLOBALS['__test_users_by_email'][$value] ?? null;
+        return $id === null ? false : (object) ['ID' => (int) $id];
+    }
+    return false;
+}
+
+if (!class_exists('WP_Error')) {
+    class WP_Error
+    {
+        public $code;
+        public $message;
+        public function __construct($code = '', $message = '', $data = null)
+        {
+            $this->code = $code;
+            $this->message = $message;
+        }
+        public function get_error_code() { return $this->code; }
+        public function get_error_message() { return $this->message; }
+    }
+}
+
 // ── Fake $wpdb — بديل كافٍ فقط لأشكال الاستعلامات الفعلية في هذا الملف ────
 // (راجع توثيق أعلى الملف لسبب عدم استخدام محرّك SQL عام).
 
@@ -70,6 +177,9 @@ class Fake_Wpdb
     public $plans = [];
     /** @var array<int, array> */
     public $tiers = [];
+
+    /** @var array<int, string>|null تجاوز اختياري لأعمدة SHOW COLUMNS (لمحاكاة بنية ناقصة في الاختبار) */
+    public $show_columns_override = null;
 
     private $plans_next_id = 1;
     private $tiers_next_id = 1;
@@ -128,6 +238,26 @@ class Fake_Wpdb
                     || $r['events_count'] === null
                     || (int) $r['events_count'] === 0;
             }));
+        }
+
+        // SHOW COLUMNS FROM <table> — تصدر عن upgrade_to_1_4_0() للتحقق من
+        // إضافة العمودين الجديدين فعلياً. Fake_Wpdb لا يملك بنية أعمدة حقيقية
+        // (تخزين مصفوفات مفتوحة، لا Schema صارم)، لذا نُعيد قائمة أعمدة ثابتة
+        // تمثّل بنية mon_plan_tiers الفعلية بعد هذا الإصلاح — يمكن للاختبار
+        // حذف عمود منها عمداً (عبر show_columns_override) لمحاكاة بنية ناقصة.
+        if (stripos($sql, 'SHOW COLUMNS FROM') === 0) {
+            $columns = $this->show_columns_override ?? [
+                'id', 'plan_id', 'tier_key', 'name', 'guest_limit', 'events_count',
+                'host_photos_limit', 'wa_messages_limit',
+                'invitation_credit_limit', 'replacement_credit_limit',
+                'price', 'currency', 'salla_product_id', 'salla_sku', 'salla_url',
+                'sort_order', 'status', 'created_at', 'updated_at',
+            ];
+            $out = [];
+            foreach ($columns as $field) {
+                $out[] = ['Field' => $field];
+            }
+            return $out;
         }
 
         // مطابقة شروط WHERE من نوع "field = value" أو "field = 'value'" مفصولة بـ AND فقط.
@@ -256,6 +386,7 @@ if (!defined('ARRAY_A')) {
 
 require_once __DIR__ . '/../includes/class-pge-catalog.php';
 require_once __DIR__ . '/../includes/class-mon-catalog-schema.php';
+require_once __DIR__ . '/../includes/class-mon-events-users.php';
 
 // ── أدوات الاختبار (نفس نمط check()/check_true() في الملف الآخر) ──────────
 
@@ -428,6 +559,142 @@ check_true('الترحيل (تكرار ثانٍ): يعيد true أيضاً', $mi
 check('الترحيل (تكرار): events_count لصف 201 يبقى 1', $wpdb->tiers[201]['events_count'], 1);
 check('الترحيل (تكرار): events_count لصف 202 يبقى 1', $wpdb->tiers[202]['events_count'], 1);
 check('الترحيل (تكرار): events_count لصف 203 يبقى 5 (لم يُلمَس ثانيةً)', $wpdb->tiers[203]['events_count'], 5);
+
+echo "\n=== قسم 12: Invitation Credits Engine — تأسيس البيانات فقط ===\n";
+
+// ── Schema / Migration (1-3) ───────────────────────────────────────────────
+
+$schema_sql_ref = new ReflectionMethod('Mon_Catalog_Schema', 'get_schema_sql');
+$schema_sql_ref->setAccessible(true);
+$schema_sql_parts = $schema_sql_ref->invoke(null);
+$tiers_sql = $schema_sql_parts[1] ?? '';
+
+check_true('1. عمود invitation_credit_limit موجود في نص Schema', strpos($tiers_sql, 'invitation_credit_limit') !== false);
+check_true('1. عمود replacement_credit_limit موجود في نص Schema', strpos($tiers_sql, 'replacement_credit_limit') !== false);
+check_true('2. invitation_credit_limit: DEFAULT 0 في نص Schema', strpos($tiers_sql, 'invitation_credit_limit INT UNSIGNED NOT NULL DEFAULT 0') !== false);
+check_true('2. replacement_credit_limit: DEFAULT 0 في نص Schema', strpos($tiers_sql, 'replacement_credit_limit INT UNSIGNED NOT NULL DEFAULT 0') !== false);
+
+$upgrade_140_ref = new ReflectionMethod('Mon_Catalog_Schema', 'upgrade_to_1_4_0');
+$upgrade_140_ref->setAccessible(true);
+
+$wpdb->show_columns_override = null; // القائمة الافتراضية الكاملة (تتضمن العمودين الجديدين)
+check_true('3. upgrade_to_1_4_0() يعيد true عندما يكون العمودان موجودين فعلاً', $upgrade_140_ref->invoke(null) === true);
+
+$wpdb->show_columns_override = ['id', 'plan_id', 'tier_key', 'name', 'events_count']; // بنية ناقصة عمداً
+check_true('3. upgrade_to_1_4_0() يعيد false عند بنية ناقصة (تحقق حقيقي لا افتراض أعمى)', $upgrade_140_ref->invoke(null) === false);
+
+$wpdb->show_columns_override = null; // إعادة الحالة الطبيعية لبقية الاختبارات
+check_true('3. upgrade_to_1_4_0() Idempotent — تكرار الاستدعاء بعد اكتمال البنية يبقى true', $upgrade_140_ref->invoke(null) === true);
+
+// ── CRUD (4-9) ──────────────────────────────────────────────────────────────
+
+$credit_default_tier = PGE_Catalog::create_tier([
+    'plan_id' => 1, 'tier_key' => 'credit_default_tier', 'name' => 'مستوى بلا رصيد',
+    'price' => 10, 'currency' => 'SAR', 'salla_product_id' => null,
+    'status' => 'active', 'sort_order' => 12,
+    // invitation_credit_limit وreplacement_credit_limit غائبان عمداً — صلب السيناريو 4
+]);
+check_true('4. create_tier() نجح بلا حقول الرصيد', $credit_default_tier !== null);
+check('4. invitation_credit_limit الافتراضي = 0', $credit_default_tier['invitation_credit_limit'] ?? null, 0);
+check('4. replacement_credit_limit الافتراضي = 0', $credit_default_tier['replacement_credit_limit'] ?? null, 0);
+
+$credit_values_tier = PGE_Catalog::create_tier([
+    'plan_id' => 1, 'tier_key' => 'credit_values_tier', 'name' => 'مستوى بقيم رصيد',
+    'price' => 300, 'currency' => 'SAR', 'salla_product_id' => null,
+    'status' => 'active', 'sort_order' => 13,
+    'invitation_credit_limit' => 100,
+    'replacement_credit_limit' => 30,
+]);
+check('5. invitation_credit_limit = 100 (int)', $credit_values_tier['invitation_credit_limit'] ?? null, 100);
+check_true('5. invitation_credit_limit من النوع int', is_int($credit_values_tier['invitation_credit_limit'] ?? null));
+check('5. replacement_credit_limit = 30 (int)', $credit_values_tier['replacement_credit_limit'] ?? null, 30);
+check_true('5. replacement_credit_limit من النوع int', is_int($credit_values_tier['replacement_credit_limit'] ?? null));
+
+$credit_invalid_tier = PGE_Catalog::create_tier([
+    'plan_id' => 1, 'tier_key' => 'credit_invalid_tier', 'name' => 'مستوى قيم غير صالحة',
+    'price' => 50, 'currency' => 'SAR', 'salla_product_id' => null,
+    'status' => 'active', 'sort_order' => 14,
+    'invitation_credit_limit'  => -5,    // سالب
+    'replacement_credit_limit' => 'abc', // نص غير رقمي
+]);
+check('6. invitation_credit_limit سالب (-5) → 0', $credit_invalid_tier['invitation_credit_limit'] ?? null, 0);
+check('6. replacement_credit_limit نص غير رقمي (abc) → 0', $credit_invalid_tier['replacement_credit_limit'] ?? null, 0);
+
+$updated_credit_no_touch = PGE_Catalog::update_tier($credit_values_tier['id'], [
+    'plan_id' => 1, 'tier_key' => 'credit_values_tier', 'price' => 350, 'currency' => 'SAR',
+    'salla_product_id' => null, 'status' => 'active', 'sort_order' => 13,
+    // حقول الرصيد غائبة عمداً — صلب السيناريو 7
+]);
+check('7. update_tier() بدون حقول الرصيد → invitation تبقى 100', $updated_credit_no_touch['invitation_credit_limit'] ?? null, 100);
+check('7. update_tier() بدون حقول الرصيد → replacement تبقى 30', $updated_credit_no_touch['replacement_credit_limit'] ?? null, 30);
+
+$updated_credit_change = PGE_Catalog::update_tier($credit_values_tier['id'], [
+    'plan_id' => 1, 'tier_key' => 'credit_values_tier', 'price' => 350, 'currency' => 'SAR',
+    'salla_product_id' => null, 'status' => 'active', 'sort_order' => 13,
+    'invitation_credit_limit'  => 150,
+    'replacement_credit_limit' => 45,
+]);
+check('8. update_tier() invitation_credit_limit → 150', $updated_credit_change['invitation_credit_limit'] ?? null, 150);
+check('8. update_tier() replacement_credit_limit → 45', $updated_credit_change['replacement_credit_limit'] ?? null, 45);
+
+// إعادة القيم إلى 100/30 حرفياً (نص المهمة: "تفعيل Tier بقيم 100 و30")
+// لاستخدامها في اختبار Snapshot أدناه (10)، والتحقق بنفس الاستدعاء من عدم
+// تأثّر events_count/guest_limit (9).
+$restored_credit_tier = PGE_Catalog::update_tier($credit_values_tier['id'], [
+    'plan_id' => 1, 'tier_key' => 'credit_values_tier', 'price' => 300, 'currency' => 'SAR',
+    'salla_product_id' => null, 'status' => 'active', 'sort_order' => 13,
+    'invitation_credit_limit'  => 100,
+    'replacement_credit_limit' => 30,
+]);
+check('9. events_count لم يتأثر بأي من تعديلات الرصيد أعلاه (يبقى 1، الافتراضي عند الإنشاء)', $restored_credit_tier['events_count'] ?? null, 1);
+check_true('9. guest_limit غير موجود ضمن المخرجات (لم يُلمَس إطلاقاً — لا create_tier ولا update_tier يتعاملان معه)', !array_key_exists('guest_limit', $restored_credit_tier) || $restored_credit_tier['guest_limit'] === null);
+
+// ── Snapshot (10-12) ─────────────────────────────────────────────────────────
+
+set_test_user_id(9001);
+reset_test_user(9001);
+
+$activation_result = Mon_Events_Users::activate_catalog_tier(9001, 1, $restored_credit_tier['id']);
+check_true('10. activate_catalog_tier() نجح (أعاد true وليس WP_Error)', $activation_result === true);
+check('10. _mon_invitation_credit_total = 100', (int) get_user_meta(9001, '_mon_invitation_credit_total', true), 100);
+check('10. _mon_invitation_credit_used = 0', (int) get_user_meta(9001, '_mon_invitation_credit_used', true), 0);
+check('10. _mon_replacement_credit_total = 30', (int) get_user_meta(9001, '_mon_replacement_credit_total', true), 30);
+check('10. _mon_replacement_credit_used = 0', (int) get_user_meta(9001, '_mon_replacement_credit_used', true), 0);
+
+// محاكاة استهلاك سابق (لا يوجد منطق خصم فعلي بعد؛ هذا فقط لإثبات أن إعادة
+// التفعيل بـTier مختلف يُصفّر used من جديد، لا يُبقي القيمة القديمة).
+set_test_user_meta(9001, '_mon_invitation_credit_used', 40);
+set_test_user_meta(9001, '_mon_replacement_credit_used', 10);
+
+$second_credit_tier = PGE_Catalog::create_tier([
+    'plan_id' => 1, 'tier_key' => 'credit_second_tier', 'name' => 'مستوى ثانٍ لإعادة التفعيل',
+    'price' => 400, 'currency' => 'SAR', 'salla_product_id' => null,
+    'status' => 'active', 'sort_order' => 15,
+    'invitation_credit_limit'  => 200,
+    'replacement_credit_limit' => 50,
+]);
+
+$reactivation_result = Mon_Events_Users::activate_catalog_tier(9001, 1, $second_credit_tier['id']);
+check_true('11. إعادة التفعيل بـTier جديد نجحت', $reactivation_result === true);
+check('11. إعادة التفعيل: total الأساسي يتحدّث إلى 200', (int) get_user_meta(9001, '_mon_invitation_credit_total', true), 200);
+check('11. إعادة التفعيل: used الأساسي يُصفَّر إلى 0 (لا يبقى 40 من قبل)', (int) get_user_meta(9001, '_mon_invitation_credit_used', true), 0);
+check('11. إعادة التفعيل: total البدائل يتحدّث إلى 50', (int) get_user_meta(9001, '_mon_replacement_credit_total', true), 50);
+check('11. إعادة التفعيل: used البدائل يُصفَّر إلى 0 (لا يبقى 10 من قبل)', (int) get_user_meta(9001, '_mon_replacement_credit_used', true), 0);
+
+// 12) مسار تفعيل Legacy (activate_user_package) لا يكتب أياً من مفاتيح
+// الرصيد الأربعة إطلاقاً — الميزة مقصورة على مسار Catalog حصراً.
+$GLOBALS['__test_options']['mon_packages_settings'] = [
+    'plan_1' => ['name' => 'باقة Legacy تجريبية', 'guest_limit' => 20, 'host_photos' => 5, 'events_count' => 2, 'wa_messages' => 0],
+];
+reset_test_user(9002);
+set_test_user_email('legacy-credit-test@example.test', 9002);
+
+Mon_Events_Users::activate_user_package('legacy-credit-test@example.test', ['plan_key' => 'plan_1', 'order_id' => 'ORDER-CREDIT-TEST']);
+
+check('12. تفعيل Legacy لا يكتب _mon_invitation_credit_total', get_user_meta(9002, '_mon_invitation_credit_total', true), '');
+check('12. تفعيل Legacy لا يكتب _mon_invitation_credit_used', get_user_meta(9002, '_mon_invitation_credit_used', true), '');
+check('12. تفعيل Legacy لا يكتب _mon_replacement_credit_total', get_user_meta(9002, '_mon_replacement_credit_total', true), '');
+check('12. تفعيل Legacy لا يكتب _mon_replacement_credit_used', get_user_meta(9002, '_mon_replacement_credit_used', true), '');
 
 // ── ملخص ────────────────────────────────────────────────────────────────
 

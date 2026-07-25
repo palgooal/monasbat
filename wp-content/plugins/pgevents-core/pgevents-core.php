@@ -24,6 +24,10 @@ require_once PGE_PATH . 'includes/rsvp-migration.php';
 require_once PGE_PATH . 'includes/class-mon-catalog-schema.php';
 require_once PGE_PATH . 'includes/class-pge-catalog.php';
 
+// سجل استهلاك رصيد الدعوات الذري (Invitation Credits Engine — المرحلة
+// الثانية: تأسيس بنية فقط). لا يُستدعى من أي مسار إرسال/RSVP/مدعوين بعد.
+require_once PGE_PATH . 'includes/class-pge-invitation-credit-ledger.php';
+
 // صفحة إدارة الباقات (خطوة النموذج فقط — عرض HTML بلا معالجة $_POST وبلا
 // استدعاء لـ PGE_Catalog::create_plan() بعد؛ لا حفظ ولا رسائل نجاح/فشل)
 add_action('admin_menu', function () {
@@ -134,27 +138,31 @@ function pge_render_catalog_tiers_page()
     };
 
     $tier_form_values = [
-        'name'             => '',
-        'tier_key'         => '',
-        'price'            => '0.00',
-        'currency'         => 'SAR',
-        'salla_product_id' => '',
-        'salla_sku'        => '',
-        'salla_url'        => '',
-        'status'           => 'active',
-        'sort_order'       => '0',
+        'name'                      => '',
+        'tier_key'                  => '',
+        'price'                     => '0.00',
+        'currency'                  => 'SAR',
+        'salla_product_id'          => '',
+        'salla_sku'                 => '',
+        'salla_url'                 => '',
+        'status'                    => 'active',
+        'sort_order'                => '0',
+        'invitation_credit_limit'   => '0',
+        'replacement_credit_limit'  => '0',
     ];
 
     $tier_edit_form_values = [
-        'name'             => '',
-        'tier_key'         => '',
-        'price'            => '',
-        'currency'         => 'SAR',
-        'salla_product_id' => '',
-        'salla_sku'        => '',
-        'salla_url'        => '',
-        'status'           => 'active',
-        'sort_order'       => '0',
+        'name'                      => '',
+        'tier_key'                  => '',
+        'price'                     => '',
+        'currency'                  => 'SAR',
+        'salla_product_id'          => '',
+        'salla_sku'                 => '',
+        'salla_url'                 => '',
+        'status'                    => 'active',
+        'sort_order'                => '0',
+        'invitation_credit_limit'   => '0',
+        'replacement_credit_limit'  => '0',
     ];
 
     $tier_create_post_handled = false;
@@ -198,15 +206,17 @@ function pge_render_catalog_tiers_page()
             $selected_plan = $posted_plan;
 
             $tier_form_values = [
-                'name'             => wp_unslash($_POST['name'] ?? ''),
-                'tier_key'         => wp_unslash($_POST['tier_key'] ?? ''),
-                'price'            => wp_unslash($_POST['price'] ?? ''),
-                'currency'         => wp_unslash($_POST['currency'] ?? ''),
-                'salla_product_id' => wp_unslash($_POST['salla_product_id'] ?? ''),
-                'salla_sku'        => wp_unslash($_POST['salla_sku'] ?? ''),
-                'salla_url'        => wp_unslash($_POST['salla_url'] ?? ''),
-                'status'           => wp_unslash($_POST['status'] ?? ''),
-                'sort_order'       => wp_unslash($_POST['sort_order'] ?? ''),
+                'name'                     => wp_unslash($_POST['name'] ?? ''),
+                'tier_key'                 => wp_unslash($_POST['tier_key'] ?? ''),
+                'price'                    => wp_unslash($_POST['price'] ?? ''),
+                'currency'                 => wp_unslash($_POST['currency'] ?? ''),
+                'salla_product_id'         => wp_unslash($_POST['salla_product_id'] ?? ''),
+                'salla_sku'                => wp_unslash($_POST['salla_sku'] ?? ''),
+                'salla_url'                => wp_unslash($_POST['salla_url'] ?? ''),
+                'status'                   => wp_unslash($_POST['status'] ?? ''),
+                'sort_order'               => wp_unslash($_POST['sort_order'] ?? ''),
+                'invitation_credit_limit'  => wp_unslash($_POST['invitation_credit_limit'] ?? ''),
+                'replacement_credit_limit' => wp_unslash($_POST['replacement_credit_limit'] ?? ''),
             ];
 
             $salla_validation = $validate_salla_fields(
@@ -231,16 +241,18 @@ function pge_render_catalog_tiers_page()
                     $notice_message = 'رمز SKU في سلة مستخدم مسبقًا في مستوى آخر.';
                 } else {
                     $created_tier = PGE_Catalog::create_tier([
-                        'plan_id'          => $posted_plan_id,
-                        'tier_key'         => $tier_form_values['tier_key'],
-                        'name'             => $tier_form_values['name'],
-                        'price'            => $tier_form_values['price'],
-                        'currency'         => $tier_form_values['currency'],
-                        'salla_product_id' => $tier_form_values['salla_product_id'],
-                        'salla_sku'        => $tier_form_values['salla_sku'],
-                        'salla_url'        => $tier_form_values['salla_url'],
-                        'status'           => $tier_form_values['status'],
-                        'sort_order'       => $tier_form_values['sort_order'],
+                        'plan_id'                  => $posted_plan_id,
+                        'tier_key'                 => $tier_form_values['tier_key'],
+                        'name'                     => $tier_form_values['name'],
+                        'price'                    => $tier_form_values['price'],
+                        'currency'                 => $tier_form_values['currency'],
+                        'salla_product_id'         => $tier_form_values['salla_product_id'],
+                        'salla_sku'                => $tier_form_values['salla_sku'],
+                        'salla_url'                => $tier_form_values['salla_url'],
+                        'status'                   => $tier_form_values['status'],
+                        'sort_order'               => $tier_form_values['sort_order'],
+                        'invitation_credit_limit'  => $tier_form_values['invitation_credit_limit'],
+                        'replacement_credit_limit' => $tier_form_values['replacement_credit_limit'],
                     ]);
 
                     if (is_array($created_tier)) {
@@ -248,15 +260,17 @@ function pge_render_catalog_tiers_page()
                         $notice_message = 'تمت إضافة المستوى بنجاح. تم حفظ ربط سلة بنجاح.';
 
                         $tier_form_values = [
-                            'name'             => '',
-                            'tier_key'         => '',
-                            'price'            => '0.00',
-                            'currency'         => 'SAR',
-                            'salla_product_id' => '',
-                            'salla_sku'        => '',
-                            'salla_url'        => '',
-                            'status'           => 'active',
-                            'sort_order'       => '0',
+                            'name'                     => '',
+                            'tier_key'                 => '',
+                            'price'                    => '0.00',
+                            'currency'                 => 'SAR',
+                            'salla_product_id'         => '',
+                            'salla_sku'                => '',
+                            'salla_url'                => '',
+                            'status'                   => 'active',
+                            'sort_order'               => '0',
+                            'invitation_credit_limit'  => '0',
+                            'replacement_credit_limit' => '0',
                         ];
                     } else {
                         $notice_type = 'error';
@@ -324,15 +338,17 @@ function pge_render_catalog_tiers_page()
                 }
             } else {
                 $tier_edit_form_values = [
-                    'name'             => wp_unslash($_POST['name'] ?? ''),
-                    'tier_key'         => wp_unslash($_POST['tier_key'] ?? ''),
-                    'price'            => wp_unslash($_POST['price'] ?? ''),
-                    'currency'         => wp_unslash($_POST['currency'] ?? ''),
-                    'salla_product_id' => wp_unslash($_POST['salla_product_id'] ?? ''),
-                    'salla_sku'        => wp_unslash($_POST['salla_sku'] ?? ''),
-                    'salla_url'        => wp_unslash($_POST['salla_url'] ?? ''),
-                    'status'           => wp_unslash($_POST['status'] ?? ''),
-                    'sort_order'       => wp_unslash($_POST['sort_order'] ?? ''),
+                    'name'                     => wp_unslash($_POST['name'] ?? ''),
+                    'tier_key'                 => wp_unslash($_POST['tier_key'] ?? ''),
+                    'price'                    => wp_unslash($_POST['price'] ?? ''),
+                    'currency'                 => wp_unslash($_POST['currency'] ?? ''),
+                    'salla_product_id'         => wp_unslash($_POST['salla_product_id'] ?? ''),
+                    'salla_sku'                => wp_unslash($_POST['salla_sku'] ?? ''),
+                    'salla_url'                => wp_unslash($_POST['salla_url'] ?? ''),
+                    'status'                   => wp_unslash($_POST['status'] ?? ''),
+                    'sort_order'               => wp_unslash($_POST['sort_order'] ?? ''),
+                    'invitation_credit_limit'  => wp_unslash($_POST['invitation_credit_limit'] ?? ''),
+                    'replacement_credit_limit' => wp_unslash($_POST['replacement_credit_limit'] ?? ''),
                 ];
 
                 $salla_validation = $validate_salla_fields(
@@ -365,16 +381,18 @@ function pge_render_catalog_tiers_page()
                         $updated_tier = PGE_Catalog::update_tier(
                             $posted_tier_id,
                             [
-                                'plan_id'          => $posted_plan_id,
-                                'tier_key'         => $tier_edit_form_values['tier_key'],
-                                'name'             => $tier_edit_form_values['name'],
-                                'price'            => $tier_edit_form_values['price'],
-                                'currency'         => $tier_edit_form_values['currency'],
-                                'salla_product_id' => $tier_edit_form_values['salla_product_id'],
-                                'salla_sku'        => $tier_edit_form_values['salla_sku'],
-                                'salla_url'        => $tier_edit_form_values['salla_url'],
-                                'status'           => $tier_edit_form_values['status'],
-                                'sort_order'       => $tier_edit_form_values['sort_order'],
+                                'plan_id'                  => $posted_plan_id,
+                                'tier_key'                 => $tier_edit_form_values['tier_key'],
+                                'name'                     => $tier_edit_form_values['name'],
+                                'price'                    => $tier_edit_form_values['price'],
+                                'currency'                 => $tier_edit_form_values['currency'],
+                                'salla_product_id'         => $tier_edit_form_values['salla_product_id'],
+                                'salla_sku'                => $tier_edit_form_values['salla_sku'],
+                                'salla_url'                => $tier_edit_form_values['salla_url'],
+                                'status'                   => $tier_edit_form_values['status'],
+                                'sort_order'               => $tier_edit_form_values['sort_order'],
+                                'invitation_credit_limit'  => $tier_edit_form_values['invitation_credit_limit'],
+                                'replacement_credit_limit' => $tier_edit_form_values['replacement_credit_limit'],
                             ]
                         );
 
@@ -386,15 +404,17 @@ function pge_render_catalog_tiers_page()
                             $editing_tier = $updated_tier;
 
                             $tier_edit_form_values = [
-                                'name'             => $updated_tier['name'],
-                                'tier_key'         => $updated_tier['tier_key'],
-                                'price'            => $updated_tier['price'],
-                                'currency'         => $updated_tier['currency'],
-                                'salla_product_id' => $updated_tier['salla_product_id'] ?? '',
-                                'salla_sku'        => $updated_tier['salla_sku'] ?? '',
-                                'salla_url'        => $updated_tier['salla_url'] ?? '',
-                                'status'           => $updated_tier['status'],
-                                'sort_order'       => $updated_tier['sort_order'],
+                                'name'                     => $updated_tier['name'],
+                                'tier_key'                 => $updated_tier['tier_key'],
+                                'price'                    => $updated_tier['price'],
+                                'currency'                 => $updated_tier['currency'],
+                                'salla_product_id'         => $updated_tier['salla_product_id'] ?? '',
+                                'salla_sku'                => $updated_tier['salla_sku'] ?? '',
+                                'salla_url'                => $updated_tier['salla_url'] ?? '',
+                                'status'                   => $updated_tier['status'],
+                                'sort_order'               => $updated_tier['sort_order'],
+                                'invitation_credit_limit'  => $updated_tier['invitation_credit_limit'] ?? '0',
+                                'replacement_credit_limit' => $updated_tier['replacement_credit_limit'] ?? '0',
                             ];
                         } else {
                             $notice_type = 'error';
@@ -475,15 +495,17 @@ function pge_render_catalog_tiers_page()
                     $editing_tier = null;
 
                     $tier_edit_form_values = [
-                        'name'             => '',
-                        'tier_key'         => '',
-                        'price'            => '',
-                        'currency'         => 'SAR',
-                        'salla_product_id' => '',
-                        'salla_sku'        => '',
-                        'salla_url'        => '',
-                        'status'           => 'active',
-                        'sort_order'       => '0',
+                        'name'                     => '',
+                        'tier_key'                 => '',
+                        'price'                    => '',
+                        'currency'                 => 'SAR',
+                        'salla_product_id'         => '',
+                        'salla_sku'                => '',
+                        'salla_url'                => '',
+                        'status'                   => 'active',
+                        'sort_order'               => '0',
+                        'invitation_credit_limit'  => '0',
+                        'replacement_credit_limit' => '0',
                     ];
                 } else {
                     $notice_type = 'error';
@@ -537,15 +559,17 @@ function pge_render_catalog_tiers_page()
                 $editing_tier_id = 0;
             } else {
                 $tier_edit_form_values = [
-                    'name'             => $editing_tier['name'],
-                    'tier_key'         => $editing_tier['tier_key'],
-                    'price'            => $editing_tier['price'],
-                    'currency'         => $editing_tier['currency'],
-                    'salla_product_id' => $editing_tier['salla_product_id'] ?? '',
-                    'salla_sku'        => $editing_tier['salla_sku'] ?? '',
-                    'salla_url'        => $editing_tier['salla_url'] ?? '',
-                    'status'           => $editing_tier['status'],
-                    'sort_order'       => $editing_tier['sort_order'],
+                    'name'                     => $editing_tier['name'],
+                    'tier_key'                 => $editing_tier['tier_key'],
+                    'price'                    => $editing_tier['price'],
+                    'currency'                 => $editing_tier['currency'],
+                    'salla_product_id'         => $editing_tier['salla_product_id'] ?? '',
+                    'salla_sku'                => $editing_tier['salla_sku'] ?? '',
+                    'salla_url'                => $editing_tier['salla_url'] ?? '',
+                    'status'                   => $editing_tier['status'],
+                    'sort_order'               => $editing_tier['sort_order'],
+                    'invitation_credit_limit'  => $editing_tier['invitation_credit_limit'] ?? '0',
+                    'replacement_credit_limit' => $editing_tier['replacement_credit_limit'] ?? '0',
                 ];
             }
         }
@@ -708,6 +732,24 @@ function pge_render_catalog_tiers_page()
                                 <input type="number" id="pge_tier_sort_order" name="sort_order" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_form_values['sort_order']); ?>" required>
                             </td>
                         </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="pge_tier_invitation_credit_limit"><?php esc_html_e('رصيد الدعوات الأساسي', 'pgevents'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="pge_tier_invitation_credit_limit" name="invitation_credit_limit" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_form_values['invitation_credit_limit']); ?>">
+                                <p class="description"><?php esc_html_e('عدد المدعوين الذين يمكن إرسال دعوة واتساب لهم ضمن الاشتراك.', 'pgevents'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="pge_tier_replacement_credit_limit"><?php esc_html_e('رصيد الدعوات البديلة', 'pgevents'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="pge_tier_replacement_credit_limit" name="replacement_credit_limit" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_form_values['replacement_credit_limit']); ?>">
+                                <p class="description"><?php esc_html_e('عدد الدعوات الإضافية المسموح بها بدل المدعوين المعتذرين.', 'pgevents'); ?></p>
+                            </td>
+                        </tr>
                     </table>
 
                     <?php submit_button('إضافة المستوى', 'primary', 'submit_create_tier'); ?>
@@ -802,6 +844,24 @@ function pge_render_catalog_tiers_page()
                                 </th>
                                 <td>
                                     <input type="number" id="pge_edit_tier_sort_order" name="sort_order" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['sort_order']); ?>" required>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="pge_edit_tier_invitation_credit_limit"><?php esc_html_e('رصيد الدعوات الأساسي', 'pgevents'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="number" id="pge_edit_tier_invitation_credit_limit" name="invitation_credit_limit" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['invitation_credit_limit']); ?>">
+                                    <p class="description"><?php esc_html_e('عدد المدعوين الذين يمكن إرسال دعوة واتساب لهم ضمن الاشتراك.', 'pgevents'); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="pge_edit_tier_replacement_credit_limit"><?php esc_html_e('رصيد الدعوات البديلة', 'pgevents'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="number" id="pge_edit_tier_replacement_credit_limit" name="replacement_credit_limit" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['replacement_credit_limit']); ?>">
+                                    <p class="description"><?php esc_html_e('عدد الدعوات الإضافية المسموح بها بدل المدعوين المعتذرين.', 'pgevents'); ?></p>
                                 </td>
                             </tr>
                         </table>

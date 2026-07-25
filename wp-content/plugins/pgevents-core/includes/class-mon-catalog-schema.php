@@ -7,7 +7,9 @@ if (!defined('ABSPATH')) exit;
  * ============================================================================
  *
  * هذا الملف مسؤول حصرياً عن:
- *  - إنشاء/مزامنة 3 جداول: mon_plans, mon_plan_tiers, mon_services عبر dbDelta().
+ *  - إنشاء/مزامنة 4 جداول: mon_plans, mon_plan_tiers, mon_services,
+ *    mon_invitation_credit_ledger (أُضيف في 1.5.0 — سجل ذري لاستهلاك رصيد
+ *    الدعوات، راجع includes/class-pge-invitation-credit-ledger.php) عبر dbDelta().
  *  - إدارة رقم إصدار قاعدة البيانات (mon_catalog_db_version) وتشغيل دوال
  *    الترقية المستقبلية بالترتيب عند الحاجة.
  *
@@ -35,7 +37,7 @@ class Mon_Catalog_Schema
      * رقم الإصدار الحالي لبنية كتالوج الباقات والخدمات.
      * أي تغيير مستقبلي في البنية أو ترحيل بيانات يرفع هذا الرقم.
      */
-    const DB_VERSION = '1.3.0';
+    const DB_VERSION = '1.6.0';
 
     /**
      * اسم الـ option الذي يخزّن آخر إصدار تم تطبيقه فعلياً على قاعدة البيانات.
@@ -129,6 +131,9 @@ class Mon_Catalog_Schema
             '1.1.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_1_0'],
             '1.2.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_2_0'],
             '1.3.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_3_0'],
+            '1.4.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_4_0'],
+            '1.5.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_5_0'],
+            '1.6.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_6_0'],
         ];
     }
 
@@ -301,7 +306,163 @@ class Mon_Catalog_Schema
     }
 
     /**
-     * صياغة SQL للجداول الثلاثة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
+     * ترقية 1.4.0: إضافة عمودَي رصيد الدعوات (invitation_credit_limit،
+     * replacement_credit_limit) إلى mon_plan_tiers — مرحلة "تأسيس بيانات
+     * فقط" لنظام Invitation Credits Engine، بلا أي خصم أو استرداد فعلي بعد.
+     *
+     * على عكس upgrade_to_1_1_0()/upgrade_to_1_3_0()، لا تُنفّذ هذه الدالة أي
+     * SELECT/UPDATE على صفوف موجودة: العمودان الجديدان NOT NULL DEFAULT 0،
+     * وdbDelta() في sync_schema() (التي تُستدعى دائماً قبل هذه الدالة عبر
+     * maybe_upgrade()) تُضيفهما عبر ALTER TABLE ADD COLUMN — وهذا يملأ كل
+     * الصفوف الموجودة بالقيمة الافتراضية 0 تلقائياً بحكم قواعد MySQL نفسها،
+     * دون حاجة لأي Backfill يدوي هنا. لا توجد بيانات NULL/0 "قديمة" لهذين
+     * العمودين لأنهما لم يوجدا أصلاً قبل هذا الإصدار.
+     *
+     * دور هذه الدالة إذن تحقّق (Verification) فقط: تتأكد أن dbDelta() نجحت
+     * فعلاً في إضافة العمودين قبل السماح لرقم الإصدار المخزَّن بالتقدّم إلى
+     * 1.4.0 — بنفس فلسفة upgrade_to_1_2_0() (التحقق عبر SHOW INDEX هناك،
+     * وSHOW COLUMNS هنا) بدل الافتراض الأعمى بنجاح dbDelta(). قراءة فقط بلا
+     * أي كتابة، فهي Idempotent بديهياً: تشغيلها أي عدد من المرات يُعيد نفس
+     * النتيجة طالما بنية الجدول لم تتغيّر.
+     */
+    private static function upgrade_to_1_4_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_plan_tiers';
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+
+        if ($columns === null) {
+            return false;
+        }
+
+        $has_invitation_credit_limit = false;
+        $has_replacement_credit_limit = false;
+
+        foreach ($columns as $column) {
+            $field_name = (string) ($column['Field'] ?? '');
+            if ($field_name === 'invitation_credit_limit') {
+                $has_invitation_credit_limit = true;
+            }
+            if ($field_name === 'replacement_credit_limit') {
+                $has_replacement_credit_limit = true;
+            }
+        }
+
+        return $has_invitation_credit_limit && $has_replacement_credit_limit;
+    }
+
+    /**
+     * ترقية 1.5.0: إضافة جدول mon_invitation_credit_ledger — سجل ذري لاستهلاك
+     * رصيد الدعوات (راجع PGE_Invitation_Credit_Ledger). مرحلة "تأسيس بنية
+     * بيانات فقط": لا خصم/استرداد فعلي بعد، ولا أي صف يُنشأ هنا — الجدول
+     * فارغ عند إنشائه، والقيد UNIQUE (credit_cycle_id, event_id, guest_phone,
+     * credit_type) هو الحماية الذرية الحقيقية ضد الخصم المزدوج لاحقاً، لا أي
+     * فحص تطبيقي "افحص ثم أدرج".
+     *
+     * نفس فلسفة upgrade_to_1_2_0()/upgrade_to_1_4_0(): تحقّق فعلي (SHOW
+     * COLUMNS + SHOW INDEX) بدل الافتراض الأعمى بنجاح dbDelta() في
+     * sync_schema() (التي أضافت الجدول عبر CREATE TABLE ضمن get_schema_sql()
+     * قبل استدعاء هذه الدالة). قراءة فقط بلا أي كتابة — Idempotent بديهياً.
+     *
+     * التحقق من القيد UNIQUE يقارن ترتيب أعمدته بالضبط (عبر Seq_in_index)
+     * مع الترتيب المطلوب صراحة في المهمة: credit_cycle_id ثم event_id ثم
+     * guest_phone ثم credit_type — أي انحراف في الترتيب أو نقص أي عمود منها
+     * يُعيد false ويمنع تقدّم رقم الإصدار.
+     */
+    private static function upgrade_to_1_5_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_invitation_credit_ledger';
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        if ($columns === null) {
+            return false;
+        }
+
+        $required_columns = [
+            'id', 'user_id', 'credit_cycle_id', 'event_id', 'guest_phone',
+            'credit_type', 'status', 'created_at', 'consumed_at', 'refunded_at',
+        ];
+
+        $found_columns = [];
+        foreach ($columns as $column) {
+            $found_columns[] = (string) ($column['Field'] ?? '');
+        }
+
+        foreach ($required_columns as $required_column) {
+            if (!in_array($required_column, $found_columns, true)) {
+                return false;
+            }
+        }
+
+        $indexes = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
+        if ($indexes === null) {
+            return false;
+        }
+
+        $unique_columns_by_seq = [];
+        foreach ($indexes as $index) {
+            if (($index['Key_name'] ?? '') === 'unique_credit_consumption') {
+                $seq = (int) ($index['Seq_in_index'] ?? 0);
+                $unique_columns_by_seq[$seq] = (string) ($index['Column_name'] ?? '');
+            }
+        }
+        ksort($unique_columns_by_seq);
+
+        $expected_unique_columns = ['credit_cycle_id', 'event_id', 'guest_phone', 'credit_type'];
+
+        return array_values($unique_columns_by_seq) === $expected_unique_columns;
+    }
+
+    /**
+     * ترقية 1.6.0: إضافة أعمدة "محاولة التسليم المملوكة" (Owned Delivery
+     * Attempt) إلى mon_invitation_credit_ledger — المرحلة الثالثة A من
+     * Invitation Credits Engine: ربط الخصم الفعلي بمسار Cartat Queue/Cron مع
+     * حماية ذرية ضد التزامن. الأعمدة الثلاثة الجديدة (attempt_token،
+     * attempt_started_at، last_attempt_at) NULL-able بطبيعتها — لا تحتاج أي
+     * Backfill لصفوف قديمة (صفوف المرحلة الثانية جميعها reserved/consumed/
+     * refunded بلا محاولة نشطة، فتبقى NULL بأمان تماماً كما تُنشئها dbDelta()
+     * افتراضياً)، فدور هذه الدالة تحقّق (Verification) فقط بنفس فلسفة
+     * upgrade_to_1_4_0()/upgrade_to_1_5_0() — قراءة SHOW COLUMNS فقط، بلا أي
+     * كتابة، فهي Idempotent بديهياً.
+     *
+     * حالة status الجديدة 'failed' لا تحتاج أي تعديل في Schema نفسه — العمود
+     * status يبقى VARCHAR(20) كما هو (بلا ENUM، بنفس نمط المشروع)؛ القيم
+     * المسموحة (reserved/consumed/refunded/failed الآن) تُفرَض حصراً على
+     * مستوى التطبيق عبر PGE_Invitation_Credit_Ledger::normalize_status()،
+     * تماماً كما كانت الحالات الثلاث الأولى مُفروضة هناك فقط.
+     */
+    private static function upgrade_to_1_6_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_invitation_credit_ledger';
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        if ($columns === null) {
+            return false;
+        }
+
+        $required_columns = ['attempt_token', 'attempt_started_at', 'last_attempt_at'];
+
+        $found_columns = [];
+        foreach ($columns as $column) {
+            $found_columns[] = (string) ($column['Field'] ?? '');
+        }
+
+        foreach ($required_columns as $required_column) {
+            if (!in_array($required_column, $found_columns, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * صياغة SQL للجداول الأربعة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
      * مستقل، بلا FOREIGN KEY، بلا ENGINE، بلا ENUM).
      */
     private static function get_schema_sql(): array
@@ -313,6 +474,7 @@ class Mon_Catalog_Schema
         $table_plans    = $wpdb->prefix . 'mon_plans';
         $table_tiers    = $wpdb->prefix . 'mon_plan_tiers';
         $table_services = $wpdb->prefix . 'mon_services';
+        $table_ledger   = $wpdb->prefix . 'mon_invitation_credit_ledger';
 
         $sql_plans = "CREATE TABLE $table_plans (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -341,6 +503,8 @@ class Mon_Catalog_Schema
             events_count INT UNSIGNED NULL DEFAULT 1,
             host_photos_limit INT UNSIGNED NULL DEFAULT NULL,
             wa_messages_limit INT UNSIGNED NULL DEFAULT NULL,
+            invitation_credit_limit INT UNSIGNED NOT NULL DEFAULT 0,
+            replacement_credit_limit INT UNSIGNED NOT NULL DEFAULT 0,
             price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
             currency VARCHAR(3) NOT NULL DEFAULT 'SAR',
             salla_product_id VARCHAR(64) NULL,
@@ -375,7 +539,57 @@ class Mon_Catalog_Schema
             KEY status (status)
         ) $charset_collate;";
 
-        return [$sql_plans, $sql_tiers, $sql_services];
+        // ═══════════════════════════════════════════════════════════════════
+        // mon_invitation_credit_ledger — أُضيف في 1.5.0. سجل ذري لاستهلاك رصيد
+        // الدعوات (Invitation Credits Engine، المرحلة الثانية: "تأسيس دورة
+        // الرصيد وسجل الاستهلاك الذري فقط"). الحماية الحقيقية ضد الخصم
+        // المزدوج عبر مسارات الإرسال المتزامنة (يدوي/Queue/Cron/Cartat/
+        // UltraMsg) هي القيد UNIQUE أدناه، لا أي منطق تطبيقي "افحص ثم أدرج".
+        //
+        // credit_cycle_id (وليس plan_id/tier_id) هو ما يفصل استهلاك اشتراك
+        // المستخدم الحالي عن أي تفعيل سابق لنفس المستخدم — راجع
+        // _mon_credit_cycle_id الجديد في activate_catalog_tier(). قيمة
+        // VARCHAR(36) تكفي لـUUID v4 القياسي (36 حرفاً بالضبط مع الشرطات).
+        //
+        // guest_phone بنفس حجم wp_pge_event_rsvps.guest_phone (VARCHAR(32))
+        // للاتساق، وتُطبَّع دوماً عبر نفس دالة تطبيع الجوال الحالية في
+        // المشروع قبل أي كتابة (راجع PGE_Invitation_Credit_Ledger).
+        //
+        // credit_type وstatus نصيّان (VARCHAR) لا ENUM، بنفس نمط status في
+        // mon_plans/mon_plan_tiers/mon_services — القيم المسموحة (primary/
+        // replacement للأول، reserved/consumed/refunded/failed للثاني —
+        // failed أُضيفت في 1.6.0) تُفرَض على مستوى التطبيق فقط
+        // (PGE_Invitation_Credit_Ledger::normalize_*)، تماماً كما هو الحال مع
+        // status الحالية في الجداول الثلاثة الأخرى.
+        //
+        // attempt_token/attempt_started_at/last_attempt_at (1.6.0): "محاولة
+        // تسليم مملوكة" — تُستخدَم عبر claim_for_delivery()/
+        // mark_consumed_with_token()/mark_failed_with_token() لضمان أن عاملاً
+        // واحداً فقط (Cron/AJAX) يملك حق إنهاء صف reserved معيّن في لحظة
+        // معينة، حتى مع وجود قفل GET_LOCK خارجي — الحماية مزدوجة عمداً.
+        $sql_ledger = "CREATE TABLE $table_ledger (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT(20) UNSIGNED NOT NULL,
+            credit_cycle_id VARCHAR(36) NOT NULL,
+            event_id BIGINT(20) UNSIGNED NOT NULL,
+            guest_phone VARCHAR(32) NOT NULL,
+            credit_type VARCHAR(20) NOT NULL DEFAULT 'primary',
+            status VARCHAR(20) NOT NULL DEFAULT 'reserved',
+            attempt_token VARCHAR(64) NULL,
+            attempt_started_at DATETIME NULL,
+            last_attempt_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            consumed_at DATETIME NULL,
+            refunded_at DATETIME NULL,
+            PRIMARY KEY (id),
+            KEY user_id (user_id),
+            KEY event_id (event_id),
+            KEY credit_cycle_id (credit_cycle_id),
+            KEY status (status),
+            UNIQUE KEY unique_credit_consumption (credit_cycle_id, event_id, guest_phone, credit_type)
+        ) $charset_collate;";
+
+        return [$sql_plans, $sql_tiers, $sql_services, $sql_ledger];
     }
 }
 

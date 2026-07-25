@@ -577,6 +577,39 @@ class Mon_Cartat_Handler
         return $decoded;
     }
 
+    /**
+     * تفسير موحَّد لنتيجة api_request() — نقطة واحدة بدل المنطق المكرر
+     * (Invitation Credits Engine، المرحلة الثالثة A). لا تُغيّر عقد Cartat
+     * الحالي (نفس شرطَي status==='error' وsuccess===false المعتمَدين فعلياً
+     * في كل مكان آخر بالملف) — فقط تُفصِّل حالتَي الفشل السابقتين
+     * ($result===null مقابل رفض صريح) بدل دمجهما معاً في $is_error واحد،
+     * لأن الفرق بينهما جوهري لقرار الخصم:
+     *  - 'transport_error': $result === null — الطلب لم يصل لأي استجابة
+     *    JSON مفهومة (انقطاع شبكة/DNS/SSL قبل is_wp_error، أو استجابة غير
+     *    JSON). لا نعرف هل وصلت الرسالة فعلاً لـCartat أم لا — لا يجوز
+     *    اعتبارها لا نجاحاً قاطعاً ولا فشلاً قاطعاً.
+     *  - 'rejected': استجابة JSON فعلية لكن بمحتوى رفض صريح
+     *    (status==='error' أو success===false).
+     *  - 'accepted': أي استجابة أخرى غير الحالتين أعلاه (تطابق تماماً ما
+     *    كان الكود القديم يعتبره نجاحاً ضمنياً: status=queued/sent/success
+     *    أو غياب الحقلين كليّاً).
+     */
+    private function interpret_cartat_result($result): string
+    {
+        if ($result === null) {
+            return 'transport_error';
+        }
+
+        if (
+            (isset($result['status']) && $result['status'] === 'error')
+            || (isset($result['success']) && $result['success'] === false)
+        ) {
+            return 'rejected';
+        }
+
+        return 'accepted';
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     // Helpers
     // ══════════════════════════════════════════════════════════════════════════
@@ -688,9 +721,69 @@ class Mon_Cartat_Handler
             wp_send_json_error(['message' => 'لم يتم ضبط Cartat API Token']);
         }
 
+        // حماية تكرار Queue (المرحلة الثالثة A، القسم حادي عشر): إن كانت
+        // هناك Queue سابقة لنفس المناسبة لا تزال queued أو running، لا تُنشئ
+        // Queue ثانية — هذا فحص خادمي مستقل عن تعطيل الزر في JavaScript (قد
+        // يُتجاوَز بضغطتين سريعتين قبل استلام أول استجابة AJAX).
+        $existing_queue = get_option($this->queue_key($event_id));
+        if (is_array($existing_queue) && in_array($existing_queue['status'] ?? '', ['queued', 'running'], true)) {
+            wp_send_json_error(['message' => '⏳ يوجد إرسال جارٍ بالفعل لهذه المناسبة. انتظر اكتماله أو راجع التقرير.']);
+        }
+
         $phones = pge_get_invited_phones($event_id);
         if (empty($phones)) {
             wp_send_json_error(['message' => 'لا يوجد مدعوون']);
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // Invitation Credits Engine — صاحب الاشتراك الحقيقي (المرحلة الثالثة A)
+        // ══════════════════════════════════════════════════════════════
+        // صاحب الاشتراك الذي سيُخصَم رصيده هو مالك المناسبة (post_author)،
+        // وليس get_current_user_id() — لأن مسؤولاً (administrator) قد يبدأ
+        // الإرسال نيابةً عن مضيف آخر (pge_is_host_or_admin() تسمح بذلك أعلاه)،
+        // وcron_process_queue() لاحقاً يعمل عبر WP-Cron بلا أي مستخدم مسجَّل
+        // دخول إطلاقاً (get_current_user_id() = 0 هناك). يُلتَقط مرة واحدة
+        // هنا فقط ويُخزَّن ضمن $queue — لا إعادة استنتاج لاحقاً.
+        $subscriber_user_id = (int) get_post_field('post_author', $event_id);
+
+        $is_catalog             = false;
+        $credit_cycle_id        = '';
+        $invitation_credit_total = 0;
+
+        if ($subscriber_user_id > 0) {
+            $package_source = (string) get_user_meta($subscriber_user_id, '_mon_package_source', true);
+
+            if ($package_source === 'catalog') {
+                // Catalog — يجب أن يكون الاشتراك نشطاً فعلياً، ودورة الرصيد
+                // موجودة، وحد الرصيد رقماً صحيحاً غير سالب. لا اعتماد على قيمة
+                // Tier الحية إطلاقاً — فقط Snapshot المستخدم والـResolver
+                // المركزي (pge_get_user_plan_limits_for_events)، تماماً كما
+                // تقرأ activate_catalog_tier()/الـResolver نفسيهما.
+                $package_status = (string) get_user_meta($subscriber_user_id, '_mon_package_status', true);
+                if ($package_status !== 'active') {
+                    wp_send_json_error(['message' => '⛔ لا يمكن بدء الإرسال: اشتراك Catalog لصاحب المناسبة غير نشط (منتهٍ أو مُلغى).']);
+                }
+
+                $credit_cycle_id = (string) get_user_meta($subscriber_user_id, '_mon_credit_cycle_id', true);
+                if ($credit_cycle_id === '') {
+                    wp_send_json_error(['message' => '⛔ لا يمكن بدء الإرسال: لا توجد دورة رصيد صالحة لاشتراك صاحب المناسبة.']);
+                }
+
+                $resolved_limits = function_exists('pge_get_user_plan_limits_for_events')
+                    ? (array) pge_get_user_plan_limits_for_events($subscriber_user_id)
+                    : [];
+                $raw_total = $resolved_limits['invitation_credit_total'] ?? null;
+
+                if (!is_int($raw_total) || $raw_total < 0) {
+                    wp_send_json_error(['message' => '⛔ لا يمكن بدء الإرسال: تعذّر تحديد رصيد الدعوات المتاح لصاحب المناسبة.']);
+                }
+
+                $invitation_credit_total = $raw_total;
+                $is_catalog = true;
+            }
+            // أي قيمة أخرى (بما فيها الفراغ) = Legacy أو مستخدم بلا اشتراك
+            // مسجَّل بعد — يستمر بالسلوك الحالي تماماً، بلا Ledger وبلا أي
+            // منع جديد (خارج نطاق هذه المرحلة صراحةً).
         }
 
         // تجميع بيانات المناسبة مرة واحدة
@@ -718,6 +811,16 @@ class Mon_Cartat_Handler
             'results'    => [],
             'created_at' => time(),
             'done_at'    => null,
+            'cancel_reason' => null,
+
+            // Invitation Credits Engine (المرحلة الثالثة A) — راجع أعلاه.
+            // is_catalog=false يعني Legacy: لا Ledger ولا خصم إطلاقاً في
+            // cron_process_queue() لهذه الـQueue بصرف النظر عن بقية الحقول.
+            'is_catalog'                => $is_catalog,
+            'subscriber_user_id'        => $subscriber_user_id,
+            'credit_cycle_id'           => $credit_cycle_id,
+            'credit_type'               => 'primary',
+            'invitation_credit_total'   => $invitation_credit_total,
         ];
 
         update_option($this->queue_key($event_id), $queue, false);
@@ -781,93 +884,263 @@ class Mon_Cartat_Handler
         ]);
     }
 
+    /**
+     * مزامنة _mon_invitation_credit_used من Ledger مباشرة (القسم تاسعاً،
+     * المرحلة الثالثة A) — لا قراءة used ثم used+1 (عرضة لفقد تحديثات
+     * متزامنة)، بل احتساب count_consumed() الفعلي وكتابته كاملاً. Ledger
+     * يبقى مصدر الحقيقة دائماً بصرف النظر عن نجاح هذه المزامنة أو فشلها.
+     */
+    private function sync_invitation_credit_used(int $subscriber_user_id, string $credit_cycle_id, string $credit_type): void
+    {
+        if ($subscriber_user_id <= 0 || $credit_cycle_id === '') {
+            return;
+        }
+
+        // تحقّق إضافي: لا تكتب على دورة لم تعد سارية (قد تكون تغيّرت بين
+        // claim/mark_consumed وهذه اللحظة بالذات) — الحارس في بداية
+        // cron_process_queue() يمنع أغلب الحالات، وهذا احتياط أخير.
+        $current_cycle = (string) get_user_meta($subscriber_user_id, '_mon_credit_cycle_id', true);
+        if ($current_cycle === '' || $current_cycle !== $credit_cycle_id) {
+            return;
+        }
+
+        $actual_count = PGE_Invitation_Credit_Ledger::count_consumed($subscriber_user_id, $credit_cycle_id, $credit_type);
+        update_user_meta($subscriber_user_id, '_mon_invitation_credit_used', $actual_count);
+
+        // update_user_meta() في ووردبريس تُعيد false أيضاً حين لا تتغيّر
+        // القيمة (لا فرق بينها وبين فشل حقيقي في قيمة الإرجاع وحدها) — لذا
+        // التحقّق الموثوق الوحيد هو إعادة القراءة والمقارنة، لا فحص القيمة
+        // المُعادة من update_user_meta() نفسها.
+        $verify = (int) get_user_meta($subscriber_user_id, '_mon_invitation_credit_used', true);
+        if ($verify !== $actual_count) {
+            $this->log("⚠️ synchronization_error: تعذّر تحديث _mon_invitation_credit_used فعلياً | user=$subscriber_user_id | expected=$actual_count | actual=$verify (Ledger يبقى مصدر الحقيقة)");
+        }
+    }
+
     /** WP Cron — معالجة دفعة واحدة في الخلفية */
     public function cron_process_queue(int $event_id): void
     {
         $queue = get_option($this->queue_key($event_id));
-        if (!$queue || $queue['status'] === 'done') return;
+        if (!$queue || in_array($queue['status'] ?? '', ['done', 'cancelled'], true)) return;
 
         @set_time_limit(120);
 
-        $queue['status'] = 'running';
-        update_option($this->queue_key($event_id), $queue, false);
+        // ══════════════════════════════════════════════════════════════
+        // قفل Queue على مستوى المناسبة (القسم حادي عشر، المرحلة الثالثة A)
+        // ══════════════════════════════════════════════════════════════
+        // يمنع تشغيل دفعتين من نفس الـQueue في نفس اللحظة (تراكم أحداث
+        // WP Cron، أو استدعاء يدوي متزامن). اسم منفصل تماماً عن أقفال
+        // الرصيد في PGE_Invitation_Credit_Ledger (نطاق مختلف كلياً). timeout
+        // = 0: محاولة واحدة فورية بلا انتظار — إن كانت دفعة أخرى تعمل بالفعل
+        // نتخطّى هذه التشغيلة بالكامل بدل الانتظار (ستُعالَج الدفعة التالية
+        // المجدولة بعد 35 ثانية بشكل طبيعي).
+        global $wpdb;
+        $cron_lock_name = 'pge_wa_cron_' . md5((string) $event_id);
+        $got_cron_lock  = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $cron_lock_name, 0));
+        if ((int) $got_cron_lock !== 1) {
+            $this->log("⏭ Queue: تشغيلة أخرى تعمل بالفعل لـ event=$event_id — تخطّي هذه الدفعة");
+            return;
+        }
 
-        $batch_size = 10; // دفعة صغيرة لضمان عدم انتهاء الوقت
-        $phones     = array_slice($queue['phones'], $queue['offset'], $batch_size);
+        try {
+            // إعادة قراءة الـQueue تحت حماية القفل — قد تكون تغيّرت بين
+            // القراءة الأولى أعلاه ولحظة الحصول على القفل فعلياً.
+            $queue = get_option($this->queue_key($event_id));
+            if (!$queue || in_array($queue['status'] ?? '', ['done', 'cancelled'], true)) return;
 
-        foreach ($phones as $phone) {
-            $wa_number  = $this->format_wa_number($phone);
-            $norm_phone = pge_norm_phone($phone);
-            $guest_name = $queue['guests_map'][$phone]['name'] ?? 'ضيفنا العزيز';
+            $is_catalog         = !empty($queue['is_catalog']);
+            $subscriber_user_id = (int) ($queue['subscriber_user_id'] ?? 0);
+            $credit_cycle_id    = (string) ($queue['credit_cycle_id'] ?? '');
+            $credit_type        = (string) ($queue['credit_type'] ?? 'primary');
+            $credit_limit       = (int) ($queue['invitation_credit_total'] ?? 0);
 
-            // رمز الضيف الشخصي — fallback للرمز الموحّد
-            $guest_code_raw    = $queue['guests_map'][$phone]['code'] ?? '';
-            $guest_invite_code = $guest_code_raw !== ''
-                ? (function_exists('pge_normalize_invite_code') ? pge_normalize_invite_code($guest_code_raw) : $guest_code_raw)
-                : $queue['invite_code'];
-
-            $tpl_invite = function_exists('pge_wa_get_templates')
-                ? pge_wa_get_templates($event_id)['invite']
-                : pge_wa_default_invite_template();
-
-            $caption = pge_wa_render_template($tpl_invite, [
-                'guest_name'      => $guest_name,
-                'event_name'      => $queue['event_name'],
-                'event_date'      => $queue['event_date'],
-                'event_date_line' => $queue['event_date'] ? "\n📅 {$queue['event_date']}" : '',
-                'guest_phone'     => $norm_phone,
-            ]);
-
-            $result = $queue['image_url']
-                ? $this->send_media_message($wa_number, $queue['image_url'], $caption)
-                : $this->send_text_message($wa_number, $caption);
-
-            $is_error = ($result === null)
-                     || (isset($result['status']) && $result['status'] === 'error')
-                     || (isset($result['success']) && $result['success'] === false);
-
-            if (!$is_error) {
-                $msg_id = $result['id'] ?? '';
-                $pending_data = [
-                    'event_id'       => $event_id,
-                    'sent_at'        => time(),
-                    'msg_id'         => $msg_id,
-                    'original_phone' => $norm_phone,
-                    'wa_number'      => $wa_number,
-                    'event_url'      => $queue['event_url'],
-                    'invite_code'    => $guest_invite_code,  // رمز الضيف الشخصي
-                    'norm_phone'     => $norm_phone,
-                ];
-                update_option('pge_wa_pending_' . $wa_number, $pending_data, false);
-                if ($msg_id) {
-                    update_option('pge_wa_pending_msgid_' . $msg_id, $pending_data, false);
+            // ══════════════════════════════════════════════════════════
+            // حماية تغيّر دورة الاشتراك (القسم سابعاً) — فحص إلزامي قبل كل دفعة
+            // ══════════════════════════════════════════════════════════
+            if ($is_catalog) {
+                $current_cycle_id = (string) get_user_meta($subscriber_user_id, '_mon_credit_cycle_id', true);
+                if ($current_cycle_id === '' || $current_cycle_id !== $credit_cycle_id) {
+                    $queue['status']        = 'cancelled';
+                    $queue['cancel_reason'] = 'credit_cycle_changed';
+                    $queue['done_at']       = current_time('mysql');
+                    update_option($this->queue_key($event_id), $queue, false);
+                    $this->log("🚫 Queue cancelled: event=$event_id | reason=credit_cycle_changed | queue_cycle=$credit_cycle_id | current_cycle=$current_cycle_id");
+                    return;
                 }
-                $queue['results'][$phone] = ['status' => 'sent',   'time' => current_time('mysql')];
-            } else {
-                $queue['results'][$phone] = ['status' => 'failed',  'time' => current_time('mysql')];
-                $this->log("❌ Queue: فشل إرسال لـ $wa_number | " . json_encode($result));
             }
 
-            // تأخير عشوائي بين الرسائل
-            usleep(rand(2_000_000, 4_000_000));
-        }
-
-        $queue['offset'] += count($phones);
-
-        if ($queue['offset'] >= $queue['total']) {
-            // انتهى الإرسال
-            $queue['status']  = 'done';
-            $queue['done_at'] = current_time('mysql');
-            update_post_meta($event_id, '_pge_wa_sent_at',    current_time('mysql'));
-            update_post_meta($event_id, '_pge_wa_sent_count', $queue['offset']);
-            $this->log("✅ Queue done: event=$event_id | offset={$queue['offset']}/{$queue['total']}");
-        } else {
-            // جدولة الدفعة التالية بعد 35 ثانية استراحة
             $queue['status'] = 'running';
-            wp_schedule_single_event(time() + 35, 'pge_wa_process_queue', [$event_id]);
-        }
+            update_option($this->queue_key($event_id), $queue, false);
 
-        update_option($this->queue_key($event_id), $queue, false);
+            $batch_size = 10; // دفعة صغيرة لضمان عدم انتهاء الوقت
+            $phones     = array_slice($queue['phones'], $queue['offset'], $batch_size);
+
+            $limit_reached_early = false;
+
+            foreach ($phones as $phone) {
+                if ($limit_reached_early) {
+                    $queue['results'][$phone] = ['status' => 'skipped_limit_exceeded', 'time' => current_time('mysql')];
+                    continue;
+                }
+
+                // ══════════════════════════════════════════════════════
+                // Invitation Credits Engine — claim قبل أي استدعاء لكارتات
+                // ══════════════════════════════════════════════════════
+                $claim = null;
+                if ($is_catalog) {
+                    $claim = class_exists('PGE_Invitation_Credit_Ledger')
+                        ? PGE_Invitation_Credit_Ledger::claim_for_delivery(
+                            $subscriber_user_id,
+                            $credit_cycle_id,
+                            $event_id,
+                            $phone,
+                            $credit_type,
+                            $credit_limit
+                        )
+                        : ['result' => 'error', 'reason' => 'ledger_class_missing'];
+
+                    $claim_result = $claim['result'] ?? 'error';
+
+                    if ($claim_result === 'already_consumed') {
+                        $queue['results'][$phone] = ['status' => 'skipped_already_consumed', 'time' => current_time('mysql')];
+                        continue;
+                    }
+                    if ($claim_result === 'in_progress') {
+                        $queue['results'][$phone] = ['status' => 'skipped_in_progress', 'time' => current_time('mysql')];
+                        continue;
+                    }
+                    if ($claim_result === 'limit_exceeded') {
+                        $queue['results'][$phone] = ['status' => 'skipped_limit_exceeded', 'time' => current_time('mysql')];
+                        $limit_reached_early = true;
+                        continue;
+                    }
+                    if ($claim_result === 'error') {
+                        $queue['results'][$phone] = ['status' => 'ledger_error', 'time' => current_time('mysql')];
+                        $this->log("⚠️ Ledger claim error: event=$event_id | phone=$phone | reason=" . ($claim['reason'] ?? 'unknown'));
+                        continue;
+                    }
+                    // 'claimed' فقط تتابع إلى الإرسال الفعلي أدناه.
+                }
+
+                $wa_number  = $this->format_wa_number($phone);
+                $norm_phone = pge_norm_phone($phone);
+                $guest_name = $queue['guests_map'][$phone]['name'] ?? 'ضيفنا العزيز';
+
+                // رمز الضيف الشخصي — fallback للرمز الموحّد
+                $guest_code_raw    = $queue['guests_map'][$phone]['code'] ?? '';
+                $guest_invite_code = $guest_code_raw !== ''
+                    ? (function_exists('pge_normalize_invite_code') ? pge_normalize_invite_code($guest_code_raw) : $guest_code_raw)
+                    : $queue['invite_code'];
+
+                $tpl_invite = function_exists('pge_wa_get_templates')
+                    ? pge_wa_get_templates($event_id)['invite']
+                    : pge_wa_default_invite_template();
+
+                $caption = pge_wa_render_template($tpl_invite, [
+                    'guest_name'      => $guest_name,
+                    'event_name'      => $queue['event_name'],
+                    'event_date'      => $queue['event_date'],
+                    'event_date_line' => $queue['event_date'] ? "\n📅 {$queue['event_date']}" : '',
+                    'guest_phone'     => $norm_phone,
+                ]);
+
+                $result = $queue['image_url']
+                    ? $this->send_media_message($wa_number, $queue['image_url'], $caption)
+                    : $this->send_text_message($wa_number, $caption);
+
+                $outcome = $this->interpret_cartat_result($result);
+
+                if ($outcome === 'accepted') {
+                    // pending ACK — بلا أي تغيير عن السلوك الحالي إطلاقاً
+                    $msg_id = $result['id'] ?? '';
+                    $pending_data = [
+                        'event_id'       => $event_id,
+                        'sent_at'        => time(),
+                        'msg_id'         => $msg_id,
+                        'original_phone' => $norm_phone,
+                        'wa_number'      => $wa_number,
+                        'event_url'      => $queue['event_url'],
+                        'invite_code'    => $guest_invite_code,
+                        'norm_phone'     => $norm_phone,
+                    ];
+                    update_option('pge_wa_pending_' . $wa_number, $pending_data, false);
+                    if ($msg_id) {
+                        update_option('pge_wa_pending_msgid_' . $msg_id, $pending_data, false);
+                    }
+
+                    if ($is_catalog && $claim !== null && ($claim['result'] ?? '') === 'claimed') {
+                        $marked = PGE_Invitation_Credit_Ledger::mark_consumed_with_token((int) $claim['id'], (string) ($claim['attempt_token'] ?? ''));
+                        if ($marked) {
+                            $this->sync_invitation_credit_used($subscriber_user_id, $credit_cycle_id, $credit_type);
+                        } else {
+                            $this->log("⚠️ mark_consumed_with_token فشل رغم قبول Cartat: event=$event_id | phone=$phone | ledger_id={$claim['id']}");
+                        }
+                    }
+
+                    $queue['results'][$phone] = ['status' => 'sent', 'time' => current_time('mysql')];
+                } elseif ($outcome === 'rejected') {
+                    if ($is_catalog && $claim !== null && ($claim['result'] ?? '') === 'claimed') {
+                        PGE_Invitation_Credit_Ledger::mark_failed_with_token((int) $claim['id'], (string) ($claim['attempt_token'] ?? ''));
+                    }
+                    $queue['results'][$phone] = ['status' => 'failed', 'time' => current_time('mysql')];
+                    $this->log("❌ Queue: فشل إرسال (رفض صريح) لـ $wa_number | " . json_encode($result));
+                } else {
+                    // transport_error: قد تكون الرسالة وصلت فعلاً لكارتات
+                    // وانقطع الرد فقط — لا نعتبرها ناجحة ولا نحوّلها failed
+                    // تلقائياً، ولا نزيد User Meta، ولا Retry تلقائي هنا. الصف
+                    // يبقى reserved بتوكن نشط عمداً (النتيجة غامضة، لا نجزم).
+                    //
+                    // إصلاح Blocker (Lease — راجع PGE_Invitation_Credit_Ledger
+                    // ::ATTEMPT_LEASE_SECONDS/is_lease_expired()): هذا التوكن
+                    // لا يبقى نشطاً إلى الأبد — بعد 120 ثانية من
+                    // attempt_started_at يُعامَل تلقائياً كصف غير مملوك، ويسمح
+                    // claim_for_delivery() اللاحق (محاولة يدوية جديدة من
+                    // المضيف فقط، إذ لا Retry تلقائي هنا) بإعادة المطالبة به
+                    // بتوكن جديد. توثيق صريح للمخاطرة المتبقية: إن كانت كارتات
+                    // قد استلمت المحاولة الأولى فعلاً ولم يصلنا ردها لأي سبب
+                    // شبكي، فإعادة المحاولة بعد انتهاء الـLease قد تُرسل رسالة
+                    // ثانية فعلياً للمدعو نفسه — هذا احتمال نظري متبقٍّ لا يمكن
+                    // حسمه نهائياً دون idempotency key مدعوم من كارتات نفسها
+                    // (غير متاح حالياً في عقدها)، لكنه أفضل بوضوح من تجميد
+                    // المدعو ورصيده إلى الأبد بلا أي مخرج.
+                    $queue['results'][$phone] = ['status' => 'ambiguous_transport_error', 'time' => current_time('mysql')];
+                    $this->log("⚠️ Queue: transport_error (لا نعرف هل وصلت الرسالة) لـ $wa_number | event=$event_id | phone=$phone | الصف يبقى reserved حتى انتهاء Lease (" . PGE_Invitation_Credit_Ledger::ATTEMPT_LEASE_SECONDS . " ث) لإعادة محاولة يدوية لاحقة");
+                }
+
+                // تأخير عشوائي بين الرسائل
+                usleep(rand(2_000_000, 4_000_000));
+            }
+
+            if ($limit_reached_early) {
+                // إيقاف مبكر موثَّق (القسم ثامناً): لا داعي لمحاولة بقية
+                // المدعوين في الدفعات القادمة أيضاً — الرصيد منتهٍ فعلياً.
+                $remaining_phones = array_slice($queue['phones'], $queue['offset'] + count($phones));
+                foreach ($remaining_phones as $remaining_phone) {
+                    $queue['results'][$remaining_phone] = ['status' => 'skipped_limit_exceeded', 'time' => current_time('mysql')];
+                }
+                $queue['offset'] = $queue['total'];
+                $this->log("🛑 Queue: إيقاف مبكر — نفد رصيد الدعوات | event=$event_id");
+            } else {
+                $queue['offset'] += count($phones);
+            }
+
+            if ($queue['offset'] >= $queue['total']) {
+                // انتهى الإرسال
+                $queue['status']  = 'done';
+                $queue['done_at'] = current_time('mysql');
+                update_post_meta($event_id, '_pge_wa_sent_at',    current_time('mysql'));
+                update_post_meta($event_id, '_pge_wa_sent_count', $queue['offset']);
+                $this->log("✅ Queue done: event=$event_id | offset={$queue['offset']}/{$queue['total']}");
+            } else {
+                // جدولة الدفعة التالية بعد 35 ثانية استراحة
+                $queue['status'] = 'running';
+                wp_schedule_single_event(time() + 35, 'pge_wa_process_queue', [$event_id]);
+            }
+
+            update_option($this->queue_key($event_id), $queue, false);
+        } finally {
+            $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $cron_lock_name));
+        }
     }
 }
 

@@ -589,6 +589,41 @@ class PGE_Catalog
     }
 
     /**
+     * تطبيع رصيد دعوات اختياري (invitation_credit_limit أو
+     * replacement_credit_limit، عمودا mon_plan_tiers الجديدان NOT NULL
+     * DEFAULT 0 — على عكس events_count/guest_limit وغيرها، هذان العمودان
+     * غير NULLable إطلاقاً، فلا حاجة هنا لتمييز "غير محدَّد" عن "صفر" كما في
+     * normalize_events_count(): كل قيمة غائبة أو غير صالحة تصبح 0 مباشرة،
+     * بلا رفض للعملية بأكملها (على عكس معظم normalize_* الأخرى في هذا
+     * الملف التي تُعيد false/null لتوقف create_tier()/update_tier() كلياً).
+     * هذا يطابق حرفياً القرار التجاري: "القيمة الغائبة أو غير الصالحة تصبح
+     * 0" و"لا يسمح بقيم سالبة" — بلا استثناء يوقف الحفظ.
+     * تقبل: null (→0)، int (سالب→0، غير ذلك كما هو)، أو string: فارغة أو
+     * "0" (→0)، رقم صحيح موجب فقط بنمط ^[0-9]+$ (→ القيمة كـint)، أي شيء
+     * آخر (عشري، حروف، سالب نصي) → 0. أي نوع غير هذين (bool، array، object)
+     * → 0 أيضاً. النتيجة دائماً int >= 0، لا تُعاد أبداً false أو null.
+     */
+    private static function normalize_credit_limit($value)
+    {
+        if (is_int($value)) {
+            return $value < 0 ? 0 : $value;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '' || $trimmed === '0') {
+                return 0;
+            }
+            if (preg_match('/^[0-9]+$/', $trimmed)) {
+                return (int) $trimmed;
+            }
+            return 0;
+        }
+
+        return 0;
+    }
+
+    /**
      * قراءة باقة واحدة برقمها فقط. لا تقبل إلا:
      *  - عدداً صحيحاً (int) موجباً (>= 1)، أو
      *  - نصاً (string) يحتوي على عدد صحيح موجب فقط بلا فاصلة عشرية وبلا أي
@@ -1023,6 +1058,14 @@ class PGE_Catalog
             return null;
         }
 
+        // invitation_credit_limit/replacement_credit_limit اختياريان تماماً
+        // بنفس روح events_count أعلاه، لكن بعقد أبسط: normalize_credit_limit()
+        // لا تُعيد أبداً false (كل قيمة غائبة/غير صالحة تصبح 0 مباشرة — راجع
+        // توثيقها)، فلا حاجة لأي فحص رفض هنا. مرحلة "تأسيس بيانات فقط" —
+        // القيمتان تُخزَّنان فقط، بلا أي استهلاك أو ربط بمنطق آخر بعد.
+        $normalized_invitation_credit_limit = self::normalize_credit_limit($data['invitation_credit_limit'] ?? null);
+        $normalized_replacement_credit_limit = self::normalize_credit_limit($data['replacement_credit_limit'] ?? null);
+
         if (self::get_tier_by_key($normalized_plan_id, $normalized_tier_key) !== null) {
             return null;
         }
@@ -1036,19 +1079,21 @@ class PGE_Catalog
         $inserted = $wpdb->insert(
             self::tiers_table(),
             [
-                'plan_id'           => $normalized_plan_id,
-                'tier_key'          => $normalized_tier_key,
-                'name'              => $normalized_name,
-                'events_count'      => $normalized_events_count,
-                'price'             => $normalized_price,
-                'currency'          => $normalized_currency,
-                'salla_product_id'  => $normalized_salla_product_id,
-                'salla_sku'         => $normalized_salla_sku,
-                'salla_url'         => $normalized_salla_url,
-                'status'            => $normalized_status,
-                'sort_order'        => $normalized_sort_order,
+                'plan_id'                   => $normalized_plan_id,
+                'tier_key'                  => $normalized_tier_key,
+                'name'                      => $normalized_name,
+                'events_count'              => $normalized_events_count,
+                'invitation_credit_limit'   => $normalized_invitation_credit_limit,
+                'replacement_credit_limit'  => $normalized_replacement_credit_limit,
+                'price'                     => $normalized_price,
+                'currency'                  => $normalized_currency,
+                'salla_product_id'          => $normalized_salla_product_id,
+                'salla_sku'                 => $normalized_salla_sku,
+                'salla_url'                 => $normalized_salla_url,
+                'status'                    => $normalized_status,
+                'sort_order'                => $normalized_sort_order,
             ],
-            ['%d', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d']
+            ['%d', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d']
         );
 
         if (!$inserted) {
@@ -1228,6 +1273,25 @@ class PGE_Catalog
             }
         }
 
+        // invitation_credit_limit/replacement_credit_limit اختياريان هنا
+        // بنفس أسلوب events_count أعلاه بالضبط: غياب المفتاح كلياً عن $data
+        // لا يُغيّر القيمة الحالية إطلاقاً (يحمي من تصفير رصيد Tier بالخطأ
+        // بسبب تحديث لا يخص هذا الحقل، كتحديث السعر فقط). إن كان المفتاح
+        // موجوداً صراحةً، تُطبَّع القيمة عبر normalize_credit_limit() — التي
+        // لا تُعيد أبداً false (تحوّل أي قيمة غير صالحة لصفر بدل رفض التحديث
+        // بأكمله)، فلا حاجة لفحص رفض هنا كما في events_count.
+        $invitation_credit_limit_provided = array_key_exists('invitation_credit_limit', $data);
+        $normalized_invitation_credit_limit = null;
+        if ($invitation_credit_limit_provided) {
+            $normalized_invitation_credit_limit = self::normalize_credit_limit($data['invitation_credit_limit']);
+        }
+
+        $replacement_credit_limit_provided = array_key_exists('replacement_credit_limit', $data);
+        $normalized_replacement_credit_limit = null;
+        if ($replacement_credit_limit_provided) {
+            $normalized_replacement_credit_limit = self::normalize_credit_limit($data['replacement_credit_limit']);
+        }
+
         $key_owner = self::get_tier_by_key($normalized_plan_id, $normalized_tier_key);
         if ($key_owner !== null && (int) $key_owner['id'] !== $normalized_tier_id) {
             return null;
@@ -1262,6 +1326,16 @@ class PGE_Catalog
 
         if ($events_count_provided) {
             $update_data['events_count'] = $normalized_events_count;
+            $update_formats[] = '%d';
+        }
+
+        if ($invitation_credit_limit_provided) {
+            $update_data['invitation_credit_limit'] = $normalized_invitation_credit_limit;
+            $update_formats[] = '%d';
+        }
+
+        if ($replacement_credit_limit_provided) {
+            $update_data['replacement_credit_limit'] = $normalized_replacement_credit_limit;
             $update_formats[] = '%d';
         }
 

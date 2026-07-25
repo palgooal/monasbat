@@ -157,6 +157,25 @@ class Mon_Events_Users
             $guest_limit = absint($guest_limit);
         }
 
+        // رصيد الدعوات (الأساسي والبديل) — مرحلة "تأسيس بيانات فقط" لنظام
+        // Invitation Credits Engine: العمودان الجديدان في mon_plan_tiers هما
+        // INT UNSIGNED NOT NULL DEFAULT 0 (غير NULLable مثل guest_limit)،
+        // فلا حاجة هنا لأي تمييز NULL/فارغ — absint() كافية ومباشرة، وتُعيد
+        // 0 دفاعياً حتى لو غاب المفتاح من صف tier قديم بشكل غير متوقع.
+        $invitation_credit_limit = absint($tier['invitation_credit_limit'] ?? 0);
+        $replacement_credit_limit = absint($tier['replacement_credit_limit'] ?? 0);
+
+        // معرّف دورة الرصيد (Invitation Credits Engine — المرحلة الثانية):
+        // يُولَّد فريداً عند كل كتابة Snapshot فعلية أدناه (لا عند الاستدعاء
+        // المتطابق تماماً الذي يُعيد true مبكراً أسفل هذا السطر — تلك حالة
+        // "تكرار نفس الطلب" لا "تفعيل جديد"، فلا يجوز أن تُبدِّل دورة رصيد
+        // المستخدم بلا سبب). الغرض: فصل استهلاك الاشتراك الحالي عن أي دورة
+        // سابقة لنفس المستخدم — سجل الاستهلاك الذري (PGE_Invitation_Credit_Ledger)
+        // يستخدم credit_cycle_id هذا كجزء من مفتاحه الفريد، لا plan_id/tier_id،
+        // تحديداً لأن نفس الـTier قد يُعاد تفعيله لاحقاً بدورة استهلاك جديدة
+        // بالكامل. لا منطق Webhook idempotency هنا؛ هذا توليد قيمة فقط.
+        $credit_cycle_id = self::generate_credit_cycle_id();
+
         $external_order_id = is_scalar($external_order_id)
             ? trim(sanitize_text_field((string) $external_order_id))
             : '';
@@ -194,6 +213,20 @@ class Mon_Events_Users
             '_mon_guest_limit'         => $guest_limit === null ? '' : $guest_limit,
             '_mon_salla_product_id'    => sanitize_text_field((string) ($tier['salla_product_id'] ?? '')),
             '_mon_catalog_features'    => $features,
+            // Snapshot رصيد الدعوات — كل تفعيل جديد (سواء أول تفعيل أو تبديل
+            // Tier لاحقاً) يكتب total من قيمة الـTier الحالية عند لحظة
+            // التفعيل بالضبط، ويُصفّر used دائماً. هذا مقصود ومطابق للقرار
+            // التجاري: "كل تفعيل Catalog جديد ينشئ Snapshot جديدًا ويصفّر
+            // الاستخدام" — لا ترحيل لأي رصيد مستهلك من تفعيل سابق. ملاحظة:
+            // فرع "نفس البيانات تماماً فمُطابقة مسبقة" أعلى هذه الدالة
+            // (return true المبكرة) لا يمر من هنا إطلاقاً، فاستدعاء هذه
+            // الدالة بنفس المعطيات تماماً (تكرار Webhook مثلاً) لا يُصفّر
+            // used الحالي بالخطأ — التصفير يحدث فقط عند تفعيل مختلف فعلياً.
+            '_mon_invitation_credit_total'  => $invitation_credit_limit,
+            '_mon_invitation_credit_used'   => 0,
+            '_mon_replacement_credit_total' => $replacement_credit_limit,
+            '_mon_replacement_credit_used'  => 0,
+            '_mon_credit_cycle_id'          => $credit_cycle_id,
         ];
 
         if ($external_order_id !== '') {
@@ -258,6 +291,26 @@ class Mon_Events_Users
         }
 
         return true;
+    }
+
+    /**
+     * توليد معرّف دورة رصيد فريد (UUID v4). تُفضَّل wp_generate_uuid4() إن
+     * كانت متاحة (متوفرة في ووردبريس الفعلي منذ 4.7)؛ الاحتياط عند غيابها
+     * (كبيئة اختبار معزولة بلا ووردبريس حقيقي) يُنتج UUID v4 يدوياً بنفس
+     * خوارزمية ووردبريس الفعلية: 16 بايت عشوائية عبر random_bytes() (آمنة
+     * تشفيرياً)، مع ضبط bits الإصدار (0100) والمتغيّر (10) وفق RFC 4122.
+     */
+    private static function generate_credit_cycle_id()
+    {
+        if (function_exists('wp_generate_uuid4')) {
+            return wp_generate_uuid4();
+        }
+
+        $data = random_bytes(16);
+        $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
+        $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
     }
 
     private static function normalize_positive_id($value)

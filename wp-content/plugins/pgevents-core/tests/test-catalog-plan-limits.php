@@ -196,7 +196,29 @@ set_test_user_meta(201, '_mon_active_features', ['header_img', 'google_map']);
 
 $legacy_via_central = pge_get_user_plan_limits_for_events(201);
 $legacy_direct       = PGE_Packages::get_user_plan_limits(201);
-check('نفس نتيجة PGE_Packages::get_user_plan_limits() تماماً (لا تغيير في السلوك)', $legacy_via_central, $legacy_direct);
+
+// ملاحظة (مهمة Invitation Credits Engine — تأسيس بيانات فقط): pge_get_user_plan_limits_for_events()
+// أصبحت تُضيف 6 مفاتيح رصيد جديدة بصفر لكل مسار (راجع pge_zero_invitation_credit_limits()
+// في event-factory.php) لتوحيد بنية الإرجاع، دون تغيير أي قيمة Legacy فعلية.
+// لذا المقارنة الحرفية الكاملة مع PGE_Packages::get_user_plan_limits() (التي لا تعرف
+// هذه المفاتيح إطلاقاً) لم تعد ممكنة بالتساوي التام؛ نقارن الحقول الأصلية فقط،
+// ثم نتحقق بشكل منفصل أن المفاتيح الستة الجديدة أُضيفت بصفر دون أي أثر آخر.
+$legacy_via_central_original_keys = $legacy_via_central;
+foreach ([
+    'invitation_credit_total', 'invitation_credit_used', 'invitation_credit_remaining',
+    'replacement_credit_total', 'replacement_credit_used', 'replacement_credit_remaining',
+] as $__credit_key) {
+    unset($legacy_via_central_original_keys[$__credit_key]);
+}
+check('نفس نتيجة PGE_Packages::get_user_plan_limits() فيما عدا مفاتيح الرصيد الستة الجديدة (لا تغيير في سلوك Legacy الفعلي)', $legacy_via_central_original_keys, $legacy_direct);
+check('مفاتيح رصيد الدعوات الجديدة تُضاف بصفر حتى لمستخدم Legacy (بنية إرجاع موحدة، بلا أي قيمة Legacy فعلية متأثرة)', [
+    $legacy_via_central['invitation_credit_total'] ?? null,
+    $legacy_via_central['invitation_credit_used'] ?? null,
+    $legacy_via_central['invitation_credit_remaining'] ?? null,
+    $legacy_via_central['replacement_credit_total'] ?? null,
+    $legacy_via_central['replacement_credit_used'] ?? null,
+    $legacy_via_central['replacement_credit_remaining'] ?? null,
+], [0, 0, 0, 0, 0, 0]);
 check('events_count = 3 (من إعدادات الباقة، لا Catalog)', (int) $legacy_via_central['events_count'], 3);
 check('guest_limit = 60 (override من user meta كما كان قبل التعديل)', (int) $legacy_via_central['guest_limit'], 60);
 check_true('google_map مفعّلة عبر _mon_active_features', pge_plan_feature_enabled_for_events($legacy_via_central, 'google_map'));
@@ -782,6 +804,105 @@ check('11.2 create-event: allowed_limit = 1 (نفس تعبير الصفحة ال
 reset_test_user(610);
 $limits_no_sub_610 = pge_get_user_plan_limits_for_events(610);
 check('11.3 مستخدم بلا اشتراك يبقى events_count = 0 (لا فرض حد أدنى 1 في القراءة)', (int) $limits_no_sub_610['events_count'], 0);
+
+// ============================================================================
+// 12) Invitation Credits Engine — Resolver: قراءة حقول الرصيد الستة
+// (مرحلة تأسيس بيانات فقط: لا خصم ولا استرداد فعلي بعد؛ هذا القسم يختبر
+// فقط قراءة pge_get_user_plan_limits_for_events()/pge_get_catalog_user_plan_limits_for_events()
+// لمفاتيح Snapshot الأربعة الجديدة. اختبارات Schema/CRUD/Snapshot الفعلية
+// (activate_catalog_tier) موجودة في tests/test-catalog-tier-events-count.php.)
+// ============================================================================
+echo "\n12) Resolver: invitation/replacement credit fields\n";
+
+// 13+14) active Catalog: قيم رصيد كاملة وصحيحة معاً (أساسي + بديل)
+reset_test_user(611);
+set_test_user_meta(611, '_mon_package_source', 'catalog');
+set_test_user_meta(611, '_mon_package_status', 'active');
+set_test_user_meta(611, '_mon_invitation_credit_total', 100);
+set_test_user_meta(611, '_mon_invitation_credit_used', 20);
+set_test_user_meta(611, '_mon_replacement_credit_total', 30);
+set_test_user_meta(611, '_mon_replacement_credit_used', 5);
+
+$limits_611 = pge_get_user_plan_limits_for_events(611);
+check('13. invitation_credit_total = 100', $limits_611['invitation_credit_total'] ?? null, 100);
+check('13. invitation_credit_used = 20', $limits_611['invitation_credit_used'] ?? null, 20);
+check('13. invitation_credit_remaining = 80 (100-20)', $limits_611['invitation_credit_remaining'] ?? null, 80);
+check('14. replacement_credit_total = 30', $limits_611['replacement_credit_total'] ?? null, 30);
+check('14. replacement_credit_used = 5', $limits_611['replacement_credit_used'] ?? null, 5);
+check('14. replacement_credit_remaining = 25 (30-5)', $limits_611['replacement_credit_remaining'] ?? null, 25);
+
+// 15) used أكبر من total → remaining = 0 وليس سالباً
+reset_test_user(612);
+set_test_user_meta(612, '_mon_package_source', 'catalog');
+set_test_user_meta(612, '_mon_package_status', 'active');
+set_test_user_meta(612, '_mon_invitation_credit_total', 10);
+set_test_user_meta(612, '_mon_invitation_credit_used', 15);
+set_test_user_meta(612, '_mon_replacement_credit_total', 5);
+set_test_user_meta(612, '_mon_replacement_credit_used', 9);
+
+$limits_612 = pge_get_user_plan_limits_for_events(612);
+check('15. invitation_credit_remaining = 0 (ليس سالباً رغم used=15 > total=10)', $limits_612['invitation_credit_remaining'] ?? null, 0);
+check('15. replacement_credit_remaining = 0 (ليس سالباً رغم used=9 > total=5)', $limits_612['replacement_credit_remaining'] ?? null, 0);
+
+// 16) expired Catalog → جميع قيم الرصيد = 0 بغض النظر عن أي Snapshot سابق
+reset_test_user(613);
+set_test_user_meta(613, '_mon_package_source', 'catalog');
+set_test_user_meta(613, '_mon_package_status', 'expired');
+set_test_user_meta(613, '_mon_invitation_credit_total', 999);
+set_test_user_meta(613, '_mon_invitation_credit_used', 1);
+set_test_user_meta(613, '_mon_replacement_credit_total', 999);
+set_test_user_meta(613, '_mon_replacement_credit_used', 1);
+
+$limits_613 = pge_get_user_plan_limits_for_events(613);
+check('16. expired: invitation_credit_total = 0', $limits_613['invitation_credit_total'] ?? null, 0);
+check('16. expired: invitation_credit_used = 0', $limits_613['invitation_credit_used'] ?? null, 0);
+check('16. expired: invitation_credit_remaining = 0', $limits_613['invitation_credit_remaining'] ?? null, 0);
+check('16. expired: replacement_credit_total = 0', $limits_613['replacement_credit_total'] ?? null, 0);
+check('16. expired: replacement_credit_used = 0', $limits_613['replacement_credit_used'] ?? null, 0);
+check('16. expired: replacement_credit_remaining = 0', $limits_613['replacement_credit_remaining'] ?? null, 0);
+
+// 17) بيانات Meta تالفة (array/نص غير رقمي/فارغة/null) → قيم صفرية آمنة بلا Warning/Fatal
+reset_test_user(614);
+set_test_user_meta(614, '_mon_package_source', 'catalog');
+set_test_user_meta(614, '_mon_package_status', 'active');
+set_test_user_meta(614, '_mon_invitation_credit_total', ['فاسد' => true]); // array بدل رقم
+set_test_user_meta(614, '_mon_invitation_credit_used', 'غير رقمي');
+set_test_user_meta(614, '_mon_replacement_credit_total', '');
+set_test_user_meta(614, '_mon_replacement_credit_used', null);
+
+$limits_614 = pge_get_user_plan_limits_for_events(614);
+check('17. invitation_credit_total (array تالفة) → 0 بلا Fatal', $limits_614['invitation_credit_total'] ?? null, 0);
+check('17. invitation_credit_used (نص غير رقمي) → 0 بلا Fatal', $limits_614['invitation_credit_used'] ?? null, 0);
+check('17. invitation_credit_remaining يبقى 0 (0-0)', $limits_614['invitation_credit_remaining'] ?? null, 0);
+check('17. replacement_credit_total (فارغ) → 0', $limits_614['replacement_credit_total'] ?? null, 0);
+check('17. replacement_credit_used (null) → 0', $limits_614['replacement_credit_used'] ?? null, 0);
+
+// 18) لا fallback إلى بيانات Tier عند غياب Snapshot تماماً — حتى لو كان
+// الـtier المرتبط يملك invitation_credit_limit/replacement_credit_limit
+// (تُحاكى هنا)، يجب ألا تُقرأ هذه القيم أبداً؛ المصدر الوحيد هو مفاتيح
+// Snapshot الأربعة، وغيابها التام = صفر دائماً (بخلاف events_count الذي
+// يستمر بالقراءة من الـtier الحي كما كان قبل هذه المهمة).
+PGE_Catalog::$tiers[31] = [
+    'id' => 31, 'plan_id' => 11, 'tier_key' => 'no-snapshot-fallback-check',
+    'events_count' => 2, 'host_photos_limit' => 5, 'wa_messages_limit' => 0,
+    'invitation_credit_limit' => 500, 'replacement_credit_limit' => 200, // يجب ألا تُقرأ إطلاقاً
+];
+reset_test_user(615);
+set_test_user_meta(615, '_mon_package_source', 'catalog');
+set_test_user_meta(615, '_mon_package_status', 'active');
+set_test_user_meta(615, '_mon_catalog_plan_id', 11);
+set_test_user_meta(615, '_mon_catalog_tier_id', 31);
+// عمداً بلا أي من مفاتيح Snapshot الأربعة (_mon_invitation_credit_total وغيرها)
+
+$limits_615 = pge_get_user_plan_limits_for_events(615);
+check('18. لا fallback لـ tier.invitation_credit_limit (500) عند غياب Snapshot — تبقى 0', $limits_615['invitation_credit_total'] ?? null, 0);
+check('18. لا fallback لـ tier.replacement_credit_limit (200) عند غياب Snapshot — تبقى 0', $limits_615['replacement_credit_total'] ?? null, 0);
+check_true('18. events_count نفسه يبقى يُقرأ من tier كالمعتاد (لا علاقة له بهذا الاستثناء) = 2', ((int) ($limits_615['events_count'] ?? 0)) === 2);
+
+// 19) جميع اختبارات هذا الملف (Catalog وLegacy) السابقة على هذه المهمة تبقى
+// ناجحة — الأقسام 1-11 أعلاه لم تُعدَّل بأي منطق جديد (فيما عدا تحديث
+// المقارنة الحرفية في القسم 1 نفسه بسبب المفاتيح الستة المضافة، الموضَّح
+// أعلاه)، وتم تتبعها يدوياً بعد التعديل للتأكد أنها ما تزال تنجح.
 
 // ── الخلاصة ─────────────────────────────────────────────────────────────
 echo "\n----------------------------------------\n";

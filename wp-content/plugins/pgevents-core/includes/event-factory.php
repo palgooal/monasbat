@@ -105,7 +105,13 @@ if (!function_exists('pge_get_user_plan_limits_for_events')) {
         if ($has_plan_context && class_exists('PGE_Packages')) {
             $limits = (array) PGE_Packages::get_user_plan_limits($user_id);
             if (!empty($limits)) {
-                return $limits;
+                // إضافة مفاتيح رصيد الدعوات الستة بصفر فقط — بنية إرجاع
+                // موحّدة عبر كل المسارات (Catalog وLegacy)، دون أي تغيير في
+                // أي قيمة Legacy فعلية موجودة مسبقاً في $limits (اتحاد "+"
+                // لا يستبدل مفتاحاً موجوداً، ويضيف فقط المفاتيح الغائبة).
+                // Legacy لا يملك مفهوم رصيد دعوات إطلاقاً في هذه المرحلة —
+                // القيم هنا صفرية دائماً وليست حداً فعلياً يُنفَّذ عليه شيء.
+                return $limits + pge_zero_invitation_credit_limits();
             }
         }
 
@@ -121,7 +127,27 @@ if (!function_exists('pge_get_user_plan_limits_for_events')) {
             }
         }
 
-        return $limits;
+        return $limits + pge_zero_invitation_credit_limits();
+    }
+}
+
+if (!function_exists('pge_zero_invitation_credit_limits')) {
+    /**
+     * القيم الست الصفرية لحقول رصيد الدعوات، تُستخدم في كل نقطة إرجاع لا
+     * تملك رصيداً فعلياً (Legacy بكل مساريه، وCatalog غير النشط/الناقص).
+     * دالة واحدة صغيرة بدل تكرار نفس المصفوفة الحرفية في أكثر من مكان —
+     * أي تعديل مستقبلي لأسماء هذه المفاتيح يحتاج تغييراً في مكان واحد فقط.
+     */
+    function pge_zero_invitation_credit_limits()
+    {
+        return [
+            'invitation_credit_total'      => 0,
+            'invitation_credit_used'       => 0,
+            'invitation_credit_remaining'  => 0,
+            'replacement_credit_total'     => 0,
+            'replacement_credit_used'      => 0,
+            'replacement_credit_remaining' => 0,
+        ];
     }
 }
 
@@ -158,7 +184,7 @@ if (!function_exists('pge_get_catalog_user_plan_limits_for_events')) {
             'guest_limit'  => 0,
             'host_photos'  => 0,
             'wa_messages'  => 0,
-        ];
+        ] + pge_zero_invitation_credit_limits();
 
         if (class_exists('PGE_Packages')) {
             foreach (PGE_Packages::get_feature_keys() as $feature_key) {
@@ -181,6 +207,37 @@ if (!function_exists('pge_get_catalog_user_plan_limits_for_events')) {
         if ($guest_limit_meta !== '' && $guest_limit_meta !== false) {
             $limits['guest_limit'] = (int) $guest_limit_meta;
         }
+
+        // رصيد الدعوات (الأساسي والبديل) — يُقرأ حصراً من Snapshot المستخدم
+        // (المفاتيح الأربعة المكتوبة داخل activate_catalog_tier()، تماماً
+        // كـ_mon_guest_limit أعلاه)، ولا يُستخدم tier.invitation_credit_limit/
+        // tier.replacement_credit_limit هنا كـfallback إطلاقاً حتى لو كان
+        // الـSnapshot ناقصاً أو غائباً — القرار المعماري الصريح لهذه المرحلة:
+        // "Snapshot هو مصدر حدود الاشتراك الفعلي بعد التفعيل"، بخلاف
+        // events_count/host_photos/wa_messages أسفل هذا الكتلة التي تُقرأ من
+        // صف الـtier الحي لأنها لا تُخزَّن كـSnapshot أصلاً. قراءة آمنة: أي
+        // قيمة meta غير رقمية (array تالفة، نص غير رقمي، فارغة) تُعامَل كصفر
+        // بدل أي Warning/Fatal — is_numeric() لا تُصدر أي تحذير على array.
+        $invitation_credit_total_meta  = get_user_meta($user_id, '_mon_invitation_credit_total', true);
+        $invitation_credit_used_meta   = get_user_meta($user_id, '_mon_invitation_credit_used', true);
+        $replacement_credit_total_meta = get_user_meta($user_id, '_mon_replacement_credit_total', true);
+        $replacement_credit_used_meta  = get_user_meta($user_id, '_mon_replacement_credit_used', true);
+
+        $limits['invitation_credit_total'] = is_numeric($invitation_credit_total_meta)
+            ? max(0, (int) $invitation_credit_total_meta)
+            : 0;
+        $limits['invitation_credit_used'] = is_numeric($invitation_credit_used_meta)
+            ? max(0, (int) $invitation_credit_used_meta)
+            : 0;
+        $limits['invitation_credit_remaining'] = max(0, $limits['invitation_credit_total'] - $limits['invitation_credit_used']);
+
+        $limits['replacement_credit_total'] = is_numeric($replacement_credit_total_meta)
+            ? max(0, (int) $replacement_credit_total_meta)
+            : 0;
+        $limits['replacement_credit_used'] = is_numeric($replacement_credit_used_meta)
+            ? max(0, (int) $replacement_credit_used_meta)
+            : 0;
+        $limits['replacement_credit_remaining'] = max(0, $limits['replacement_credit_total'] - $limits['replacement_credit_used']);
 
         // بقية الحدود (events_count/host_photos/wa_messages) غير مخزَّنة في
         // أي User Meta من Catalog، فمصدرها الوحيد صف الـ tier نفسه.
