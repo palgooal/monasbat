@@ -7,12 +7,15 @@ if (!defined('ABSPATH')) exit;
  * ============================================================================
  *
  * هذا الملف مسؤول حصرياً عن:
- *  - إنشاء/مزامنة 5 جداول: mon_plans, mon_plan_tiers, mon_services,
+ *  - إنشاء/مزامنة 6 جداول: mon_plans, mon_plan_tiers, mon_services,
  *    mon_invitation_credit_ledger (أُضيف في 1.5.0 — سجل ذري لاستهلاك رصيد
  *    الدعوات، راجع includes/class-pge-invitation-credit-ledger.php)،
  *    mon_replacement_entitlements (أُضيف في 1.7.0 — سجل استحقاقات
  *    Replacement Credits، راجع includes/class-pge-replacement-entitlements.php.
- *    تأسيس بنية فقط في هذه المرحلة — غير مربوط بأي مسار RSVP/Queue/Cartat بعد)
+ *    تأسيس بنية فقط في هذه المرحلة — غير مربوط بأي مسار RSVP/Queue/Cartat بعد)،
+ *    mon_tier_features (أُضيف في 1.8.0 — تخزين خام لقيم ميزات كل Tier، وفق
+ *    docs/PACKAGE-FEATURE-MATRIX.md §5 وdocs/FEATURES-PHASE-2-SPEC.md Commit 1.
+ *    Phase 2 — Commit 1: تأسيس الجدول فقط، بلا Repository وبلا أي استهلاك)
  *    عبر dbDelta().
  *  - إدارة رقم إصدار قاعدة البيانات (mon_catalog_db_version) وتشغيل دوال
  *    الترقية المستقبلية بالترتيب عند الحاجة.
@@ -41,7 +44,7 @@ class Mon_Catalog_Schema
      * رقم الإصدار الحالي لبنية كتالوج الباقات والخدمات.
      * أي تغيير مستقبلي في البنية أو ترحيل بيانات يرفع هذا الرقم.
      */
-    const DB_VERSION = '1.7.0';
+    const DB_VERSION = '1.8.0';
 
     /**
      * اسم الـ option الذي يخزّن آخر إصدار تم تطبيقه فعلياً على قاعدة البيانات.
@@ -139,6 +142,7 @@ class Mon_Catalog_Schema
             '1.5.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_5_0'],
             '1.6.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_6_0'],
             '1.7.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_7_0'],
+            '1.8.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_8_0'],
         ];
     }
 
@@ -536,7 +540,74 @@ class Mon_Catalog_Schema
     }
 
     /**
-     * صياغة SQL للجداول الخمسة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
+     * ترقية 1.8.0: إضافة جدول mon_tier_features — تخزين خام (Raw Storage) لقيم
+     * ميزات كل Tier، وفق docs/PACKAGE-FEATURE-MATRIX.md §5 وdocs/FEATURES-
+     * PHASE-2-SPEC.md Commit 1 (Phase 2 — Tier Features Storage). مرحلة "تأسيس
+     * الجدول فقط" — بلا Repository، بلا أي استهلاك من أي مسار آخر بعد.
+     *
+     * feature_key VARCHAR(64) — الطول معتمد صراحةً عبر DEC-001 في
+     * docs/DECISION-LOG.md (أطول مفتاح فعلي في Feature Registry 36 حرفاً،
+     * وVARCHAR(64) يوفر هامشاً للتوسع دون أثر سلبي على الفهرس المركب). لا عمود
+     * value_type هنا — قرار معماري صريح في PACKAGE-FEATURE-MATRIX.md §5. لا
+     * FOREIGN KEY — بنفس نمط بقية جداول هذا الملف.
+     *
+     * نفس فلسفة upgrade_to_1_5_0()/upgrade_to_1_7_0(): تحقّق فعلي (SHOW
+     * COLUMNS + SHOW INDEX) بدل الافتراض الأعمى بنجاح dbDelta() في
+     * sync_schema() (التي أضافت الجدول عبر CREATE TABLE ضمن get_schema_sql()
+     * قبل استدعاء هذه الدالة). قراءة فقط بلا أي كتابة — Idempotent بديهياً.
+     *
+     * التحقق من القيد UNIQUE يقارن ترتيب أعمدته بالضبط (عبر Seq_in_index) مع
+     * الترتيب المطلوب صراحة في PACKAGE-FEATURE-MATRIX.md §5: tier_id ثم
+     * feature_key — أي انحراف في الترتيب أو نقص أي عمود منها يُعيد false
+     * ويمنع تقدّم رقم الإصدار.
+     */
+    private static function upgrade_to_1_8_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_tier_features';
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        if ($columns === null) {
+            return false;
+        }
+
+        $required_columns = [
+            'id', 'tier_id', 'feature_key', 'feature_value', 'created_at', 'updated_at',
+        ];
+
+        $found_columns = [];
+        foreach ($columns as $column) {
+            $found_columns[] = (string) ($column['Field'] ?? '');
+        }
+
+        foreach ($required_columns as $required_column) {
+            if (!in_array($required_column, $found_columns, true)) {
+                return false;
+            }
+        }
+
+        $indexes = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
+        if ($indexes === null) {
+            return false;
+        }
+
+        $unique_columns_by_seq = [];
+        foreach ($indexes as $index) {
+            if (($index['Key_name'] ?? '') === 'tier_feature') {
+                $seq = (int) ($index['Seq_in_index'] ?? 0);
+                $unique_columns_by_seq[$seq] = (string) ($index['Column_name'] ?? '');
+            }
+        }
+        ksort($unique_columns_by_seq);
+
+        $expected_unique_columns = ['tier_id', 'feature_key'];
+
+        return array_values($unique_columns_by_seq) === $expected_unique_columns;
+    }
+
+    /**
+     * صياغة SQL للجداول الستة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
      * مستقل، بلا FOREIGN KEY، بلا ENGINE، بلا ENUM).
      */
     private static function get_schema_sql(): array
@@ -545,11 +616,12 @@ class Mon_Catalog_Schema
 
         $charset_collate = $wpdb->get_charset_collate();
 
-        $table_plans        = $wpdb->prefix . 'mon_plans';
-        $table_tiers        = $wpdb->prefix . 'mon_plan_tiers';
-        $table_services     = $wpdb->prefix . 'mon_services';
-        $table_ledger       = $wpdb->prefix . 'mon_invitation_credit_ledger';
-        $table_entitlements = $wpdb->prefix . 'mon_replacement_entitlements';
+        $table_plans         = $wpdb->prefix . 'mon_plans';
+        $table_tiers         = $wpdb->prefix . 'mon_plan_tiers';
+        $table_services      = $wpdb->prefix . 'mon_services';
+        $table_ledger        = $wpdb->prefix . 'mon_invitation_credit_ledger';
+        $table_entitlements  = $wpdb->prefix . 'mon_replacement_entitlements';
+        $table_tier_features = $wpdb->prefix . 'mon_tier_features';
 
         $sql_plans = "CREATE TABLE $table_plans (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -717,7 +789,40 @@ class Mon_Catalog_Schema
             UNIQUE KEY unique_replacement_entitlement (credit_cycle_id, event_id, source_guest_phone)
         ) $charset_collate;";
 
-        return [$sql_plans, $sql_tiers, $sql_services, $sql_ledger, $sql_entitlements];
+        // ═══════════════════════════════════════════════════════════════════
+        // mon_tier_features — أُضيف في 1.8.0. تخزين خام (Raw Storage) لقيم
+        // ميزات كل Tier (Phase 2 — Tier Features Storage، راجع
+        // docs/PACKAGE-FEATURE-MATRIX.md §5 وdocs/FEATURES-PHASE-2-SPEC.md
+        // Commit 1). هذا الـCommit تأسيس بنية الجدول فقط — بلا Repository
+        // (includes/class-pge-tier-features.php يأتي في Commit 2)، وبلا أي
+        // استهلاك من أي مسار آخر بعد.
+        //
+        // feature_key VARCHAR(64): الطول معتمد صراحةً عبر DEC-001 في
+        // docs/DECISION-LOG.md — أطول مفتاح فعلي في Feature Registry حالياً
+        // (class-pge-feature-registry.php) طوله 36 حرفاً، وVARCHAR(64) يوفر
+        // هامشاً مناسباً للتوسع دون أثر سلبي على الفهرس المركب.
+        //
+        // feature_value LONGTEXT: تخزين خام بلا أي تفسير لنوع القيمة على
+        // مستوى قاعدة البيانات — لا عمود value_type هنا، قرار معماري صريح في
+        // PACKAGE-FEATURE-MATRIX.md §5. التحقق من النوع/القيمة الفعلي مسؤولية
+        // طبقة أعلى (Repository/Feature Registry)، خارج نطاق هذا الجدول.
+        //
+        // القيد UNIQUE (tier_id, feature_key) يمنع تكرار نفس المفتاح لنفس
+        // الـTier — بنفس فلسفة tier_per_plan في mon_plan_tiers. بلا FOREIGN
+        // KEY فعلية (بنفس نمط بقية جداول هذا الملف) — التحقق من صحة tier_id
+        // على مستوى التطبيق فقط.
+        $sql_tier_features = "CREATE TABLE $table_tier_features (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            tier_id BIGINT(20) UNSIGNED NOT NULL,
+            feature_key VARCHAR(64) NOT NULL,
+            feature_value LONGTEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY tier_feature (tier_id, feature_key)
+        ) $charset_collate;";
+
+        return [$sql_plans, $sql_tiers, $sql_services, $sql_ledger, $sql_entitlements, $sql_tier_features];
     }
 }
 

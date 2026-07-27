@@ -196,6 +196,37 @@ class Mon_Events_Users
             return true;
         }
 
+        // ====================================================================
+        // Phase 4 — Commit 2: Snapshot Integration (docs/FEATURES-PHASE-4-SPEC.md
+        // §16 "ترتيب البناء والكتابة"). Snapshot الميزات يُبنى ويُكتَب كخطوة
+        // أولى، قبل بدء الحلقة أدناه الخاصة ببيانات Catalog والرصيد بالكامل
+        // (بلا أي تغيير على تلك الحلقة أو محتواها) — لتقليل نافذة رؤية
+        // Resolver لمستخدم Catalog+Active بلا Snapshot ميزات مكتملة (تلك
+        // الحلقة هي من تكتب لاحقاً _mon_package_status = 'active').
+        //
+        // سياسة الفشل (§16، لا Rollback، لا Transaction حقيقية):
+        // - فشل بناء Snapshot (build_tier_features_snapshot() تُعيد WP_Error):
+        //   يُعاد نفس الخطأ فوراً، صفر كتابة من أي نوع.
+        // - فشل كتابة _mon_package_features: WP_Error فوري، لا زيادة Version
+        //   مُعتمَدة، ولا بدء للحلقة الحالية.
+        // - فشل كتابة _mon_package_feature_version (بعد نجاح Snapshot):
+        //   WP_Error فوري، ولا بدء للحلقة الحالية.
+        // ====================================================================
+        $feature_snapshot = self::build_tier_features_snapshot($tier_id);
+        if (is_wp_error($feature_snapshot)) {
+            return $feature_snapshot;
+        }
+
+        $next_feature_version = self::get_next_package_feature_version($user_id);
+
+        if (!self::update_user_meta_safely($user_id, '_mon_package_features', $feature_snapshot)) {
+            return new WP_Error('meta_update_failed', 'تعذر حفظ Snapshot ميزات الباقة للمستخدم.');
+        }
+
+        if (!self::update_user_meta_safely($user_id, '_mon_package_feature_version', $next_feature_version)) {
+            return new WP_Error('meta_update_failed', 'تعذر حفظ رقم إصدار Snapshot ميزات الباقة للمستخدم.');
+        }
+
         $features = self::normalize_catalog_features($plan['features'] ?? null);
         $snapshot = [
             '_mon_package_source'      => 'catalog',
@@ -377,5 +408,181 @@ class Mon_Events_Users
         }
 
         return (string) $stored_value === (string) $expected_value;
+    }
+
+    /**
+     * ========================================================================
+     * Phase 4 — Commit 1/2: Snapshot Builder + Integration
+     * ========================================================================
+     * وفق docs/FEATURES-PHASE-4-SPEC.md حرفياً (§6 مصدر البيانات، §7/"قرار
+     * شكل Snapshot" شكل الناتج، §16 عقد فشل Repository وترتيب البناء
+     * والكتابة، §17 عقد الإصدار، §18 قيود الأداء)، وDEC-001/DEC-002/DEC-003
+     * في docs/DECISION-LOG.md.
+     *
+     * الدوال أدناه (Commit 1) تُستدعى الآن فعلياً من داخل
+     * activate_catalog_tier() (Commit 2، راجع بداية الدالة أعلاه) — لا تزال
+     * كل الكتابة الفعلية لـUser Meta محصورة داخل activate_catalog_tier()
+     * نفسها؛ الدوال هنا تبقى بناء/حساباً في الذاكرة فقط، بلا أي كتابة من
+     * داخلها هي (لا update_user_meta() ولا مكافئها في أي من الدوال الثلاث
+     * أدناه).
+     */
+
+    /**
+     * Snapshot Builder — يبني في الذاكرة فقط مصفوفة ميزات Tier كاملة، مُفسَّرة
+     * نهائياً، لكل مفاتيح Feature Registry المعروفة وقت الاستدعاء.
+     *
+     * المصدر (docs/FEATURES-PHASE-4-SPEC.md §6): PGE_Tier_Features::get_all_tier_features($tier_id)
+     * (Phase 2، استدعاء واحد فقط) + PGE_Feature_Registry::all() (Phase 1،
+     * استدعاء واحد فقط). لا استدعاء لأي Public Resolver API ولا لأي دالة
+     * داخلية معتمِدة على أولوية Snapshot (pge_get_user_feature_value(),
+     * pge_get_user_package_features(), pge_user_has_feature(),
+     * pge_feature_resolver_resolve_raw_value(),
+     * pge_feature_resolver_build_bulk_context()) — ممنوع صراحة وفق المرجع،
+     * لأنها تقرأ Snapshot الحالي/القديم كأولوية أولى.
+     *
+     * البناء يتكرر على مفاتيح Registry حصراً، لا على صفوف Tier — أي صف Tier
+     * لمفتاح غير موجود في Registry يُتجاهَل تلقائياً بلا أثر على الناتج.
+     *
+     * عقد الإرجاع (لا قيمة ثالثة ممكنة):
+     * - array مسطّحة (feature_key => قيمة مُفسَّرة نهائية bool|int) عند
+     *   النجاح، تحتوي دوماً كل مفاتيح Registry الحالية (19 اليوم) بلا
+     *   استثناء — مفتاح بلا صف Tier يُملأ بقيمة Default من Registry
+     *   مُفسَّرة (مثال: (int) 'TBD' = 0). بلا type/label/metadata/raw_value/
+     *   source/tier_id/plan_id داخل القيم.
+     * - WP_Error عند $tier_id غير صالح (absint() = 0)، أو عند فشل استعلام
+     *   فعلي لـget_all_tier_features() (تُعيد false وفق DEC-002 — لا يُعامَل
+     *   كـTier فارغ شرعاً؛ Tier فارغ فعلياً (get_all_tier_features() === [])
+     *   حالة نجاح صحيحة تُنتج Snapshot كاملة من Registry Default).
+     * - لا تُعاد أبداً false أو null، ولا تُرمى Exception.
+     *
+     * @param mixed $tier_id
+     * @return array|WP_Error
+     */
+    private static function build_tier_features_snapshot($tier_id)
+    {
+        $tier_id = absint($tier_id);
+        if ($tier_id === 0) {
+            return new WP_Error('invalid_tier_id', 'معرّف المستوى غير صالح لبناء Snapshot الميزات.');
+        }
+
+        if (!class_exists('PGE_Feature_Registry') || !class_exists('PGE_Tier_Features')) {
+            return new WP_Error('feature_layer_unavailable', 'طبقة الميزات (Registry/Repository) غير متاحة حالياً.');
+        }
+
+        $registry = PGE_Feature_Registry::all();
+
+        // استدعاء واحد فقط — لا حلقة استعلامات لكل مفتاح (لا N+1)، مطابقاً
+        // لمبدأ إصلاح N+1 المُعتمَد فعلياً في Resolver (Commit 1.1).
+        $tier_rows = PGE_Tier_Features::get_all_tier_features($tier_id);
+        if ($tier_rows === false) {
+            // فشل استعلام فعلي (DEC-002) — يُوقِف البناء فوراً، لا يُعامَل
+            // كـ"Tier فارغ شرعاً" (docs/FEATURES-PHASE-4-SPEC.md §16: تمييز
+            // متعمَّد عن سلوك امتصاص الفشل وقت القراءة في Resolver/DEC-003).
+            return new WP_Error('tier_features_repository_failure', 'تعذر قراءة ميزات المستوى من قاعدة البيانات.');
+        }
+
+        // تحويل صفوف Tier (get_all_tier_features() تُعيد [] عند النجاح بلا
+        // صفوف، أو مصفوفة صفوف ARRAY_A) إلى خريطة بحث feature_key => raw
+        // value خام. صف بمفتاح غير موجود في Registry يُستبعَد هنا صراحة —
+        // "صف يتيم" يُتجاهَل تماماً، بلا أثر على الناتج النهائي.
+        $tier_map = [];
+        foreach ($tier_rows as $row) {
+            if (!is_array($row) || !array_key_exists('feature_key', $row)) {
+                continue;
+            }
+
+            $feature_key = (string) $row['feature_key'];
+            if (!array_key_exists($feature_key, $registry)) {
+                continue;
+            }
+
+            $tier_map[$feature_key] = $row['feature_value'] ?? null;
+        }
+
+        // الحلقة الوحيدة في هذه الدالة تتكرر على مفاتيح Registry حصراً —
+        // لا استدعاء Repository إضافي بداخلها (كل القراءة تمت أعلاه مرة
+        // واحدة)، فلا N+1 محتمَل هنا.
+        $snapshot = [];
+        foreach ($registry as $feature_key => $definition) {
+            $type = (is_array($definition) && isset($definition['type']))
+                ? (string) $definition['type']
+                : '';
+
+            if (array_key_exists($feature_key, $tier_map)) {
+                $raw_value = $tier_map[$feature_key];
+            } else {
+                $raw_value = (is_array($definition) && array_key_exists('default', $definition))
+                    ? $definition['default']
+                    : null;
+            }
+
+            $snapshot[$feature_key] = self::interpret_feature_value_for_snapshot($type, $raw_value);
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * تفسير قيمة ميزة واحدة وفق نوعها لغرض Snapshot Builder أعلاه.
+     *
+     * تُعيد استخدام pge_feature_resolver_interpret_by_type() من
+     * includes/feature-resolver.php (دالة تفسير خالصة — لا تقرأ $user_id
+     * ولا Snapshot ولا أي مصدر بيانات خاص بمستخدم) إن كانت مُعرَّفة، وفق
+     * الاستثناء الصريح المسموح في docs/FEATURES-PHASE-4-SPEC.md §6. هذا لا
+     * يُعدِّل Resolver ولا يُنشئ مساراً جديداً — استدعاء لدالة عامة موجودة
+     * أصلاً، مُحمَّلة قبل هذا الملف بلا شرط في pgevents-core.php.
+     *
+     * احتياط دفاعي فقط (غير متوقَّع الحدوث عملياً وفق ترتيب require_once
+     * الحالي): إن لم تكن الدالة متاحة لأي سبب، تُطبَّق نفس قاعدتَي التفسير
+     * حرفياً هنا (Boolean وفق PACKAGE-FEATURE-MATRIX.md §7/
+     * event-factory.php:333-344؛ Integer/Percentage عبر (int) صريح وفق
+     * DEC-003) — بلا أي تعديل على includes/feature-resolver.php نفسه.
+     *
+     * @param string $type
+     * @param mixed  $raw_value
+     * @return mixed
+     */
+    private static function interpret_feature_value_for_snapshot($type, $raw_value)
+    {
+        if (function_exists('pge_feature_resolver_interpret_by_type')) {
+            return pge_feature_resolver_interpret_by_type($type, $raw_value);
+        }
+
+        if ($type === 'boolean') {
+            $value = strtolower(trim((string) $raw_value));
+            return in_array($value, ['1', 'on', 'yes', 'true'], true);
+        }
+
+        if ($type === 'integer' || $type === 'percentage') {
+            return (int) $raw_value;
+        }
+
+        return $raw_value;
+    }
+
+    /**
+     * Version Helper — يحسب رقم الإصدار التالي لـSnapshot ميزات مستخدم، في
+     * الذاكرة فقط. لا كتابة User Meta من داخل هذه الدالة نفسها — القيمة
+     * المُعادة منها تُكتَب في activate_catalog_tier() (Commit 2، التي تستدعي
+     * هذه الدالة فعلياً الآن قبل بدء الحلقة الحالية للرصيد/بيانات Catalog).
+     *
+     * وفق docs/FEATURES-PHASE-4-SPEC.md §17: القيمة الحالية تُقرأ عبر
+     * absint(get_user_meta($user_id, '_mon_package_feature_version', true))
+     * ثم +1 بالضبط. قيمة مفقودة أو تالفة (غير رقمية) تؤول لـ0 عبر absint()
+     * بلا تمييز مطلوب بينهما، فتُنتج 1 تلقائياً — بلا حاجة لفرع خاص.
+     *
+     * تسمية الدالة تستخدم "feature" (مفرد) لا "features"، مطابقةً حرفياً
+     * لاسم مفتاح User Meta الفعلي في PACKAGE-FEATURE-MATRIX.md §9:
+     * `_mon_package_feature_version`.
+     *
+     * @param mixed $user_id
+     * @return int
+     */
+    private static function get_next_package_feature_version($user_id)
+    {
+        $user_id = absint($user_id);
+        $current = absint(get_user_meta($user_id, '_mon_package_feature_version', true));
+
+        return $current + 1;
     }
 }

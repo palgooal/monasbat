@@ -37,6 +37,24 @@ require_once PGE_PATH . 'includes/class-pge-replacement-entitlements.php';
 // record_rsvp() فقط. لا إرسال Replacement فعلي، لا لمس لـQueue/Cron/Ledger.
 require_once PGE_PATH . 'includes/replacement-entitlement-grant.php';
 
+// Feature Registry — طبقة الميزات الجديدة (Phase 1: تأسيس فقط، وفق
+// docs/FEATURES-PHASE-1-SPEC.md، مبني على docs/PACKAGE-FEATURE-MATRIX.md
+// §6/§8). تعريف الميزات فقط — لا جدول قاعدة بيانات، لا Resolver، لا
+// استهلاك من أي صفحة مستخدم بعد.
+require_once PGE_PATH . 'includes/class-pge-feature-registry.php';
+
+// Tier Features Repository — تخزين خام لقيم ميزات كل Tier (Phase 2 —
+// Commit 2، وفق docs/FEATURES-PHASE-2-SPEC.md §9، مبني على جدول
+// mon_tier_features المُضاف في class-mon-catalog-schema.php عند 1.8.0).
+// CRUD خام فقط — لا Resolver، لا Snapshot، لا استهلاك من أي مسار آخر بعد.
+require_once PGE_PATH . 'includes/class-pge-tier-features.php';
+
+// Feature Resolver — الدوال الثلاث العامة لتفسير ميزات المستخدم (Phase 3 —
+// Commit 1، وفق docs/FEATURES-PHASE-3-SPEC.md، مبني على DEC-001/DEC-002/DEC-003
+// في docs/DECISION-LOG.md). قراءة فقط عبر PGE_Feature_Registry/PGE_Tier_Features/
+// PGE_Catalog/PGE_Packages — لا كتابة Snapshot، لا استهلاك من أي صفحة مستخدم بعد.
+require_once PGE_PATH . 'includes/feature-resolver.php';
+
 // صفحة إدارة الباقات (خطوة النموذج فقط — عرض HTML بلا معالجة $_POST وبلا
 // استدعاء لـ PGE_Catalog::create_plan() بعد؛ لا حفظ ولا رسائل نجاح/فشل)
 add_action('admin_menu', function () {
@@ -530,6 +548,199 @@ function pge_render_catalog_tiers_page()
                 }
             }
         }
+    } elseif (
+        isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST'
+        && isset($_POST['pge_catalog_action'])
+        && wp_unslash($_POST['pge_catalog_action']) === 'update_tier_features'
+        && isset($_POST['submit_update_tier_features'])
+    ) {
+        // Phase 5 — Commit 2 (كتابة ميزات المستوى)، وفق
+        // docs/FEATURES-PHASE-5-SPEC.md §8/§9/§10/§15. كتابة عبر
+        // PGE_Tier_Features::set_tier_feature_value() حصراً — لا لمس لـ
+        // PGE_Catalog/Resolver/Snapshot/Registry.
+        $tier_post_handled = true;
+
+        $posted_tier_id = absint(wp_unslash($_POST['tier_id'] ?? 0));
+
+        check_admin_referer('pge_update_catalog_tier_features_' . $posted_tier_id, 'pge_catalog_tier_features_nonce');
+
+        $posted_plan_id = absint(wp_unslash($_POST['plan_id'] ?? 0));
+
+        $posted_plan = ($posted_plan_id > 0) ? PGE_Catalog::get_plan($posted_plan_id) : null;
+        $posted_tier = ($posted_tier_id > 0) ? PGE_Catalog::get_tier($posted_tier_id) : null;
+
+        if ($posted_plan === null) {
+            $notice_type = 'error';
+            $notice_message = 'تعذر العثور على الباقة المطلوبة.';
+
+            $selected_plan_id = 0;
+            $selected_plan = null;
+            $editing_tier_id = 0;
+            $editing_tier = null;
+            $tiers = [];
+        } else {
+            $selected_plan_id = $posted_plan_id;
+            $selected_plan = $posted_plan;
+
+            if ($posted_tier === null) {
+                $notice_type = 'error';
+                $notice_message = 'تعذر العثور على المستوى المطلوب تعديل ميزاته.';
+
+                $editing_tier_id = 0;
+                $editing_tier = null;
+
+                $tiers = PGE_Catalog::get_plan_tiers($posted_plan_id);
+                if (!is_array($tiers)) {
+                    $tiers = [];
+                }
+            } elseif (absint($posted_tier['plan_id']) !== $posted_plan_id) {
+                $notice_type = 'error';
+                $notice_message = 'المستوى المطلوب لا يتبع الباقة المختارة.';
+
+                $editing_tier_id = 0;
+                $editing_tier = null;
+
+                $tiers = PGE_Catalog::get_plan_tiers($posted_plan_id);
+                if (!is_array($tiers)) {
+                    $tiers = [];
+                }
+            } else {
+                $editing_tier_id = $posted_tier_id;
+                $editing_tier = $posted_tier;
+
+                $tier_edit_form_values = [
+                    'name'                     => $posted_tier['name'],
+                    'tier_key'                 => $posted_tier['tier_key'],
+                    'price'                    => $posted_tier['price'],
+                    'currency'                 => $posted_tier['currency'],
+                    'salla_product_id'         => $posted_tier['salla_product_id'] ?? '',
+                    'salla_sku'                => $posted_tier['salla_sku'] ?? '',
+                    'salla_url'                => $posted_tier['salla_url'] ?? '',
+                    'status'                   => $posted_tier['status'],
+                    'sort_order'               => $posted_tier['sort_order'],
+                    'invitation_credit_limit'  => $posted_tier['invitation_credit_limit'] ?? '0',
+                    'replacement_credit_limit' => $posted_tier['replacement_credit_limit'] ?? '0',
+                ];
+
+                // Registry تُقرأ مرة واحدة فقط قبل أي فحص أو حلقة — لا Lookup
+                // متكرر داخل أي منهما.
+                $pge_save_features_registry = PGE_Feature_Registry::all();
+
+                // ============================================================
+                // Commit 2.1 — Request-Level Completeness Check
+                // ============================================================
+                // قبل أي كتابة وقبل دخول حلقة الحفظ: tier_features يجب أن
+                // تكون موجودة وArray فعلياً، وكل مفتاح Registry من نوع
+                // integer/percentage يجب أن يصل دائماً ضمنها — حقل Number
+                // Input لا يغيب أبداً من طلب POST كامل (خلافاً لـCheckbox
+                // الذي يغيب طبيعياً عند عدم التحديد). غياب أي منها إشارة
+                // شبه مؤكَّدة على طلب مبتور/ناقص، لا على نية إدارية صريحة.
+                // فشل هذا الفحص = صفر كتابات، بلا استثناء لأي حقل.
+                $pge_save_posted_features = null;
+                if (isset($_POST['tier_features']) && is_array($_POST['tier_features'])) {
+                    $pge_save_posted_features = wp_unslash($_POST['tier_features']);
+                }
+
+                $pge_save_request_incomplete = ($pge_save_posted_features === null);
+
+                if (!$pge_save_request_incomplete) {
+                    foreach ($pge_save_features_registry as $pge_save_required_key => $pge_save_required_def) {
+                        if (
+                            ($pge_save_required_def['type'] === 'integer' || $pge_save_required_def['type'] === 'percentage')
+                            && !array_key_exists($pge_save_required_key, $pge_save_posted_features)
+                        ) {
+                            $pge_save_request_incomplete = true;
+                            break;
+                        }
+                    }
+                }
+
+                if ($pge_save_request_incomplete) {
+                    $notice_type = 'error';
+                    $notice_message = 'تعذر حفظ ميزات المستوى لأن بيانات النموذج غير مكتملة. لم يتم حفظ أي تغيير.';
+                } else {
+                    // ========================================================
+                    // Field-Level Save Loop (أفضل-جهد، بلا Rollback)
+                    // ========================================================
+                    $pge_save_any_failure = false;
+
+                    foreach ($pge_save_features_registry as $pge_save_feature_key => $pge_save_feature_def) {
+                        // دفاع في العمق (§15): الحلقة تتكرر على مفاتيح Registry
+                        // نفسها فقط — أي مفتاح داخل $_POST['tier_features'] غير
+                        // موجود هنا (حتى لو أُرسل عمداً) لا يُزار إطلاقاً، فلا
+                        // يُكتَب أبداً. لا Feature Key حر يُنشَأ في mon_tier_features.
+                        $pge_save_feature_type = $pge_save_feature_def['type'];
+                        $pge_save_key_present = array_key_exists($pge_save_feature_key, $pge_save_posted_features);
+                        $pge_save_posted_value = $pge_save_key_present ? $pge_save_posted_features[$pge_save_feature_key] : null;
+
+                        if ($pge_save_feature_type === 'boolean') {
+                            // Checkbox Semantics فقط: غائب = '0' صراحة (محسوم
+                            // في §9، لا حذف صف أبداً). موجود بقيمة Scalar
+                            // تساوي '1' حرفياً بعد wp_unslash = '1'. أي قيمة
+                            // أخرى موجودة (بما فيها '0'/'false'/'yes'/Array)
+                            // فشل Validation لهذا الحقل فقط.
+                            if (!$pge_save_key_present) {
+                                $pge_save_raw_value = '0';
+                            } elseif (is_scalar($pge_save_posted_value) && (string) $pge_save_posted_value === '1') {
+                                $pge_save_raw_value = '1';
+                            } else {
+                                $pge_save_any_failure = true;
+                                continue;
+                            }
+                        } elseif ($pge_save_feature_type === 'integer' || $pge_save_feature_type === 'percentage') {
+                            // Type Validation Only (§10) — عدد صحيح صالح
+                            // شكلياً فقط، بلا فحص نطاق، بلا Clamp. القيمة يجب
+                            // أن تكون Scalar قبل أي trim()/cast لتفادي PHP
+                            // Warning (Array to string conversion).
+                            if (!is_scalar($pge_save_posted_value)) {
+                                $pge_save_any_failure = true;
+                                continue;
+                            }
+
+                            $pge_save_trimmed_value = trim((string) $pge_save_posted_value);
+
+                            if (!preg_match('/^-?[0-9]+$/', $pge_save_trimmed_value)) {
+                                // فشل تحقق شكلي — هذا الحقل فقط يُهمَل، لا إيقاف
+                                // لبقية الحقول الصالحة (§10/§8: أفضل-جهد + فشل
+                                // صريح غير صامت).
+                                $pge_save_any_failure = true;
+                                continue;
+                            }
+
+                            $pge_save_raw_value = $pge_save_trimmed_value;
+                        } else {
+                            // نوع Registry غير معروف اليوم (لا يوجد حالياً) —
+                            // رفض صريح، لا Fallback رقمي صامت.
+                            $pge_save_any_failure = true;
+                            continue;
+                        }
+
+                        $pge_save_write_result = PGE_Tier_Features::set_tier_feature_value(
+                            $posted_tier_id,
+                            $pge_save_feature_key,
+                            $pge_save_raw_value
+                        );
+
+                        if ($pge_save_write_result !== true) {
+                            $pge_save_any_failure = true;
+                        }
+                    }
+
+                    if ($pge_save_any_failure) {
+                        $notice_type = 'error';
+                        $notice_message = 'تعذر حفظ بعض ميزات المستوى.';
+                    } else {
+                        $notice_type = 'success';
+                        $notice_message = 'تم حفظ ميزات المستوى بنجاح.';
+                    }
+                }
+
+                $tiers = PGE_Catalog::get_plan_tiers($posted_plan_id);
+                if (!is_array($tiers)) {
+                    $tiers = [];
+                }
+            }
+        }
     }
 
     if (!$tier_post_handled) {
@@ -887,6 +1098,75 @@ function pge_render_catalog_tiers_page()
                         ?>
                         <a href="<?php echo esc_url($tier_cancel_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
                     </form>
+
+                    <?php
+                    // Phase 5 — Commit 1 (قراءة/عرض فقط، بلا أي معالجة POST هنا).
+                    // قراءة واحدة فقط لـget_all_tier_features() — لا N+1 (راجع
+                    // docs/FEATURES-PHASE-5-SPEC.md §7).
+                    $pge_tier_features_registry = PGE_Feature_Registry::all();
+                    $pge_tier_features_raw = PGE_Tier_Features::get_all_tier_features($editing_tier_id);
+                    $pge_tier_features_fetch_failed = ($pge_tier_features_raw === false);
+                    $pge_tier_feature_overrides = [];
+                    if (is_array($pge_tier_features_raw)) {
+                        foreach ($pge_tier_features_raw as $pge_tier_feature_row) {
+                            $pge_tier_feature_overrides[(string) $pge_tier_feature_row['feature_key']] = (string) $pge_tier_feature_row['feature_value'];
+                        }
+                    }
+                    ?>
+
+                    <h2><?php esc_html_e('إدارة ميزات المستوى', 'pgevents'); ?></h2>
+
+                    <?php if ($pge_tier_features_fetch_failed): ?>
+                        <div class="notice notice-error inline">
+                            <p><?php esc_html_e('تعذّرت قراءة ميزات هذا المستوى من قاعدة البيانات — حاول تحديث الصفحة. لا تُعرَض قيم الميزات الآن.', 'pgevents'); ?></p>
+                        </div>
+                    <?php else: ?>
+                        <p class="description"><?php esc_html_e('عند عدم وجود قيمة مخصَّصة لهذا المستوى لميزة ما، تُعرَض القيمة الافتراضية من سجل الميزات (Feature Registry) — هذه قيمة معروضة فقط لأغراض الواجهة، وليست صفاً مخزَّناً فعلياً في قاعدة البيانات إلا إن حُفِظ صراحة.', 'pgevents'); ?></p>
+
+                        <form method="post">
+                            <?php wp_nonce_field('pge_update_catalog_tier_features_' . $editing_tier_id, 'pge_catalog_tier_features_nonce'); ?>
+                            <input type="hidden" name="pge_catalog_action" value="update_tier_features">
+                            <input type="hidden" name="tier_id" value="<?php echo esc_attr($editing_tier_id); ?>">
+                            <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
+
+                            <table class="form-table" role="presentation">
+                                <?php foreach ($pge_tier_features_registry as $pge_feature_key => $pge_feature_def): ?>
+                                    <?php
+                                    $pge_feature_has_override = array_key_exists($pge_feature_key, $pge_tier_feature_overrides);
+                                    $pge_feature_raw_value = $pge_feature_has_override
+                                        ? $pge_tier_feature_overrides[$pge_feature_key]
+                                        : $pge_feature_def['default'];
+                                    // نفس دالة تفسير Resolver (Phase 3) — القيمة المعروضة هنا
+                                    // مطابقة لما سيراه أي مستخدم فعلي عبر Default (راجع §7 من
+                                    // docs/FEATURES-PHASE-5-SPEC.md).
+                                    $pge_feature_display_value = pge_feature_resolver_interpret_by_type($pge_feature_def['type'], $pge_feature_raw_value);
+                                    $pge_feature_field_id = 'pge_tier_feature_' . preg_replace('/[^a-z0-9_]/', '_', $pge_feature_key);
+                                    ?>
+                                    <tr>
+                                        <th scope="row">
+                                            <label for="<?php echo esc_attr($pge_feature_field_id); ?>"><?php echo esc_html($pge_feature_def['admin_label']); ?></label>
+                                        </th>
+                                        <td>
+                                            <?php if ($pge_feature_def['type'] === 'boolean'): ?>
+                                                <input type="checkbox" id="<?php echo esc_attr($pge_feature_field_id); ?>" name="tier_features[<?php echo esc_attr($pge_feature_key); ?>]" value="1" <?php checked((bool) $pge_feature_display_value); ?>>
+                                            <?php else: ?>
+                                                <input type="number" id="<?php echo esc_attr($pge_feature_field_id); ?>" name="tier_features[<?php echo esc_attr($pge_feature_key); ?>]" class="small-text" step="1" value="<?php echo esc_attr((int) $pge_feature_display_value); ?>">
+                                            <?php endif; ?>
+
+                                            <p class="description">
+                                                <?php echo esc_html($pge_feature_def['description']); ?>
+                                                <?php if (!$pge_feature_has_override): ?>
+                                                    <br><em><?php esc_html_e('عند عدم وجود Override تُستخدَم القيمة الافتراضية من Feature Registry.', 'pgevents'); ?></em>
+                                                <?php endif; ?>
+                                            </p>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </table>
+
+                            <?php submit_button('حفظ ميزات المستوى', 'primary', 'submit_update_tier_features', false); ?>
+                        </form>
+                    <?php endif; ?>
                 <?php endif; ?>
 
                 <h2><?php esc_html_e('مستويات الباقة', 'pgevents'); ?></h2>

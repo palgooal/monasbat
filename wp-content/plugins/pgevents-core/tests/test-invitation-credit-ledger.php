@@ -496,6 +496,8 @@ $wpdb = $GLOBALS['wpdb'];
 
 require_once __DIR__ . '/../includes/class-pge-catalog.php';
 require_once __DIR__ . '/../includes/class-mon-catalog-schema.php';
+require_once __DIR__ . '/../includes/class-pge-feature-registry.php';
+require_once __DIR__ . '/../includes/class-pge-tier-features.php';
 require_once __DIR__ . '/../includes/class-mon-events-users.php';
 require_once __DIR__ . '/../includes/class-pge-invitation-credit-ledger.php';
 

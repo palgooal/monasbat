@@ -49,7 +49,7 @@ if ($plan_name === '' || $plan_name === '—') {
     $plan_name = 'بدون باقة';
 }
 
-$can_google_map = $feature_enabled($plan_limits, 'google_map');
+$can_google_map = pge_user_has_feature($user_id, 'google_maps');
 $can_header_img = $feature_enabled($plan_limits, 'header_img');
 $can_public_chat = $feature_enabled($plan_limits, 'public_chat');
 $can_private_chat = $feature_enabled($plan_limits, 'private_chat');
