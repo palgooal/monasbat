@@ -401,7 +401,7 @@ function pge_handle_event_creation()
     // 3. استلام وتنظيف البيانات
     $title    = sanitize_text_field($_POST['event_title'] ?? '');
     $date     = sanitize_text_field($_POST['event_date'] ?? '');
-    $can_google_map = pge_plan_feature_enabled_for_events($plan_limits, 'google_map');
+    $can_google_map = pge_user_has_feature($user_id, 'google_maps');
     $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
     $location = $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '';
     $address  = sanitize_text_field($_POST['event_address'] ?? '');
@@ -489,7 +489,7 @@ function pge_handle_event_update()
 
     if ($result) {
         $plan_limits = pge_get_user_plan_limits_for_events(get_current_user_id());
-        $can_google_map = pge_plan_feature_enabled_for_events($plan_limits, 'google_map');
+        $can_google_map = pge_user_has_feature(get_current_user_id(), 'google_maps');
         $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
 
         update_post_meta($event_id, '_pge_event_date',     sanitize_text_field($_POST['event_date']));
