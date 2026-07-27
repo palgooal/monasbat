@@ -48,9 +48,11 @@ $manage_status_label   = $manage_event_ts ? ($manage_is_upcoming ? 'قادمة' 
 // عرض فقط — ملخص الباقة/الحصة لنفس المستخدم الحالي (إعادة استخدام نفس الدوال والصيغة المستخدمة في لوحة التحكم وصفحة الإنشاء، بدون أي حساب جديد)
 $manage_user_id      = get_current_user_id();
 $manage_plan_limits  = function_exists('pge_get_user_plan_limits_for_events') ? pge_get_user_plan_limits_for_events($manage_user_id) : [];
-$manage_plan_name    = (string) get_user_meta($manage_user_id, '_mon_package_name', true);
-if ($manage_plan_name === '') {
-    $manage_plan_name = (string) ($manage_plan_limits['name'] ?? 'بدون باقة');
+$manage_plan_name    = function_exists('pge_resolve_admin_user_package_name')
+    ? pge_resolve_admin_user_package_name($manage_user_id)
+    : (string) get_user_meta($manage_user_id, '_mon_package_name', true);
+if ($manage_plan_name === '' || $manage_plan_name === '—') {
+    $manage_plan_name = 'بدون باقة';
 }
 // الحد المسموح يأتي حصراً من الدالة المركزية — بلا أي شرط Legacy إضافي
 // (كان يقرأ _mon_events_limit مباشرة كأولوية، ما قد يتجاوز حد Catalog).
