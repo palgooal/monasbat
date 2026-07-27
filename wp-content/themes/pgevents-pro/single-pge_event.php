@@ -34,20 +34,25 @@ if (have_posts()) :
             <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
                 <div class="lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)] lg:items-start lg:gap-8 xl:gap-10">
 
-                    <!-- العمود الرئيسي: الدعوة نفسها (العنوان + العمل الفني + التاريخ/الوقت/الموقع + العدّاد) -->
+                    <!-- العمود الرئيسي: الدعوة نفسها (العنوان + العمل الفني + التاريخ/الوقت/الموقع +
+                         العدّاد) ثم مكوّن التبويبات (التفاصيل/الألبوم/الدردشة) مباشرة أسفل أزرار
+                         "تأكيد الحضور"/"أضف للتقويم" — event-tabs.php مكوّن مستقل بمسؤولية واحدة
+                         (تبويبات فقط)، منفصل تماماً عن بطاقة الدخول (QR) بعد فصلهما عن ملف
+                         tabs.php القديم المشترك. -->
                     <div class="min-w-0">
-                        <?php get_template_part('template-parts/event/hero'); ?>
+                        <?php
+                        get_template_part('template-parts/event/hero');
+                        get_template_part('template-parts/event/event-tabs');
+                        ?>
                     </div>
 
-                    <!-- العمود الجانبي: RSVP أولاً (الإجراء الأساسي) ثم QR/المشاركة/التفاصيل
-                         — إزاحة علوية خفيفة على lg تُحاذي أول بطاقة في العمود الجانبي مع
-                         بطاقة العمل الفني في العمود الرئيسي (بدل محاذاتها مع نص الترويسة
-                         فوقها)؛ القيمة (8) مأخوذة من نفس مقياس التباعد المستخدم أصلاً بين
-                         العمودين (lg:gap-8) وليست عشوائية -->
+                    <!-- العمود الجانبي: RSVP (الإجراء الأساسي) ثم بطاقة الدخول (QR/رمز الدعوة/
+                         مشاركة) — event-entry-card.php مكوّن مستقل بمسؤولية واحدة، منفصل تماماً
+                         عن مكوّن التبويبات. -->
                     <div class="mt-6 min-w-0 lg:mt-8 lg:self-start">
                         <?php
                         get_template_part('template-parts/event/rsvp');
-                        get_template_part('template-parts/event/tabs');
+                        get_template_part('template-parts/event/event-entry-card');
                         ?>
                     </div>
 
