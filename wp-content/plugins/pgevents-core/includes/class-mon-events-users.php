@@ -165,6 +165,44 @@ class Mon_Events_Users
         $invitation_credit_limit = absint($tier['invitation_credit_limit'] ?? 0);
         $replacement_credit_limit = absint($tier['replacement_credit_limit'] ?? 0);
 
+        // Event Quota (Commit 3 من معمارية Event Quota المعتمدة) — قراءة
+        // دفاعية بنفس أسلوب invitation_credit_limit/replacement_credit_limit
+        // أعلاه بالضبط (absint()-style casting، بلا استدعاء
+        // PGE_Catalog::normalize_event_quota_*() الخاصتين private، وبلا رفض
+        // للتفعيل عند قيمة غير متوقعة): عمودا mon_plan_tiers.event_quota_mode/
+        // event_quota_limit مضمونان صالحين دوماً من مسار CRUD الوحيد الذي
+        // يكتبهما (PGE_Catalog::create_tier()/update_tier() — Commit 2)، لذا
+        // هذه القراءة دفاعية فقط ضد صف tier غير متوقع (تماماً كتعليق
+        // invitation_credit_limit أعلاه)، لا تحقّقاً أساسياً.
+        //
+        // القرار المعماري الحاسم لهذا الـCommit: القيمتان المكتوبتان في
+        // Snapshot المستخدم أدناه (_mon_event_quota_mode/_mon_event_quota_limit)
+        // هما "الاستحقاق التجاري المشترى في لحظة هذا التفعيل تحديداً" —
+        // نسخة مجمَّدة من صف الـTier الحالي وقت التفعيل، وليست إشارة حية لصف
+        // الـTier. إن عدَّل المسؤول لاحقاً event_quota_limit لنفس الـTier (من
+        // 3 إلى 5 مثلاً)، لا يتأثر أي مستخدم مُفعَّل مسبقاً على هذا الـTier
+        // إطلاقاً — Snapshot ذلك المستخدم يبقى 3 كما اشتراه بالضبط، ولا
+        // تُعاد قراءته من الـTier مطلقاً بعد هذه اللحظة. فقط تفعيل جديد لاحق
+        // (تجديد/ترقية/تخفيض — أي استدعاء لا يمر من فرع "تكرار طلب متطابق"
+        // أدناه) يقرأ القيمة الحالية للـTier ويكتب Snapshot جديداً بها. هذا
+        // يطابق حرفياً نفس مبدأ Snapshot المُطبَّق فعلاً على guest_limit/
+        // invitation_credit_total/replacement_credit_total أعلاه — لا مبدأ
+        // جديد، إعادة استخدام للمبدأ القائم فقط.
+        $event_quota_mode = is_string($tier['event_quota_mode'] ?? null)
+            ? strtolower(trim((string) $tier['event_quota_mode']))
+            : 'limited';
+        if ($event_quota_mode !== 'unlimited') {
+            $event_quota_mode = 'limited';
+        }
+
+        $event_quota_limit_raw = $tier['event_quota_limit'] ?? 1;
+        $event_quota_limit = (is_int($event_quota_limit_raw) || (is_string($event_quota_limit_raw) && preg_match('/^[0-9]+$/', trim($event_quota_limit_raw))))
+            ? (int) $event_quota_limit_raw
+            : 1;
+        if ($event_quota_limit < 1) {
+            $event_quota_limit = 1;
+        }
+
         // معرّف دورة الرصيد (Invitation Credits Engine — المرحلة الثانية):
         // يُولَّد فريداً عند كل كتابة Snapshot فعلية أدناه (لا عند الاستدعاء
         // المتطابق تماماً الذي يُعيد true مبكراً أسفل هذا السطر — تلك حالة
@@ -242,6 +280,13 @@ class Mon_Events_Users
             '_mon_package_currency'    => $currency,
             // القيمة الفارغة تمثل NULL في Catalog بوضوح، ولا تتحول إلى صفر.
             '_mon_guest_limit'         => $guest_limit === null ? '' : $guest_limit,
+            // Event Quota Snapshot (Commit 3) — يُكتَبان معاً دائماً، لا أحدهما
+            // بدون الآخر (راجع التعليق أعلى حساب $event_quota_mode/
+            // $event_quota_limit لسبب "التجميد عند لحظة الشراء" وعزلهما عن أي
+            // تعديل لاحق على صف الـTier). لا قراءة لهذين المفتاحين في أي مكان
+            // آخر من الكود بعد — ذلك خارج نطاق هذا الـCommit تماماً.
+            '_mon_event_quota_mode'    => $event_quota_mode,
+            '_mon_event_quota_limit'   => $event_quota_limit,
             '_mon_salla_product_id'    => sanitize_text_field((string) ($tier['salla_product_id'] ?? '')),
             '_mon_catalog_features'    => $features,
             // Snapshot رصيد الدعوات — كل تفعيل جديد (سواء أول تفعيل أو تبديل

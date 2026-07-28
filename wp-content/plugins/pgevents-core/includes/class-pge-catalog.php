@@ -624,6 +624,75 @@ class PGE_Catalog
     }
 
     /**
+     * تطبيع event_quota_mode (Event Quota Architecture، Commit 2). القيمتان
+     * المسموحتان حصراً: 'limited' أو 'unlimited' — نصّي VARCHAR(20) وليس
+     * ENUM، طبقاً للقرار المعماري المعتمد (راجع تعليق العمود في
+     * class-mon-catalog-schema.php::upgrade_to_1_9_0()). القيم المسموحة
+     * تُفرَض هنا فقط، على مستوى التطبيق، تماماً كما تُفرَض status/currency عبر
+     * normalize_status()/normalize_currency() في هذا الملف.
+     *
+     * يختلف هذا عمداً عن أسلوب normalize_status() (التي تُعيد null لرفض
+     * العملية بأكملها عند قيمة غير صالحة): القرار المعتمد صراحةً لـ
+     * event_quota_mode هو أن أي قيمة غير صالحة (نوع خاطئ، فارغة، أو نص لا
+     * يطابق القيمتين المسموحتين) "تُطبَّع بأمان" إلى 'limited' بدل رفض
+     * العملية — بنفس فلسفة normalize_credit_limit() أعلاه (لا تُعيد أبداً
+     * false/null). هذا يعني أن create_tier()/update_tier() لا يحتاجان أي
+     * فحص رفض لهذا الحقل إطلاقاً؛ القيمة المُعادة صالحة دوماً.
+     *
+     * تقبل: string فقط تجرى عليها المقارنة (بعد trim + lowercase)؛ أي نوع
+     * آخر (int، bool، array، null) يُعامَل كغير صالح فوراً → 'limited'.
+     */
+    private static function normalize_event_quota_mode($value)
+    {
+        if (!is_string($value)) {
+            return 'limited';
+        }
+
+        $normalized = strtolower(trim($value));
+
+        if ($normalized === 'unlimited') {
+            return 'unlimited';
+        }
+
+        return 'limited';
+    }
+
+    /**
+     * تطبيع event_quota_limit (Event Quota Architecture، Commit 2). عقد
+     * مطابق لروح normalize_credit_limit() (لا تُعيد أبداً false/null — كل
+     * قيمة غير صالحة تُطبَّع بأمان بدل رفض العملية)، لكن بحد أدنى 1 لا 0:
+     * القيمة ذات معنى فقط حين event_quota_mode === 'limited' (وقتها يجب أن
+     * تكون رقماً صحيحاً موجباً ≥ 1 حصراً)، وتُتجاهَل تماماً حين
+     * event_quota_mode === 'unlimited' — فلا داعي لأي قيمة "صفر/فارغة" هنا
+     * كما في normalize_credit_limit() (رصيد الدعوات يملك معنى تجارياً حقيقياً
+     * لصفر: "لا رصيد إطلاقاً"؛ حصة المناسبات لا تملك معنى مكافئاً لصفر، فأي
+     * قيمة "غير محدَّدة" هنا تعني عملياً "لم يُحدَّد رقم صريح" وتُصبح 1
+     * افتراضياً، تماماً كما normalize_events_count() تُعامِل 0/فارغ كصفر
+     * "غير محدَّد").
+     *
+     * تقبل: int (سالب أو صفر → 1، غير ذلك كما هو)، أو string (فارغة، "0"،
+     * سالبة، عشرية، أو غير رقمية بالكامل → 1؛ نمط ^[1-9][0-9]*$ فقط → القيمة
+     * كـint). أي نوع آخر (bool، array، object، float، null) → 1. النتيجة
+     * دائماً int ≥ 1، لا تُعاد أبداً false أو null أو 0.
+     */
+    private static function normalize_event_quota_limit($value)
+    {
+        if (is_int($value)) {
+            return $value < 1 ? 1 : $value;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if (preg_match('/^[1-9][0-9]*$/', $trimmed)) {
+                return (int) $trimmed;
+            }
+            return 1;
+        }
+
+        return 1;
+    }
+
+    /**
      * قراءة باقة واحدة برقمها فقط. لا تقبل إلا:
      *  - عدداً صحيحاً (int) موجباً (>= 1)، أو
      *  - نصاً (string) يحتوي على عدد صحيح موجب فقط بلا فاصلة عشرية وبلا أي
@@ -1066,6 +1135,17 @@ class PGE_Catalog
         $normalized_invitation_credit_limit = self::normalize_credit_limit($data['invitation_credit_limit'] ?? null);
         $normalized_replacement_credit_limit = self::normalize_credit_limit($data['replacement_credit_limit'] ?? null);
 
+        // event_quota_mode/event_quota_limit اختياريان تماماً بنفس روح
+        // invitation_credit_limit/replacement_credit_limit أعلاه: كلا
+        // normalize_event_quota_mode()/normalize_event_quota_limit() لا
+        // تُعيدان أبداً false/null (تطبيع آمن دائماً)، فلا حاجة لأي فحص رفض
+        // هنا. غياب المفتاحين كلياً عن $data يُنتج القيمتين الافتراضيتين
+        // بالضبط ('limited', 1) — نفس افتراضي عمود Schema نفسه، فسلوك أي
+        // مسار إنشاء لا يمرّر هذين الحقلين (كأي كود مستقبلي) يطابق تلقائياً
+        // "باقة واحدة = مناسبة واحدة" بلا أي تغيير مطلوب هنا.
+        $normalized_event_quota_mode = self::normalize_event_quota_mode($data['event_quota_mode'] ?? null);
+        $normalized_event_quota_limit = self::normalize_event_quota_limit($data['event_quota_limit'] ?? null);
+
         if (self::get_tier_by_key($normalized_plan_id, $normalized_tier_key) !== null) {
             return null;
         }
@@ -1085,6 +1165,8 @@ class PGE_Catalog
                 'events_count'              => $normalized_events_count,
                 'invitation_credit_limit'   => $normalized_invitation_credit_limit,
                 'replacement_credit_limit'  => $normalized_replacement_credit_limit,
+                'event_quota_mode'          => $normalized_event_quota_mode,
+                'event_quota_limit'         => $normalized_event_quota_limit,
                 'price'                     => $normalized_price,
                 'currency'                  => $normalized_currency,
                 'salla_product_id'          => $normalized_salla_product_id,
@@ -1093,7 +1175,7 @@ class PGE_Catalog
                 'status'                    => $normalized_status,
                 'sort_order'                => $normalized_sort_order,
             ],
-            ['%d', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d']
+            ['%d', '%s', '%s', '%d', '%d', '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d']
         );
 
         if (!$inserted) {
@@ -1292,6 +1374,26 @@ class PGE_Catalog
             $normalized_replacement_credit_limit = self::normalize_credit_limit($data['replacement_credit_limit']);
         }
 
+        // event_quota_mode/event_quota_limit اختياريان هنا بنفس أسلوب
+        // invitation_credit_limit/replacement_credit_limit أعلاه بالضبط:
+        // غياب المفتاح كلياً عن $data لا يُغيّر القيمة الحالية إطلاقاً (يحمي
+        // مستوى Unlimited أو محدود-برقم مخصَّص من التحوّل بالخطأ بسبب تحديث
+        // لا يخص هذا الحقل، كتحديث السعر فقط). إن كان المفتاح موجوداً
+        // صراحةً، تُطبَّع القيمة عبر normalize_event_quota_mode()/
+        // normalize_event_quota_limit() — لا تُعيدان أبداً false، فلا حاجة
+        // لفحص رفض هنا كما في events_count.
+        $event_quota_mode_provided = array_key_exists('event_quota_mode', $data);
+        $normalized_event_quota_mode = null;
+        if ($event_quota_mode_provided) {
+            $normalized_event_quota_mode = self::normalize_event_quota_mode($data['event_quota_mode']);
+        }
+
+        $event_quota_limit_provided = array_key_exists('event_quota_limit', $data);
+        $normalized_event_quota_limit = null;
+        if ($event_quota_limit_provided) {
+            $normalized_event_quota_limit = self::normalize_event_quota_limit($data['event_quota_limit']);
+        }
+
         $key_owner = self::get_tier_by_key($normalized_plan_id, $normalized_tier_key);
         if ($key_owner !== null && (int) $key_owner['id'] !== $normalized_tier_id) {
             return null;
@@ -1336,6 +1438,16 @@ class PGE_Catalog
 
         if ($replacement_credit_limit_provided) {
             $update_data['replacement_credit_limit'] = $normalized_replacement_credit_limit;
+            $update_formats[] = '%d';
+        }
+
+        if ($event_quota_mode_provided) {
+            $update_data['event_quota_mode'] = $normalized_event_quota_mode;
+            $update_formats[] = '%s';
+        }
+
+        if ($event_quota_limit_provided) {
+            $update_data['event_quota_limit'] = $normalized_event_quota_limit;
             $update_formats[] = '%d';
         }
 

@@ -269,6 +269,8 @@ function pge_render_catalog_tiers_page()
         'sort_order'                => '0',
         'invitation_credit_limit'   => '0',
         'replacement_credit_limit'  => '0',
+        'event_quota_mode'          => 'limited',
+        'event_quota_limit'         => '1',
     ];
 
     $tier_edit_form_values = [
@@ -283,7 +285,56 @@ function pge_render_catalog_tiers_page()
         'sort_order'                => '0',
         'invitation_credit_limit'   => '0',
         'replacement_credit_limit'  => '0',
+        'event_quota_mode'          => 'limited',
+        'event_quota_limit'         => '1',
     ];
+
+    // Event Quota (Commit 2): تحقّق تناسق على مستوى النموذج قبل استدعاء
+    // PGE_Catalog::create_tier()/update_tier() — بنفس فلسفة $validate_salla_fields
+    // أعلاه بالضبط (دالة واحدة، تُعيد ['valid' => bool, 'message' => string,
+    // 'mode' => string, 'limit' => string] لاستخدامها في كلا مساري
+    // create_tier وupdate_tier). لماذا هنا وليس داخل normalize_event_quota_*()
+    // في class-pge-catalog.php: تلك الدوال لا تُعيد أبداً false/null عمداً
+    // (تطبيع آمن دائماً لأي مستدعٍ برمجي آخر مستقبلاً)، بينما "رفض تناسق
+    // Limited+فارغ/صفر/سالب/نص غير رقمي" هو تحقّق نموذج إداري خاص بهذه
+    // الشاشة تحديداً، تماماً كما $validate_salla_fields تحقّق نموذج خاص لا
+    // جزء من normalize_salla_*() نفسها.
+    //
+    // Unlimited: أي مدخلة رقمية (فارغة أو عشوائية) مقبولة دوماً ولا تُستخدَم
+    // فعلياً — الخادم يُرسِل قيمة ثابتة '1' لـevent_quota_limit بغض النظر عمّا
+    // وصل فعلياً، تحقيقاً لمتطلب "Server still receives a consistent value".
+    $validate_event_quota_fields = function ($mode_raw, $limit_raw) {
+        $mode = is_string($mode_raw) ? strtolower(trim($mode_raw)) : '';
+        if ($mode !== 'unlimited') {
+            $mode = 'limited';
+        }
+
+        if ($mode === 'unlimited') {
+            return [
+                'valid'   => true,
+                'message' => '',
+                'mode'    => 'unlimited',
+                'limit'   => '1',
+            ];
+        }
+
+        $limit_trimmed = trim((string) $limit_raw);
+        if (!preg_match('/^[1-9][0-9]*$/', $limit_trimmed)) {
+            return [
+                'valid'   => false,
+                'message' => 'حصة المناسبات (محدود) يجب أن تكون رقماً صحيحاً موجباً (1 أو أكثر).',
+                'mode'    => 'limited',
+                'limit'   => $limit_trimmed,
+            ];
+        }
+
+        return [
+            'valid'   => true,
+            'message' => '',
+            'mode'    => 'limited',
+            'limit'   => $limit_trimmed,
+        ];
+    };
 
     $tier_create_post_handled = false;
     $tier_post_handled = false;
@@ -337,6 +388,8 @@ function pge_render_catalog_tiers_page()
                 'sort_order'               => wp_unslash($_POST['sort_order'] ?? ''),
                 'invitation_credit_limit'  => wp_unslash($_POST['invitation_credit_limit'] ?? ''),
                 'replacement_credit_limit' => wp_unslash($_POST['replacement_credit_limit'] ?? ''),
+                'event_quota_mode'         => wp_unslash($_POST['event_quota_mode'] ?? ''),
+                'event_quota_limit'        => wp_unslash($_POST['event_quota_limit'] ?? ''),
             ];
 
             $salla_validation = $validate_salla_fields(
@@ -348,9 +401,19 @@ function pge_render_catalog_tiers_page()
             $tier_form_values['salla_sku'] = $salla_validation['sku'];
             $tier_form_values['salla_url'] = $salla_validation['url'];
 
+            $event_quota_validation = $validate_event_quota_fields(
+                $tier_form_values['event_quota_mode'],
+                $tier_form_values['event_quota_limit']
+            );
+            $tier_form_values['event_quota_mode'] = $event_quota_validation['mode'];
+            $tier_form_values['event_quota_limit'] = $event_quota_validation['limit'];
+
             if (!$salla_validation['valid']) {
                 $notice_type = 'error';
                 $notice_message = $salla_validation['message'];
+            } elseif (!$event_quota_validation['valid']) {
+                $notice_type = 'error';
+                $notice_message = $event_quota_validation['message'];
             } else {
                 $salla_owner = $tier_form_values['salla_sku'] !== ''
                     ? PGE_Catalog::get_tier_by_salla_sku($tier_form_values['salla_sku'])
@@ -373,6 +436,8 @@ function pge_render_catalog_tiers_page()
                         'sort_order'               => $tier_form_values['sort_order'],
                         'invitation_credit_limit'  => $tier_form_values['invitation_credit_limit'],
                         'replacement_credit_limit' => $tier_form_values['replacement_credit_limit'],
+                        'event_quota_mode'         => $tier_form_values['event_quota_mode'],
+                        'event_quota_limit'        => $tier_form_values['event_quota_limit'],
                     ]);
 
                     if (is_array($created_tier)) {
@@ -391,6 +456,8 @@ function pge_render_catalog_tiers_page()
                             'sort_order'               => '0',
                             'invitation_credit_limit'  => '0',
                             'replacement_credit_limit' => '0',
+                            'event_quota_mode'         => 'limited',
+                            'event_quota_limit'        => '1',
                         ];
                     } else {
                         $notice_type = 'error';
@@ -469,6 +536,8 @@ function pge_render_catalog_tiers_page()
                     'sort_order'               => wp_unslash($_POST['sort_order'] ?? ''),
                     'invitation_credit_limit'  => wp_unslash($_POST['invitation_credit_limit'] ?? ''),
                     'replacement_credit_limit' => wp_unslash($_POST['replacement_credit_limit'] ?? ''),
+                    'event_quota_mode'         => wp_unslash($_POST['event_quota_mode'] ?? ''),
+                    'event_quota_limit'        => wp_unslash($_POST['event_quota_limit'] ?? ''),
                 ];
 
                 $salla_validation = $validate_salla_fields(
@@ -480,9 +549,22 @@ function pge_render_catalog_tiers_page()
                 $tier_edit_form_values['salla_sku'] = $salla_validation['sku'];
                 $tier_edit_form_values['salla_url'] = $salla_validation['url'];
 
+                $event_quota_validation = $validate_event_quota_fields(
+                    $tier_edit_form_values['event_quota_mode'],
+                    $tier_edit_form_values['event_quota_limit']
+                );
+                $tier_edit_form_values['event_quota_mode'] = $event_quota_validation['mode'];
+                $tier_edit_form_values['event_quota_limit'] = $event_quota_validation['limit'];
+
                 if (!$salla_validation['valid']) {
                     $notice_type = 'error';
                     $notice_message = $salla_validation['message'];
+
+                    $editing_tier_id = $posted_tier_id;
+                    $editing_tier = $posted_tier;
+                } elseif (!$event_quota_validation['valid']) {
+                    $notice_type = 'error';
+                    $notice_message = $event_quota_validation['message'];
 
                     $editing_tier_id = $posted_tier_id;
                     $editing_tier = $posted_tier;
@@ -513,6 +595,8 @@ function pge_render_catalog_tiers_page()
                                 'sort_order'               => $tier_edit_form_values['sort_order'],
                                 'invitation_credit_limit'  => $tier_edit_form_values['invitation_credit_limit'],
                                 'replacement_credit_limit' => $tier_edit_form_values['replacement_credit_limit'],
+                                'event_quota_mode'         => $tier_edit_form_values['event_quota_mode'],
+                                'event_quota_limit'        => $tier_edit_form_values['event_quota_limit'],
                             ]
                         );
 
@@ -535,6 +619,8 @@ function pge_render_catalog_tiers_page()
                                 'sort_order'               => $updated_tier['sort_order'],
                                 'invitation_credit_limit'  => $updated_tier['invitation_credit_limit'] ?? '0',
                                 'replacement_credit_limit' => $updated_tier['replacement_credit_limit'] ?? '0',
+                                'event_quota_mode'         => $updated_tier['event_quota_mode'] ?? 'limited',
+                                'event_quota_limit'        => $updated_tier['event_quota_limit'] ?? '1',
                             ];
                         } else {
                             $notice_type = 'error';
@@ -626,6 +712,8 @@ function pge_render_catalog_tiers_page()
                         'sort_order'               => '0',
                         'invitation_credit_limit'  => '0',
                         'replacement_credit_limit' => '0',
+                        'event_quota_mode'         => 'limited',
+                        'event_quota_limit'        => '1',
                     ];
                 } else {
                     $notice_type = 'error';
@@ -988,6 +1076,8 @@ function pge_render_catalog_tiers_page()
                     'sort_order'               => $editing_tier['sort_order'],
                     'invitation_credit_limit'  => $editing_tier['invitation_credit_limit'] ?? '0',
                     'replacement_credit_limit' => $editing_tier['replacement_credit_limit'] ?? '0',
+                    'event_quota_mode'         => $editing_tier['event_quota_mode'] ?? 'limited',
+                    'event_quota_limit'        => $editing_tier['event_quota_limit'] ?? '1',
                 ];
             }
         }
@@ -1168,10 +1258,64 @@ function pge_render_catalog_tiers_page()
                                 <p class="description"><?php esc_html_e('عدد الدعوات الإضافية المسموح بها بدل المدعوين المعتذرين.', 'pgevents'); ?></p>
                             </td>
                         </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('حصة المناسبات', 'pgevents'); ?>
+                            </th>
+                            <td>
+                                <fieldset class="pge-event-quota-fieldset" data-target="pge_tier_event_quota_limit">
+                                    <legend class="screen-reader-text"><?php esc_html_e('حصة المناسبات', 'pgevents'); ?></legend>
+                                    <label>
+                                        <input type="radio" name="event_quota_mode" value="limited" class="pge-event-quota-mode-radio" <?php checked($tier_form_values['event_quota_mode'] !== 'unlimited'); ?>>
+                                        <?php esc_html_e('محدود', 'pgevents'); ?>
+                                    </label>
+                                    <input type="number" id="pge_tier_event_quota_limit" name="event_quota_limit" class="small-text" min="1" step="1" value="<?php echo esc_attr($tier_form_values['event_quota_limit']); ?>">
+                                    <br>
+                                    <label>
+                                        <input type="radio" name="event_quota_mode" value="unlimited" class="pge-event-quota-mode-radio" <?php checked($tier_form_values['event_quota_mode'] === 'unlimited'); ?>>
+                                        <?php esc_html_e('غير محدود', 'pgevents'); ?>
+                                    </label>
+                                </fieldset>
+                                <p class="description"><?php esc_html_e('عدد المناسبات المسموح بإنشائها لكل مشترك في هذا المستوى.', 'pgevents'); ?></p>
+                            </td>
+                        </tr>
                     </table>
 
                     <?php submit_button('إضافة المستوى', 'primary', 'submit_create_tier'); ?>
                 </form>
+
+                <?php
+                // Event Quota (Commit 2): تبديل عرض واجهة "حصة المناسبات" فقط —
+                // بلا أي إرسال AJAX، بلا أي منطق أعمال، مجرد تفعيل/تعطيل حقل
+                // الرقم بصرياً حسب الاختيار الحالي بين "محدود"/"غير محدود". يعمل
+                // خارج شرط is_array($editing_tier) عمداً (محدد class عام
+                // .pge-event-quota-fieldset) لأن نموذج الإنشاء أعلاه يحتاج نفس
+                // السلوك حتى لو لم يكن هناك أي مستوى قيد التعديل حالياً. أول
+                // سكربت في هذه الصفحة الإدارية (لم يكن هناك أي جافاسكربت هنا من قبل).
+                ?>
+                <script>
+                (function () {
+                    function syncEventQuotaFieldset(fieldset) {
+                        var targetId = fieldset.getAttribute('data-target');
+                        var target = targetId ? document.getElementById(targetId) : null;
+                        if (!target) { return; }
+                        var unlimitedRadio = fieldset.querySelector('input[type="radio"][value="unlimited"]');
+                        target.disabled = !!(unlimitedRadio && unlimitedRadio.checked);
+                    }
+                    var fieldsets = document.querySelectorAll('.pge-event-quota-fieldset');
+                    for (var i = 0; i < fieldsets.length; i++) {
+                        (function (fieldset) {
+                            syncEventQuotaFieldset(fieldset);
+                            var radios = fieldset.querySelectorAll('input[type="radio"]');
+                            for (var j = 0; j < radios.length; j++) {
+                                radios[j].addEventListener('change', function () {
+                                    syncEventQuotaFieldset(fieldset);
+                                });
+                            }
+                        })(fieldsets[i]);
+                    }
+                })();
+                </script>
 
                 <?php if (is_array($editing_tier)): ?>
                     <h2><?php esc_html_e('تعديل المستوى', 'pgevents'); ?></h2>
@@ -1280,6 +1424,27 @@ function pge_render_catalog_tiers_page()
                                 <td>
                                     <input type="number" id="pge_edit_tier_replacement_credit_limit" name="replacement_credit_limit" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['replacement_credit_limit']); ?>">
                                     <p class="description"><?php esc_html_e('عدد الدعوات الإضافية المسموح بها بدل المدعوين المعتذرين.', 'pgevents'); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <?php esc_html_e('حصة المناسبات', 'pgevents'); ?>
+                                </th>
+                                <td>
+                                    <fieldset class="pge-event-quota-fieldset" data-target="pge_edit_tier_event_quota_limit">
+                                        <legend class="screen-reader-text"><?php esc_html_e('حصة المناسبات', 'pgevents'); ?></legend>
+                                        <label>
+                                            <input type="radio" name="event_quota_mode" value="limited" class="pge-event-quota-mode-radio" <?php checked($tier_edit_form_values['event_quota_mode'] !== 'unlimited'); ?>>
+                                            <?php esc_html_e('محدود', 'pgevents'); ?>
+                                        </label>
+                                        <input type="number" id="pge_edit_tier_event_quota_limit" name="event_quota_limit" class="small-text" min="1" step="1" value="<?php echo esc_attr($tier_edit_form_values['event_quota_limit']); ?>">
+                                        <br>
+                                        <label>
+                                            <input type="radio" name="event_quota_mode" value="unlimited" class="pge-event-quota-mode-radio" <?php checked($tier_edit_form_values['event_quota_mode'] === 'unlimited'); ?>>
+                                            <?php esc_html_e('غير محدود', 'pgevents'); ?>
+                                        </label>
+                                    </fieldset>
+                                    <p class="description"><?php esc_html_e('عدد المناسبات المسموح بإنشائها لكل مشترك في هذا المستوى.', 'pgevents'); ?></p>
                                 </td>
                             </tr>
                         </table>

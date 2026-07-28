@@ -44,7 +44,7 @@ class Mon_Catalog_Schema
      * رقم الإصدار الحالي لبنية كتالوج الباقات والخدمات.
      * أي تغيير مستقبلي في البنية أو ترحيل بيانات يرفع هذا الرقم.
      */
-    const DB_VERSION = '1.8.0';
+    const DB_VERSION = '1.9.0';
 
     /**
      * اسم الـ option الذي يخزّن آخر إصدار تم تطبيقه فعلياً على قاعدة البيانات.
@@ -143,6 +143,7 @@ class Mon_Catalog_Schema
             '1.6.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_6_0'],
             '1.7.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_7_0'],
             '1.8.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_8_0'],
+            '1.9.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_9_0'],
         ];
     }
 
@@ -607,6 +608,75 @@ class Mon_Catalog_Schema
     }
 
     /**
+     * ترقية 1.9.0: إضافة عمودَي حصة المناسبات (event_quota_mode،
+     * event_quota_limit) إلى mon_plan_tiers — Event Quota Architecture
+     * (خاصية تجارية على مستوى Tier، خارج Feature Registry/Resolver/Snapshot
+     * الميزات تماماً، حسب القرار المعماري المعتمد).
+     *
+     * event_quota_mode: VARCHAR(20) NOT NULL DEFAULT 'limited' — نصّي وليس
+     * ENUM، بنفس نمط status في mon_plans/mon_plan_tiers/mon_services وbقية
+     * أعمدة الحالة في هذا الملف (راجع تعليق upgrade_to_1_6_0() حول نفس
+     * القرار). القيمتان المسموحتان (limited/unlimited) تُفرَضان على مستوى
+     * التطبيق فقط عبر PGE_Catalog::normalize_event_quota_mode() (لاحقاً)،
+     * لا عبر قيد قاعدة بيانات — هذا يبقي الباب مفتوحاً لحالة تجارية ثالثة
+     * مستقبلاً (مثل add-on مُقاس) بلا أي ALTER TABLE إضافي.
+     *
+     * event_quota_limit: INT UNSIGNED NOT NULL DEFAULT 1 — رقم صريح دائماً،
+     * لا NULL. القيمة ذات معنى فقط عندما event_quota_mode = 'limited'؛ عند
+     * 'unlimited' تُتجاهَل القيمة بالكامل على مستوى التطبيق. هذا يختلف
+     * عمداً عن events_count (NULL-able، NULL يُطبَّع إلى 1 عبر
+     * normalize_events_count()) — هنا "غير محدود" حالة صريحة في
+     * event_quota_mode، لا حالة مُستنتَجة من غياب/فراغ event_quota_limit،
+     * تفادياً للالتباس الذي يعانيه _mon_guest_limit اليوم بين "لم يُفعَّل
+     * إطلاقاً" و"NULL مقصودة" (كلاهما يُقرآن كسلسلة فارغة من User Meta).
+     *
+     * كلا العمودين NOT NULL DEFAULT — فdbDelta() في sync_schema() (تُستدعى
+     * دائماً قبل هذه الدالة عبر maybe_upgrade()) تملأ كل الصفوف الموجودة
+     * بالقيمتين الافتراضيتين ('limited', 1) تلقائياً بحكم قواعد MySQL نفسها
+     * عند ALTER TABLE ADD COLUMN، دون أي Backfill يدوي هنا — بنفس فلسفة
+     * upgrade_to_1_4_0() بالضبط (invitation_credit_limit/
+     * replacement_credit_limit، نفس النمط NOT NULL DEFAULT رقمي). هذا يعني
+     * أيضاً أن كل Tier موجود اليوم (مرحلة تطوير، بلا بيانات إنتاج فعلية)
+     * يستمر بسلوك "باقة واحدة = مناسبة واحدة" فوراً وتلقائياً بعد هذه
+     * الترقية، بلا أي سطر ترحيل بيانات إضافي — لا حاجة لمهاجرة بيانات
+     * Tier قديمة هنا إطلاقاً (بخلاف upgrade_to_1_3_0() التي احتاجت Backfill
+     * فعلياً لأن events_count كانت NULL-able بلا Default رقمي وقتها).
+     *
+     * دور هذه الدالة إذن تحقّق (Verification) فقط، بنفس فلسفة
+     * upgrade_to_1_4_0(): SHOW COLUMNS للتأكد أن dbDelta() نجحت فعلاً في
+     * إضافة العمودين قبل السماح لرقم الإصدار المخزَّن بالتقدّم إلى 1.9.0،
+     * بدل الافتراض الأعمى بنجاحها. قراءة فقط بلا أي كتابة — Idempotent
+     * بديهياً: تشغيلها أي عدد من المرات يُعيد نفس النتيجة طالما بنية
+     * الجدول لم تتغيّر.
+     */
+    private static function upgrade_to_1_9_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_plan_tiers';
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+
+        if ($columns === null) {
+            return false;
+        }
+
+        $has_event_quota_mode = false;
+        $has_event_quota_limit = false;
+
+        foreach ($columns as $column) {
+            $field_name = (string) ($column['Field'] ?? '');
+            if ($field_name === 'event_quota_mode') {
+                $has_event_quota_mode = true;
+            }
+            if ($field_name === 'event_quota_limit') {
+                $has_event_quota_limit = true;
+            }
+        }
+
+        return $has_event_quota_mode && $has_event_quota_limit;
+    }
+
+    /**
      * صياغة SQL للجداول الستة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
      * مستقل، بلا FOREIGN KEY، بلا ENGINE، بلا ENUM).
      */
@@ -652,6 +722,8 @@ class Mon_Catalog_Schema
             wa_messages_limit INT UNSIGNED NULL DEFAULT NULL,
             invitation_credit_limit INT UNSIGNED NOT NULL DEFAULT 0,
             replacement_credit_limit INT UNSIGNED NOT NULL DEFAULT 0,
+            event_quota_mode VARCHAR(20) NOT NULL DEFAULT 'limited',
+            event_quota_limit INT UNSIGNED NOT NULL DEFAULT 1,
             price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
             currency VARCHAR(3) NOT NULL DEFAULT 'SAR',
             salla_product_id VARCHAR(64) NULL,

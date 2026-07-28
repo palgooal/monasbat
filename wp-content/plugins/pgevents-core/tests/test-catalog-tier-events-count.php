@@ -164,6 +164,14 @@ if (!class_exists('WP_Error')) {
         public function get_error_message() { return $this->message; }
     }
 }
+if (!function_exists('is_wp_error')) {
+    // Stub ناقص سابقاً في هذا الملف — أُضيف الآن فقط لأن activate_catalog_tier()
+    // الحقيقية (منذ Phase 4 Commit 2: Feature Snapshot) تستدعيه فعلياً عبر
+    // is_wp_error($feature_snapshot) قبل أي كتابة Meta. إضافة بحتة بلا أي أثر
+    // على أي حالة/تأكيد موجود في هذا الملف — لا تُغيّر أي سلوك مُختبَر، فقط
+    // تُتيح التنفيذ الفعلي لهذا الملف من الأساس (كان يفشل بـ Fatal Error قبلها).
+    function is_wp_error($thing) { return $thing instanceof WP_Error; }
+}
 
 // ── Fake $wpdb — بديل كافٍ فقط لأشكال الاستعلامات الفعلية في هذا الملف ────
 // (راجع توثيق أعلى الملف لسبب عدم استخدام محرّك SQL عام).
