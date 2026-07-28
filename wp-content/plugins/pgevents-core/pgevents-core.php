@@ -17,6 +17,11 @@ require_once PGE_PATH . 'includes/helpers.php';
 require_once PGE_PATH . 'includes/cpts.php';
 require_once PGE_PATH . 'includes/metaboxes.php';
 require_once PGE_PATH . 'includes/user-profiles.php';
+
+// Event Quota — Commit 8: لوحة تشخيص مطورين مؤقتة (قراءة فقط، للمدير حصراً)
+// في شاشة تعديل المستخدم بلوحة التحكم. تستهلك pge_resolve_event_quota_status()
+// (Commit 5) حصراً — لا منطق أعمال جديد، لا كتابة، لا حساب حصة مستقل.
+require_once PGE_PATH . 'includes/event-quota-diagnostics.php';
 require_once PGE_PATH . 'includes/rsvp-handler.php';
 require_once PGE_PATH . 'includes/rsvp-migration.php';
 
