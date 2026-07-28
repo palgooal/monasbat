@@ -266,6 +266,33 @@ class Mon_Events_Users
         }
 
         $features = self::normalize_catalog_features($plan['features'] ?? null);
+
+        // ====================================================================
+        // Commit 9 — Invitation Credit Accumulation Across Renewals (تغيير
+        // سياسة تجارية، لا علاقة له بمعمارية Event Quota إطلاقاً — لا لمس هنا
+        // على $event_quota_mode/$event_quota_limit أعلاه ولا على أي من حقولهما
+        // في $snapshot أدناه).
+        //
+        // القاعدة الجديدة: كل تفعيل حقيقي (تجديد/ترقية/تخفيض — أي استدعاء لا
+        // يمر من فرع "تكرار طلب متطابق تماماً" أعلاه، فلا تراكم مضاعف عند
+        // إعادة تسليم نفس الـWebhook) يُضيف رصيد الـTier الجديد إلى المتبقي
+        // الفعلي غير المستهلك من الدورة الحالية، بدل تصفير الرصيد بالكامل كما
+        // كان سابقاً:
+        //   المتبقي الحالي = Total الحالي - Used الحالي (بحد أدنى صفر)
+        //   Total الجديد   = المتبقي الحالي + رصيد الـTier الجديد
+        //   Used الجديد    = 0 دائماً (يبقى هذا الجزء بلا تغيير عن السابق)
+        // ينطبق هذا بالتساوي على رصيد الدعوات الأساسي (invitation) والبديل
+        // (replacement) — نفس الصيغة حرفياً لكليهما.
+        $current_invitation_total = absint(get_user_meta($user_id, '_mon_invitation_credit_total', true));
+        $current_invitation_used  = absint(get_user_meta($user_id, '_mon_invitation_credit_used', true));
+        $current_invitation_remaining = max(0, $current_invitation_total - $current_invitation_used);
+        $new_invitation_credit_total = $current_invitation_remaining + $invitation_credit_limit;
+
+        $current_replacement_total = absint(get_user_meta($user_id, '_mon_replacement_credit_total', true));
+        $current_replacement_used  = absint(get_user_meta($user_id, '_mon_replacement_credit_used', true));
+        $current_replacement_remaining = max(0, $current_replacement_total - $current_replacement_used);
+        $new_replacement_credit_total = $current_replacement_remaining + $replacement_credit_limit;
+
         $snapshot = [
             '_mon_package_source'      => 'catalog',
             '_mon_catalog_plan_id'     => $plan_id,
@@ -289,18 +316,19 @@ class Mon_Events_Users
             '_mon_event_quota_limit'   => $event_quota_limit,
             '_mon_salla_product_id'    => sanitize_text_field((string) ($tier['salla_product_id'] ?? '')),
             '_mon_catalog_features'    => $features,
-            // Snapshot رصيد الدعوات — كل تفعيل جديد (سواء أول تفعيل أو تبديل
-            // Tier لاحقاً) يكتب total من قيمة الـTier الحالية عند لحظة
-            // التفعيل بالضبط، ويُصفّر used دائماً. هذا مقصود ومطابق للقرار
-            // التجاري: "كل تفعيل Catalog جديد ينشئ Snapshot جديدًا ويصفّر
-            // الاستخدام" — لا ترحيل لأي رصيد مستهلك من تفعيل سابق. ملاحظة:
-            // فرع "نفس البيانات تماماً فمُطابقة مسبقة" أعلى هذه الدالة
-            // (return true المبكرة) لا يمر من هنا إطلاقاً، فاستدعاء هذه
-            // الدالة بنفس المعطيات تماماً (تكرار Webhook مثلاً) لا يُصفّر
-            // used الحالي بالخطأ — التصفير يحدث فقط عند تفعيل مختلف فعلياً.
-            '_mon_invitation_credit_total'  => $invitation_credit_limit,
+            // Snapshot رصيد الدعوات (Commit 9 — سياسة تراكمية جديدة، راجع
+            // التعليق التفصيلي أعلى $current_invitation_total): كل تفعيل حقيقي
+            // (سواء أول تفعيل أو تجديد/ترقية/تخفيض لاحق) يضيف رصيد الـTier
+            // الجديد إلى المتبقي الفعلي غير المستهلك من الدورة الحالية — لا
+            // تصفير كامل بعد الآن. Used يبقى دائماً صفراً عند كل تفعيل جديد
+            // (بلا تغيير عن السابق). ملاحظة: فرع "نفس البيانات تماماً فمُطابقة
+            // مسبقة" أعلى هذه الدالة (return true المبكرة) لا يمر من هنا
+            // إطلاقاً، فاستدعاء هذه الدالة بنفس المعطيات تماماً (تكرار Webhook
+            // مثلاً) لا يُضيف رصيداً مضاعفاً بالخطأ — التراكم يحدث فقط عند
+            // تفعيل مختلف فعلياً (Duplicate Webhook idempotency بلا تغيير).
+            '_mon_invitation_credit_total'  => $new_invitation_credit_total,
             '_mon_invitation_credit_used'   => 0,
-            '_mon_replacement_credit_total' => $replacement_credit_limit,
+            '_mon_replacement_credit_total' => $new_replacement_credit_total,
             '_mon_replacement_credit_used'  => 0,
             '_mon_credit_cycle_id'          => $credit_cycle_id,
         ];

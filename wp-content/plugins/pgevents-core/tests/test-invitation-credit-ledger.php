@@ -618,9 +618,19 @@ set_test_user_email('cycle-legacy-test@example.test', 9102);
 Mon_Events_Users::activate_user_package('cycle-legacy-test@example.test', ['plan_key' => 'plan_1', 'order_id' => 'ORDER-CYCLE-TEST']);
 check('9. تفعيل Legacy لا يكتب _mon_credit_cycle_id إطلاقاً', get_user_meta(9102, '_mon_credit_cycle_id', true), '');
 
-check('10. بقية Snapshot صحيحة بعد إعادة التفعيل: invitation_credit_total = 80 (Tier الثاني)', (int) get_user_meta(9101, '_mon_invitation_credit_total', true), 80);
+// ملاحظة (Commit 9 — Invitation Credit Accumulation Across Renewals، تغيير
+// سياسة تجارية معتمَد): هذان الرقمان (80/15) كانا يعكسان السلوك القديم
+// "تصفير كامل عند كل تفعيل" — أي تفعيل ثانٍ بمستوى مختلف كان يكتب رصيد ذلك
+// المستوى الخام مباشرة بلا أي تراكم. اعتباراً من Commit 9، كل تفعيل حقيقي
+// يُضيف رصيد المستوى الجديد إلى المتبقي الفعلي من الدورة السابقة بدل تصفيره:
+// هنا التفعيل الأول (Tier أ) كتب invitation=50/replacement=10 بلا أي استهلاك،
+// فالمتبقي قبل التجديد = 50/10 بالكامل؛ التفعيل الثاني (Tier ب) يضيف
+// invitation=80/replacement=15 الجديدتين → 50+80=130 و10+15=25. هذا التحديث
+// ضروري ليعكس التعريف الصحيح الحالي للسياسة التجارية المعتمدة، لا إصلاحاً
+// لعيب في هذا الاختبار.
+check('10. بقية Snapshot صحيحة بعد إعادة التفعيل: invitation_credit_total = 130 (50 متبقٍ من Tier الأول + 80 من Tier الثاني — تراكم Commit 9)', (int) get_user_meta(9101, '_mon_invitation_credit_total', true), 130);
 check('10. بقية Snapshot صحيحة: invitation_credit_used = 0', (int) get_user_meta(9101, '_mon_invitation_credit_used', true), 0);
-check('10. بقية Snapshot صحيحة: replacement_credit_total = 15 (Tier الثاني)', (int) get_user_meta(9101, '_mon_replacement_credit_total', true), 15);
+check('10. بقية Snapshot صحيحة: replacement_credit_total = 25 (10 متبقٍ من Tier الأول + 15 من Tier الثاني — تراكم Commit 9)', (int) get_user_meta(9101, '_mon_replacement_credit_total', true), 25);
 check('10. بقية Snapشot صحيحة: replacement_credit_used = 0', (int) get_user_meta(9101, '_mon_replacement_credit_used', true), 0);
 
 echo "\n=== قسم Repository: PGE_Invitation_Credit_Ledger ===\n";

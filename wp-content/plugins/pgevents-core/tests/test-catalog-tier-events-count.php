@@ -686,9 +686,18 @@ $second_credit_tier = PGE_Catalog::create_tier([
 
 $reactivation_result = Mon_Events_Users::activate_catalog_tier(9001, 1, $second_credit_tier['id']);
 check_true('11. إعادة التفعيل بـTier جديد نجحت', $reactivation_result === true);
-check('11. إعادة التفعيل: total الأساسي يتحدّث إلى 200', (int) get_user_meta(9001, '_mon_invitation_credit_total', true), 200);
+// ملاحظة (Commit 9 — Invitation Credit Accumulation Across Renewals، تغيير
+// سياسة تجارية معتمَد): الأرقام أدناه (200/50) كانت تعكس السلوك القديم
+// "تصفير كامل عند كل تفعيل جديد إلى رصيد الـTier الخام مباشرة". اعتباراً من
+// Commit 9، كل تفعيل حقيقي يُضيف رصيد الـTier الجديد إلى المتبقي الفعلي
+// (Total - Used، بحد أدنى صفر) من الدورة السابقة بدل تصفيره بالكامل: هنا
+// المتبقي قبل إعادة التفعيل = invitation(100-40=60)/replacement(30-10=20)،
+// فالتفعيل بالـTier الثاني (200/50 جديدتين) يُنتج 60+200=260 و20+50=70. هذا
+// تحديث ضروري ليعكس التعريف الصحيح الحالي للسياسة التجارية المعتمدة، لا
+// إصلاحاً لعيب في هذا الاختبار.
+check('11. إعادة التفعيل: total الأساسي يتحدّث إلى 260 (60 متبقٍ + 200 من Tier الثاني — تراكم Commit 9)', (int) get_user_meta(9001, '_mon_invitation_credit_total', true), 260);
 check('11. إعادة التفعيل: used الأساسي يُصفَّر إلى 0 (لا يبقى 40 من قبل)', (int) get_user_meta(9001, '_mon_invitation_credit_used', true), 0);
-check('11. إعادة التفعيل: total البدائل يتحدّث إلى 50', (int) get_user_meta(9001, '_mon_replacement_credit_total', true), 50);
+check('11. إعادة التفعيل: total البدائل يتحدّث إلى 70 (20 متبقٍ + 50 من Tier الثاني — تراكم Commit 9)', (int) get_user_meta(9001, '_mon_replacement_credit_total', true), 70);
 check('11. إعادة التفعيل: used البدائل يُصفَّر إلى 0 (لا يبقى 10 من قبل)', (int) get_user_meta(9001, '_mon_replacement_credit_used', true), 0);
 
 // 12) مسار تفعيل Legacy (activate_user_package) لا يكتب أياً من مفاتيح
