@@ -344,6 +344,150 @@ if (!function_exists('pge_plan_feature_enabled_for_events')) {
     }
 }
 
+if (!function_exists('pge_resolve_event_quota_status')) {
+    /**
+     * Event Quota Architecture — Commit 5: حلّ الحصة وحساب الاستخدام.
+     *
+     * دالة معلوماتية بحتة (Read-Only) فقط: لا تُستدعى من أي مسار إنشاء
+     * مناسبة حالياً (لا وصل بـpge_handle_event_creation() في هذا الـCommit)،
+     * ولا ترفض ولا تمنع أي شيء — تُعيد فقط الأرقام الصحيحة (allowed/used/
+     * remaining) أو حالة unlimited/legacy/خطأ تكامل. الإنفاذ الفعلي (منع
+     * إنشاء مناسبة عند الاستنفاد) Commit لاحق منفصل تماماً، خارج نطاق هذا
+     * الـCommit عمداً.
+     *
+     * — Legacy (_mon_package_source !== 'catalog'، بما فيها الفراغ): بلا أي
+     *   تغيير في السلوك إطلاقاً. نفس مصدر الحد
+     *   (pge_get_user_plan_limits_for_events()['events_count']) ونفس منطق
+     *   العدّ الموجود مسبقاً في بوابة الحصة الحالية داخل
+     *   pge_handle_event_creation() أدناه (كل مناسبات المستخدم النشطة/
+     *   المسودة/المعلَّقة بحسب author، بلا أي meta_query على ownership —
+     *   Legacy لا يملك مفهوم Activation Ownership إطلاقاً، ولا Commit 4 لمسه).
+     *
+     * — Catalog (_mon_package_source === 'catalog'): يُستبعَد تماماً أي رجوع
+     *   لـ_mon_events_limit القديم. Snapshot (_mon_event_quota_mode/
+     *   _mon_event_quota_limit، المكتوبان حصراً داخل
+     *   Mon_Events_Users::activate_catalog_tier() منذ Commit 3) هو مصدر
+     *   الحقيقة الوحيد — بلا أي قراءة لصف mon_plan_tiers (Tier الحيّ)، ولا
+     *   لـPGE_Feature_Registry، ولا لأي Feature Resolver إطلاقاً.
+     *
+     *   سلامة التفعيل أولاً: مصدر catalog بلا _mon_credit_cycle_id (راجع
+     *   Commit 4 لمناقشة متى يمكن أن يحدث هذا فعلياً) يُعامَل كخطأ تكامل
+     *   بيانات صريح فوري (WP_Error) — بلا أي رجوع ضمني لـLegacy، ولا افتراض
+     *   Unlimited، ولا افتراض "مناسبة واحدة مسموحة" كقيمة آمنة بديلة. فشل
+     *   صريح مقصود، مطابق حرفياً لتعليمات هذا الـCommit.
+     *
+     *   Unlimited: تُعاد النتيجة فوراً بلا أي استعلام عدّ إطلاقاً (allowed/
+     *   used/remaining = null) — لا داعي لمعرفة "المُستخدَم" حين لا حصة تحدّه.
+     *
+     *   Limited: يُحسَب allowed من _mon_event_quota_limit (بنفس أسلوب
+     *   القراءة الدفاعية المُستخدَم في activate_catalog_tier() نفسها —
+     *   Snapshot مضمونة الصلاحية أصلاً من مسار الكتابة الوحيد، فهذه قراءة
+     *   دفاعية إضافية فقط)، ويُحسَب used بعدّ مناسبات هذا التفعيل الحالي
+     *   بالذات حصراً: تطابق تام (لا مقارنة "غير فارغ") بين
+     *   _pge_event_activation_id لكل مناسبة و_mon_credit_cycle_id الحالي —
+     *   هذا يستبعد تلقائياً وبنفس الاستعلام: مناسبات بلا ownership (قيمة
+     *   فارغة، كحال أي مستخدم Legacy سابق أو تفعيل Catalog ناقص — راجع
+     *   Commit 4)، مناسبات تفعيل سابق مختلف لنفس المستخدم، ومناسبات Legacy
+     *   (لا تحمل هذا المفتاح أصلاً).
+     *
+     * ملاحظة توثيق: remaining هنا هو الفرق الحسابي المباشر (allowed - used)
+     * بلا أي تقييد بحد أدنى صفر — هذا الـCommit معلوماتي بحت وقد يعكس بصدق
+     * حالة استخدام تتجاوز الحصة (ممكنة حالياً فعلياً بما أن لا إنفاذ بعد في
+     * أي Commit سابق)؛ حسم ما إذا كان يجب Clamp هذه القيمة عند العرض/الإنفاذ
+     * قرار لاحق خارج نطاق هذا الـCommit عمداً.
+     *
+     * @return array|WP_Error
+     *   نجاح: ['mode' => 'legacy'|'unlimited'|'limited',
+     *          'allowed' => int|null, 'used' => int|null,
+     *          'remaining' => int|null].
+     *   فشل تكامل Catalog: WP_Error('catalog_activation_integrity', ...).
+     */
+    function pge_resolve_event_quota_status($user_id)
+    {
+        $user_id = (int) $user_id;
+        if ($user_id <= 0) {
+            return new WP_Error('invalid_user_id', 'معرّف مستخدم غير صالح.');
+        }
+
+        $package_source = (string) get_user_meta($user_id, '_mon_package_source', true);
+
+        if ($package_source !== 'catalog') {
+            $plan_limits = pge_get_user_plan_limits_for_events($user_id);
+            $allowed = (int) ($plan_limits['events_count'] ?? 0);
+
+            $legacy_query = new WP_Query(array(
+                'post_type'      => 'pge_event',
+                'post_status'    => array('publish', 'draft', 'pending'),
+                'author'         => $user_id,
+                'posts_per_page' => -1,
+                'fields'         => 'ids',
+            ));
+            $used = (int) $legacy_query->found_posts;
+
+            return array(
+                'mode'      => 'legacy',
+                'allowed'   => $allowed,
+                'used'      => $used,
+                'remaining' => $allowed - $used,
+            );
+        }
+
+        $credit_cycle_id = (string) get_user_meta($user_id, '_mon_credit_cycle_id', true);
+        if ($credit_cycle_id === '') {
+            return new WP_Error(
+                'catalog_activation_integrity',
+                'حساب Catalog هذا في حالة غير متسقة: لا يوجد معرّف تفعيل (credit_cycle_id) رغم أن مصدر الباقة catalog.'
+            );
+        }
+
+        $quota_mode_raw = get_user_meta($user_id, '_mon_event_quota_mode', true);
+        $quota_mode = is_string($quota_mode_raw) ? strtolower(trim($quota_mode_raw)) : 'limited';
+        if ($quota_mode !== 'unlimited') {
+            $quota_mode = 'limited';
+        }
+
+        if ($quota_mode === 'unlimited') {
+            return array(
+                'mode'      => 'unlimited',
+                'allowed'   => null,
+                'used'      => null,
+                'remaining' => null,
+            );
+        }
+
+        $quota_limit_raw = get_user_meta($user_id, '_mon_event_quota_limit', true);
+        $allowed = (is_int($quota_limit_raw) || (is_string($quota_limit_raw) && preg_match('/^[0-9]+$/', trim($quota_limit_raw))))
+            ? (int) $quota_limit_raw
+            : 1;
+        if ($allowed < 1) {
+            $allowed = 1;
+        }
+
+        $used_query = new WP_Query(array(
+            'post_type'      => 'pge_event',
+            'post_status'    => array('publish', 'draft', 'pending'),
+            'author'         => $user_id,
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'meta_query'     => array(
+                array(
+                    'key'     => '_pge_event_activation_id',
+                    'value'   => $credit_cycle_id,
+                    'compare' => '=',
+                ),
+            ),
+        ));
+        $used = (int) $used_query->found_posts;
+
+        return array(
+            'mode'      => 'limited',
+            'allowed'   => $allowed,
+            'used'      => $used,
+            'remaining' => $allowed - $used,
+        );
+    }
+}
+
 /**
  * معالجة إنشاء مناسبة جديدة عبر AJAX مع فحص الحصة (Quota) الديناميكية
  */
@@ -363,100 +507,199 @@ function pge_handle_event_creation()
 
     $user_id = get_current_user_id();
 
-    // --- [نظام فحص الحصة الديناميكي - Dynamic Quota System] ---
+    // ====================================================================
+    // Event Quota Architecture — Commit 6: Atomic Quota Enforcement.
+    //
+    // قفل GET_LOCK خاص بهذا المستخدم فقط (مشتق من user_id وحده — لا يحجب
+    // مستخدمين آخرين إطلاقاً، ويمنع نفس المستخدم من إنشاء مناسبتين
+    // متزامنتين تتجاوزان الحصة معاً) يُغلّف كامل التدفّق التالي: حلّ الحصة
+    // (Legacy كما هو تماماً، أو Catalog عبر pge_resolve_event_quota_status()
+    // من Commit 5) ← التحقق من الحقول ← الإدراج الفعلي (Commit 4) ← التحقق
+    // من ملكية التفعيل. نفس أسلوب القفل المُثبَت فعلياً في هذا المشروع
+    // (PGE_Invitation_Credit_Ledger::claim_for_delivery()): GET_LOCK بمهلة
+    // انتظار قصيرة، واسم مشتق عبر md5() لضمان طول ثابت آمن ضمن حد MySQL.
+    //
+    // تنبيه حاسم لسلامة القفل: wp_send_json_error()/wp_send_json_success()
+    // تستدعيان wp_die() داخلياً في ووردبريس الفعلي، والتي تُنهي الطلب فوراً
+    // عبر exit()/die() — وPHP لا يُنفِّذ أي "finally" معلَّق بعد exit()/die()
+    // إطلاقاً (خلافاً لرمي استثناء، حيث يُنفَّذ finally أثناء الانتشار). لذا
+    // لا يجوز الاعتماد على try/finally وحده هنا؛ القفل يُحرَّر صراحةً عبر
+    // $release_event_creation_lock() قبل كل استدعاء وحيد لأي من الدالتين من
+    // هذه النقطة فصاعداً، بلا استثناء واحد. طبقة الحماية الأخيرة أدناه
+    // (catch (\Error)) مخصَّصة لأخطاء PHP وقت التشغيل غير المتوقعة إطلاقاً
+    // (لا لأي مسار تحكّم اعتيادي في هذا الملف — الأخطاء المتوقَّعة هنا تُمثَّل
+    // دوماً بكائنات WP_Error التي تُعاد كقيمة، لا تُرمى كاستثناء، تماشياً مع
+    // نمط بقية هذا المشروع بالكامل).
+    // ====================================================================
 
-    // جلب صلاحيات الباقة الفعلية للمستخدم — الدالة المركزية هي المرجع
-    // الوحيد والنهائي للحد المسموح، بلا أي شرط مسبق على وجود مفتاح Legacy.
-    // حالة Catalog منتهية أو مستخدم بلا باقة تعود أصلاً بـ events_count = 0
-    // من داخل الدالة المركزية نفسها، فلا حاجة لأي شرط إضافي هنا.
-    $plan_limits = pge_get_user_plan_limits_for_events($user_id);
-    $allowed_limit = (int) ($plan_limits['events_count'] ?? 0);
+    global $wpdb;
+    $event_creation_lock_name = 'pge_event_create_' . md5((string) $user_id);
 
-    // جلب عدد المناسبات الفعّالة للمستخدم (نستثني المؤرشفة — status=private + meta _pge_archived=1)
-    $user_events_query = new WP_Query(array(
-        'post_type'      => 'pge_event',
-        'post_status'    => array('publish', 'draft', 'pending'),
-        'author'         => $user_id,
-        'posts_per_page' => -1,
-        'fields'         => 'ids',
-    ));
-
-    $current_count = $user_events_query->found_posts;
-
-    // الفحص: هل يحق للمستخدم إنشاء مناسبة جديدة؟
-    if ($current_count >= $allowed_limit) {
-        if ($allowed_limit <= 0) {
-            $error_msg = 'عذراً، ليس لديك باقة نشطة. يرجى الاشتراك في إحدى الباقات لتمكن من إنشاء مناسبات.';
-        } else {
-            $error_msg = sprintf(
-                'لقد استنفدت الحد الأقصى للمناسبات في باقتك الحالية (%d من %d). يرجى الترقية لإضافة المزيد.',
-                $current_count,
-                $allowed_limit
-            );
-        }
-        wp_send_json_error($error_msg);
-    }
-    // --------------------------------------------------------
-
-    // 3. استلام وتنظيف البيانات
-    $title    = sanitize_text_field($_POST['event_title'] ?? '');
-    $date     = sanitize_text_field($_POST['event_date'] ?? '');
-    $can_google_map = pge_user_has_feature($user_id, 'google_maps');
-    $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
-    $location = $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '';
-    $address  = sanitize_text_field($_POST['event_address'] ?? '');
-    $phone    = sanitize_text_field($_POST['host_phone'] ?? '');
-    $invite_code = isset($_POST['invite_code']) ? pge_normalize_invite_code(wp_unslash($_POST['invite_code'])) : '';
-    if ($invite_code === '') {
-        $invite_code = pge_generate_invite_code();
+    $got_event_creation_lock = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $event_creation_lock_name, 5));
+    if ((int) $got_event_creation_lock !== 1) {
+        wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
     }
 
-    // 3.1 التحقق من الحقول المطلوبة على الخادم — لا يجوز الاعتماد على تحقق المتصفح
-    // فقط (novalidate/JS يمكن تجاوزهما بطلب مباشر)، لذا هذا هو حد السلامة الفعلي.
-    if ($title === '') {
-        wp_send_json_error('يرجى إدخال اسم المناسبة.');
-    }
-    if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/', $date) || strtotime($date) === false) {
-        wp_send_json_error('يرجى إدخال تاريخ ووقت صحيح للمناسبة.');
-    }
-    $phone_normalized = function_exists('pge_norm_phone') ? pge_norm_phone($phone) : preg_replace('/\D+/', '', (string) $phone);
-    if ($phone_normalized === '') {
-        wp_send_json_error('يرجى إدخال رقم جوال صحيح للمضيف.');
-    }
+    $release_event_creation_lock = function () use ($wpdb, $event_creation_lock_name) {
+        $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $event_creation_lock_name));
+    };
 
-    // 4. إدراج المناسبة في قاعدة البيانات
-    $post_data = array(
-        'post_title'   => $title,
-        'post_status'  => 'publish',
-        'post_type'    => 'pge_event',
-        'post_author'  => $user_id,
-    );
+    try {
+        // --- [نظام فحص الحصة] ---
+        //
+        // pge_get_user_plan_limits_for_events() ما زالت تُستدعى دوماً (Legacy
+        // وCatalog معاً) لأنها المصدر الوحيد لميزات لا علاقة لها بالحصة
+        // إطلاقاً (header_img أدناه) — لكن قيمتها 'events_count' لم تعد
+        // تُستخدَم لحساب حصة مستخدمي Catalog بعد الآن (ذلك حصراً عبر
+        // pge_resolve_event_quota_status()، Snapshot فقط، بلا أي قراءة لصف
+        // الـTier أو Registry أو Feature Resolver).
+        $plan_limits = pge_get_user_plan_limits_for_events($user_id);
+        $package_source = (string) get_user_meta($user_id, '_mon_package_source', true);
 
-    $post_id = wp_insert_post($post_data);
+        if ($package_source !== 'catalog') {
+            // ---- Legacy: حرفياً بلا أي تغيير عن السلوك الموجود مسبقاً ----
+            $allowed_limit = (int) ($plan_limits['events_count'] ?? 0);
 
-    if ($post_id) {
-        // تخزين الميتا داتا الإضافية
-        update_post_meta($post_id, '_pge_event_date', $date);
-        update_post_meta($post_id, '_pge_event_location', $location);
-        update_post_meta($post_id, '_pge_event_address',  $address);
-        update_post_meta($post_id, '_pge_host_phone', $phone);
-        update_post_meta($post_id, '_pge_invite_code', $invite_code);
-        if ($can_header_img) {
-            $featured_upload = pge_handle_featured_image_upload('featured_image', $post_id);
-            if (is_wp_error($featured_upload)) {
-                wp_delete_post($post_id, true);
-                wp_send_json_error($featured_upload->get_error_message());
+            // جلب عدد المناسبات الفعّالة للمستخدم (نستثني المؤرشفة — status=private + meta _pge_archived=1)
+            $user_events_query = new WP_Query(array(
+                'post_type'      => 'pge_event',
+                'post_status'    => array('publish', 'draft', 'pending'),
+                'author'         => $user_id,
+                'posts_per_page' => -1,
+                'fields'         => 'ids',
+            ));
+            $current_count = $user_events_query->found_posts;
+
+            if ($current_count >= $allowed_limit) {
+                $release_event_creation_lock();
+                if ($allowed_limit <= 0) {
+                    $error_msg = 'عذراً، ليس لديك باقة نشطة. يرجى الاشتراك في إحدى الباقات لتمكن من إنشاء مناسبات.';
+                } else {
+                    $error_msg = sprintf(
+                        'لقد استنفدت الحد الأقصى للمناسبات في باقتك الحالية (%d من %d). يرجى الترقية لإضافة المزيد.',
+                        $current_count,
+                        $allowed_limit
+                    );
+                }
+                wp_send_json_error($error_msg);
             }
+        } else {
+            // ---- Catalog: Commit 5 resolver فقط، Snapshot + Ownership ----
+            $quota_status = pge_resolve_event_quota_status($user_id);
+
+            if (is_wp_error($quota_status)) {
+                // خطأ تكامل بيانات صريح (مثلاً مصدر catalog بلا
+                // credit_cycle_id) — يُرفض الإنشاء بنفس مسار الخطأ العام
+                // الحالي، بلا أي رجوع ضمني أو رسالة جديدة.
+                $release_event_creation_lock();
+                wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
+            }
+
+            if (($quota_status['mode'] ?? '') === 'limited') {
+                $quota_allowed = (int) ($quota_status['allowed'] ?? 0);
+                $quota_used = (int) ($quota_status['used'] ?? 0);
+                if ($quota_used >= $quota_allowed) {
+                    $release_event_creation_lock();
+                    $error_msg = sprintf(
+                        'لقد استنفدت الحد الأقصى للمناسبات في باقتك الحالية (%d من %d). يرجى الترقية لإضافة المزيد.',
+                        $quota_used,
+                        $quota_allowed
+                    );
+                    wp_send_json_error($error_msg);
+                }
+            }
+            // mode === 'unlimited': بلا أي فحص عدّ إطلاقاً — تُتابَع العملية.
+        }
+        // --------------------------------------------------------
+
+        // 3. استلام وتنظيف البيانات
+        $title    = sanitize_text_field($_POST['event_title'] ?? '');
+        $date     = sanitize_text_field($_POST['event_date'] ?? '');
+        $can_google_map = pge_user_has_feature($user_id, 'google_maps');
+        $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
+        $location = $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '';
+        $address  = sanitize_text_field($_POST['event_address'] ?? '');
+        $phone    = sanitize_text_field($_POST['host_phone'] ?? '');
+        $invite_code = isset($_POST['invite_code']) ? pge_normalize_invite_code(wp_unslash($_POST['invite_code'])) : '';
+        if ($invite_code === '') {
+            $invite_code = pge_generate_invite_code();
         }
 
-        wp_send_json_success(array(
-            'message'      => 'تم إنشاء المناسبة بنجاح!',
-            'redirect_url' => get_permalink($post_id),
-            'invite_code'  => $invite_code,
-        ));
-    }
+        // 3.1 التحقق من الحقول المطلوبة على الخادم — لا يجوز الاعتماد على تحقق المتصفح
+        // فقط (novalidate/JS يمكن تجاوزهما بطلب مباشر)، لذا هذا هو حد السلامة الفعلي.
+        if ($title === '') {
+            $release_event_creation_lock();
+            wp_send_json_error('يرجى إدخال اسم المناسبة.');
+        }
+        if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/', $date) || strtotime($date) === false) {
+            $release_event_creation_lock();
+            wp_send_json_error('يرجى إدخال تاريخ ووقت صحيح للمناسبة.');
+        }
+        $phone_normalized = function_exists('pge_norm_phone') ? pge_norm_phone($phone) : preg_replace('/\D+/', '', (string) $phone);
+        if ($phone_normalized === '') {
+            $release_event_creation_lock();
+            wp_send_json_error('يرجى إدخال رقم جوال صحيح للمضيف.');
+        }
 
-    wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
+        // 4. إدراج المناسبة في قاعدة البيانات (Commit 4 — ownership meta،
+        // بلا أي تغيير في منطقها هنا).
+        $activation_id = (string) get_user_meta($user_id, '_mon_credit_cycle_id', true);
+
+        $post_data = array(
+            'post_title'   => $title,
+            'post_status'  => 'publish',
+            'post_type'    => 'pge_event',
+            'post_author'  => $user_id,
+            'meta_input'   => array(
+                '_pge_event_activation_id' => $activation_id,
+            ),
+        );
+
+        $post_id = wp_insert_post($post_data);
+
+        if ($post_id) {
+            // تحقّق فوري من ملكية التفعيل (Commit 4، بلا أي تغيير في منطقه هنا).
+            $stored_activation_id = (string) get_post_meta($post_id, '_pge_event_activation_id', true);
+            if ($stored_activation_id !== $activation_id) {
+                wp_delete_post($post_id, true);
+                $release_event_creation_lock();
+                wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
+            }
+
+            // تخزين الميتا داتا الإضافية
+            update_post_meta($post_id, '_pge_event_date', $date);
+            update_post_meta($post_id, '_pge_event_location', $location);
+            update_post_meta($post_id, '_pge_event_address',  $address);
+            update_post_meta($post_id, '_pge_host_phone', $phone);
+            update_post_meta($post_id, '_pge_invite_code', $invite_code);
+            if ($can_header_img) {
+                $featured_upload = pge_handle_featured_image_upload('featured_image', $post_id);
+                if (is_wp_error($featured_upload)) {
+                    wp_delete_post($post_id, true);
+                    $release_event_creation_lock();
+                    wp_send_json_error($featured_upload->get_error_message());
+                }
+            }
+
+            $release_event_creation_lock();
+            wp_send_json_success(array(
+                'message'      => 'تم إنشاء المناسبة بنجاح!',
+                'redirect_url' => get_permalink($post_id),
+                'invite_code'  => $invite_code,
+            ));
+        }
+
+        $release_event_creation_lock();
+        wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
+    } catch (\Error $unexpected_error) {
+        // شبكة أمان أخيرة لخطأ PHP وقت تشغيل غير متوقَّع إطلاقاً في أي مما
+        // سبق. كل نقاط الخروج الطبيعية أعلاه تُحرِّر القفل صراحةً بالفعل قبل
+        // الوصول لهذا الفرع؛ استدعاء إضافي هنا آمن تماماً ولا يُسبِّب أي أثر
+        // جانبي حتى لو كان القفل محرَّراً بالفعل (RELEASE_LOCK على قفل غير
+        // محجوز من هذه الجلسة يُعيد ببساطة 0).
+        $release_event_creation_lock();
+        wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
+    }
 }
 
 /**

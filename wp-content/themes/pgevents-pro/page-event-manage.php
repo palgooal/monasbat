@@ -54,18 +54,49 @@ $manage_plan_name    = function_exists('pge_resolve_admin_user_package_name')
 if ($manage_plan_name === '' || $manage_plan_name === '—') {
     $manage_plan_name = 'بدون باقة';
 }
-// الحد المسموح يأتي حصراً من الدالة المركزية — بلا أي شرط Legacy إضافي
-// (كان يقرأ _mon_events_limit مباشرة كأولوية، ما قد يتجاوز حد Catalog).
-$manage_events_limit = (int) ($manage_plan_limits['events_count'] ?? 0);
-$manage_events_used_q = new WP_Query([
-    'post_type'      => 'pge_event',
-    'post_status'    => ['publish', 'draft', 'pending'],
-    'author'         => $manage_user_id,
-    'posts_per_page' => -1,
-    'fields'         => 'ids',
-]);
-$manage_events_used  = (int) $manage_events_used_q->found_posts;
-$manage_events_left  = max(0, $manage_events_limit - $manage_events_used);
+// عدد المناسبات المسموح/المُستخدَم — Commit 7 (Event Quota Architecture — UI
+// Integration): لمستخدمي Catalog فقط، المصدر الوحيد من الآن فصاعداً هو
+// pge_resolve_event_quota_status() (Commit 5) — لا قراءة لـ
+// $manage_plan_limits['events_count'] (يعكس صف الـTier الحي، لا Snapshot
+// التفعيل المُجمَّد)، ولا أي استعلام WP_Query إضافي هنا مكرِّر لما تُجريه تلك
+// الدالة داخلياً بالفعل. مستخدمو Legacy يستمرون بنفس الحساب القديم حرفياً
+// (نفس $manage_plan_limits['events_count'] ونفس استعلام WP_Query) بلا أي تغيير.
+$manage_package_source = (string) get_user_meta($manage_user_id, '_mon_package_source', true);
+$manage_event_quota_is_unlimited = false;
+
+if ($manage_package_source === 'catalog' && function_exists('pge_resolve_event_quota_status')) {
+    $manage_quota_status = pge_resolve_event_quota_status($manage_user_id);
+
+    if (is_array($manage_quota_status) && ($manage_quota_status['mode'] ?? '') === 'unlimited') {
+        $manage_event_quota_is_unlimited = true;
+        $manage_events_limit = 0;
+        $manage_events_used  = 0;
+        $manage_events_left  = 0;
+    } elseif (is_array($manage_quota_status) && ($manage_quota_status['mode'] ?? '') === 'limited') {
+        $manage_events_limit = (int) ($manage_quota_status['allowed'] ?? 0);
+        $manage_events_used  = (int) ($manage_quota_status['used'] ?? 0);
+        $manage_events_left  = max(0, $manage_events_limit - $manage_events_used);
+    } else {
+        // فشل تكامل بيانات Catalog (WP_Error) — نفس الحالة الآمنة المعروضة
+        // أصلاً لأي مستخدم بلا حصة فعلية، بلا أي منطق أعمال جديد لهذا
+        // الـCommit التقديمي البحت.
+        $manage_events_limit = 0;
+        $manage_events_used  = 0;
+        $manage_events_left  = 0;
+    }
+} else {
+    // Legacy — حرفياً بلا أي تغيير عن الحساب الموجود مسبقاً.
+    $manage_events_limit = (int) ($manage_plan_limits['events_count'] ?? 0);
+    $manage_events_used_q = new WP_Query([
+        'post_type'      => 'pge_event',
+        'post_status'    => ['publish', 'draft', 'pending'],
+        'author'         => $manage_user_id,
+        'posts_per_page' => -1,
+        'fields'         => 'ids',
+    ]);
+    $manage_events_used  = (int) $manage_events_used_q->found_posts;
+    $manage_events_left  = max(0, $manage_events_limit - $manage_events_used);
+}
 
 // ============================================================
 // حالة مساحة العمل (Workspace State) — لتحديد أي لوحة في الشريط
@@ -685,7 +716,9 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
         <h3 class="text-xs font-bold text-foreground/70">الباقة الحالية</h3>
         <div class="mt-2 flex items-center justify-between gap-2">
           <span class="truncate rounded-full bg-white px-3 py-1 text-xs font-bold text-foreground/70 ring-1 ring-border"><?= esc_html($manage_plan_name) ?></span>
-          <?php if ($manage_events_limit > 0): ?>
+          <?php if ($manage_event_quota_is_unlimited): ?>
+          <span class="text-xs font-semibold text-foreground/70">غير محدود</span>
+          <?php elseif ($manage_events_limit > 0): ?>
           <span class="text-xs font-semibold text-foreground/70"><?= (int)$manage_events_left ?> / <?= (int)$manage_events_limit ?> مناسبة</span>
           <?php endif; ?>
         </div>

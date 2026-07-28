@@ -31,11 +31,6 @@ $feature_enabled = static function (array $limits, $key) {
     return in_array($value, ['1', 'on', 'yes', 'true'], true);
 };
 
-// الحد المسموح يأتي حصراً من الدالة المركزية. حالة Catalog منتهية أو
-// مستخدم بلا باقة تعود أصلاً بـ events_count = 0 من داخلها، فلا حاجة لأي
-// شرط إضافي هنا ولا لأي صلاحية افتراضية عند غياب البيانات.
-$allowed_limit = (int) ($plan_limits['events_count'] ?? 0);
-
 // اسم الباقة المعروض في "ملخص الباقة" — عبر الـresolver المركزي حصراً
 // (Catalog-aware/Legacy-aware عبر _mon_package_source داخله)، بدل القراءة
 // المباشرة لـ_mon_package_name التي تبقى فارغة دائماً لمستخدم Catalog.
@@ -57,17 +52,56 @@ $can_guest_photos = $feature_enabled($plan_limits, 'guest_photos');
 $can_guest_video = $feature_enabled($plan_limits, 'guest_video');
 $wa_limit = (int) ($plan_limits['wa_messages'] ?? 0);
 
-// نستثني 'private' لأنها مناسبات مؤرشفة ولا تُحسب في الحصة
-$user_events_query = new WP_Query([
-    'post_type'      => 'pge_event',
-    'post_status'    => ['publish', 'draft', 'pending'],
-    'author'         => $user_id,
-    'posts_per_page' => -1,
-    'fields'         => 'ids',
-]);
-$current_count = (int) $user_events_query->found_posts;
-$remaining = max(0, $allowed_limit - $current_count);
-$has_quota = $allowed_limit > 0 && $remaining > 0;
+// الحد المسموح والمُستخدَم من المناسبات — Commit 7 (Event Quota Architecture
+// — UI Integration): لمستخدمي Catalog فقط، المصدر الوحيد من الآن فصاعداً هو
+// pge_resolve_event_quota_status() (Commit 5) — لا قراءة لـ
+// $plan_limits['events_count'] (يعكس صف الـTier الحي، لا Snapshot التفعيل
+// المُجمَّد)، ولا أي استعلام WP_Query إضافي هنا مكرِّر لما تُجريه تلك الدالة
+// داخلياً بالفعل. مستخدمو Legacy يستمرون بنفس الحساب القديم حرفياً (نفس
+// $plan_limits['events_count'] ونفس استعلام WP_Query) بلا أي تغيير.
+$package_source_for_quota = (string) get_user_meta($user_id, '_mon_package_source', true);
+$event_quota_is_unlimited = false;
+
+if ($package_source_for_quota === 'catalog' && function_exists('pge_resolve_event_quota_status')) {
+    $quota_status_for_create = pge_resolve_event_quota_status($user_id);
+
+    if (is_array($quota_status_for_create) && ($quota_status_for_create['mode'] ?? '') === 'unlimited') {
+        // غير محدود: لا رقم إطلاقاً — يملك المستخدم حصة دوماً، بلا أي رفض.
+        $event_quota_is_unlimited = true;
+        $allowed_limit = 0;
+        $current_count = 0;
+        $remaining     = 0;
+        $has_quota     = true;
+    } elseif (is_array($quota_status_for_create) && ($quota_status_for_create['mode'] ?? '') === 'limited') {
+        $allowed_limit = (int) ($quota_status_for_create['allowed'] ?? 0);
+        $current_count = (int) ($quota_status_for_create['used'] ?? 0);
+        $remaining     = max(0, $allowed_limit - $current_count);
+        $has_quota     = $allowed_limit > 0 && $remaining > 0;
+    } else {
+        // فشل تكامل بيانات Catalog (WP_Error من الدالة المركزية) — نفس
+        // الحالة الآمنة المعروضة أصلاً لأي مستخدم بلا حصة فعلية (بلا أي
+        // منطق أعمال جديد أو رسالة جديدة لهذا الـCommit التقديمي البحت).
+        $allowed_limit = 0;
+        $current_count = 0;
+        $remaining     = 0;
+        $has_quota     = false;
+    }
+} else {
+    // Legacy — حرفياً بلا أي تغيير عن الحساب الموجود مسبقاً (نستثني 'private'
+    // لأنها مناسبات مؤرشفة ولا تُحسب في الحصة).
+    $allowed_limit = (int) ($plan_limits['events_count'] ?? 0);
+
+    $user_events_query = new WP_Query([
+        'post_type'      => 'pge_event',
+        'post_status'    => ['publish', 'draft', 'pending'],
+        'author'         => $user_id,
+        'posts_per_page' => -1,
+        'fields'         => 'ids',
+    ]);
+    $current_count = (int) $user_events_query->found_posts;
+    $remaining = max(0, $allowed_limit - $current_count);
+    $has_quota = $allowed_limit > 0 && $remaining > 0;
+}
 
 $saved_phone = (string) get_user_meta($user_id, 'pge_phone', true);
 if ($saved_phone === '') {
@@ -368,7 +402,11 @@ get_header();
                         <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">
                             <div class="text-[11px] font-semibold text-foreground/65">المناسبات المتبقية</div>
                             <div class="mt-1 text-lg font-extrabold <?php echo $has_quota ? 'text-foreground' : 'text-destructive-text'; ?>">
-                                <?php echo esc_html((string) $remaining); ?> <span class="text-xs font-semibold text-foreground/50">/ <?php echo esc_html((string) $allowed_limit); ?></span>
+                                <?php if ($event_quota_is_unlimited): ?>
+                                    <?php esc_html_e('غير محدود', 'pgevents'); ?>
+                                <?php else: ?>
+                                    <?php echo esc_html((string) $remaining); ?> <span class="text-xs font-semibold text-foreground/50">/ <?php echo esc_html((string) $allowed_limit); ?></span>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <div class="min-w-0 rounded-2xl bg-secondary/60 p-3 ring-1 ring-border">

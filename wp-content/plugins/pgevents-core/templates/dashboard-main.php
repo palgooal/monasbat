@@ -151,9 +151,42 @@ if ($display_plan_name === '') {
 // حصراً، حتى تعمل بشكل صحيح لمستخدمي Catalog وLegacy معاً بلا أي قراءة
 // مباشرة لـ_mon_events_limit هنا.
 $plan_limits           = function_exists('pge_get_user_plan_limits_for_events') ? pge_get_user_plan_limits_for_events($user_id) : [];
-$events_limit          = (int) ($plan_limits['events_count'] ?? 0);
-$events_used = (new WP_Query(['post_type'=>'pge_event','author'=>$user_id,'post_status'=>['publish','draft','pending'],'posts_per_page'=>-1,'fields'=>'ids']))->found_posts;
-$events_left = max(0, $events_limit - $events_used);
+
+// عدد المناسبات المسموح/المُستخدَم — Commit 7 (Event Quota Architecture — UI
+// Integration): لمستخدمي Catalog فقط، المصدر الوحيد من الآن فصاعداً هو
+// pge_resolve_event_quota_status() (Commit 5) — لا قراءة لـ
+// $plan_limits['events_count'] (يعكس صف الـTier الحي، لا Snapshot التفعيل
+// المُجمَّد)، ولا أي استعلام WP_Query إضافي هنا مكرِّر لما تُجريه تلك الدالة
+// داخلياً بالفعل. مستخدمو Legacy يستمرون بنفس الحساب القديم حرفياً (نفس
+// $plan_limits['events_count'] ونفس استعلام WP_Query) بلا أي تغيير.
+$event_quota_is_unlimited = false;
+
+if ($package_source === 'catalog' && function_exists('pge_resolve_event_quota_status')) {
+    $quota_status_for_dashboard = pge_resolve_event_quota_status($user_id);
+
+    if (is_array($quota_status_for_dashboard) && ($quota_status_for_dashboard['mode'] ?? '') === 'unlimited') {
+        $event_quota_is_unlimited = true;
+        $events_limit = 0;
+        $events_used  = 0;
+        $events_left  = 0;
+    } elseif (is_array($quota_status_for_dashboard) && ($quota_status_for_dashboard['mode'] ?? '') === 'limited') {
+        $events_limit = (int) ($quota_status_for_dashboard['allowed'] ?? 0);
+        $events_used  = (int) ($quota_status_for_dashboard['used'] ?? 0);
+        $events_left  = max(0, $events_limit - $events_used);
+    } else {
+        // فشل تكامل بيانات Catalog (WP_Error) — نفس الحالة الآمنة المعروضة
+        // أصلاً لأي مستخدم بلا حصة فعلية (قسم "غير مُحدَّد" أدناه)، بلا أي
+        // منطق أعمال جديد لهذا الـCommit التقديمي البحت.
+        $events_limit = 0;
+        $events_used  = 0;
+        $events_left  = 0;
+    }
+} else {
+    // Legacy — حرفياً بلا أي تغيير عن الحساب الموجود مسبقاً.
+    $events_limit = (int) ($plan_limits['events_count'] ?? 0);
+    $events_used = (new WP_Query(['post_type'=>'pge_event','author'=>$user_id,'post_status'=>['publish','draft','pending'],'posts_per_page'=>-1,'fields'=>'ids']))->found_posts;
+    $events_left = max(0, $events_limit - $events_used);
+}
 
 // معلومات إضافية للعرض فقط (الباقة/الميزات) — قراءة فقط عبر الدوال المساعدة الحالية، بدون أي حساب جديد
 $guest_limit_per_event = isset($plan_limits['guest_limit']) ? (int) $plan_limits['guest_limit'] : 0;
@@ -376,7 +409,9 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
                         </span>
                         <span class="text-xs font-bold text-foreground/70"><?php esc_html_e('المناسبات المتبقية', 'pgevents'); ?></span>
                     </div>
-                    <?php if ($events_limit > 0): ?>
+                    <?php if ($event_quota_is_unlimited): ?>
+                        <div class="mt-3 text-base font-extrabold text-foreground"><?php esc_html_e('غير محدود', 'pgevents'); ?></div>
+                    <?php elseif ($events_limit > 0): ?>
                         <div class="mt-3 text-base font-extrabold text-foreground">
                             <?php echo (int) $events_left; ?> <span class="text-sm font-semibold text-foreground/65"><?php
                                 /* translators: %d: total events allowed by the plan */
