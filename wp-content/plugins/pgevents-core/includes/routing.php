@@ -605,6 +605,54 @@ if (!function_exists('pge_supervisor_login_handle_post_confirmation')) {
     }
 }
 
+if (!function_exists('pge_supervisor_login_determine_redirect_target')) {
+    /**
+     * ============================================================================
+     * تحديد وجهة إعادة التوجيه بعد نجاح POST — Supervisor Login Redirect Fix
+     * (Post-Authentication UX)
+     * ============================================================================
+     * قراءة فقط بالكامل — لا كتابة، لا لمس لتوكن/جلسة/تدقيق/قفل. تستخدم فقط
+     * دوال قراءة موجودة فعلاً في PGE_Supervisor_Assignment_Service
+     * (get_assignment_state()/find_active_assignments_by_phone()) — بلا أي
+     * تعديل عليهما، وبلا أي دالة/جدول/عمود جديد. "Fix only the redirect
+     * flow" — هذه الدالة تعيش في routing.php حصراً، ولا تُغيِّر أي شيء خارج
+     * قرار "إلى أين نُعيد التوجيه".
+     *
+     * القاعدة: إسناد نشط واحد بالضبط لنفس رقم الهاتف عبر كل المناسبات ←
+     * تخطَّ شاشة اختيار المناسبة وادخل مباشرة لواجهة تسجيل الحضور. أكثر من
+     * إسناد نشط (مشرف على أكثر من مناسبة بنفس الرقم) ← بوابة المشرف العامة
+     * ليختار المناسبة بنفسه. أي حالة غامضة/غير متوقَّعة (لم يوجد الإسناد،
+     * لا هاتف مسجَّل، صفر إسنادات نشطة — سباق تزامن نادر كإلغاء الإسناد في
+     * نفس اللحظة) تؤول أمناً إلى البوابة العامة (الافتراضي الآمن الذي كان
+     * معتمَداً قبل هذا التصحيح أصلاً).
+     *
+     * @return string رابط كامل جاهز مباشرة لـwp_safe_redirect()
+     */
+    function pge_supervisor_login_determine_redirect_target(int $assignment_id): string
+    {
+        $default_target = home_url('/supervisor/');
+
+        if (!class_exists('PGE_Supervisor_Assignment_Service') || $assignment_id <= 0) {
+            return $default_target;
+        }
+
+        $assignment = PGE_Supervisor_Assignment_Service::get_assignment_state($assignment_id);
+        $phone = is_array($assignment) ? (string) ($assignment['supervisor_phone'] ?? '') : '';
+
+        if ($phone === '') {
+            return $default_target;
+        }
+
+        $active_assignments = PGE_Supervisor_Assignment_Service::find_active_assignments_by_phone($phone);
+
+        if (count($active_assignments) === 1) {
+            return home_url('/supervisor/checkin/');
+        }
+
+        return $default_target;
+    }
+}
+
 if (!function_exists('pge_supervisor_login_session_cookie_params')) {
     /**
      * معاملات كوكي الجلسة لهذا المسار تحديداً — دالة نقية (بلا setcookie()
@@ -651,10 +699,17 @@ add_action('template_redirect', function () {
 
         $decision = pge_supervisor_login_handle_post_confirmation($raw_token_from_url, $submitted_nonce);
 
+        // ═══ POST ناجح — Supervisor Login Redirect Fix (Post-Authentication
+        // UX) ═══ نقطة خروج وحيدة، بلا أي احتمال إعادة عرض صفحة التأكيد
+        // بعدها: كوكي (اختياري) ← تحديد وجهة ← تفريغ أي مخزن إخراج معلَّق
+        // (دفاعي، يمنع أي تسريب مسافات/إخراج مبكر من إسقاط ترويسة إعادة
+        // التوجيه بصمت) ← ترويسة Location ← exit فوري بلا أي كود بعده على
+        // هذا المسار.
         if ($decision['mode'] === 'authenticated') {
             $auth_result = $decision['auth_result'];
             $session_token = (string) ($auth_result['session_token'] ?? '');
             $expires_at = (string) ($auth_result['expires_at'] ?? '');
+            $authenticated_assignment_id = (int) ($auth_result['assignment_id'] ?? 0);
 
             if ($session_token !== '' && !headers_sent()) {
                 setcookie(
@@ -664,11 +719,21 @@ add_action('template_redirect', function () {
                 );
             }
 
-            // إعادة توجيه إلى بوابة المشرف الرسمية — "redirect to the
-            // Supervisor Portal" حرفياً (لا معرِّف داخلي في رابط إعادة
-            // التوجيه).
-            wp_safe_redirect(home_url('/supervisor/'));
-            exit;
+            // "Determine destination" — إسناد نشط واحد بالضبط ← دخول مباشر
+            // لواجهة تسجيل الحضور، أكثر من إسناد نشط ← بوابة المشرف العامة
+            // ليختار المناسبة. قراءة فقط، بلا أي أثر جانبي إضافي.
+            $redirect_target = pge_supervisor_login_determine_redirect_target($authenticated_assignment_id);
+
+            // تفريغ أي output buffering معلَّق قبل إرسال الترويسة مباشرة —
+            // إجراء دفاعي صريح ("Verify there is no output buffering issue
+            // preventing redirects") يضمن عدم وجود أي إخراج HTML سابق يمنع
+            // ترويسة Location من الإرسال فعلياً.
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
+            wp_safe_redirect($redirect_target);
+            exit; // نهاية هذا المسار — لا كود آخر يُنفَّذ بعد هذا السطر إطلاقاً.
         }
 
         $error_page = $decision['error'];

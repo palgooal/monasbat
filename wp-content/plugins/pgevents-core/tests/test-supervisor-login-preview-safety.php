@@ -416,12 +416,22 @@ check('10ب. samesite = Lax', $cookie_params['samesite'] ?? null, 'Lax');
 check('10ج. secure يطابق is_ssl()', $cookie_params['secure'] ?? null, is_ssl());
 check('10د. path افتراضي = /', $cookie_params['path'] ?? null, '/');
 
-// 11: إعادة التوجيه إلى بوابة المشرف — تدقيق ساكن على نص فرع POST الناجح
+// 11: إعادة التوجيه عند POST الناجح — تدقيق ساكن على نص فرع POST الناجح
 // (بين نقطة نجاح POST ونهاية الـif الخاص بها عبر أول "exit;" تالية)
+//
+// تحديث (Supervisor Login Redirect Fix — Post-Authentication UX): كانت هذه
+// الشرطة تتحقق من نص حرفي ثابت wp_safe_redirect(home_url('/supervisor/'))
+// — وهو بالضبط السلوك القديم الذي استُبدِل عمداً بهذا التصحيح بوجهة
+// ديناميكية (pge_supervisor_login_determine_redirect_target()، تُعيد إما
+// /supervisor/checkin/ لإسناد نشط واحد أو /supervisor/ لأكثر من واحد —
+// راجع tests/test-supervisor-login-redirect-fix.php للتغطية الكاملة). لا
+// تراجع هنا عن ضمان "إعادة توجيه فعلية تحدث" — فقط تحديث الشرط ليطابق
+// البنية الجديدة الصحيحة بدل النص الحرفي القديم المُستبدَل.
 $post_success_marker = strpos($routing_source, "mode'] === 'authenticated'");
 $post_success_exit = strpos($routing_source, 'exit;', $post_success_marker);
 $post_success_block = substr($routing_source, $post_success_marker, $post_success_exit - $post_success_marker);
-check_true("11. فرع POST الناجح يعيد التوجيه فعلياً إلى home_url('/supervisor/')", strpos($post_success_block, "wp_safe_redirect(home_url('/supervisor/'));") !== false);
+check_true('11. فرع POST الناجح يستدعي محدِّد الوجهة الديناميكي (pge_supervisor_login_determine_redirect_target)', strpos($post_success_block, 'pge_supervisor_login_determine_redirect_target(') !== false);
+check_true('11ب. فرع POST الناجح يمرِّر ناتج محدِّد الوجهة مباشرة إلى wp_safe_redirect()', strpos($post_success_block, 'wp_safe_redirect($redirect_target)') !== false);
 
 // 12: POST ثانٍ بنفس التوكن (المُستهلَك فعلاً) يفشل
 $post_result_2 = pge_supervisor_login_handle_post_confirmation(str_repeat('a', 64), $valid_confirm_nonce);
