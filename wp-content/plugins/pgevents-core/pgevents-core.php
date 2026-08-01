@@ -178,6 +178,14 @@ require_once PGE_PATH . 'includes/class-pge-cartat-transport.php';
 // تعرفان بوجود هذا الملف إطلاقاً.
 require_once PGE_PATH . 'includes/class-pge-supervisor-invitation-delivery.php';
 
+// Supervisor Manual Invitation Link (Supervisor Manual Invitation Link: Secure
+// One-Time Generation، تنفيذ). خدمة مستقلة تماماً عن السطر أعلاه: لا تعتمد على
+// PGE_Cartat_Transport ولا تعرف بوجوده إطلاقاً — تعتمد فقط على PGE_Supervisor_
+// Assignment_Service (أعلاه بكثير) وPGE_Supervisor_Management_Audit (أعلاه).
+// تُحمَّل هنا (قبل supervisor-management-ajax.php مباشرة) لأن معالِج AJAX
+// الجديد فيه يستهلكها.
+require_once PGE_PATH . 'includes/class-pge-supervisor-manual-link-service.php';
+
 require_once PGE_PATH . 'includes/supervisor-management-ajax.php';
 
 // Host Invitation Management — Entry Check-in Supervisors، Phase 9A ("Host

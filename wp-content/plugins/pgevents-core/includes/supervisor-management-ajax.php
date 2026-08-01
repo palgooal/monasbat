@@ -348,6 +348,80 @@ function pge_supervisor_mgmt_resend_handler()
 }
 add_action('wp_ajax_pge_supervisor_mgmt_resend', 'pge_supervisor_mgmt_resend_handler');
 
+// ── توليد رابط دعوة يدوي — Supervisor Manual Invitation Link: Secure One-Time
+// Generation، تنفيذ (بديل طوارئ عند تعذّر واتساب؛ منفصل تماماً عن Cartat) ──
+// نفس نمط pge_supervisor_mgmt_resend_handler() أعلاه حرفياً: validate_request()
+// → load_owned_assignment() (عزل مناسبات + وجود، "Never trust assignment_id
+// alone") → استدعاء الخدمة المخصَّصة → wp_send_json_success/error. التفويض
+// (مضيف مخوَّل لهذه المناسبة تحديداً) يتم بالكامل هنا وفي load_owned_assignment()
+// قبل حتى استدعاء PGE_Supervisor_Manual_Link_Service::generate() — تلك الدالة
+// لا تُعيد أي فحص تفويض بنفسها (راجع توثيقها).
+if (!function_exists('pge_supervisor_manual_link_result_message')) {
+    /**
+     * رسالة عرض صادقة لنتيجة PGE_Supervisor_Manual_Link_Service::generate() —
+     * نفس فلسفة pge_supervisor_delivery_result_message() أعلاه تماماً (تنسيق
+     * عرض بحت، لا منطق أعمال). لا تكشف أبداً: التوكن الخام، الرابط، الهاش، أو
+     * أي معرّف قاعدة بيانات داخلي غير مقصود للعرض.
+     */
+    function pge_supervisor_manual_link_result_message(array $result): string
+    {
+        $reason = (string) ($result['reason'] ?? '');
+        $status = (string) ($result['status'] ?? '');
+
+        if ($reason === 'not_eligible' && $status === 'active') {
+            return 'المشرف نشط بالفعل — لا حاجة لرابط دعوة جديد';
+        }
+        if ($reason === 'not_eligible' && $status === 'revoked') {
+            return 'تم إلغاء إسناد هذا المشرف — لا يمكن توليد رابط دعوة';
+        }
+
+        $labels = [
+            'lock_busy'             => 'يوجد طلب توليد رابط قيد التنفيذ بالفعل لهذا المشرف، حاول لاحقاً',
+            'token_commit_failed'   => 'تعذّر توليد رابط الدعوة (تغيّرت حالة الإسناد أثناء التوليد)',
+            'assignment_not_found'  => 'المشرف غير موجود',
+            'not_eligible'          => 'حالة الإسناد الحالية لا تسمح بتوليد رابط دعوة',
+            'assignment_incomplete' => 'بيانات الإسناد غير مكتملة',
+            'service_unavailable'   => 'الخدمة غير متاحة حالياً',
+            'invalid_assignment_id' => 'معرّف غير صالح',
+        ];
+
+        return $labels[$reason] ?? 'تعذّر توليد رابط الدعوة';
+    }
+}
+
+function pge_supervisor_mgmt_manual_link_handler()
+{
+    $event_id = pge_supervisor_mgmt_validate_request();
+
+    if (!class_exists('PGE_Supervisor_Manual_Link_Service')) {
+        wp_send_json_error(['message' => 'الخدمة غير متاحة حالياً', 'reason' => 'service_unavailable']);
+    }
+
+    $assignment_id = isset($_POST['assignment_id']) ? (int) $_POST['assignment_id'] : 0;
+
+    $owned = pge_supervisor_mgmt_load_owned_assignment($event_id, $assignment_id);
+    if ($owned === null) {
+        wp_send_json_error(['message' => 'المشرف غير موجود ضمن هذه المناسبة', 'reason' => 'not_found']);
+    }
+
+    $result = PGE_Supervisor_Manual_Link_Service::generate($assignment_id, get_current_user_id());
+    $outcome = (string) ($result['result'] ?? '');
+
+    if ($outcome === 'generated') {
+        // العقد الوحيد المسموح به: الرابط فقط، بلا أي حقل حسّاس إضافي (لا
+        // توكن خام منفصل، لا هاش، لا assignment_id غير ضروري، لا بيانات DB
+        // داخلية، لا انتهاء صلاحية غير موجود فعلياً).
+        wp_send_json_success(['invitation_url' => (string) $result['invitation_url']]);
+    }
+
+    $reason = (string) ($result['reason'] ?? 'unknown_error');
+    wp_send_json_error([
+        'message' => pge_supervisor_manual_link_result_message($result),
+        'reason'  => $reason,
+    ]);
+}
+add_action('wp_ajax_pge_supervisor_mgmt_manual_link', 'pge_supervisor_mgmt_manual_link_handler');
+
 // ── إلغاء إسناد مشرف — Requirement "Revoke Supervisor" ──────────────────────
 function pge_supervisor_mgmt_revoke_handler()
 {

@@ -168,6 +168,28 @@ get_header();
     </div>
   </div>
 
+  <!-- ══ نافذة احتياطية لنسخ رابط الدعوة يدوياً (Supervisor Manual Invitation
+       Link: Secure One-Time Generation) ═══════════════════════════════════
+       تظهر فقط عند تعذّر navigator.clipboard.writeText() (غير متاح في هذا
+       المتصفح، أو رفض المستخدم إذن الحافظة). الرابط المعروض هنا هو نفسه
+       الرابط الذي أعاده الخادم مرة واحدة فقط في استجابة AJAX السابقة — لا
+       استدعاء خلفي ثانٍ هنا إطلاقاً، ولا أي تخزين في localStorage/sessionStorage؛
+       يُمسَح من الحقل فور الإغلاق. -->
+  <div id="manualLinkModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="manualLinkHeading">
+    <div class="w-full max-w-sm rounded-2xl bg-white p-5">
+      <h2 id="manualLinkHeading" class="text-sm font-extrabold text-foreground mb-2">رابط دعوة المشرف</h2>
+      <p class="text-xs text-foreground/60 mb-3">تعذّر النسخ التلقائي — يمكنك تحديد الرابط ونسخه يدوياً:</p>
+      <label for="manualLinkInput" class="sr-only">رابط الدعوة</label>
+      <input id="manualLinkInput" type="text" readonly dir="ltr"
+             class="h-11 w-full rounded-xl border border-border px-3 text-xs font-mono outline-none focus:border-primary" />
+      <div id="manualLinkMsg" class="hidden mt-2.5 text-xs font-semibold rounded-xl px-3 py-2" role="alert"></div>
+      <div class="flex gap-2 mt-3">
+        <button type="button" id="manualLinkCopyBtn" class="flex-1 h-11 rounded-xl bg-primary text-sm font-bold text-white">نسخ الرابط</button>
+        <button type="button" id="manualLinkCloseBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 <?php get_footer(); ?>
 <script>
@@ -263,13 +285,12 @@ get_header();
           '<div class="flex flex-wrap gap-1.5">' +
             '<button type="button" class="edit-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">تعديل</button>' +
             (canResend ? '<button type="button" class="resend-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">إعادة إرسال</button>' : '') +
-            // RC1 Enhancement — Supervisor Invitation Manual Link (UI Only): زر
-            // ثانوي إضافي، نفس شرط الظهور بالضبط المُستخدَم فعلياً لزر "إعادة
-            // إرسال" أعلاه (canResend = invited/pending) — لا منطق حالة جديد
-            // اختُرِع هنا، إعادة استخدام صريحة لنفس الشرط القائم. لا رابط
-            // حقيقي يُولَّد، لا توكن، لا AJAX — راجع handleCopyLinkPlaceholder()
-            // أسفل الملف؛ زر placeholder بحت لميزة "نسخ رابط الدعوة" مستقبلية.
-            (canResend ? '<button type="button" class="copy-link-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold" aria-label="نسخ رابط دعوة المشرف (متوفر في التحديث القادم)">نسخ رابط الدعوة</button>' : '') +
+            // Supervisor Manual Invitation Link: Secure One-Time Generation —
+            // تنفيذ. نفس شرط الظهور بالضبط المُستخدَم فعلياً لزر "إعادة إرسال"
+            // أعلاه (canResend = invited/pending) — لا منطق حالة جديد، بلا أي
+            // تغيير هنا (Requirement: "keep the existing rule unchanged").
+            // راجع handleManualLink() أسفل الملف للتدفّق الفعلي الآن.
+            (canResend ? '<button type="button" class="copy-link-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold" aria-label="نسخ رابط دعوة المشرف">نسخ رابط الدعوة</button>' : '') +
             (canRevoke ? '<button type="button" class="revoke-sup-btn h-9 px-2.5 rounded-lg bg-destructive/10 text-destructive-text text-xs font-semibold">إلغاء</button>' : '') +
           '</div>' +
         '</td>';
@@ -279,12 +300,10 @@ get_header();
       var resendBtn = tr.querySelector('.resend-sup-btn');
       if (resendBtn) resendBtn.addEventListener('click', function () { handleResend(row.id, resendBtn); });
 
-      // RC1 Enhancement — Supervisor Invitation Manual Link (UI Only): زر
-      // placeholder بحت — لا AJAX، لا fetch() جديد، لا توليد رابط، لا نسخ فعلي
-      // إلى الحافظة، لا تدوير توكن، لا استدعاء Cartat. يعرض فقط رسالة معلوماتية
-      // عبر مكوّن التنبيه القائم (showToast) — راجع handleCopyLinkPlaceholder().
+      // Supervisor Manual Invitation Link: Secure One-Time Generation — تنفيذ.
+      // راجع handleManualLink() أسفل الملف.
       var copyLinkBtn = tr.querySelector('.copy-link-sup-btn');
-      if (copyLinkBtn) copyLinkBtn.addEventListener('click', function () { handleCopyLinkPlaceholder(); });
+      if (copyLinkBtn) copyLinkBtn.addEventListener('click', function () { handleManualLink(row.id, copyLinkBtn); });
 
       var revokeBtn = tr.querySelector('.revoke-sup-btn');
       if (revokeBtn) revokeBtn.addEventListener('click', function () { handleRevoke(row.id, revokeBtn); });
@@ -459,13 +478,99 @@ get_header();
     });
   }
 
-  // ── نسخ رابط الدعوة (RC1 Enhancement — UI Only) ─────────────────────────
-  // Placeholder بحت لميزة مستقبلية. لا AJAX هنا، لا fetch() خارج postAjax()
-  // القائمة أعلاه (غير مُستخدَمة في هذه الدالة إطلاقاً)، لا نقطة نهاية جديدة،
-  // لا توليد/نسخ لأي رابط فعلي، لا تدوير توكن، لا إعادة إرسال دعوة، لا
-  // استدعاء Cartat — فقط رسالة معلوماتية عبر showToast() القائمة فعلاً.
-  function handleCopyLinkPlaceholder() {
-    showToast('ستتوفر ميزة نسخ رابط الدعوة في التحديث القادم.', false);
+  // ── نسخ رابط الدعوة (Supervisor Manual Invitation Link: Secure One-Time
+  // Generation — تنفيذ) ───────────────────────────────────────────────────
+  // بديل طوارئ عند تعذّر واتساب: طلب AJAX مخوَّل واحد فقط لكل ضغطة زر، يُعيد
+  // الخادم رابط قبول جاهز الاستخدام (توكن جديد التُزِم فعلياً على الخادم قبل
+  // إعادته — راجع includes/class-pge-supervisor-manual-link-service.php)،
+  // يُنسَخ محلياً إلى الحافظة. لا توكن/هاش/معرّفات داخلية تصل هذه الدالة
+  // إطلاقاً — فقط invitation_url الجاهز. لا تخزين للرابط في localStorage/
+  // sessionStorage بأي شكل — يبقى في متغيّر جافاسكريبت محلي (url) ثم في حقل
+  // النافذة الاحتياطية إن ظهرت، ويُمسَح من الـDOM عند الإغلاق (راجع
+  // closeManualLinkFallback() أدناه).
+  var manualLinkModal = document.getElementById('manualLinkModal');
+  var manualLinkInput = document.getElementById('manualLinkInput');
+  var manualLinkMsg = document.getElementById('manualLinkMsg');
+  var manualLinkCopyBtn = document.getElementById('manualLinkCopyBtn');
+  var manualLinkCloseBtn = document.getElementById('manualLinkCloseBtn');
+
+  function showManualLinkMsg(text, isError) {
+    manualLinkMsg.classList.remove('hidden');
+    manualLinkMsg.textContent = text;
+    manualLinkMsg.style.background = isError ? '#fee2e2' : '#dcfce7';
+    manualLinkMsg.style.color = isError ? '#991b1b' : '#166534';
+  }
+
+  // نافذة احتياطية فقط عند تعذّر النسخ التلقائي — لا تستدعي الخادم مطلقاً
+  // (الرابط مُولَّد ومُلتزَم على الخادم مسبقاً)، تعرض فقط الرابط الجاهز أصلاً.
+  function openManualLinkFallback(url) {
+    manualLinkInput.value = url;
+    manualLinkMsg.classList.add('hidden');
+    manualLinkModal.classList.remove('hidden');
+    window.setTimeout(function () {
+      manualLinkInput.focus();
+      manualLinkInput.select();
+    }, 0);
+  }
+
+  function closeManualLinkFallback() {
+    manualLinkModal.classList.add('hidden');
+    manualLinkInput.value = ''; // لا يبقى الرابط في الـDOM بعد الإغلاق — لا تخزين متصفح بأي شكل
+  }
+
+  manualLinkCloseBtn.addEventListener('click', closeManualLinkFallback);
+
+  manualLinkCopyBtn.addEventListener('click', function () {
+    // نسخ يدوي فقط من الرابط المعروض بالفعل في الحقل — لا استدعاء خلفي هنا إطلاقاً.
+    manualLinkInput.focus();
+    manualLinkInput.select();
+    var copied = false;
+    try {
+      copied = document.execCommand('copy');
+    } catch (e) {
+      copied = false;
+    }
+    if (copied) {
+      showManualLinkMsg('تم نسخ رابط الدعوة.', false);
+    } else {
+      showManualLinkMsg('تعذّر النسخ التلقائي — حدِّد النص وانسخه يدوياً (Ctrl+C).', true);
+    }
+  });
+
+  function handleManualLink(id, btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+
+    postAjax('pge_supervisor_mgmt_manual_link', { assignment_id: id }).then(function (json) {
+      btn.disabled = false;
+
+      if (!json || !json.success) {
+        showToast((json && json.data && json.data.message) || 'تعذّر توليد رابط الدعوة', true);
+        return;
+      }
+
+      var url = (json.data && json.data.invitation_url) || '';
+      if (!url) {
+        showToast('تعذّر توليد رابط الدعوة', true);
+        return;
+      }
+
+      if (window.navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(url).then(function () {
+          showToast('تم نسخ رابط الدعوة.', false);
+        }).catch(function () {
+          // فشل النسخ التلقائي فقط — الرابط الجاهز أصلاً لا يُطلَب مجدداً من
+          // الخادم، يُعرَض في النافذة الاحتياطية للنسخ اليدوي.
+          openManualLinkFallback(url);
+        });
+      } else {
+        // navigator.clipboard غير متاح إطلاقاً في هذا المتصفح — نفس النافذة الاحتياطية مباشرة.
+        openManualLinkFallback(url);
+      }
+    }).catch(function () {
+      btn.disabled = false;
+      showToast('تعذّر الاتصال بالخادم', true);
+    });
   }
 
   // ── إلغاء إسناد مشرف ──────────────────────────────────────────────────
