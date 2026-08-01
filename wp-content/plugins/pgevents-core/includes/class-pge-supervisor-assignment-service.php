@@ -816,6 +816,181 @@ class PGE_Supervisor_Assignment_Service
 
         return ['result' => 'revoked', 'id' => $normalized_id];
     }
+
+    /**
+     * ============================================================================
+     * تدوير توكن دخول (Supervisor Login Architecture — Post-Activation Login RFC)
+     * ============================================================================
+     * نصف الكتابة فقط (الالتزام)؛ التوليد عبر generate_delivery_token() المشتركة
+     * أعلاه — **لا مولّد توكن ثانٍ** (نفس bin2hex(random_bytes(32))/sha256()
+     * المُستخدَمَين فعلياً لتوكن الدعوة/الجلسة). نفس بنية commit_new_token_hash()
+     * حرفياً (شرط WHERE id + الحالة المتحقَّقة معاً، ذري)، لكن تكتب على عمود
+     * login_token_hash المستقل تماماً — **لا تلمس invitation_token_hash ولا
+     * status إطلاقاً**: توكن الدخول لا يمثّل انتقال حالة (بخلاف توكن الدعوة)،
+     * فقط دليل هوية لحظي لإسناد active بالفعل. لا تُحدِّث invited_at أيضاً
+     * (ذلك العمود خاص بدورة حياة الدعوة حصراً، لا صلة له بتوكن الدخول).
+     *
+     * @return array{result:string, id?:int, reason?:string}
+     */
+    public static function commit_new_login_token_hash($id, $expected_status, $new_login_token_hash): array
+    {
+        $normalized_id = self::normalize_positive_id($id);
+        if ($normalized_id === 0) {
+            return ['result' => 'error', 'reason' => 'invalid_id'];
+        }
+
+        $expected_status = is_scalar($expected_status) ? (string) $expected_status : '';
+        $new_login_token_hash = is_scalar($new_login_token_hash) ? (string) $new_login_token_hash : '';
+        if ($expected_status === '' || $new_login_token_hash === '') {
+            return ['result' => 'error', 'reason' => 'invalid_arguments'];
+        }
+
+        global $wpdb;
+        $table = self::table_name();
+        $now = current_time('mysql', true);
+
+        $updated = $wpdb->update(
+            $table,
+            [
+                'login_token_hash' => $new_login_token_hash,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => $normalized_id,
+                'status' => $expected_status,
+            ],
+            ['%s', '%s'],
+            ['%d', '%s']
+        );
+
+        if ($updated === false || $updated === 0) {
+            return ['result' => 'error', 'reason' => 'concurrent_status_change'];
+        }
+
+        return ['result' => 'committed', 'id' => $normalized_id];
+    }
+
+    /**
+     * ============================================================================
+     * استهلاك توكن دخول (Supervisor Login Architecture RFC) — مسار مصادقة
+     * مستقل تماماً عن accept_invitation()، بلا أي استدعاء مشترك بينهما
+     * ("Never reuse invitation service" حرفياً). يماثلها بنيوياً فقط (بحث
+     * بالهاش ← تحقّق الحالة ← تحديث ذري بشرط WHERE id + الهاش نفسه معاً، نفس
+     * فلسفة عدم الحاجة لـGET_LOCK هنا تماماً كـaccept_invitation()) لكن
+     * الفروق الجوهرية:
+     *  - الحالة المطلوبة 'active' فقط (عكس invited/pending تماماً).
+     *  - **لا تُغيِّر status إطلاقاً** — يبقى 'active' كما هو قبل/بعد
+     *    الاستهلاك؛ توكن الدخول لا يمثّل انتقال حالة على الإطلاق.
+     *  - تُصفِّر login_token_hash فقط إلى NULL (استهلاك لمرة واحدة — يمنع
+     *    إعادة استخدام نفس الرابط بعد أول تسجيل دخول ناجح به، بنفس الفلسفة
+     *    الأمنية لتوكن الدعوة)، بلا أي لمس لـinvitation_token_hash/
+     *    accepted_at/revoked_at.
+     *
+     * hash_invitation_token() المشتركة أعلاه (sha256 عام لا علاقة له
+     * بالدعوة تحديداً رغم اسمها) تُعاد هنا لتفادي خوارزمية هاش ثانية —
+     * لا يعني ذلك إعادة استخدام أي منطق دعوة فعلي.
+     *
+     * @return array{result:string, id?:int, event_id?:int, reason?:string, status?:string}
+     *   'consumed' — الاستهلاك نجح فعلياً. يتضمن 'id'، 'event_id'.
+     *   'error'    — توكن غير موجود/مستهلَك مسبقاً، الإسناد لم يعد active،
+     *                أو تعارض تزامن. يتضمن 'reason'.
+     */
+    public static function consume_login_token($raw_token): array
+    {
+        $raw_token = is_scalar($raw_token) ? trim((string) $raw_token) : '';
+        if ($raw_token === '') {
+            return ['result' => 'error', 'reason' => 'invalid_token'];
+        }
+
+        $token_hash = self::hash_invitation_token($raw_token);
+
+        global $wpdb;
+        $table = self::table_name();
+
+        $existing = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM $table WHERE login_token_hash = %s LIMIT 1", $token_hash),
+            ARRAY_A
+        );
+
+        if ($existing === null) {
+            return ['result' => 'error', 'reason' => 'invalid_token'];
+        }
+
+        $current_status = (string) ($existing['status'] ?? '');
+        $existing_id = (int) $existing['id'];
+        $existing_event_id = (int) ($existing['event_id'] ?? 0);
+
+        if ($current_status !== 'active') {
+            // id/event_id مُضمَّنان هنا عمداً (بخلاف فرع 'invalid_token' أعلاه
+            // حيث لا صف مطابق أصلاً) — الإسناد معروف بيقين، فيجوز للمستدعي
+            // (PGE_Supervisor_Login_Authenticator) كتابة تدقيق login_failed
+            // صادق منسوباً إليه.
+            return ['result' => 'error', 'reason' => 'assignment_not_active', 'status' => $current_status, 'id' => $existing_id, 'event_id' => $existing_event_id];
+        }
+
+        $now = current_time('mysql', true);
+
+        $updated = $wpdb->update(
+            $table,
+            [
+                'login_token_hash' => null,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => $existing_id,
+                'login_token_hash' => $token_hash,
+            ],
+            ['%s', '%s'],
+            ['%d', '%s']
+        );
+
+        if ($updated === false || $updated === 0) {
+            // تعارض تزامن حقيقي: استدعاء آخر (أو تدويرة جديدة) سبق هذا
+            // واستهلك/استبدل نفس الهاش قبل وصول تحديثنا. id/event_id من
+            // القراءة الأولى أعلاه (الإسناد نفسه معروف، فقط الهاش لم يعد
+            // يطابق) — تكفي لتدقيق login_failed صادق.
+            return ['result' => 'error', 'reason' => 'token_already_used_or_invalid', 'id' => $existing_id, 'event_id' => $existing_event_id];
+        }
+
+        return ['result' => 'consumed', 'id' => $existing_id, 'event_id' => $existing_event_id];
+    }
+
+    /**
+     * قراءة كل الإسنادات النشطة (status = 'active') لهاتف مُطبَّع مُعطى، عبر
+     * كل المناسبات — Supervisor Login Architecture RFC، تُستهلَك حصراً من
+     * تدفّق "Request Login Link" الذاتي (/supervisor/login) حيث لا event_id
+     * معروفاً مسبقاً (المشرف يُدخِل رقم جواله فقط، لا رابط مناسبة). قراءة
+     * فقط، بلا أي كتابة.
+     *
+     * تحذير معماري صريح (نفس تحذير pge_has_active_supervisor_assignment()
+     * أعلاه حرفياً): هذه دالة Lookup بحتة، **ليست** دالة تفويض/مصادقة — رقم
+     * الهاتف مُدخَل حر من طرف مجهول الهوية بالكامل. المستدعي (AJAX الذاتي)
+     * مسؤول عن التعامل الآمن مع النتيجة (رسالة استجابة موحَّدة بصرف النظر عن
+     * وجود تطابق، لمنع تعداد الأرقام — Phone Enumeration).
+     *
+     * @return array<int, array> صفوف كاملة لكل تطابق (قد تكون أكثر من واحد
+     *   إن كان نفس الهاتف مُسنَداً نشطاً في أكثر من مناسبة).
+     */
+    public static function find_active_assignments_by_phone($phone): array
+    {
+        $normalized_phone = function_exists('pge_norm_phone')
+            ? pge_norm_phone((string) $phone)
+            : preg_replace('/\D+/', '', (string) $phone);
+
+        if ($normalized_phone === '') {
+            return [];
+        }
+
+        global $wpdb;
+        $table = self::table_name();
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare("SELECT * FROM $table WHERE supervisor_phone = %s AND status = 'active'", $normalized_phone),
+            ARRAY_A
+        );
+
+        return is_array($rows) ? $rows : [];
+    }
 }
 
 if (!function_exists('pge_has_active_supervisor_assignment')) {

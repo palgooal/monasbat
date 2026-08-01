@@ -178,6 +178,10 @@ get_header();
   <div id="manualLinkModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="manualLinkHeading">
     <div class="w-full max-w-sm rounded-2xl bg-white p-5">
       <h2 id="manualLinkHeading" class="text-sm font-extrabold text-foreground mb-2">رابط دعوة المشرف</h2>
+      <!-- عنوان النافذة نصّ افتراضي (رابط الدعوة) — يُستبدَل ديناميكياً عبر
+           openManualLinkFallback(url, title) عند استخدامها لرابط الدخول
+           (Supervisor Login Architecture RFC)؛ نفس النافذة الاحتياطية
+           الواحدة تُعاد استخدامها لكلا نوعَي الرابط — لا نافذة مكرَّرة. -->
       <p class="text-xs text-foreground/60 mb-3">تعذّر النسخ التلقائي — يمكنك تحديد الرابط ونسخه يدوياً:</p>
       <label for="manualLinkInput" class="sr-only">رابط الدعوة</label>
       <input id="manualLinkInput" type="text" readonly dir="ltr"
@@ -271,8 +275,20 @@ get_header();
       tr.className = 'border-b border-border/60 last:border-0';
       tr.setAttribute('data-id', row.id);
 
+      // Supervisor Login Architecture (Post-Activation Login) RFC: "Invitation
+      // and Login must become two different concepts." canResend/canLogin
+      // متنافيان بالضبط بحكم شرطيهما (invited/pending مقابل active) — لا صف
+      // يُظهر أزرار الدعوة وأزرار الدخول معاً أبداً ("Do NOT show invitation
+      // actions anymore" لحالة active — محقَّق ضمنياً هنا).
       var canResend = (row.status === 'invited' || row.status === 'pending');
+      var canLogin = (row.status === 'active');
       var canRevoke = (row.status !== 'revoked');
+
+      // نص زر الإلغاء يتبع السياق (Pending → "Cancel Invitation"، Active →
+      // "Revoke Supervisor") — نفس الإجراء الخلفي تماماً (revoke-sup-btn،
+      // pge_supervisor_mgmt_revoke) في كلتا الحالتين، لا منطق جديد، تسمية
+      // عرض فقط.
+      var revokeLabel = canResend ? 'إلغاء الدعوة' : (canLogin ? 'إلغاء إسناد المشرف' : 'إلغاء');
 
       tr.innerHTML =
         '<td class="px-4 py-3 font-semibold text-foreground">' + (escapeHtml(row.name) || '<span class="text-foreground/50 font-normal">بدون اسم</span>') + '</td>' +
@@ -284,14 +300,13 @@ get_header();
         '<td class="px-4 py-3">' +
           '<div class="flex flex-wrap gap-1.5">' +
             '<button type="button" class="edit-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">تعديل</button>' +
+            // ── أزرار الدعوة (Pending فقط: invited/pending) ──────────────
             (canResend ? '<button type="button" class="resend-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">إعادة إرسال</button>' : '') +
-            // Supervisor Manual Invitation Link: Secure One-Time Generation —
-            // تنفيذ. نفس شرط الظهور بالضبط المُستخدَم فعلياً لزر "إعادة إرسال"
-            // أعلاه (canResend = invited/pending) — لا منطق حالة جديد، بلا أي
-            // تغيير هنا (Requirement: "keep the existing rule unchanged").
-            // راجع handleManualLink() أسفل الملف للتدفّق الفعلي الآن.
             (canResend ? '<button type="button" class="copy-link-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold" aria-label="نسخ رابط دعوة المشرف">نسخ رابط الدعوة</button>' : '') +
-            (canRevoke ? '<button type="button" class="revoke-sup-btn h-9 px-2.5 rounded-lg bg-destructive/10 text-destructive-text text-xs font-semibold">إلغاء</button>' : '') +
+            // ── أزرار الدخول (Active فقط) — Supervisor Login Architecture ──
+            (canLogin ? '<button type="button" class="send-login-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">إرسال رابط الدخول</button>' : '') +
+            (canLogin ? '<button type="button" class="copy-login-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold" aria-label="نسخ رابط دخول المشرف">نسخ رابط الدخول</button>' : '') +
+            (canRevoke ? '<button type="button" class="revoke-sup-btn h-9 px-2.5 rounded-lg bg-destructive/10 text-destructive-text text-xs font-semibold">' + escapeHtml(revokeLabel) + '</button>' : '') +
           '</div>' +
         '</td>';
 
@@ -304,6 +319,14 @@ get_header();
       // راجع handleManualLink() أسفل الملف.
       var copyLinkBtn = tr.querySelector('.copy-link-sup-btn');
       if (copyLinkBtn) copyLinkBtn.addEventListener('click', function () { handleManualLink(row.id, copyLinkBtn); });
+
+      // Supervisor Login Architecture (Post-Activation Login) RFC — تنفيذ.
+      // راجع handleSendLogin()/handleCopyLoginLink() أسفل الملف.
+      var sendLoginBtn = tr.querySelector('.send-login-sup-btn');
+      if (sendLoginBtn) sendLoginBtn.addEventListener('click', function () { handleSendLogin(row.id, sendLoginBtn); });
+
+      var copyLoginBtn = tr.querySelector('.copy-login-sup-btn');
+      if (copyLoginBtn) copyLoginBtn.addEventListener('click', function () { handleCopyLoginLink(row.id, copyLoginBtn); });
 
       var revokeBtn = tr.querySelector('.revoke-sup-btn');
       if (revokeBtn) revokeBtn.addEventListener('click', function () { handleRevoke(row.id, revokeBtn); });
@@ -489,10 +512,15 @@ get_header();
   // النافذة الاحتياطية إن ظهرت، ويُمسَح من الـDOM عند الإغلاق (راجع
   // closeManualLinkFallback() أدناه).
   var manualLinkModal = document.getElementById('manualLinkModal');
+  var manualLinkHeadingEl = document.getElementById('manualLinkHeading');
   var manualLinkInput = document.getElementById('manualLinkInput');
   var manualLinkMsg = document.getElementById('manualLinkMsg');
   var manualLinkCopyBtn = document.getElementById('manualLinkCopyBtn');
   var manualLinkCloseBtn = document.getElementById('manualLinkCloseBtn');
+  // نافذة احتياطية واحدة مشتركة بين رابط الدعوة ورابط الدخول (Supervisor
+  // Login Architecture RFC) — kindLabel يُحدِّد النص المعروض فقط (العنوان
+  // ورسالة نجاح النسخ اليدوي)، لا فرق منطقي آخر بين الحالتين.
+  var manualLinkKindLabel = 'رابط الدعوة';
 
   function showManualLinkMsg(text, isError) {
     manualLinkMsg.classList.remove('hidden');
@@ -503,7 +531,9 @@ get_header();
 
   // نافذة احتياطية فقط عند تعذّر النسخ التلقائي — لا تستدعي الخادم مطلقاً
   // (الرابط مُولَّد ومُلتزَم على الخادم مسبقاً)، تعرض فقط الرابط الجاهز أصلاً.
-  function openManualLinkFallback(url) {
+  function openManualLinkFallback(url, kindLabel) {
+    manualLinkKindLabel = kindLabel || 'الرابط';
+    manualLinkHeadingEl.textContent = manualLinkKindLabel;
     manualLinkInput.value = url;
     manualLinkMsg.classList.add('hidden');
     manualLinkModal.classList.remove('hidden');
@@ -531,7 +561,7 @@ get_header();
       copied = false;
     }
     if (copied) {
-      showManualLinkMsg('تم نسخ رابط الدعوة.', false);
+      showManualLinkMsg('تم نسخ ' + manualLinkKindLabel + '.', false);
     } else {
       showManualLinkMsg('تعذّر النسخ التلقائي — حدِّد النص وانسخه يدوياً (Ctrl+C).', true);
     }
@@ -561,11 +591,73 @@ get_header();
         }).catch(function () {
           // فشل النسخ التلقائي فقط — الرابط الجاهز أصلاً لا يُطلَب مجدداً من
           // الخادم، يُعرَض في النافذة الاحتياطية للنسخ اليدوي.
-          openManualLinkFallback(url);
+          openManualLinkFallback(url, 'رابط الدعوة');
         });
       } else {
         // navigator.clipboard غير متاح إطلاقاً في هذا المتصفح — نفس النافذة الاحتياطية مباشرة.
-        openManualLinkFallback(url);
+        openManualLinkFallback(url, 'رابط الدعوة');
+      }
+    }).catch(function () {
+      btn.disabled = false;
+      showToast('تعذّر الاتصال بالخادم', true);
+    });
+  }
+
+  // ── إرسال/نسخ رابط الدخول (Supervisor Login Architecture RFC — تنفيذ) ────
+  // منفصلتان تماماً عن نسخ رابط الدعوة أعلاه (نقطتا AJAX مختلفتان، خدمة خلفية
+  // مختلفة تماماً) — تُعادان استخدام نفس النافذة الاحتياطية العامة فقط
+  // (openManualLinkFallback/closeManualLinkFallback، معامَلة كأداة عامة).
+
+  // "إرسال رابط الدخول" — عبر واتساب (Cartat)؛ لا رابط يُعاد للواجهة هنا
+  // إطلاقاً (نفس فلسفة handleResend()) — وصل مباشرة عبر واتساب عند النجاح،
+  // أو فشل الإرسال (والرسالة توجّه لاستخدام "نسخ رابط الدخول" بدلاً منه).
+  function handleSendLogin(id, btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+
+    postAjax('pge_supervisor_mgmt_send_login', { assignment_id: id }).then(function (json) {
+      btn.disabled = false;
+      if (json && json.success) {
+        showToast(json.data.message || 'تم إرسال رابط الدخول', false);
+      } else {
+        showToast((json && json.data && json.data.message) || 'تعذّر إرسال رابط الدخول', true);
+      }
+    }).catch(function () {
+      btn.disabled = false;
+      showToast('تعذّر الاتصال بالخادم', true);
+    });
+  }
+
+  // "نسخ رابط الدخول" — توليد يدوي فوري بلا محاولة إرسال واتساب، بنفس تدفّق
+  // handleManualLink() تماماً (طلب AJAX واحد ← نسخ تلقائي ← نافذة احتياطية
+  // عند الفشل)، لنقطة نهاية مختلفة (pge_supervisor_mgmt_login_link) وحقل
+  // استجابة مختلف (login_url).
+  function handleCopyLoginLink(id, btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+
+    postAjax('pge_supervisor_mgmt_login_link', { assignment_id: id }).then(function (json) {
+      btn.disabled = false;
+
+      if (!json || !json.success) {
+        showToast((json && json.data && json.data.message) || 'تعذّر توليد رابط الدخول', true);
+        return;
+      }
+
+      var url = (json.data && json.data.login_url) || '';
+      if (!url) {
+        showToast('تعذّر توليد رابط الدخول', true);
+        return;
+      }
+
+      if (window.navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(url).then(function () {
+          showToast('تم نسخ رابط الدخول.', false);
+        }).catch(function () {
+          openManualLinkFallback(url, 'رابط الدخول');
+        });
+      } else {
+        openManualLinkFallback(url, 'رابط الدخول');
       }
     }).catch(function () {
       btn.disabled = false;

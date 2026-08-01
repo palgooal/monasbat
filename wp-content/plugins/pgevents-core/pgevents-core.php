@@ -186,7 +186,24 @@ require_once PGE_PATH . 'includes/class-pge-supervisor-invitation-delivery.php';
 // الجديد فيه يستهلكها.
 require_once PGE_PATH . 'includes/class-pge-supervisor-manual-link-service.php';
 
+// Supervisor Login Architecture (Post-Activation Login) — تنفيذ. ثلاث خدمات
+// مستقلة تماماً عن كل ما سبق (لا تعرف بوجود PGE_Supervisor_Manual_Link_Service/
+// PGE_Supervisor_Invitation_Delivery/PGE_Supervisor_Authenticator إطلاقاً،
+// ولا هذه تعرف بوجودها): توليد/التزام توكن الدخول (Login_Service)، التسليم
+// الاختياري عبر Cartat (Login_Delivery — تعتمد على Login_Service وعلى
+// PGE_Cartat_Transport المُحمَّلة أعلاه)، ومنسِّق المصادقة (Login_Authenticator
+// — يربط استهلاك توكن الدخول بـPGE_Supervisor_Session القائمة أصلاً، يُستهلَك
+// من includes/routing.php عند طلب /supervisor/login/{token}/).
+require_once PGE_PATH . 'includes/class-pge-supervisor-login-service.php';
+require_once PGE_PATH . 'includes/class-pge-supervisor-login-delivery.php';
+require_once PGE_PATH . 'includes/class-pge-supervisor-login-authenticator.php';
+
 require_once PGE_PATH . 'includes/supervisor-management-ajax.php';
+
+// نقطة نهاية AJAX عامة (nopriv) لطلب رابط دخول ذاتياً برقم الجوال —
+// includes/supervisor-login-ajax.php (تُستهلَك من templates/supervisor-login.php).
+// تعتمد على Login_Delivery أعلاه مباشرة، لا على أي ملف AJAX آخر.
+require_once PGE_PATH . 'includes/supervisor-login-ajax.php';
 
 // Host Invitation Management — Entry Check-in Supervisors، Phase 9A ("Host
 // Invitation Management" RFC، بعد "Phase 9A Final Fix — Restore Phase 9A

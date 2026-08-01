@@ -22,7 +22,10 @@ if (!defined('ABSPATH')) exit;
  *    mon_supervisor_sessions (أُضيف في 1.12.0 — Entry Check-in Supervisors
  *    Phase 3 "Supervisor Authentication": جلسات مشرف مستقلة تماماً عن تسجيل
  *    دخول WordPress، راجع includes/class-pge-supervisor-session.php)
- *    عبر dbDelta().
+ *    عبر dbDelta(). عمود login_token_hash (أُضيف في 1.13.0 — "Supervisor
+ *    Login Architecture" RFC: توكن دخول مستقل تماماً عن invitation_token_hash
+ *    على نفس جدول mon_event_supervisors، راجع includes/class-pge-supervisor-
+ *    login-service.php) أُضيف على الجدول القائم، لا جدول جديد.
  *  - إدارة رقم إصدار قاعدة البيانات (mon_catalog_db_version) وتشغيل دوال
  *    الترقية المستقبلية بالترتيب عند الحاجة.
  *
@@ -50,7 +53,7 @@ class Mon_Catalog_Schema
      * رقم الإصدار الحالي لبنية كتالوج الباقات والخدمات.
      * أي تغيير مستقبلي في البنية أو ترحيل بيانات يرفع هذا الرقم.
      */
-    const DB_VERSION = '1.12.0';
+    const DB_VERSION = '1.13.0';
 
     /**
      * اسم الـ option الذي يخزّن آخر إصدار تم تطبيقه فعلياً على قاعدة البيانات.
@@ -153,6 +156,7 @@ class Mon_Catalog_Schema
             '1.10.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_10_0'],
             '1.11.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_11_0'],
             '1.12.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_12_0'],
+            '1.13.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_13_0'],
         ];
     }
 
@@ -980,6 +984,68 @@ class Mon_Catalog_Schema
     }
 
     /**
+     * ترقية 1.13.0: إضافة عمود login_token_hash إلى mon_event_supervisors —
+     * "Supervisor Login Architecture (Post-Activation Login)" RFC. توكن دخول
+     * مستقل تماماً عن invitation_token_hash (عمود مختلف، دورة حياة مختلفة):
+     *
+     * الفرق الجوهري عن invitation_token_hash: توكن الدعوة صالح فقط أثناء
+     * invited/pending وينتهي أبداً بعد القبول (يتحوّل الإسناد إلى active).
+     * توكن الدخول على النقيض تماماً — لا يُولَّد إلا والإسناد active بالفعل،
+     * لا يُغيِّر status أبداً (لا انتقال حالة)، ويجوز توليده/استهلاكه عدد غير
+     * محدود من المرات طوال بقاء الإسناد active. لذلك وُضع في عمود منفصل تماماً
+     * بدل إعادة استخدام invitation_token_hash — الخلط بينهما كان سيجعل من
+     * المستحيل التمييز لاحقاً "هل هذا توكن دعوة لم يُستهلَك بعد، أم توكن دخول؟"
+     * لنفس الصف، وهو بالضبط ما يمنعه هذا التصحيح بنيوياً.
+     *
+     * VARCHAR(64) NULL UNIQUE: نفس فلسفة invitation_token_hash/session_token_hash
+     * حرفياً (راجع تعليق upgrade_to_1_11_0()) — 64 حرف hex = sha256(raw)، لا
+     * تخزين للتوكن الخام أبداً، NULL متعددة لا تنتهك التفرّد (صفوف كثيرة قد
+     * تكون بلا توكن دخول نشط حالياً في آنٍ واحد: لم تُطلَب بعد، أو استُهلِكت في
+     * تسجيل دخول سابق، أو دُوِّرت باستبدالها بتوكن أحدث).
+     *
+     * نفس فلسفة upgrade_to_1_11_0()/upgrade_to_1_12_0(): تحقّق فعلي (SHOW
+     * COLUMNS + SHOW INDEX) بدل الافتراض الأعمى بنجاح dbDelta(). قراءة فقط
+     * بلا أي كتابة — Idempotent بديهياً.
+     */
+    private static function upgrade_to_1_13_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_event_supervisors';
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        if ($columns === null) {
+            return false;
+        }
+
+        $has_login_token_hash_column = false;
+        foreach ($columns as $column) {
+            if (($column['Field'] ?? '') === 'login_token_hash') {
+                $has_login_token_hash_column = true;
+                break;
+            }
+        }
+        if (!$has_login_token_hash_column) {
+            return false;
+        }
+
+        $indexes = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
+        if ($indexes === null) {
+            return false;
+        }
+
+        $login_token_hash_is_unique = false;
+        foreach ($indexes as $index) {
+            if (($index['Key_name'] ?? '') === 'login_token_hash') {
+                $login_token_hash_is_unique = ((int) ($index['Non_unique'] ?? 1)) === 0;
+                break;
+            }
+        }
+
+        return $login_token_hash_is_unique;
+    }
+
+    /**
      * صياغة SQL للجداول الثمانية، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
      * مستقل، بلا FOREIGN KEY، بلا ENGINE، بلا ENUM).
      */
@@ -1238,6 +1304,7 @@ class Mon_Catalog_Schema
             supervisor_name VARCHAR(191) NOT NULL DEFAULT '',
             status VARCHAR(20) NOT NULL DEFAULT 'invited',
             invitation_token_hash VARCHAR(64) NULL,
+            login_token_hash VARCHAR(64) NULL,
             invited_by_user_id BIGINT(20) UNSIGNED NOT NULL,
             invited_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             accepted_at DATETIME NULL,
@@ -1249,7 +1316,8 @@ class Mon_Catalog_Schema
             KEY user_id (user_id),
             KEY event_status (event_id, status),
             KEY event_phone (event_id, supervisor_phone),
-            UNIQUE KEY invitation_token_hash (invitation_token_hash)
+            UNIQUE KEY invitation_token_hash (invitation_token_hash),
+            UNIQUE KEY login_token_hash (login_token_hash)
         ) $charset_collate;";
 
         // ═══════════════════════════════════════════════════════════════════

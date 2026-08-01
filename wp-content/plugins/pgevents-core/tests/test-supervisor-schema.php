@@ -294,7 +294,10 @@ check_true('35. Idempotency — استدعاء ثانٍ متكرر يعيد نف
 // ============================================================================
 echo "\n=== جزء 4: Schema (mon_supervisor_sessions — Phase 3) ===\n";
 
-check('36. Mon_Catalog_Schema::DB_VERSION = 1.12.0', Mon_Catalog_Schema::DB_VERSION, '1.12.0');
+// تقادمت القيمة الحرفية إلى 1.13.0 (Supervisor Login Architecture RFC —
+// أضافت عمود login_token_hash) — التأكيد 26 أعلاه (>= 1.11.0) والتأكيدان 49
+// (وجود مسار ترقية 1.12.0) يبقيان صحيحين دون تعديل.
+check('36. Mon_Catalog_Schema::DB_VERSION = 1.13.0', Mon_Catalog_Schema::DB_VERSION, '1.13.0');
 
 $schema_sql_parts_p3 = $schema_sql_ref->invoke(null);
 check_true('37. عدد أجزاء SQL أصبح 8 (جدول جلسات جديد واحد)', count($schema_sql_parts_p3) === 8);
@@ -354,6 +357,63 @@ $wpdb->show_columns_override = $full_session_columns;
 $wpdb->show_index_override = $full_session_index;
 check_true('54. Idempotency — استدعاء أول يعيد true', $upgrade_112_ref->invoke(null) === true);
 check_true('54. Idempotency — استدعاء ثانٍ متكرر يعيد نفس النتيجة true', $upgrade_112_ref->invoke(null) === true);
+
+$wpdb->show_columns_override = null;
+$wpdb->show_index_override = null;
+
+// ============================================================================
+// جزء 5: Schema — login_token_hash (Supervisor Login Architecture RFC)
+// ============================================================================
+echo "\n=== جزء 5: Schema (login_token_hash — Supervisor Login Architecture) ===\n";
+
+$schema_sql_parts_p5 = $schema_sql_ref->invoke(null);
+$supervisors_sql_p5 = $schema_sql_parts_p5[6] ?? '';
+check_true('55. عمود login_token_hash موجود (VARCHAR(64) NULL)، مستقل تماماً عن invitation_token_hash', strpos($supervisors_sql_p5, 'login_token_hash VARCHAR(64) NULL') !== false);
+check_true('56. القيد UNIQUE على login_token_hash موجود (تفرّد أمني مستقل)', strpos($supervisors_sql_p5, 'UNIQUE KEY login_token_hash (login_token_hash)') !== false);
+check_true('57. invitation_token_hash لا يزال موجوداً بلا تغيير في نفس الجدول (توكنان مستقلان جنباً إلى جنب)', strpos($supervisors_sql_p5, 'invitation_token_hash VARCHAR(64) NULL') !== false);
+check_true('58. التوكن الخام لتسجيل الدخول غير مخزَّن كعمود (لا login_token بلا hash)', strpos($supervisors_sql_p5, 'login_token VARCHAR') === false);
+
+check_true('59. مفتاح 1.13.0 موجود في get_upgrade_routines()', array_key_exists('1.13.0', $routines_ref->invoke(null)));
+check('59. 1.13.0 مرتبط بـ upgrade_to_1_13_0()', $routines_ref->invoke(null)['1.13.0'] ?? null, ['Mon_Catalog_Schema', 'upgrade_to_1_13_0']);
+
+$upgrade_113_ref = new ReflectionMethod('Mon_Catalog_Schema', 'upgrade_to_1_13_0');
+$upgrade_113_ref->setAccessible(true);
+
+$full_supervisors_columns_113 = [
+    'id', 'event_id', 'user_id', 'supervisor_phone', 'supervisor_name',
+    'status', 'invitation_token_hash', 'login_token_hash', 'invited_by_user_id',
+    'invited_at', 'accepted_at', 'revoked_at', 'created_at', 'updated_at',
+];
+$full_supervisors_index_113 = [
+    ['Key_name' => 'PRIMARY', 'Seq_in_index' => 1, 'Column_name' => 'id', 'Non_unique' => 0],
+    ['Key_name' => 'invitation_token_hash', 'Seq_in_index' => 1, 'Column_name' => 'invitation_token_hash', 'Non_unique' => 0],
+    ['Key_name' => 'login_token_hash', 'Seq_in_index' => 1, 'Column_name' => 'login_token_hash', 'Non_unique' => 0],
+];
+
+$wpdb->show_columns_override = $full_supervisors_columns_113;
+$wpdb->show_index_override = $full_supervisors_index_113;
+check_true('60. upgrade_to_1_13_0() يعيد true عندما تكون البنية كاملة', $upgrade_113_ref->invoke(null) === true);
+
+$wpdb->show_columns_override = ['id', 'event_id', 'status', 'invitation_token_hash']; // login_token_hash مفقود عمداً
+check_true('61. upgrade_to_1_13_0() يعيد false عند نقص عمود login_token_hash', $upgrade_113_ref->invoke(null) === false);
+
+$wpdb->show_columns_override = $full_supervisors_columns_113;
+$wpdb->show_index_override = [
+    ['Key_name' => 'PRIMARY', 'Seq_in_index' => 1, 'Column_name' => 'id', 'Non_unique' => 0],
+    ['Key_name' => 'invitation_token_hash', 'Seq_in_index' => 1, 'Column_name' => 'invitation_token_hash', 'Non_unique' => 0],
+    // فهرس login_token_hash مفقود عمداً هنا
+];
+check_true('62. upgrade_to_1_13_0() يعيد false عند نقص فهرس login_token_hash كاملاً', $upgrade_113_ref->invoke(null) === false);
+
+$wpdb->show_index_override = [
+    ['Key_name' => 'login_token_hash', 'Seq_in_index' => 1, 'Column_name' => 'login_token_hash', 'Non_unique' => 1], // غير فريد بالخطأ
+];
+check_true('63. upgrade_to_1_13_0() يعيد false إذا كان login_token_hash غير فريد (Non_unique=1) — يجب أن يكون UNIQUE فعلياً', $upgrade_113_ref->invoke(null) === false);
+
+$wpdb->show_columns_override = $full_supervisors_columns_113;
+$wpdb->show_index_override = $full_supervisors_index_113;
+check_true('64. Idempotency — استدعاء أول يعيد true', $upgrade_113_ref->invoke(null) === true);
+check_true('64. Idempotency — استدعاء ثانٍ متكرر يعيد نفس النتيجة true', $upgrade_113_ref->invoke(null) === true);
 
 $wpdb->show_columns_override = null;
 $wpdb->show_index_override = null;

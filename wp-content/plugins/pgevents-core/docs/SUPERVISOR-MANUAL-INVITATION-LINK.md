@@ -200,3 +200,13 @@ link_result_message()`، نفس فلسفة `pge_supervisor_delivery_result_messa
 | القفل | `pge_supervisor_delivery_*` | `pge_supervisor_manual_link_*` (مستقل) |
 | الرابط يصل للمضيف كيف؟ | لا يصل إطلاقاً (يُرسَل للضيف مباشرة) | يُعاد في استجابة AJAX ويُنسَخ للحافظة |
 | حدث تدقيق النجاح | `provider_accepted` | `manual_link_generated` |
+
+## 14. دورة حياة الدخول (Login) — مستند منفصل، لا تخلط بينهما
+
+كلا الميزتين في هذا المستند (تسليم Cartat والرابط اليدوي) تنتميان لـ**دورة
+حياة الدعوة**: تفعيل الإسناد لأول مرة، مرة واحدة، عبر `invitation_token_hash`.
+بعد أن يصبح المشرف `active`، تسجيل الدخول اليومي المتكرّر يمرّ عبر **دورة
+حياة مستقلة تماماً** (توكن مختلف `login_token_hash`، خدمة مختلفة
+`PGE_Supervisor_Login_Service`، مسار مصادقة مختلف `/supervisor/login/{token}/`)
+— لا علاقة لها بـ`PGE_Supervisor_Manual_Link_Service` الموثَّقة في هذا
+المستند إطلاقاً. راجع التوثيق الكامل في **`docs/SUPERVISOR-LOGIN-LIFECYCLE.md`**.

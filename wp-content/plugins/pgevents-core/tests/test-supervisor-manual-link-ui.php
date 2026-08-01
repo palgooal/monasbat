@@ -152,8 +152,11 @@ echo "\n=== القسم د: النسخ إلى الحافظة + النافذة ا�
 
 check_true('د1. استخدام navigator.clipboard.writeText داخل handleManualLink', strpos($fn_body, 'navigator.clipboard.writeText') !== false);
 check_true('د2. رسالة النجاح الحرفية "تم نسخ رابط الدعوة." موجودة', strpos($fn_body, 'تم نسخ رابط الدعوة.') !== false);
-check_true('د3. فشل النسخ (catch) يفتح النافذة الاحتياطية (openManualLinkFallback) لا استدعاءً خلفياً جديداً', (bool) preg_match('/\.catch\(function\s*\(\)\s*\{[^}]*openManualLinkFallback\(url\)/s', $fn_body));
-check_true('د4. تعذّر navigator.clipboard إطلاقاً (else) يفتح نفس النافذة الاحتياطية مباشرة', (bool) preg_match('/\}\s*else\s*\{[^}]*openManualLinkFallback\(url\)/s', $fn_body));
+// ملاحظة (Supervisor Login Architecture RFC): openManualLinkFallback() صارت
+// تقبل معامل kindLabel ثانياً (لتُعاد استخدامها لرابط الدخول أيضاً) — التوقيع
+// الحالي openManualLinkFallback(url, 'رابط الدعوة')، لا استدعاء خلفي جديد.
+check_true('د3. فشل النسخ (catch) يفتح النافذة الاحتياطية (openManualLinkFallback) لا استدعاءً خلفياً جديداً', (bool) preg_match('/\.catch\(function\s*\(\)\s*\{[^}]*openManualLinkFallback\(url, \'رابط الدعوة\'\)/s', $fn_body));
+check_true('د4. تعذّر navigator.clipboard إطلاقاً (else) يفتح نفس النافذة الاحتياطية مباشرة', (bool) preg_match('/\}\s*else\s*\{[^}]*openManualLinkFallback\(url, \'رابط الدعوة\'\)/s', $fn_body));
 check_true('د5. لا استدعاء postAjax/fetch إضافي داخل مساري النسخ الاحتياطي (catch/else) — بحث عن استدعاء postAjax ثانٍ', substr_count($fn_body, 'postAjax(') === 1);
 
 // النافذة الاحتياطية نفسها: عناصر DOM + دوال الفتح/الإغلاق/النسخ اليدوي.
@@ -161,7 +164,11 @@ check_true('د6. عنصر النافذة الاحتياطية manualLinkModal م
 check_true('د7. حقل عرض الرابط manualLinkInput موجود (قابل للتحديد، readonly)', (bool) preg_match('/id="manualLinkInput"[^>]*readonly/', $src));
 check_true('د8. زر نسخ يدوي ثانوي manualLinkCopyBtn موجود', strpos($src, 'id="manualLinkCopyBtn"') !== false);
 check_true('د9. زر إغلاق manualLinkCloseBtn موجود', strpos($src, 'id="manualLinkCloseBtn"') !== false);
-check_true('د10. دالة openManualLinkFallback(url) موجودة وتملأ الحقل بالرابط الجاهز (لا استدعاء خلفي)', (bool) preg_match('/function openManualLinkFallback\(url\)\s*\{[^}]*manualLinkInput\.value = url;/s', $src));
+// النافذة الاحتياطية عُمِّمَت (Supervisor Login Architecture RFC) لتُستخدَم
+// لرابط الدعوة ورابط الدخول معاً عبر معامل kindLabel، بدل توليد نافذة مكرَّرة —
+// التوقيع الحالي openManualLinkFallback(url, kindLabel) لا يزال يملأ الحقل
+// بالرابط الجاهز مباشرة (لا استدعاء خلفي).
+check_true('د10. دالة openManualLinkFallback(url, kindLabel) موجودة وتملأ الحقل بالرابط الجاهز (لا استدعاء خلفي)', (bool) preg_match('/function openManualLinkFallback\(url, kindLabel\)\s*\{[^}]*manualLinkInput\.value = url;/s', $src));
 check_true('د11. دالة closeManualLinkFallback() تُفرِغ الحقل عند الإغلاق (لا يبقى الرابط في الـDOM)', (bool) preg_match('/function closeManualLinkFallback\(\)\s*\{[^}]*manualLinkInput\.value = \'\';/s', $src));
 check_true('د12. زر النسخ اليدوي يستخدم document.execCommand(\'copy\') محلياً (لا AJAX)', strpos($src, "document.execCommand('copy')") !== false);
 
@@ -198,7 +205,10 @@ echo "\n=== القسم ز: عدم تغيير الأزرار/التدفقات ا�
 check_true('ز1. زر "تعديل" لا يزال قائماً بلا تغيير', strpos($src, 'class="edit-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">تعديل</button>') !== false);
 check_true('ز2. زر "إعادة إرسال" لا يزال قائماً بلا تغيير', strpos($src, 'class="resend-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">إعادة إرسال</button>') !== false);
 check_true('ز3. شرط canRevoke الأصلي لم يتغيَّر', strpos($src, "var canRevoke = (row.status !== 'revoked');") !== false);
-check_true('ز4. زر "إلغاء" لا يزال قائماً بلا تغيير', strpos($src, 'class="revoke-sup-btn h-9 px-2.5 rounded-lg bg-destructive/10 text-destructive-text text-xs font-semibold">إلغاء</button>') !== false);
+// نص الزر صار ديناميكياً (Supervisor Login Architecture RFC): "إلغاء الدعوة"
+// لمشرف بانتظار القبول، "إلغاء إسناد المشرف" لمشرف نشط، "إلغاء" لغير ذلك —
+// نفس الزر (revoke-sup-btn) ونفس الإجراء الخلفي تماماً، تسمية عرض فقط.
+check_true('ز4. زر الإلغاء لا يزال قائماً، بتسمية ديناميكية عبر revokeLabel (canResend/canLogin)', strpos($src, "var revokeLabel = canResend ? 'إلغاء الدعوة' : (canLogin ? 'إلغاء إسناد المشرف' : 'إلغاء');") !== false && strpos($src, "class=\"revoke-sup-btn h-9 px-2.5 rounded-lg bg-destructive/10 text-destructive-text text-xs font-semibold\">' + escapeHtml(revokeLabel) + '</button>") !== false);
 check_true('ز5. نموذج إنشاء مشرف جديد (createSupForm) لا يزال قائماً', strpos($src, 'id="createSupForm"') !== false);
 check_true('ز6. دالة handleResend() الأصلية لم تُمَس (توقيعها كما هو)', strpos($src, 'function handleResend(id, btn)') !== false);
 check_true('ز7. دالة handleRevoke() الأصلية لم تُمَس (توقيعها كما هو)', strpos($src, 'function handleRevoke(id, btn)') !== false);

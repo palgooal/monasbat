@@ -308,7 +308,15 @@ class PGE_Supervisor_Session
      * Idempotent: استدعاء متكرر لنفس التوكن بعد إبطاله الأول يُعيد
      * 'already_revoked' لا خطأً.
      *
-     * @return array{result: string, id?: int, reason?: string}
+     * تحديث إضافي بحت (Supervisor Login Architecture RFC — Audit "logout"):
+     * نتيجة 'logged_out' الناجحة تتضمّن الآن أيضاً 'assignment_id'/'event_id'
+     * (من صف الجلسة نفسه، مقروء أصلاً قبل هذا التحديث) — إضافة حقلين جديدين
+     * فقط لعقد الإرجاع، **لا حذف ولا إعادة تسمية لأي حقل قائم** (لا كاسر
+     * توافق خلفي؛ لا مستدعٍ قائم كان يقرأ هذين الحقلين من قبل لأنهما لم
+     * يكونا موجودين). الغرض: يسمح لمعالج supervisor_logout في routing.php
+     * بكتابة تدقيق 'logout' صادق دون إعادة قراءة صف الجلسة بنفسه.
+     *
+     * @return array{result: string, id?: int, assignment_id?: int, event_id?: int, reason?: string}
      */
     public static function logout($raw_token): array
     {
@@ -356,7 +364,12 @@ class PGE_Supervisor_Session
             return ['result' => 'error', 'reason' => 'concurrent_logout'];
         }
 
-        return ['result' => 'logged_out', 'id' => $session_id];
+        return [
+            'result' => 'logged_out',
+            'id' => $session_id,
+            'assignment_id' => (int) $session['assignment_id'],
+            'event_id' => (int) $session['event_id'],
+        ];
     }
 }
 

@@ -58,6 +58,24 @@ add_action('init', function () {
     // template_redirect لكامل التفصيل والتوثيق.
     add_rewrite_rule('^supervisor/accept/([^/]+)/?$', 'index.php?pge_action=supervisor_accept_invitation&pge_token=$matches[1]', 'top');
 
+    // 3ج. مصادقة توكن الدخول (Supervisor Login Architecture — Post-Activation
+    // Login RFC): monasbat.test/supervisor/login/{token}/ — مسار مستقل تماماً
+    // عن /supervisor/accept/{token}/ أعلاه ("Do NOT reuse /supervisor/accept/
+    // {token}. Acceptance remains invitation-only." حرفياً). التوكن الخام هو
+    // المُعرِّف الوحيد في الرابط، بلا معرِّف إسناد/مناسبة. يجب تسجيل هذا النمط
+    // (الذي يتطلّب مقطعاً إضافياً بعد /login/) — أي ترتيب نسبةً لنمط الصفحة
+    // المجرَّدة أدناه آمن فعلياً لأن كليهما مُرسى بـ$ ولا يتداخلان (نفس مبدأ
+    // /supervisor/accept/{token}/ مقابل /supervisor/ أعلاه).
+    add_rewrite_rule('^supervisor/login/([^/]+)/?$', 'index.php?pge_action=supervisor_login_authenticate&pge_login_token=$matches[1]', 'top');
+
+    // 3د. صفحة طلب رابط الدخول الذاتية (Supervisor Login Architecture):
+    // monasbat.test/supervisor/login/ — بلا توكن في الرابط. المشرف يُدخِل رقم
+    // جواله فقط؛ لا event_id ولا أي معرِّف داخلي هنا (نفس فلسفة /supervisor/
+    // تماماً). راجع templates/supervisor-login.php لمنطق "إن كانت هناك جلسة
+    // سارية بالفعل، أعِد التوجيه إلى /supervisor/checkin/ مباشرة" — هذا
+    // المنطق يعيش في القالب نفسه (نفس اتفاقية supervisor-portal.php)، لا هنا.
+    add_rewrite_rule('^supervisor/login/?$', 'index.php?pge_action=supervisor_login_request', 'top');
+
     add_rewrite_rule('^supervisor/?$', 'index.php?pge_action=supervisor_portal', 'top');
 
     // 4. لوحة إحصاءات الحضور للمشرف (Entry Check-in Supervisors — Phase 6):
@@ -81,6 +99,7 @@ add_filter('query_vars', function ($vars) {
     $vars[] = 'event_id';
     $vars[] = 'pge_short_event';
     $vars[] = 'pge_token';
+    $vars[] = 'pge_login_token';
     return $vars;
 });
 
@@ -118,6 +137,46 @@ add_action('template_redirect', function () {
  * الرئيسية (home_url('/')) كافتراضي آمن ومحايد، قابل للاستبدال بسطر واحد فور
  * تعريف ذلك المسار في مرحلة لاحقة.
  */
+/**
+ * ينفّذ إبطال جلسة مشرف + تدقيق 'logout' الشرطي معاً — مُستخرَجة كدالة
+ * مسمّاة مستقلة (بدل بقائها داخل الـ closure مباشرة) خصيصاً لتكون قابلة
+ * للاختبار التنفيذي المباشر دون المرور عبر add_action('template_redirect')
+ * (الذي لا يمكن استدعاؤه من مجموعة اختبارات bootstrap-only). لا منطق جديد
+ * هنا — نقل حرفي للكتلة التي كانت داخل الـ closure فقط.
+ *
+ * @param string $raw_token التوكن الخام من كوكي الجلسة (فارغ = لا شيء لإبطاله)
+ * @param string $nonce قيمة nonce من $_GET['_wpnonce']
+ * @return array نتيجة PGE_Supervisor_Session::logout() كما هي، أو
+ *               ['result' => 'skipped'] إن لم يوجد توكن/nonce صالح
+ */
+if (!function_exists('pge_supervisor_process_logout_token')) {
+    function pge_supervisor_process_logout_token(string $raw_token, string $nonce): array
+    {
+        // لا تحقّق nonce إن لم تكن هناك أصلاً جلسة لإبطالها — لا حاجة لحماية طلب
+        // لا يُغيِّر أي شيء فعلياً على أي حال.
+        if ($raw_token === '' || !wp_verify_nonce($nonce, 'pge_supervisor_logout')) {
+            return ['result' => 'skipped'];
+        }
+
+        $logout_result = PGE_Supervisor_Session::logout($raw_token);
+
+        // تدقيق 'logout' (Supervisor Login Architecture RFC) — فقط عند
+        // إبطال فعلي جديد ('logged_out')، لا عند 'already_revoked' (طلب خروج
+        // مكرَّر على جلسة مُبطَلة أصلاً لا يُنتج حدث تدقيق ثانٍ — Append-Only
+        // بلا ضجيج). لا يُغيِّر هذا أي شيء في الإسناد/الحالة/التفعيل/القبول —
+        // فقط سجل تدقيق إضافي، بلا أي أثر على منطق logout() نفسه.
+        if (($logout_result['result'] ?? '') === 'logged_out' && class_exists('PGE_Supervisor_Management_Audit')) {
+            $logged_out_assignment_id = (int) ($logout_result['assignment_id'] ?? 0);
+            $logged_out_event_id = (int) ($logout_result['event_id'] ?? 0);
+            if ($logged_out_assignment_id > 0 && $logged_out_event_id > 0) {
+                PGE_Supervisor_Management_Audit::record($logged_out_event_id, $logged_out_assignment_id, 0, 'logout', '');
+            }
+        }
+
+        return $logout_result;
+    }
+}
+
 add_action('template_redirect', function () {
     $action = get_query_var('pge_action');
     if ($action !== 'supervisor_logout') return;
@@ -134,11 +193,7 @@ add_action('template_redirect', function () {
         ? (string) $_COOKIE[PGE_Supervisor_Session::SESSION_COOKIE_NAME]
         : '';
 
-    // لا تحقّق nonce إن لم تكن هناك أصلاً جلسة لإبطالها — لا حاجة لحماية طلب
-    // لا يُغيِّر أي شيء فعلياً على أي حال.
-    if ($raw_token !== '' && wp_verify_nonce($nonce, 'pge_supervisor_logout')) {
-        PGE_Supervisor_Session::logout($raw_token);
-    }
+    pge_supervisor_process_logout_token($raw_token, $nonce);
 
     // إتلاف الكوكي من طرف المتصفح دائماً، بصرف النظر عن نجاح/فشل الإبطال في
     // قاعدة البيانات أعلاه — لا يبقى أي أثر للجلسة على هذا الجهاز.
@@ -346,6 +401,123 @@ add_action('template_redirect', function () {
 }, 1);
 
 /**
+ * ============================================================================
+ * مصادقة توكن الدخول — Supervisor Login Architecture (Post-Activation Login) RFC
+ * ============================================================================
+ * محوِّل HTTP رفيع تماماً — بلا أي منطق مصادقة/جلسة بنفسه، مطابق بنيوياً
+ * لمعالج supervisor_accept_invitation أعلاه، لكنه **مسار مستقل بالكامل**:
+ * يستدعي PGE_Supervisor_Login_Authenticator::authenticate() (لا Authenticator
+ * الأصلي إطلاقاً). عند النجاح: نفس آلية كوكي الجلسة بالضبط (PGE_Supervisor_
+ * Session::SESSION_COOKIE_NAME — الجلسة نفسها مفهوم مشترك بين المسارين، لا
+ * "جلسة دخول" منفصلة)، لكن إعادة التوجيه إلى /supervisor/checkin/ مباشرة
+ * (لا /supervisor/) — المشرف مُفعَّل بالفعل، لا حاجة لعرض شاشة الترحيب
+ * الأولى (portal shell) في كل تسجيل دخول لاحق.
+ *
+ * pge_supervisor_accept_token_shape_valid()/pge_render_supervisor_accept_error()
+ * المُعرَّفتان أعلاه (نقيتان بالكامل، لا محتوى خاص بالدعوة في منطقهما — فحص
+ * شكل hex عام، وبطاقة خطأ RTL عامة بعنوان/رسالة/حالة HTTP كمعاملات) تُعاد
+ * استخدامهما هنا حرفياً — إعادة استخدام أداة عامة، لا "إعادة استخدام خدمة
+ * الدعوة" (الممنوعة صراحةً هي إعادة استخدام PGE_Supervisor_Authenticator/
+ * accept_invitation()/المسار نفسه، لا أي دالة نقية عامة الغرض).
+ */
+if (!function_exists('pge_supervisor_login_classify_auth_error')) {
+    /**
+     * ترجمة نتيجة فاشلة من PGE_Supervisor_Login_Authenticator::authenticate()
+     * إلى صفحة خطأ آمنة — دالة نقية بحتة، مستقلة تماماً عن pge_supervisor_
+     * accept_classify_auth_error() (رسائل/أسباب مختلفة بالكامل، لا مشاركة
+     * منطق فعلي، فقط تشابه بنيوي في الشكل العام).
+     *
+     * @return array{title:string, message:string, http_status:int}
+     */
+    function pge_supervisor_login_classify_auth_error(array $auth_result): array
+    {
+        $stage = (string) ($auth_result['stage'] ?? '');
+        $reason = (string) ($auth_result['reason'] ?? '');
+
+        if ($stage === 'session') {
+            // تحقّقت الهوية فعلياً (توكن الدخول استُهلِك بنجاح) لكن تعذّر فتح
+            // الجلسة — لا "إعادة محاولة بنفس الرابط" (استُهلِك فعلاً ونهائياً)؛
+            // يحتاج المشرف رابط دخول جديداً من المضيف أو من /supervisor/login/.
+            return [
+                'title' => 'تعذّر فتح الجلسة',
+                'message' => 'تم التحقق من هويتك بنجاح، لكن تعذّر فتح جلسة الدخول تلقائياً حالياً. اطلب رابط دخول جديداً من المضيف أو من صفحة تسجيل الدخول.',
+                'http_status' => 500,
+            ];
+        }
+
+        if ($reason === 'assignment_not_active') {
+            return [
+                'title' => 'لم يعد وصولك فعّالاً',
+                'message' => 'لم يعد وصولك كمشرف على هذه المناسبة فعّالاً. تواصل مع المضيف إذا كنت تظن أن هذا خطأ.',
+                'http_status' => 403,
+            ];
+        }
+
+        if ($reason === 'invalid_token' || $reason === 'token_already_used_or_invalid') {
+            return [
+                'title' => 'رابط الدخول غير صالح',
+                'message' => 'تم استخدام رابط الدخول هذا مسبقاً أو لم يعد صالحاً. اطلب رابط دخول جديداً من المضيف أو من صفحة تسجيل الدخول.',
+                'http_status' => 410,
+            ];
+        }
+
+        return [
+            'title' => 'تعذّر تسجيل الدخول',
+            'message' => 'تعذّر إكمال تسجيل الدخول حالياً. حاول مرة أخرى بعد قليل، أو تواصل مع المضيف إذا استمرت المشكلة.',
+            'http_status' => 500,
+        ];
+    }
+}
+
+add_action('template_redirect', function () {
+    $action = get_query_var('pge_action');
+    if ($action !== 'supervisor_login_authenticate') return;
+
+    if (!class_exists('PGE_Supervisor_Login_Authenticator') || !class_exists('PGE_Supervisor_Session')) {
+        pge_render_supervisor_accept_error('تعذّر تسجيل الدخول', 'تعذّر تحميل بوابة المشرف حالياً. حاول لاحقاً.', 503);
+    }
+
+    $raw_token_from_url = (string) get_query_var('pge_login_token');
+    $raw_token_from_url = rawurldecode($raw_token_from_url);
+
+    if (!pge_supervisor_accept_token_shape_valid($raw_token_from_url)) {
+        pge_render_supervisor_accept_error(
+            'رابط الدخول غير صالح',
+            'رابط الدخول غير صالح. تأكد من نسخ الرابط بالكامل، أو اطلب رابطاً جديداً من المضيف.',
+            400
+        );
+    }
+
+    $auth_result = PGE_Supervisor_Login_Authenticator::authenticate($raw_token_from_url);
+    $result = (string) ($auth_result['result'] ?? '');
+
+    if ($result === 'authenticated') {
+        $session_token = (string) ($auth_result['session_token'] ?? '');
+        $expires_at = (string) ($auth_result['expires_at'] ?? '');
+        $expires_timestamp = $expires_at !== '' ? strtotime($expires_at) : (time() + PGE_Supervisor_Session::SESSION_TTL_SECONDS);
+
+        if ($session_token !== '' && !headers_sent()) {
+            setcookie(PGE_Supervisor_Session::SESSION_COOKIE_NAME, $session_token, [
+                'expires' => $expires_timestamp,
+                'path' => COOKIEPATH ?: '/',
+                'domain' => COOKIE_DOMAIN,
+                'secure' => is_ssl(),
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+        }
+
+        // إعادة توجيه إلى واجهة تسجيل الحضور مباشرة (لا بوابة الترحيب الأولى) —
+        // الفرق الوحيد المقصود عن نتيجة مسار /supervisor/accept/ أعلاه.
+        wp_safe_redirect(home_url('/supervisor/checkin/'));
+        exit;
+    }
+
+    $error_page = pge_supervisor_login_classify_auth_error($auth_result);
+    pge_render_supervisor_accept_error($error_page['title'], $error_page['message'], $error_page['http_status']);
+}, 1);
+
+/**
  * التوجيه الذكي للملفات (Template Loader)
  */
 add_filter('template_include', function ($template) {
@@ -483,6 +655,16 @@ add_filter('template_include', function ($template) {
         $supervisor_portal_template = PGE_PATH . 'templates/supervisor-portal.php';
         if (file_exists($supervisor_portal_template)) {
             return $supervisor_portal_template;
+        }
+    }
+
+    // صفحة طلب رابط الدخول الذاتية (Supervisor Login Architecture) — نفس
+    // فلسفة عدم استخدام locate_template() المُتّبَعة في supervisor_portal
+    // تماماً (شِلّة أمنية بسيطة، لا محتوى قابل للتحرير عبر Elementor).
+    if ($action === 'supervisor_login_request') {
+        $supervisor_login_template = PGE_PATH . 'templates/supervisor-login.php';
+        if (file_exists($supervisor_login_template)) {
+            return $supervisor_login_template;
         }
     }
 

@@ -422,6 +422,131 @@ function pge_supervisor_mgmt_manual_link_handler()
 }
 add_action('wp_ajax_pge_supervisor_mgmt_manual_link', 'pge_supervisor_mgmt_manual_link_handler');
 
+// ── رابط/إرسال الدخول — Supervisor Login Architecture (Post-Activation Login)
+// RFC، تنفيذ. نفس نمط manual_link أعلاه حرفياً: validate_request() → load_
+// owned_assignment() → استدعاء الخدمة المخصَّصة → wp_send_json_success/error.
+// الفرق الجوهري عن manual_link: الأهلية هنا active فقط (عكس تماماً)، ولا
+// علاقة إطلاقاً بـPGE_Supervisor_Manual_Link_Service ولا بتوكن الدعوة —
+// PGE_Supervisor_Login_Service/PGE_Supervisor_Login_Delivery مستقلتان تماماً.
+if (!function_exists('pge_supervisor_login_result_message')) {
+    /**
+     * رسالة عرض صادقة لنتيجة PGE_Supervisor_Login_Service::generate()/
+     * PGE_Supervisor_Login_Delivery::deliver() — نفس فلسفة pge_supervisor_
+     * manual_link_result_message()/pge_supervisor_delivery_result_message()
+     * أعلاه (تنسيق عرض بحت). لا تكشف أبداً: التوكن الخام، الرابط، الهاش.
+     */
+    function pge_supervisor_login_result_message(array $result): string
+    {
+        $outcome = (string) ($result['result'] ?? '');
+
+        if ($outcome === 'sent') {
+            return 'تم إرسال رابط الدخول عبر واتساب';
+        }
+        if ($outcome === 'generated_delivery_failed') {
+            return 'تم توليد رابط الدخول، لكن تعذّر إرساله عبر واتساب — استخدم "نسخ رابط الدخول" لإرساله يدوياً';
+        }
+
+        $reason = (string) ($result['reason'] ?? '');
+        $status = (string) ($result['status'] ?? '');
+
+        if ($reason === 'not_eligible' && $status !== '') {
+            $status_labels = [
+                'invited' => 'بانتظار قبول الدعوة أولاً',
+                'pending' => 'بانتظار قبول الدعوة أولاً',
+                'revoked' => 'تم إلغاء إسناده',
+                'expired' => 'انتهى إسناده',
+            ];
+            $status_note = $status_labels[$status] ?? 'حالته الحالية لا تسمح بذلك';
+            return 'لا يمكن توليد رابط دخول قبل أن يصبح المشرف نشطاً — ' . $status_note;
+        }
+
+        $labels = [
+            'lock_busy'              => 'يوجد طلب توليد رابط دخول قيد التنفيذ بالفعل لهذا المشرف، حاول لاحقاً',
+            'token_commit_failed'    => 'تعذّر توليد رابط الدخول (تغيّرت حالة الإسناد أثناء التوليد)',
+            'assignment_not_found'   => 'المشرف غير موجود',
+            'assignment_incomplete'  => 'بيانات الإسناد غير مكتملة',
+            'service_unavailable'    => 'الخدمة غير متاحة حالياً',
+            'transport_unavailable'  => 'خدمة الإرسال غير متاحة حالياً',
+            'invalid_assignment_id'  => 'معرّف غير صالح',
+            'provider_not_active'    => 'مزوّد واتساب النشط ليس Cartat',
+            'missing_settings'       => 'إعدادات Cartat غير مكتملة',
+            'transport_error'        => 'تعذّر الاتصال بواتساب (خطأ شبكة مؤقت)',
+            'provider_rejected'      => 'رفض واتساب إرسال الرسالة',
+        ];
+
+        return $labels[$reason] ?? 'تعذّر إتمام العملية';
+    }
+}
+
+function pge_supervisor_mgmt_login_link_handler()
+{
+    $event_id = pge_supervisor_mgmt_validate_request();
+
+    if (!class_exists('PGE_Supervisor_Login_Service')) {
+        wp_send_json_error(['message' => 'الخدمة غير متاحة حالياً', 'reason' => 'service_unavailable']);
+    }
+
+    $assignment_id = isset($_POST['assignment_id']) ? (int) $_POST['assignment_id'] : 0;
+
+    $owned = pge_supervisor_mgmt_load_owned_assignment($event_id, $assignment_id);
+    if ($owned === null) {
+        wp_send_json_error(['message' => 'المشرف غير موجود ضمن هذه المناسبة', 'reason' => 'not_found']);
+    }
+
+    $result = PGE_Supervisor_Login_Service::generate($assignment_id, get_current_user_id());
+    $outcome = (string) ($result['result'] ?? '');
+
+    if ($outcome === 'generated') {
+        // نفس عقد manual_link: حقل واحد فقط، لا شيء حسّاس إضافي.
+        wp_send_json_success(['login_url' => (string) $result['login_url']]);
+    }
+
+    $reason = (string) ($result['reason'] ?? 'unknown_error');
+    wp_send_json_error([
+        'message' => pge_supervisor_login_result_message($result),
+        'reason'  => $reason,
+    ]);
+}
+add_action('wp_ajax_pge_supervisor_mgmt_login_link', 'pge_supervisor_mgmt_login_link_handler');
+
+function pge_supervisor_mgmt_send_login_handler()
+{
+    $event_id = pge_supervisor_mgmt_validate_request();
+
+    if (!class_exists('PGE_Supervisor_Login_Delivery')) {
+        wp_send_json_error(['message' => 'الخدمة غير متاحة حالياً', 'reason' => 'service_unavailable']);
+    }
+
+    $assignment_id = isset($_POST['assignment_id']) ? (int) $_POST['assignment_id'] : 0;
+
+    $owned = pge_supervisor_mgmt_load_owned_assignment($event_id, $assignment_id);
+    if ($owned === null) {
+        wp_send_json_error(['message' => 'المشرف غير موجود ضمن هذه المناسبة', 'reason' => 'not_found']);
+    }
+
+    $result = PGE_Supervisor_Login_Delivery::deliver($assignment_id, get_current_user_id());
+    $outcome = (string) ($result['result'] ?? '');
+
+    if ($outcome === 'sent') {
+        // نفس ملاحظة pge_supervisor_mgmt_resend_handler(): لا رابط يُعاد
+        // للواجهة إطلاقاً هنا — وصل مباشرة عبر واتساب.
+        wp_send_json_success(['message' => pge_supervisor_login_result_message($result)]);
+    }
+
+    // 'generated_delivery_failed' و'error' كلاهما يُعاملان كفشل من منظور
+    // هذا الزر تحديداً (لم يصل شيء عبر واتساب فعلياً) — الرسالة توجّه
+    // المضيف صراحة لاستخدام "نسخ رابط الدخول" بدلاً من إعادة المحاولة، لأن
+    // الرابط (إن كان قد تولَّد فعلاً في حالة generated_delivery_failed) لا
+    // يُكشَف هنا عمداً (نفس نطاق تعرّض manual_link/login_link فقط، لا هذا
+    // الزر).
+    $reason = (string) ($result['reason'] ?? 'unknown_error');
+    wp_send_json_error([
+        'message' => pge_supervisor_login_result_message($result),
+        'reason'  => $reason,
+    ]);
+}
+add_action('wp_ajax_pge_supervisor_mgmt_send_login', 'pge_supervisor_mgmt_send_login_handler');
+
 // ── إلغاء إسناد مشرف — Requirement "Revoke Supervisor" ──────────────────────
 function pge_supervisor_mgmt_revoke_handler()
 {
