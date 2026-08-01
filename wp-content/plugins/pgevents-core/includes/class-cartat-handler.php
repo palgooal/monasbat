@@ -176,7 +176,7 @@ class Mon_Cartat_Handler
             . " | wa_number=" . ($pending['wa_number'] ?? 'N/A')
             . " | resolved=$rsvp_phone");
 
-        $this->record_rsvp($event_id, $rsvp_phone, $reply);
+        $rsvp_id = $this->record_rsvp($event_id, $rsvp_phone, $reply);
 
         // مسح جميع مفاتيح الدعوة المعلّقة
         if (str_contains($raw_from, '@lid')) {
@@ -259,27 +259,41 @@ class Mon_Cartat_Handler
         $this->log("📤 confirm msg → $send_to | " . ($confirm_ok ? '✅ sent' : '❌ failed: ' . json_encode($confirm_result)));
 
         // ── إرسال QR code عند تأكيد الحضور ───────────────────────────────────
+        // Phase 9B QR Architecture Final Fix: حمولة صورة QR الآن هي الحمولة
+        // الكنسية الموقَّعة (event_id|rsvp_id|qr_version|signature) عبر
+        // PGE_Guest_Resolution_Service::build_scanner_qr_payload() — وليست
+        // invite_code الخام كما كانت سابقاً (invite_code لم يعد بيانات ماسح
+        // الدخول؛ يبقى فقط نصاً مرجعياً بشرياً في نص التسمية التوضيحية أدناه).
         if ($reply === 'yes') {
             // إذا فرغ invite_code من الـ pending، نأخذه من الـ event مباشرة
+            // (يُستخدم هنا فقط كنص مرجعي بشري في التسمية التوضيحية، لا كحمولة QR)
             if ($invite_code === '') {
                 $raw_code = (string) get_post_meta($event_id, '_pge_invite_code', true);
                 if ($raw_code !== '' && function_exists('pge_normalize_invite_code')) {
                     $invite_code = pge_normalize_invite_code($raw_code);
                 }
                 $this->log($invite_code !== ''
-                    ? "ℹ️ QR: invite_code من الـ pending فارغ، استُخدم رمز المناسبة: $invite_code"
-                    : "⚠️ QR skipped: لا يوجد رمز دعوة للمناسبة $event_id"
+                    ? "ℹ️ QR caption: invite_code من الـ pending فارغ، استُخدم رمز المناسبة: $invite_code"
+                    : "ℹ️ QR caption: لا يوجد رمز دعوة مرجعي للمناسبة $event_id"
                 );
             }
 
-            if ($invite_code !== '' && function_exists('pge_generate_qr_url')) {
-                $qr_url     = pge_generate_qr_url($invite_code);
-                $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع\n🔑 الرمز: *{$invite_code}*";
-                $qr_result  = $this->send_media_message($send_to, $qr_url, $qr_caption);
-                $qr_ok = $qr_result !== null
-                    && !(isset($qr_result['status']) && $qr_result['status'] === 'error')
-                    && !(isset($qr_result['success']) && $qr_result['success'] === false);
-                $this->log("🔳 QR send → $send_to | code=$invite_code | " . ($qr_ok ? '✅ sent' : '❌ failed: ' . json_encode($qr_result)));
+            if ($rsvp_id > 0 && function_exists('pge_generate_qr_url') && class_exists('PGE_Guest_Resolution_Service')) {
+                $scanner_payload = PGE_Guest_Resolution_Service::build_scanner_qr_payload($event_id, $rsvp_id, $rsvp_phone);
+                if ($scanner_payload !== '') {
+                    $qr_url     = pge_generate_qr_url($scanner_payload);
+                    $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع"
+                        . ($invite_code !== '' ? "\n🔑 الرمز المرجعي: *{$invite_code}*" : '');
+                    $qr_result  = $this->send_media_message($send_to, $qr_url, $qr_caption);
+                    $qr_ok = $qr_result !== null
+                        && !(isset($qr_result['status']) && $qr_result['status'] === 'error')
+                        && !(isset($qr_result['success']) && $qr_result['success'] === false);
+                    $this->log("🔳 QR send → $send_to | rsvp_id=$rsvp_id | " . ($qr_ok ? '✅ sent' : '❌ failed: ' . json_encode($qr_result)));
+                } else {
+                    $this->log("⚠️ QR skipped: تعذّر بناء حمولة الماسح الكنسية لـ rsvp_id=$rsvp_id");
+                }
+            } else {
+                $this->log("⚠️ QR skipped: لا rsvp_id صالح للمناسبة $event_id");
             }
 
             // إرسال صورة الخريطة كرسالة منفصلة (أكثر وضوحاً من النص)
@@ -656,18 +670,34 @@ class Mon_Cartat_Handler
 
     /**
      * تسجيل RSVP في الجدول المخصص
+     *
+     * Phase 9B QR Architecture Final Fix: أصبحت تُعيد rsvp_id (كان void) —
+     * المستدعي يحتاجه الآن لبناء حمولة QR الكنسية الموقَّعة عبر
+     * PGE_Guest_Resolution_Service::build_scanner_qr_payload() بدل invite_code
+     * الخام. لا تغيير على أي منطق تخزين/Replacement Entitlement أدناه.
      */
-    private function record_rsvp(int $event_id, string $phone, string $reply): void
+    private function record_rsvp(int $event_id, string $phone, string $reply): int
     {
         global $wpdb;
         $table = $wpdb->prefix . 'pge_event_rsvps';
         $phone = pge_norm_phone($phone);
 
         $existing_row = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, reply FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
+            "SELECT id, reply, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
             $event_id,
             $phone
         ));
+
+        // RC1 Final Release Blocker: RSVP Write Path Unification — نفس القرار
+        // الموحَّد المُستخدَم في rsvp-handler.php/UltraMsg/rsvp-migration.php،
+        // بلا أي نسخة موازية من الشرط هنا. قبل هذا التوحيد كانت هذه الدالة
+        // تُحدِّث created_at لأي صف موجود بالهاتف بلا أي تحقق من انتمائه لدورة
+        // حياة الدعوة الحالية — ما كان يسمح لصف يتيم (من دعوة محذوفة) بأن
+        // "يُحيا" فعلياً بمجرد أن يرسل نفس الرقم رداً آخر على واتساب.
+        if (class_exists('PGE_Invitation_Repository')) {
+            $existing_row = PGE_Invitation_Repository::current_or_null($event_id, $phone, $existing_row);
+        }
+
         $existing_id = $existing_row->id ?? null;
         $old_reply   = $existing_row->reply ?? null;
 
@@ -677,6 +707,7 @@ class Mon_Cartat_Handler
                 ['reply' => $reply, 'created_at' => current_time('mysql')],
                 ['id' => $existing_id]
             );
+            $rsvp_id = (int) $existing_id;
         } else {
             $wpdb->insert($table, [
                 'event_id'    => $event_id,
@@ -687,6 +718,7 @@ class Mon_Cartat_Handler
                 'checked_in'  => 0,
                 'created_at'  => current_time('mysql'),
             ]);
+            $rsvp_id = (int) $wpdb->insert_id;
         }
 
         // المرحلة 4B: منح Replacement Entitlement عند انتقال RSVP حقيقي إلى
@@ -696,6 +728,8 @@ class Mon_Cartat_Handler
         if ($reply === 'no' && function_exists('pge_maybe_grant_replacement_entitlement')) {
             pge_maybe_grant_replacement_entitlement($event_id, $phone, $old_reply, $reply);
         }
+
+        return $rsvp_id;
     }
 
     private function get_reminder_text(): string

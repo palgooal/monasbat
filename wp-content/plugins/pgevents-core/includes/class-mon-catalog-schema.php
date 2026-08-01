@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) exit;
  * ============================================================================
  *
  * هذا الملف مسؤول حصرياً عن:
- *  - إنشاء/مزامنة 6 جداول: mon_plans, mon_plan_tiers, mon_services,
+ *  - إنشاء/مزامنة 8 جداول: mon_plans, mon_plan_tiers, mon_services,
  *    mon_invitation_credit_ledger (أُضيف في 1.5.0 — سجل ذري لاستهلاك رصيد
  *    الدعوات، راجع includes/class-pge-invitation-credit-ledger.php)،
  *    mon_replacement_entitlements (أُضيف في 1.7.0 — سجل استحقاقات
@@ -15,7 +15,13 @@ if (!defined('ABSPATH')) exit;
  *    تأسيس بنية فقط في هذه المرحلة — غير مربوط بأي مسار RSVP/Queue/Cartat بعد)،
  *    mon_tier_features (أُضيف في 1.8.0 — تخزين خام لقيم ميزات كل Tier، وفق
  *    docs/PACKAGE-FEATURE-MATRIX.md §5 وdocs/FEATURES-PHASE-2-SPEC.md Commit 1.
- *    Phase 2 — Commit 1: تأسيس الجدول فقط، بلا Repository وبلا أي استهلاك)
+ *    Phase 2 — Commit 1: تأسيس الجدول فقط، بلا Repository وبلا أي استهلاك)،
+ *    mon_event_supervisors (أُضيف في 1.10.0 — جدول إسناد مشرفي الدخول، Entry
+ *    Check-in Supervisors Phase 1: تأسيس بنية فقط، بلا دعوات/قبول/تسجيل
+ *    حضور فعلي بعد، راجع includes/supervisor-quota-resolver.php)،
+ *    mon_supervisor_sessions (أُضيف في 1.12.0 — Entry Check-in Supervisors
+ *    Phase 3 "Supervisor Authentication": جلسات مشرف مستقلة تماماً عن تسجيل
+ *    دخول WordPress، راجع includes/class-pge-supervisor-session.php)
  *    عبر dbDelta().
  *  - إدارة رقم إصدار قاعدة البيانات (mon_catalog_db_version) وتشغيل دوال
  *    الترقية المستقبلية بالترتيب عند الحاجة.
@@ -44,7 +50,7 @@ class Mon_Catalog_Schema
      * رقم الإصدار الحالي لبنية كتالوج الباقات والخدمات.
      * أي تغيير مستقبلي في البنية أو ترحيل بيانات يرفع هذا الرقم.
      */
-    const DB_VERSION = '1.9.0';
+    const DB_VERSION = '1.12.0';
 
     /**
      * اسم الـ option الذي يخزّن آخر إصدار تم تطبيقه فعلياً على قاعدة البيانات.
@@ -144,6 +150,9 @@ class Mon_Catalog_Schema
             '1.7.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_7_0'],
             '1.8.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_8_0'],
             '1.9.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_9_0'],
+            '1.10.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_10_0'],
+            '1.11.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_11_0'],
+            '1.12.0' => ['Mon_Catalog_Schema', 'upgrade_to_1_12_0'],
         ];
     }
 
@@ -677,7 +686,301 @@ class Mon_Catalog_Schema
     }
 
     /**
-     * صياغة SQL للجداول الستة، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
+     * ترقية 1.10.0: إضافة جدول mon_event_supervisors — Entry Check-in
+     * Supervisors، Phase 1 ("Supervisor Entitlement Foundation"). تأسيس بنية
+     * "جدول إسناد المشرفين" فقط (وفق نص RFC حرفياً: "Only the supervisor
+     * assignment table. Do NOT create audit tables yet. Do NOT create
+     * check-in tables. Do NOT create invitation flow.") — لا جدول تدقيق، لا
+     * جدول تسجيل حضور، لا منطق دعوة/قبول/رمز فعلي في هذه المرحلة. الجدول
+     * فارغ عند إنشائه.
+     *
+     * event_id (لا user_id مركزي/لا credit_cycle_id): الإسناد هنا على مستوى
+     * المناسبة مباشرة، بما يطابق القرار التجاري النهائي في RFC ("Supervisor
+     * limit is PER EVENT. This decision is final. Do NOT implement per-user
+     * limits.") — عدة صفوف بنفس event_id = عدة مشرفين لنفس المناسبة (يدعم
+     * "multiple supervisors per event" صراحة)، وعدم ربط الجدول بأي
+     * credit_cycle_id يترك الباب مفتوحاً طبيعياً لسيناريو "نفس المشرف يُسنَد
+     * لعدة مناسبات مستقبلاً" (future multi-event supervisors) بلا أي قيد
+     * بنيوي يمنع ذلك.
+     *
+     * user_id NULL-able: يُملأ لاحقاً (Phase غير هذه) بعد اكتمال دورة قبول
+     * الدعوة وربط المشرف بمستخدم WordPress فعلي؛ في هذه المرحلة الأعمدة
+     * الهوياتية الوحيدة المضمونة الوجود عند الإدراج هي supervisor_phone/
+     * supervisor_name — بلا أي منطق إدراج فعلي بعد (لا AJAX، لا CRUD، مجرد
+     * بنية الجدول).
+     *
+     * status VARCHAR(20) لا ENUM (بنفس نمط status في بقية جداول هذا الملف)
+     * — قيمة افتراضية 'invited' فقط كموضع نائب لدورة حياة الدعوة المستقبلية
+     * (invited/pending/active/revoked/expired، راجع docs/ENTRY-SUPERVISORS-
+     * DESIGN.md §5) بلا أي منطق انتقال حالة فعلي في هذا الـCommit — القيمة
+     * تُستهلَك فقط لاحقاً من pge_resolve_supervisor_quota_status() (Phase 1
+     * نفسها، لكن كقراءة إحصائية بحتة: عدّ الصفوف بحالة غير revoked/expired،
+     * بلا أي كتابة أو تغيير حالة من هذا الـResolver).
+     *
+     * ── تصحيح معماري (قبل موافقة Phase 1 — لم يُنشَر هذا الجدول بعد على أي
+     * بيئة، فالتصحيح هنا مباشر على نفس 1.10.0، لا خطوة ترقية إضافية) ─────────
+     *
+     * القيد السابق UNIQUE (event_id, supervisor_phone) كان خطأً معمارياً:
+     * يتعارض مع دورة حياة المشرف المعتمدة (invited → pending → active →
+     * revoked/expired) والقاعدة الصريحة "دعوة جديدة يجب أن تُنشئ صفاً جديداً
+     * دائماً — لا يجوز تعديل صف تاريخي لمحاكاة دعوة جديدة" (Append-Only
+     * History). القيد الفريد كان سيمنع تماماً السيناريو المشروع التالي: دعوة
+     * هاتف ← قبول ← إلغاء لاحقاً (revoked) ← دعوة نفس الهاتف مرة أخرى — إذ أن
+     * دعوة ثانية لاحقة لنفس (event_id, supervisor_phone) تصطدم بنفس القيد
+     * الفريد بصرف النظر عن أن الصف الأول أصبح revoked فعلاً.
+     *
+     * الحل المعتمد: **إزالة القيد الفريد نهائياً**، واستبداله بفهرس عادي
+     * (Non-Unique) فقط: KEY event_phone (event_id, supervisor_phone) — لتسريع
+     * الاستعلامات على نفس التركيبة (event_id, supervisor_phone) بلا أي فرض
+     * تفرّد على مستوى قاعدة البيانات. التاريخ الآن Append-Only بحق: أي عدد من
+     * الصفوف (نشطة أو منتهية) لنفس (event_id, supervisor_phone) قد يتعايش
+     * معاً؛ لا صف قديم يُحدَّث أبداً لمحاكاة دعوة جديدة — فقط INSERT صفوف
+     * جديدة (Phase 2، غير موجود في هذا الـCommit).
+     *
+     * القاعدة التجارية (تُطبَّق تطبيقياً في Phase 2 فقط، غير موجودة هنا):
+     * لا يجوز وجود أكثر من إسناد "نشط" واحد لنفس (event_id, supervisor_phone
+     * المُطبَّع) في آنٍ واحد — والحالات "النشطة" هي invited/pending/active
+     * حصراً (revoked/expired مُستبعَدتان تماماً، بنفس تعريف "نشط" المُعتمَد
+     * أصلاً في pge_count_active_event_supervisors() هذا الـCommit نفسه). هذا
+     * التفرّد **لا يُفرَض بقيد قاعدة بيانات إطلاقاً** — سيُنفَّذ حصراً على
+     * مستوى منطق إنشاء الدعوة في Phase 2 (SELECT فحص الحالات النشطة أولاً ثم
+     * INSERT)، محمياً بقفل GET_LOCK (أو ما يعادله من حماية تزامن حقيقية) بنفس
+     * الفلسفة المعتمدة فعلياً في هذا المشروع لمنع Race Condition مطابق تماماً
+     * (راجع PGE_Invitation_Credit_Ledger::claim_for_delivery() وقفل
+     * pge_handle_event_creation() لحصة المناسبات Commit 6) — قفل مُشتق من
+     * (event_id, supervisor_phone المُطبَّع) يمنع طلبين متزامنين من إنشاء
+     * إسنادين "نشطين" معاً لنفس الهاتف ونفس المناسبة. توثيق فقط في هذا
+     * الـCommit — **لا تنفيذ فعلي لأي قفل أو دالة إنشاء دعوة هنا إطلاقاً**.
+     *
+     * نفس فلسفة upgrade_to_1_5_0()/upgrade_to_1_7_0(): تحقّق فعلي (SHOW
+     * COLUMNS + SHOW INDEX) بدل الافتراض الأعمى بنجاح dbDelta() في
+     * sync_schema() (التي أضافت الجدول عبر CREATE TABLE ضمن get_schema_sql()
+     * قبل استدعاء هذه الدالة). قراءة فقط بلا أي كتابة — Idempotent بديهياً.
+     * التحقق هنا يثبت أمرين معاً: (أ) الفهرس event_phone موجود بترتيب أعمدة
+     * صحيح، (ب) هذا الفهرس **غير فريد** (Non_unique = 1) — فشل أي منهما يمنع
+     * تقدّم رقم الإصدار.
+     */
+    private static function upgrade_to_1_10_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_event_supervisors';
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        if ($columns === null) {
+            return false;
+        }
+
+        $required_columns = [
+            'id', 'event_id', 'user_id', 'supervisor_phone', 'supervisor_name',
+            'status', 'invited_by_user_id', 'invited_at', 'accepted_at',
+            'revoked_at', 'created_at', 'updated_at',
+        ];
+
+        $found_columns = [];
+        foreach ($columns as $column) {
+            $found_columns[] = (string) ($column['Field'] ?? '');
+        }
+
+        foreach ($required_columns as $required_column) {
+            if (!in_array($required_column, $found_columns, true)) {
+                return false;
+            }
+        }
+
+        $indexes = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
+        if ($indexes === null) {
+            return false;
+        }
+
+        $event_phone_columns_by_seq = [];
+        $event_phone_is_unique = null;
+        foreach ($indexes as $index) {
+            if (($index['Key_name'] ?? '') === 'event_phone') {
+                $seq = (int) ($index['Seq_in_index'] ?? 0);
+                $event_phone_columns_by_seq[$seq] = (string) ($index['Column_name'] ?? '');
+                // Non_unique: 1 = فهرس عادي، 0 = فريد — كل صفوف نفس الفهرس
+                // تحمل نفس القيمة فعلياً في MySQL، تكفي قراءتها من أي صف.
+                $event_phone_is_unique = ((int) ($index['Non_unique'] ?? 1)) === 0;
+            }
+        }
+        ksort($event_phone_columns_by_seq);
+
+        $expected_columns = ['event_id', 'supervisor_phone'];
+        $columns_match = array_values($event_phone_columns_by_seq) === $expected_columns;
+
+        // يجب أن يكون الفهرس موجوداً، بالترتيب الصحيح، **وغير فريد** — أي
+        // بقاء القيد فريداً (رجوع غير مقصود لما قبل التصحيح المعماري) يُفشل
+        // هذا التحقق عمداً.
+        return $columns_match && $event_phone_is_unique === false;
+    }
+
+    /**
+     * ترقية 1.11.0: إضافة عمود invitation_token_hash إلى mon_event_supervisors
+     * — Entry Check-in Supervisors، Phase 2 ("Supervisor Invitation Lifecycle"،
+     * Requirement 3: "Generate a secure random token. Store only a hash.
+     * Never store the raw token."). Phase 1 لم تحتج هذا العمود إطلاقاً (لا
+     * دعوات فعلية بعد)؛ Phase 2 هي أول من يستهلك دورة حياة الدعوة الفعلية.
+     *
+     * invitation_token_hash VARCHAR(64) NULL: طول 64 حرفاً بالضبط = ناتج
+     * hash('sha256', ...) بصيغة hex (32 بايت × حرفين لكل بايت). NULL-able
+     * بطبيعتين مختلفتين: (أ) الصف لم يُنشأ بعد عبر مسار Phase 2 (صفوف
+     * افتراضية/اختبارية قديمة)، (ب) التوكن أُبطِل فعلياً بعد القبول (Requirement
+     * 4: "Invalidate token" — يُصفَّر العمود صراحة إلى NULL بدل الاحتفاظ بهاش
+     * توكن مُستهلَك، بنفس فلسفة مسح attempt_token في
+     * PGE_Invitation_Credit_Ledger::mark_consumed_with_token() تماماً: لا
+     * فائدة أمنية أو تشغيلية من الاحتفاظ بهاش توكن انتهت صلاحيته).
+     *
+     * القيمة الخام (raw token) لا تُخزَّن في أي عمود إطلاقاً — تُعاد فقط مرة
+     * واحدة من create_supervisor_assignment() (راجع
+     * class-pge-supervisor-assignment-service.php) للمستدعي مباشرة، ليُضمِّنها
+     * لاحقاً في رابط الدعوة (خارج نطاق Phase 2 — لا UI/رسائل هنا).
+     *
+     * UNIQUE KEY على invitation_token_hash: بخلاف القيد المحظور على
+     * (event_id, supervisor_phone) — الذي أُزيل معمارياً (راجع تعليق
+     * upgrade_to_1_10_0() أعلاه) لأنه يمثّل هوية طبيعية قابلة لإعادة
+     * الاستخدام عبر الزمن — التوكن هنا قيمة عشوائية طارئة/لمرة واحدة؛ تفرّده
+     * ليس قيداً تجارياً بل ضمان أمني (لا يجوز أبداً لصفَّين مختلفين أن يحملا
+     * نفس التوكن الفعّال في آنٍ واحد). قيم NULL المتعددة لا تنتهك القيد
+     * الفريد في MySQL (كل NULL يُعامَل كقيمة مختلفة)، فلا تعارض بين عدة صفوف
+     * أُبطِلت توكناتها معاً.
+     *
+     * نفس فلسفة upgrade_to_1_4_0()/upgrade_to_1_10_0(): تحقّق فعلي (SHOW
+     * COLUMNS + SHOW INDEX) بدل الافتراض الأعمى بنجاح dbDelta(). قراءة فقط
+     * بلا أي كتابة — Idempotent بديهياً.
+     */
+    private static function upgrade_to_1_11_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_event_supervisors';
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        if ($columns === null) {
+            return false;
+        }
+
+        $has_token_hash_column = false;
+        foreach ($columns as $column) {
+            if (($column['Field'] ?? '') === 'invitation_token_hash') {
+                $has_token_hash_column = true;
+                break;
+            }
+        }
+        if (!$has_token_hash_column) {
+            return false;
+        }
+
+        $indexes = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
+        if ($indexes === null) {
+            return false;
+        }
+
+        $token_hash_is_unique = false;
+        foreach ($indexes as $index) {
+            if (($index['Key_name'] ?? '') === 'invitation_token_hash') {
+                $token_hash_is_unique = ((int) ($index['Non_unique'] ?? 1)) === 0;
+                break;
+            }
+        }
+
+        return $token_hash_is_unique;
+    }
+
+    /**
+     * ترقية 1.12.0: إضافة جدول mon_supervisor_sessions — Entry Check-in
+     * Supervisors، Phase 3 ("Supervisor Authentication" RFC، Requirement 1:
+     * "Create a dedicated Supervisor Session. Do NOT reuse WordPress login.
+     * Do NOT require WP accounts."). جلسة مستقلة تماماً عن wp_users/
+     * wp_sessions — لا صف هنا يشير إلى أي مستخدم WordPress، فقط إلى صف إسناد
+     * (assignment_id) في mon_event_supervisors (Phase 1/2).
+     *
+     * راجع includes/class-pge-supervisor-session.php للتفصيل الكامل حول
+     * منطق الإنشاء/التحقق/الإلغاء. هذا الملف مسؤول عن بنية الجدول فقط.
+     *
+     * session_token_hash VARCHAR(64) UNIQUE: بنفس فلسفة invitation_token_hash
+     * تماماً (راجع تعليق upgrade_to_1_11_0()) — التوكن الخام (32 بايت عشوائية
+     * حقيقية، bin2hex → 64 حرف hex) لا يُخزَّن أبداً في أي عمود؛ فقط
+     * sha256(raw) يُخزَّن، والتحقق لاحقاً عبر مقارنة الهاش. بخلاف
+     * invitation_token_hash (يُصفَّر إلى NULL بعد الاستهلاك لمرة واحدة)، عمود
+     * هذا الجدول لا يُصفَّر أبداً بعد الإنشاء — الجلسة نفسها (لا التوكن) هي ما
+     * يُبطَل عبر revoked_at عند تسجيل الخروج الصريح؛ التوكن يبقى المفتاح
+     * الوحيد لإيجاد الصف طوال عمره.
+     *
+     * event_id مُكرَّر (denormalized) من assignment_id: يسمح بفحص "الجلسة
+     * تخص هذه المناسبة بالتحديد" مباشرة من صف الجلسة نفسه دون أي JOIN إضافي؛
+     * PGE_Supervisor_Session::validate_session() تُعيد قراءة event_id الحيّة
+     * من صف الإسناد الفعلي في mon_event_supervisors أيضاً كتحقّق دفاعي إضافي
+     * (Requirement 5: "Assignment belongs to event")، فلا اعتماد أعمى على
+     * هذا العمود المُكرَّر وحده.
+     *
+     * revoked_at NULL-able: يُكتَب فقط عند تسجيل خروج صريح (Requirement 6).
+     * **لا** يُكتَب أبداً تلقائياً عند إلغاء الإسناد نفسه (revoke_supervisor_
+     * assignment() في Phase 2 يبقى دون أي تعديل في هذا الـCommit، ولا أي كود
+     * هنا يكتب على mon_event_supervisors) — إبطال الجلسات عند إلغاء الإسناد
+     * (Requirement 7: "all existing sessions... become invalid immediately")
+     * محقَّق فعلياً عبر إعادة قراءة حالة الإسناد الحيّة (status) في كل
+     * validate_session()، لا عبر أي كتابة متتالية (Fan-out) على صفوف جلسات
+     * قد تكون كثيرة — إذا أصبحت status ≠ 'active'، أي جلسة قائمة لنفس
+     * assignment_id تُرفَض فوراً في الطلب التالي مباشرة، بلا أي تأخير أو
+     * مهمة خلفية (Cron) مطلوبة.
+     *
+     * expires_at NOT NULL: يُكتَب صراحة عند الإنشاء = issued_at + مهلة صلاحية
+     * (PGE_Supervisor_Session::SESSION_TTL_SECONDS) — قيمة هندسية افتراضية
+     * (12 ساعة)، **ليست قاعدة عمل تجارية** بحاجة تفويض منتج، بنفس منطق اختيار
+     * مهلة GET_LOCK=5 ثوانٍ في create_supervisor_assignment() (Phase 2) —
+     * قابلة للتعديل مستقبلاً دون أي أثر معماري.
+     *
+     * نفس فلسفة upgrade_to_1_11_0(): تحقّق فعلي (SHOW COLUMNS + SHOW INDEX)
+     * بدل الافتراض الأعمى بنجاح dbDelta() في sync_schema() (التي أضافت
+     * الجدول عبر CREATE TABLE ضمن get_schema_sql() قبل استدعاء هذه الدالة).
+     * قراءة فقط بلا أي كتابة — Idempotent بديهياً.
+     */
+    private static function upgrade_to_1_12_0(): bool
+    {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'mon_supervisor_sessions';
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        if ($columns === null) {
+            return false;
+        }
+
+        $required_columns = [
+            'id', 'assignment_id', 'event_id', 'session_token_hash',
+            'issued_at', 'expires_at', 'revoked_at', 'created_at', 'updated_at',
+        ];
+
+        $found_columns = [];
+        foreach ($columns as $column) {
+            $found_columns[] = (string) ($column['Field'] ?? '');
+        }
+
+        foreach ($required_columns as $required_column) {
+            if (!in_array($required_column, $found_columns, true)) {
+                return false;
+            }
+        }
+
+        $indexes = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
+        if ($indexes === null) {
+            return false;
+        }
+
+        $token_hash_is_unique = false;
+        foreach ($indexes as $index) {
+            if (($index['Key_name'] ?? '') === 'session_token_hash') {
+                $token_hash_is_unique = ((int) ($index['Non_unique'] ?? 1)) === 0;
+                break;
+            }
+        }
+
+        return $token_hash_is_unique;
+    }
+
+    /**
+     * صياغة SQL للجداول الثمانية، بصيغة متوافقة مع dbDelta() (كل عمود بسطر
      * مستقل، بلا FOREIGN KEY، بلا ENGINE، بلا ENUM).
      */
     private static function get_schema_sql(): array
@@ -692,6 +995,8 @@ class Mon_Catalog_Schema
         $table_ledger        = $wpdb->prefix . 'mon_invitation_credit_ledger';
         $table_entitlements  = $wpdb->prefix . 'mon_replacement_entitlements';
         $table_tier_features = $wpdb->prefix . 'mon_tier_features';
+        $table_supervisors   = $wpdb->prefix . 'mon_event_supervisors';
+        $table_supervisor_sessions = $wpdb->prefix . 'mon_supervisor_sessions';
 
         $sql_plans = "CREATE TABLE $table_plans (
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -894,7 +1199,87 @@ class Mon_Catalog_Schema
             UNIQUE KEY tier_feature (tier_id, feature_key)
         ) $charset_collate;";
 
-        return [$sql_plans, $sql_tiers, $sql_services, $sql_ledger, $sql_entitlements, $sql_tier_features];
+        // ═══════════════════════════════════════════════════════════════════
+        // mon_event_supervisors — أُضيف في 1.10.0. Entry Check-in Supervisors،
+        // Phase 1 ("Supervisor Entitlement Foundation" RFC): "جدول إسناد
+        // المشرفين فقط" — لا جدول تدقيق، لا جدول تسجيل حضور، لا منطق دعوة/
+        // قبول/رمز فعلي بعد (راجع تعليق upgrade_to_1_10_0() أعلاه للتفصيل
+        // الكامل حول كل قرار في هذا الجدول). الجدول فارغ عند إنشائه.
+        //
+        // event_id بلا credit_cycle_id: الإسناد على مستوى المناسبة مباشرة
+        // (قرار RFC نهائي: "Supervisor limit is PER EVENT")، لا على مستوى
+        // دورة تفعيل Catalog — هذا يدعم "عدة مشرفين لنفس المناسبة" (عدة صفوف
+        // بنفس event_id) و"نفس المشرف لعدة مناسبات مستقبلاً" (بلا أي قيد هنا
+        // يربط صفاً بمناسبة واحدة حصراً) دون أي تعديل بنيوي لاحق.
+        //
+        // status نصّي (VARCHAR) لا ENUM، بنفس نمط status في بقية جداول هذا
+        // الملف — القيمة الافتراضية 'invited' موضع نائب لدورة حياة مستقبلية
+        // (invited/pending/active/revoked/expired) بلا أي منطق انتقال حالة
+        // في هذا الـCommit.
+        //
+        // ── تصحيح معماري (Append-Only History، قبل موافقة Phase 1) ──────────
+        // لا قيد UNIQUE على (event_id, supervisor_phone): القيد الفريد كان
+        // سيمنع إعادة دعوة نفس الهاتف لنفس المناسبة بعد أن يُصبح إسنادها
+        // السابق revoked/expired — يتعارض مباشرة مع "دعوة جديدة = صف جديد
+        // دائماً، لا تعديل صف تاريخي أبداً". الفهرس event_phone أدناه فهرس
+        // عادي (Non-Unique) للتسريع فقط، لا لفرض تفرّد. التفرّد التجاري
+        // الحقيقي ("إسناد نشط واحد فقط" — invited/pending/active حصراً لنفس
+        // event_id + الهاتف المُطبَّع) مؤجَّل بالكامل لمنطق إنشاء الدعوة في
+        // Phase 2، محمياً بقفل GET_LOCK (أو ما يعادله) — توثيق فقط هنا، راجع
+        // التعليق الكامل أعلى upgrade_to_1_10_0().
+        // invitation_token_hash (أُضيف في 1.11.0 — Phase 2): راجع تعليق
+        // upgrade_to_1_11_0() للتفصيل الكامل. VARCHAR(64) NULL، UNIQUE (قيم
+        // NULL متعددة لا تنتهك التفرّد)، لا يُخزَّن أبداً التوكن الخام نفسه.
+        $sql_supervisors = "CREATE TABLE $table_supervisors (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            event_id BIGINT(20) UNSIGNED NOT NULL,
+            user_id BIGINT(20) UNSIGNED NULL,
+            supervisor_phone VARCHAR(32) NOT NULL,
+            supervisor_name VARCHAR(191) NOT NULL DEFAULT '',
+            status VARCHAR(20) NOT NULL DEFAULT 'invited',
+            invitation_token_hash VARCHAR(64) NULL,
+            invited_by_user_id BIGINT(20) UNSIGNED NOT NULL,
+            invited_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            accepted_at DATETIME NULL,
+            revoked_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY event_id (event_id),
+            KEY user_id (user_id),
+            KEY event_status (event_id, status),
+            KEY event_phone (event_id, supervisor_phone),
+            UNIQUE KEY invitation_token_hash (invitation_token_hash)
+        ) $charset_collate;";
+
+        // ═══════════════════════════════════════════════════════════════════
+        // mon_supervisor_sessions — أُضيف في 1.12.0. Entry Check-in Supervisors،
+        // Phase 3 ("Supervisor Authentication" RFC). راجع تعليق upgrade_to_
+        // 1_12_0() أعلاه للتفصيل الكامل حول كل قرار في هذا الجدول (اختيار
+        // الهاش بدل التوكن الخام، denormalization عمود event_id، آلية إبطال
+        // الجلسات عند إلغاء الإسناد بلا كتابة على هذا الجدول، مهلة الصلاحية).
+        //
+        // assignment_id/event_id بلا FOREIGN KEY فعلية (بنفس نمط بقية جداول
+        // هذا الملف) — التحقق من صحتهما على مستوى التطبيق فقط
+        // (PGE_Supervisor_Session تقرأ mon_event_supervisors مباشرة عند كل
+        // تحقق جلسة). الجدول فارغ عند إنشائه.
+        $sql_supervisor_sessions = "CREATE TABLE $table_supervisor_sessions (
+            id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+            assignment_id BIGINT(20) UNSIGNED NOT NULL,
+            event_id BIGINT(20) UNSIGNED NOT NULL,
+            session_token_hash VARCHAR(64) NOT NULL,
+            issued_at DATETIME NOT NULL,
+            expires_at DATETIME NOT NULL,
+            revoked_at DATETIME NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY session_token_hash (session_token_hash),
+            KEY assignment_id (assignment_id),
+            KEY event_id (event_id)
+        ) $charset_collate;";
+
+        return [$sql_plans, $sql_tiers, $sql_services, $sql_ledger, $sql_entitlements, $sql_tier_features, $sql_supervisors, $sql_supervisor_sessions];
     }
 }
 

@@ -394,3 +394,48 @@ if (!function_exists('pge_is_legacy_write_allowed_for_user')) {
         return get_user_meta($user_id, '_mon_package_source', true) !== 'catalog';
     }
 }
+
+if (!function_exists('pge_mgmt_validate_request')) {
+    /**
+     * RC1 Fix Pack 2 (A9 — Duplicate validate_request()): مُستخرَجة حرفياً
+     * (نسخ/لصق طابقي، بلا أي تعديل واحد على المنطق) من ثلاث دوال كانت
+     * متطابقة تماماً:
+     *   - pge_invitation_mgmt_validate_request()  في invitation-management-ajax.php
+     *   - pge_supervisor_mgmt_validate_request()  في supervisor-management-ajax.php
+     *   - pge_event_ops_validate_request()        في event-operations-ajax.php
+     *
+     * لا تغيير سلوكي من أي نوع: نفس رسائل الخطأ العربية حرفياً، نفس قيم
+     * 'reason' (not_logged_in/invalid_nonce/invalid_event/forbidden)، نفس
+     * ترتيب الفحوصات الأربعة، نفس اسم إجراء الـnonce ('pge_event_manage_nonce')،
+     * نفس دالة التفويض (pge_event_guests_user_can_manage) — الهدف الوحيد
+     * هنا هو حذف الازدواج، لا تعديل المنطق.
+     *
+     * الدوال الثلاث الأصلية أصبحت أغلفة رقيقة (thin wrappers) حول هذه
+     * الدالة — أسماؤها ونقاط استدعائها في الملفات الثلاثة بلا أي تغيير،
+     * فلا حاجة لتعديل أي معالج AJAX يستدعيها.
+     *
+     * @return int event_id عند النجاح (ينهي الطلب عبر wp_send_json_error عند الفشل).
+     */
+    function pge_mgmt_validate_request()
+    {
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'غير مصرح', 'reason' => 'not_logged_in']);
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$nonce || !wp_verify_nonce($nonce, 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'رمز الأمان غير صالح', 'reason' => 'invalid_nonce']);
+        }
+
+        $event_id = isset($_POST['event_id']) ? (int) $_POST['event_id'] : 0;
+        if (!$event_id || get_post_type($event_id) !== 'pge_event') {
+            wp_send_json_error(['message' => 'مناسبة غير صالحة', 'reason' => 'invalid_event']);
+        }
+
+        if (!function_exists('pge_event_guests_user_can_manage') || !pge_event_guests_user_can_manage($event_id)) {
+            wp_send_json_error(['message' => 'ليس لديك صلاحية إدارة هذه المناسبة', 'reason' => 'forbidden']);
+        }
+
+        return $event_id;
+    }
+}

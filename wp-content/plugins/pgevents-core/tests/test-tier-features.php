@@ -421,7 +421,14 @@ echo "\n=== قسم 2: DB Version / Upgrade Registration ===\n";
 
 // ── DB Version / Upgrade Registration (11-13) ───────────────────────────────
 
-check('11. DB_VERSION = 1.8.0', Mon_Catalog_Schema::DB_VERSION, '1.8.0');
+// ملاحظة صيانة (Entry Check-in Supervisors — Phase 1/2، آخر تحديث 2026-07-29):
+// هذا التأكيد كان يقارن DB_VERSION برقم إصدار Phase 2 (Commit 1) نفسه وقت
+// كتابته — قيمة تتقادم حتماً مع كل ترقية Schema لاحقة (نفس طبيعة السطور
+// المكافئة في tests/test-catalog-schema-event-quota.php). DB_VERSION الحالي
+// بعد إضافة عمود invitation_token_hash (Phase 2 — Supervisor Invitation
+// Lifecycle، upgrade_to_1_11_0()) هو 1.11.0 — تحديث حرفي بلا أي تغيير
+// سلوكي، لا علاقة له بمنطق Tier Features نفسه.
+check_true('11. DB_VERSION على الأقل 1.8.0 (القيمة وقت كتابة هذا الاختبار؛ تقادمت عدة مرات عبر ترقيات لاحقة، آخرها 1.12.0 في Phase 3 — mon_supervisor_sessions)', version_compare(Mon_Catalog_Schema::DB_VERSION, '1.8.0', '>='));
 
 $routines_ref = new ReflectionMethod('Mon_Catalog_Schema', 'get_upgrade_routines');
 $routines_ref->setAccessible(true);

@@ -30,6 +30,13 @@ $dashboard_url   = home_url('/dashboard/?tab=events&event=' . $event_id);
 $event_url       = get_permalink($event_id);
 $event_image_url = (string) get_the_post_thumbnail_url($event_id, 'full');
 $edit_url        = home_url('/edit-event/' . $event_id . '/');
+// RC1 Fix Pack 1 (A3 — Navigation): روابط الوحدات الثلاث المكتملة (المراحل
+// 8/9/10) غير القابلة للاكتشاف سابقاً من هذه الصفحة (راجع docs/RC1-AUDIT.md
+// §A3). نفس أنماط المسارات المُسجَّلة فعلياً في includes/routing.php حرفياً —
+// لا تعديل هناك، فقط قراءة/بناء رابط.
+$supervisors_url = home_url('/event-manage/' . $event_id . '/supervisors/');
+$invitations_url = home_url('/event-manage/' . $event_id . '/invitations/');
+$operations_url  = home_url('/event-manage/' . $event_id . '/operations/');
 $wa_templates    = function_exists('pge_wa_get_templates') ? pge_wa_get_templates($event_id) : [];
 $wa_tpl_invite   = $wa_templates['invite']  ?? '';
 $wa_tpl_yes      = $wa_templates['yes']     ?? '';
@@ -287,6 +294,19 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
         <a href="<?= esc_url($edit_url) ?>" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-[1.5px] border-gold bg-white px-4 text-sm font-bold text-gold-text transition-colors duration-200 hover:bg-gold/[0.06]">
           تعديل المناسبة
         </a>
+        <!-- RC1 Fix Pack 1 (A3 — Navigation): روابط فقط، بنفس تنسيق الروابط
+             أعلاه حرفياً (h-11 border-border bg-white)، بلا أي إعادة تصميم أو
+             تخطيط جديد — تُتيح الوصول للوحدات الثلاث المكتملة سابقاً (المراحل
+             8/9/10) وغير القابلة للاكتشاف من هذه الصفحة قبل هذا الإصلاح. -->
+        <a href="<?= esc_url($supervisors_url) ?>" id="navSupervisorsLink" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">🛡️</span> مشرفو الدخول
+        </a>
+        <a href="<?= esc_url($invitations_url) ?>" id="navInvitationsLink" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">📇</span> إدارة الدعوات
+        </a>
+        <a href="<?= esc_url($operations_url) ?>" id="navOperationsLink" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">📡</span> لوحة العمليات
+        </a>
       </div>
     </div>
 
@@ -362,6 +382,26 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 
     <h2 class="hidden lg:block px-1 pb-3 text-sm font-extrabold text-foreground/70">إدارة المدعوين</h2>
 
+    <!-- ══ RC1 Fix Pack 3B ("Legacy Guest Panel Retirement — Hard Delete
+         Migration"): A4 مُغلَقة بالكامل الآن (Fully Resolved). إدارة المدعوين
+         (إضافة/تعديل/حذف فردي وجماعي/إضافة جماعية) انتقلت بالكامل إلى صفحة
+         إدارة الدعوات المعتمَدة عبر ثلاث مراحل: Phase 9 (إضافة/تعديل)، Fix
+         Pack 3A (الإضافة الجماعية)، Fix Pack 3B (الحذف الفعلي — هذا التحديث).
+         قائمة المدعوين وأزرار الإضافة/التعديل/الحذف الفردي والجماعي أُزيلت من
+         هذه اللوحة (استبدلها إشعار انتقالي أدناه) — **بطاقة "التواصل عبر
+         واتساب" وحدها باقية بلا أي تغيير**، لأنها القناة الوحيدة الفعلية
+         لإرسال دعوات واتساب في المشروع، وخارج نطاق هذا الفيكس باك صراحة
+         ("Do NOT implement: WhatsApp"). راجع docs/RC1-AUDIT.md §15 للتفاصيل
+         الكاملة. ══ -->
+    <div class="mx-4 mb-3 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 lg:mx-0">
+      <span aria-hidden="true" class="text-sm">💡</span>
+      <p class="text-xs font-semibold text-foreground/70">
+        إدارة المدعوين (إضافة/تعديل/حذف) انتقلت بالكامل إلى
+        <a href="<?= esc_url($invitations_url) ?>" id="navInvitationsLegacyBanner" class="font-bold text-primary-text underline">صفحة إدارة الدعوات</a>
+        (مع التصدير ورمز QR وسجلّ التدقيق). أقسام الإضافة/التعديل/الحذف أدناه لم تعد متاحة هنا — استخدم الصفحة الجديدة. إرسال دعوات واتساب لا يزال متاحاً هنا كما هو.
+      </p>
+    </div>
+
     <!-- Search + Filter -->
     <div class="sticky z-30 bg-white/95 backdrop-blur-md px-4 lg:px-0 py-2.5 border-b border-border lg:border-0 lg:static lg:bg-transparent" style="top:var(--app-h);">
       <label for="guestSearch" class="sr-only">ابحث بالاسم أو الجوال أو الملاحظة</label>
@@ -401,12 +441,11 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 
       <div class="hidden h-6 w-px bg-border/60 lg:block" aria-hidden="true"></div>
 
-      <!-- إجراءات جماعية: bulkDeleteBtn وbulkWhatsappBtn فقط مرتبطان فعلياً بالتحديد
-           (عبر disabled + refreshBulkDeleteState الموجودة مسبقاً)، لذا هما فقط من
-           يتراجعان بصرياً حتى يتم التحديد. بقية الأزرار (للكل/تجريبي/تلقائي/تقرير)
-           تعمل بلا اعتماد على التحديد فلا تُخفى. -->
+      <!-- RC1 Fix Pack 3B: bulkDeleteBtn (الحذف الجماعي) أُزيل من هنا — الحذف
+           الفعلي (فردياً وجماعياً) انتقل بالكامل إلى صفحة إدارة الدعوات
+           المعتمَدة (راجع الشريط أعلى القسم). bulkWhatsappBtn باقٍ بلا أي
+           تغيير — قناة الإرسال الوحيدة، خارج نطاق هذا الفيكس باك. -->
       <div class="flex flex-wrap items-center gap-2">
-        <button id="bulkDeleteBtn" type="button" disabled class="h-11 rounded-xl bg-destructive/10 px-3 text-xs font-bold text-destructive-text ring-1 ring-destructive/20 transition-colors hover:bg-destructive/20 disabled:opacity-40 disabled:hover:bg-destructive/10"><span aria-hidden="true">🗑</span> حذف</button>
         <button id="bulkWhatsappBtn" type="button" disabled class="h-11 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40 disabled:hover:bg-emerald-600"><span aria-hidden="true">📲</span> WA</button>
         <button id="whatsappAllBtn" type="button" class="h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100"><span aria-hidden="true">📲</span> للكل</button>
         <button id="waTestSendBtn" type="button" class="h-11 rounded-xl border border-gold/30 bg-gold/10 px-3 text-xs font-bold text-gold-text transition-colors hover:bg-gold/20"><span aria-hidden="true">🧪</span> تجريبي</button>
@@ -491,10 +530,12 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
                 <span class="text-[11px] text-foreground/70 truncate">· <?= esc_html($g_note) ?></span>
                 <?php endif; ?>
               </div>
+              <!-- RC1 Fix Pack 3B: guest-edit-btn وguest-delete-btn أُزيلا من هنا —
+                   التعديل والحذف الفعلي انتقلا بالكامل لصفحة إدارة الدعوات
+                   المعتمَدة. guest-wa-btn باقٍ بلا أي تغيير (قناة الإرسال
+                   الوحيدة، خارج النطاق). -->
               <div class="flex flex-shrink-0 items-center gap-1.5 rounded-2xl p-1 ring-1 ring-border/60">
                 <button type="button" class="guest-wa-btn h-11 px-3 rounded-xl bg-emerald-600 flex items-center gap-1 text-white text-xs font-bold transition-colors hover:bg-emerald-700" data-phone="<?= esc_attr($phone) ?>" data-name="<?= esc_attr($g_name) ?>"><span aria-hidden="true">📱</span><span class="hidden sm:inline">واتساب</span></button>
-                <button type="button" class="guest-edit-btn w-11 h-11 rounded-xl border border-border bg-white flex items-center justify-center text-foreground/60 transition-colors hover:bg-secondary/60" data-phone="<?= esc_attr($phone) ?>" aria-label="تعديل بيانات المدعو">✏️</button>
-                <button type="button" class="guest-delete-btn w-11 h-11 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive-text transition-colors hover:bg-destructive/20" data-phone="<?= esc_attr($phone) ?>" aria-label="حذف المدعو">🗑️</button>
               </div>
             </div>
           </div>
@@ -516,6 +557,27 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 
     <div class="p-4 space-y-4">
 
+      <!-- ══ RC1 Fix Pack 1.1 (A3 — Complete Navigation، الجوال/الأجهزة
+           اللوحية): نفس الروابط الثلاثة المُضافة أصلاً في Fix Pack 1 لشريط
+           "الإجراءات السريعة" على سطح المكتب (راجع docs/RC1-AUDIT.md §13.2)،
+           مُكرَّرة هنا حرفياً (نفس class، نفس الأيقونة، نفس النص) داخل نفس
+           مكوّن اللوحة السفلية "actionsPanel" الموجود مسبقاً (يُفتَح عبر زر
+           "أكثر" الموجود أصلاً في bnav) — لا مكوّن جديد، لا تصميم جديد.
+           lg:hidden تمنع تكرار الظهور على سطح المكتب حيث تظهر أصلاً في
+           الشريط العلوي (وحيث actionsPanel نفسها تتحول لسايدبار دائم الظهور
+           بدل لوحة سفلية). ══ -->
+      <div class="lg:hidden space-y-2">
+        <a href="<?= esc_url($supervisors_url) ?>" id="navSupervisorsLinkMobile" class="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">🛡️</span> مشرفو الدخول
+        </a>
+        <a href="<?= esc_url($invitations_url) ?>" id="navInvitationsLinkMobile" class="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">📇</span> إدارة الدعوات
+        </a>
+        <a href="<?= esc_url($operations_url) ?>" id="navOperationsLinkMobile" class="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">📡</span> لوحة العمليات
+        </a>
+      </div>
+
       <!-- ══ مساحة العمل (Workspace Status) — لوحة أساسية أعلى الشريط الجانبي،
            محتواها مشتق من $mon_workspace_state (منطق عرض فقط، انظر تعريفه
            أعلى الملف). عناصر الاستدعاء تُشغّل أزراراً موجودة فعلاً بالنقر
@@ -523,7 +585,8 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
            روابط تثبيت (#anchor) قياسية — بلا أي جافاسكربت جديد. ══ -->
       <?php
       $mon_ws_copy = [
-          'no_guests'   => ['icon' => '👥', 'title' => 'ابدأ بإضافة أول مدعو', 'desc' => 'لا يوجد مدعوون بعد لهذه المناسبة.', 'cta_label' => 'إضافة مدعو', 'cta_href' => '#addSection'],
+          // RC1 Fix Pack 3B: cta_href كان يشير إلى '#addSection' (المُزال الآن) — يُشير الآن إلى صفحة إدارة الدعوات المعتمَدة مباشرة.
+          'no_guests'   => ['icon' => '👥', 'title' => 'ابدأ بإضافة أول مدعو', 'desc' => 'لا يوجد مدعوون بعد لهذه المناسبة.', 'cta_label' => 'إضافة مدعو', 'cta_href' => $invitations_url],
           'not_invited' => ['icon' => '📨', 'title' => 'المدعوون جاهزون — أرسل الدعوات', 'desc' => 'تمت إضافة المدعوين، الخطوة التالية إرسال دعوات واتساب.', 'cta_label' => 'إرسال الدعوات الآن', 'cta_proxy' => 'sendWaInvitesBtn'],
           'invited'     => ['icon' => '⏳', 'title' => 'بانتظار ردود المدعوين', 'desc' => 'تم إرسال الدعوات، ولم تصل ردود بعد.', 'cta_label' => 'عرض تقرير الإرسال', 'cta_proxy' => 'waReportBtn'],
           'responses'   => ['icon' => '📊', 'title' => 'الردود بدأت تصل', 'desc' => (int)$stats['yes'] . ' سيحضر · ' . (int)$stats['no'] . ' اعتذر · ' . (int)$stats['pending'] . ' لم يرد بعد.'],
@@ -575,63 +638,25 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
         </div>
       </div>
 
-      <!-- ══ إدارة المدعوين: تعديل (مشروط) + إضافة + استيراد جماعي — بطاقة واحدة على الديسكتوب فقط.
-           بطاقة عادية دائمة الظهور (لا تفاعل طي) — هذه مساحة عمل تطبيقية وليست
-           توثيقاً، فأُعيدت لبطاقة ثابتة. التجميع البصري والارتفاع المضغوط من
-           التمريرة السابقة محفوظان بالكامل. ══ -->
-      <div class="space-y-4 lg:space-y-0 lg:rounded-2xl lg:border lg:border-border lg:bg-white lg:p-1">
-        <h3 class="hidden px-3 pt-2 text-xs font-bold text-foreground/70 lg:block">إدارة المدعوين</h3>
-
-        <!-- تعديل مدعو -->
-        <div id="editGuestCard" class="hidden rounded-2xl border border-primary/20 bg-primary/5 p-4 lg:rounded-xl lg:border-0 lg:p-3">
-          <h3 class="font-bold text-sm text-primary-text mb-3"><span aria-hidden="true">✏️</span> تعديل المدعو</h3>
-          <form id="editGuestForm" class="space-y-2.5">
-            <input type="hidden" id="editOldPhone" name="old_phone" />
-            <label for="editGuestName" class="sr-only">الاسم</label>
-            <input id="editGuestName" name="name" type="text" placeholder="الاسم"
-              class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
-            <label for="editGuestPhone" class="sr-only">رقم الجوال</label>
-            <input id="editGuestPhone" name="phone" type="tel" inputmode="tel" placeholder="رقم الجوال" required
-              class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
-            <label for="editGuestNote" class="sr-only">ملاحظة</label>
-            <input id="editGuestNote" name="note" type="text" placeholder="ملاحظة"
-              class="h-12 w-full rounded-2xl border border-border bg-white px-4 text-sm outline-none focus:border-primary" />
-            <div class="flex gap-2">
-              <button type="submit" class="flex-1 h-12 rounded-2xl bg-primary text-sm font-bold text-white hover:bg-primary-hover">حفظ</button>
-              <button id="cancelEditGuestBtn" type="button" class="h-12 px-4 rounded-2xl border border-border bg-white text-sm font-semibold text-foreground/70">إلغاء</button>
-            </div>
-          </form>
-        </div>
-
-        <!-- إضافة مدعو -->
-        <div class="rounded-2xl border border-border bg-white p-4 lg:rounded-xl lg:border-0 lg:border-t lg:border-border/60 lg:p-3 lg:pt-3" id="addSection">
-          <h3 class="text-base font-bold text-foreground mb-3 lg:text-sm lg:mb-2"><span aria-hidden="true">➕</span> إضافة مدعو</h3>
-          <form id="addGuestForm" class="space-y-2.5">
-            <label for="addGuestName" class="sr-only">الاسم (اختياري)</label>
-            <input id="addGuestName" name="name" type="text" placeholder="الاسم (اختياري)"
-              class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
-            <label for="addGuestPhone" class="sr-only">رقم الجوال</label>
-            <input id="addGuestPhone" name="phone" type="tel" inputmode="tel" placeholder="رقم الجوال" required
-              class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
-            <label for="addGuestNote" class="sr-only">ملاحظة (اختياري)</label>
-            <input id="addGuestNote" name="note" type="text" placeholder="ملاحظة (اختياري)"
-              class="h-12 w-full rounded-2xl border border-border px-4 text-sm outline-none focus:border-primary" />
-            <button type="submit" class="w-full h-12 rounded-2xl bg-primary text-sm font-bold text-white hover:bg-primary-hover">إضافة المدعو</button>
-          </form>
-        </div>
-
-        <!-- إضافة جماعية -->
-        <div class="rounded-2xl border border-border bg-white p-4 lg:rounded-xl lg:border-0 lg:border-t lg:border-border/60 lg:p-3 lg:pt-3" id="bulkImportSection">
-          <h3 class="text-base font-bold text-foreground mb-1 lg:text-sm"><span aria-hidden="true">📋</span> إضافة جماعية</h3>
-          <p class="text-sm text-foreground/70 mb-3">ضع كل رقم في سطر منفصل.</p>
-          <form id="bulkGuestForm" class="space-y-2.5">
-            <label for="bulkPhones" class="sr-only">أرقام الجوال</label>
-            <textarea id="bulkPhones" name="phones_text" rows="5"
-              class="w-full rounded-2xl border border-border px-4 py-3 text-sm outline-none focus:border-primary"
-              placeholder="05XXXXXXXX&#10;9665XXXXXXXX"></textarea>
-            <button type="submit" class="w-full h-12 rounded-2xl bg-emerald-600 text-sm font-bold text-white">إضافة الأرقام</button>
-          </form>
-        </div>
+      <!-- ══ RC1 Fix Pack 3B ("Legacy Guest Panel Retirement — Hard Delete
+           Migration"): إشعار انتقالي يستبدل بطاقة "إدارة المدعوين" القديمة
+           بالكامل (تعديل/إضافة/إضافة جماعية) — لم تعد هذه العناصر متاحة هنا.
+           "Do NOT remove code immediately... Replace its body with a
+           transitional notice... Provide one button: Open Invitation
+           Management." — لا حذف لملف الثيم نفسه، فقط استبدال محتوى هذا
+           القسم بالإشعار المطلوب صراحةً. addSection/editGuestCard/
+           bulkImportSection وnماذجها الثلاثة (addGuestForm/editGuestForm/
+           bulkGuestForm) لم تعد موجودة في الصفحة؛ معالجات AJAX الخاصة بها
+           (pge_event_guest_add/update/bulk_add في event-guests.php) تبقى
+           مُسجَّلة كما هي (لا تعديل، لا حذف) توافقاً مع "Legacy AJAX handlers
+           may remain registered". ══ -->
+      <div class="rounded-2xl border border-border bg-white p-5 text-center lg:p-6">
+        <span aria-hidden="true" class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-2xl">📇</span>
+        <h3 class="mt-3 font-extrabold text-sm text-foreground">انتقلت إدارة المدعوين</h3>
+        <p class="mt-1.5 text-xs text-foreground/65">أصبحت إضافة/تعديل/حذف المدعوين (فردياً وجماعياً) متاحة الآن في صفحة إدارة الدعوات المعتمَدة.</p>
+        <a href="<?= esc_url($invitations_url) ?>" class="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-white transition-colors hover:bg-primary-hover">
+          <span aria-hidden="true">📇</span> فتح إدارة الدعوات
+        </a>
       </div>
 
       <!-- ══ التواصل عبر واتساب: القوالب التلقائية + قالب الإرسال اليدوي — بطاقة واحدة على الديسكتوب فقط.
@@ -803,7 +828,8 @@ window.PGE_EVENT_MANAGE = {
     eventId:    "<?= (int) $event_id ?>",
     eventUrl:   "<?= esc_js($event_url) ?>",
     eventTitle: "<?= esc_js(get_the_title($event_id)) ?>",
-    eventImage: "<?= esc_js($event_image_url) ?>"
+    eventImage: "<?= esc_js($event_image_url) ?>",
+    invitationsUrl: "<?= esc_js($invitations_url) ?>"
 };
 </script>
 <script>
@@ -829,21 +855,25 @@ const overlay  = document.getElementById('overlay');
 const panelTitleEl = document.getElementById('panelTitle');
 const isMobile = () => window.innerWidth < 1024;
 
+// RC1 Fix Pack 3B: أقسام 'add'/'edit'/'bulk' (addSection/editGuestCard/
+// bulkImportSection) أُزيلت من الصفحة — إدارة المدعوين انتقلت لصفحة إدارة
+// الدعوات. openPanel() تدعم الآن 'templates' فقط (لا تزال قائمة، خارج
+// النطاق). navAdd/focusAddGuest/focusBulkImport تُنقِّل الآن مباشرة لصفحة
+// إدارة الدعوات بدل فتح هذه اللوحة (راجع تعريفاتها أدناه).
 function openPanel(section) {
     if (!isMobile()) return;
     panel.classList.add('open');
     overlay.classList.add('show');
-    setNavActive(section === 'add' ? 'navAdd' : 'navMore');
+    setNavActive('navMore');
 
-    const targets = { add:'addSection', edit:'editGuestCard', templates:'templatesSection', bulk:'bulkImportSection' };
-    const titles  = { add:'إضافة مدعو', edit:'تعديل المدعو', templates:'رسائل واتساب', bulk:'إضافة جماعية' };
+    const targets = { templates:'templatesSection' };
+    const titles  = { templates:'رسائل واتساب' };
 
     if (panelTitleEl) panelTitleEl.textContent = titles[section] || 'الإعدادات';
 
     setTimeout(() => {
         const el = document.getElementById(targets[section]);
         if (el) el.scrollIntoView({ block: 'nearest' });
-        if (section === 'add') document.getElementById('addGuestPhone')?.focus();
     }, 380);
 }
 
@@ -854,15 +884,14 @@ function closePanel() {
 }
 
 // ── Quick Actions glue (UI-only helpers, no business logic) ───────
+// RC1 Fix Pack 3B: addSection/bulkImportSection أُزيلا من هذه الصفحة —
+// الإضافة الفردية والجماعية انتقلتا لصفحة إدارة الدعوات المعتمَدة. هاتان
+// الدالتان تُنقِّلان المستخدم مباشرة إليها بدل التمرير لقسم لم يعد موجوداً.
 function focusAddGuest() {
-    if (isMobile()) { openPanel('add'); return; }
-    document.getElementById('addSection')?.scrollIntoView({ behavior:'smooth', block:'start' });
-    document.getElementById('addGuestPhone')?.focus();
+    if (cfg.invitationsUrl) window.location.href = cfg.invitationsUrl;
 }
 function focusBulkImport() {
-    if (isMobile()) { openPanel('bulk'); return; }
-    document.getElementById('bulkImportSection')?.scrollIntoView({ behavior:'smooth', block:'start' });
-    document.getElementById('bulkPhones')?.focus();
+    if (cfg.invitationsUrl) window.location.href = cfg.invitationsUrl;
 }
 function shareInviteLink() {
     const url = (cfg.eventUrl || '').toString();
@@ -895,24 +924,20 @@ function setNavActive(id) {
     document.getElementById(id)?.classList.add('active');
 }
 document.getElementById('navGuests')?.addEventListener('click', () => { closePanel(); closeWaPanel(); setNavActive('navGuests'); });
-document.getElementById('navAdd')?.addEventListener('click', () => openPanel('add'));
+// RC1 Fix Pack 3B: navAdd (زر "+" في الشريط السفلي) كان يفتح لوحة الإضافة
+// المحلية (openPanel('add')) — تلك اللوحة أُزيلت، فيُنقِّل الزر الآن مباشرة
+// لصفحة إدارة الدعوات المعتمَدة (نفس دالة focusAddGuest المُحدَّثة أعلاه).
+document.getElementById('navAdd')?.addEventListener('click', () => focusAddGuest());
 document.getElementById('navSend')?.addEventListener('click', () => { setNavActive('navSend'); openWaPanel(); });
 document.getElementById('navMore')?.addEventListener('click', () => openPanel('templates'));
 
-// Auto-open panel when editCard becomes visible (mobile)
-const editCard = document.getElementById('editGuestCard');
-if (editCard) {
-    new MutationObserver(() => {
-        if (!editCard.classList.contains('hidden') && isMobile()) openPanel('edit');
-    }).observe(editCard, { attributes: true, attributeFilter: ['class'] });
-}
-
 // ── Helpers ───────────────────────────────────────────────────────
-const addForm   = document.getElementById('addGuestForm');
-const bulkForm  = document.getElementById('bulkGuestForm');
-const editForm  = document.getElementById('editGuestForm');
-const cancelEditBtn   = document.getElementById('cancelEditGuestBtn');
-const bulkDeleteBtn   = document.getElementById('bulkDeleteBtn');
+// RC1 Fix Pack 3B: addForm/bulkForm/editForm/cancelEditBtn/bulkDeleteBtn
+// (ونماذجها/عناصرها المرتبطة: addGuestForm/bulkGuestForm/editGuestForm/
+// cancelEditGuestBtn/bulkDeleteBtn) أُزيلت بالكامل من الصفحة — إدارة
+// المدعوين (إضافة/تعديل/حذف) انتقلت لصفحة إدارة الدعوات. معالجات الأحداث
+// المرتبطة بها (submit/click) أُزيلت أيضاً أدناه (كانت ستصبح "unreachable
+// UI" — كودها يستهدف عناصر لم تعد موجودة).
 const bulkWhatsappBtn = document.getElementById('bulkWhatsappBtn');
 const whatsappAllBtn  = document.getElementById('whatsappAllBtn');
 const exportCsvBtn    = document.getElementById('exportCsvBtn');
@@ -933,17 +958,18 @@ function getSelectedPhones() {
     // نقتصر على المدعوين ضمن صفوف ظاهرة حالياً فقط (نفس منطق الظهور المستخدم
     // في كل مكان آخر بالصفحة: row.style.display !== 'none')، حتى لا تشارك
     // صفوف مخفيّة بفلتر/بحث في أي إجراء جماعي (حذف/واتساب) عبر هذه الدالة —
-    // وبما أن bulkDeleteBtn وbulkWhatsappBtn وrefreshBulkDeleteState تعتمد
-    // جميعها على getSelectedPhones()، يكفي إصلاحها هنا مرة واحدة.
+    // وبما أن bulkWhatsappBtn وrefreshBulkDeleteState تعتمدان على
+    // getSelectedPhones()، يكفي إصلاحها هنا مرة واحدة.
     return getRows()
         .filter(row => row.style.display !== 'none')
         .flatMap(row => Array.from(row.querySelectorAll('.guest-checkbox:checked')))
         .map(el => normPhone(el.dataset.phone || '')).filter(Boolean);
 }
+// RC1 Fix Pack 3B: bulkDeleteBtn لم يعد موجوداً في الصفحة (الحذف الجماعي
+// انتقل لصفحة إدارة الدعوات) — الدالة الآن تُحدِّث حالة bulkWhatsappBtn فقط.
 function refreshBulkDeleteState() {
     const has = getSelectedPhones().length > 0;
-    if (bulkDeleteBtn)   bulkDeleteBtn.disabled   = !has;
-    if (bulkWhatsappBtn) bulkWhatsappBtn.disabled  = !has;
+    if (bulkWhatsappBtn) bulkWhatsappBtn.disabled = !has;
 }
 function applyFilters() {
     const q = (searchInput?.value || '').toLowerCase().trim();
@@ -1158,46 +1184,11 @@ copyWhatsappPreviewBtn?.addEventListener('click', async () => {
 });
 updateWhatsappPreview();
 
-// ── Forms ─────────────────────────────────────────────────────────
-addForm?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const data = new FormData(addForm);
-    const phone = normPhone(data.get('phone'));
-    if (!phone) { showMsg('error','أدخل رقم جوال صحيح'); return; }
-    try {
-        const json = await postAction('pge_event_guest_add', { phone, name:data.get('name')||'', note:data.get('note')||'' });
-        if (json?.success) { showMsg('success', json.data?.message||'تمت الإضافة'); addForm.reset(); closePanel(); reloadSoon(); }
-        else showMsg('error', json?.data||'تعذر تنفيذ العملية');
-    } catch { showMsg('error','تعذر الاتصال بالخادم'); }
-});
-bulkForm?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const phones = (new FormData(bulkForm).get('phones_text')||'').toString().trim();
-    if (!phones) { showMsg('error','أدخل أرقام الجوال أولاً'); return; }
-    try {
-        const json = await postAction('pge_event_guest_bulk_add', { phones_text:phones });
-        if (json?.success) { showMsg('success', json.data?.message||'تمت الإضافة الجماعية'); bulkForm.reset(); closePanel(); reloadSoon(); }
-        else showMsg('error', json?.data||'تعذر تنفيذ العملية');
-    } catch { showMsg('error','تعذر الاتصال بالخادم'); }
-});
-editForm?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const data = new FormData(editForm);
-    const oldPhone = normPhone(data.get('old_phone'));
-    const phone    = normPhone(data.get('phone'));
-    if (!oldPhone || !phone) { showMsg('error','رقم الجوال غير صالح'); return; }
-    try {
-        const json = await postAction('pge_event_guest_update', { old_phone:oldPhone, phone, name:data.get('name')||'', note:data.get('note')||'' });
-        if (json?.success) { showMsg('success', json.data?.message||'تم التحديث'); reloadSoon(); }
-        else showMsg('error', json?.data||'تعذر تنفيذ العملية');
-    } catch { showMsg('error','تعذر الاتصال بالخادم'); }
-});
-cancelEditBtn?.addEventListener('click', () => {
-    editCard?.classList.add('hidden');
-    if (isMobile()) closePanel();
-});
-
-// ── Guest Action Clicks ───────────────────────────────────────────
+// RC1 Fix Pack 3B: معالجات submit لـaddForm/bulkForm/editForm، ومعالج
+// click لـcancelEditBtn، ومعالجات guest-edit-btn/guest-delete-btn داخل
+// مُفوِّض النقر أُزيلت من هنا — عناصرها الآن غير موجودة في الصفحة (راجع
+// إشعار الانتقال أعلى قسم "إدارة المدعوين" وأزرار بطاقة الضيف). guest-wa-btn
+// باقٍ بلا أي تغيير (القناة الوحيدة، خارج النطاق).
 document.addEventListener('click', async e => {
     const waBtn = e.target.closest('.guest-wa-btn');
     if (waBtn) {
@@ -1206,29 +1197,6 @@ document.addEventListener('click', async e => {
         if (!phone) { showMsg('error','رقم الجوال غير صالح.'); return; }
         const row = waBtn.closest('.guest-row');
         openWhatsappInvite(phone, name, row?.dataset.code||'');
-        return;
-    }
-    const editBtn = e.target.closest('.guest-edit-btn');
-    if (editBtn) {
-        const row = editBtn.closest('.guest-row');
-        if (!row || !editCard || !editForm) return;
-        editForm.querySelector('#editOldPhone').value   = row.dataset.phone||'';
-        editForm.querySelector('#editGuestPhone').value = row.dataset.phone||'';
-        editForm.querySelector('#editGuestName').value  = row.dataset.name||'';
-        editForm.querySelector('#editGuestNote').value  = row.dataset.note||'';
-        editCard.classList.remove('hidden');
-        if (!isMobile()) editCard.scrollIntoView({ behavior:'smooth', block:'nearest' });
-        return;
-    }
-    const delBtn = e.target.closest('.guest-delete-btn');
-    if (delBtn) {
-        const phone = normPhone(delBtn.dataset.phone||'');
-        if (!phone || !confirm('هل تريد حذف هذا المدعو؟')) return;
-        try {
-            const json = await postAction('pge_event_guest_delete', { phone });
-            if (json?.success) { showMsg('success', json.data?.message||'تم الحذف'); reloadSoon(); }
-            else showMsg('error', json?.data||'تعذر تنفيذ العملية');
-        } catch { showMsg('error','تعذر الاتصال بالخادم'); }
     }
 });
 
@@ -1251,40 +1219,41 @@ whatsappAllBtn?.addEventListener('click', () => {
     });
     showMsg('success', `جاري فتح واتساب لكل المدعوين (${rows.length}).`);
 });
-bulkDeleteBtn?.addEventListener('click', async () => {
-    const phones = getSelectedPhones();
-    if (!phones.length || !confirm(`حذف ${phones.length} مدعو؟`)) return;
-    try {
-        const json = await postAction('pge_event_guest_bulk_delete', { phones });
-        if (json?.success) { showMsg('success', json.data?.message||'تم الحذف'); reloadSoon(); }
-        else showMsg('error', json?.data||'تعذر تنفيذ العملية');
-    } catch { showMsg('error','تعذر الاتصال بالخادم'); }
-});
+// RC1 Fix Pack 3B: معالج bulkDeleteBtn أُزيل — الحذف الجماعي انتقل بالكامل
+// لصفحة إدارة الدعوات المعتمَدة (bulkDeleteInvBtn هناك).
 
-// ── CSV Export ────────────────────────────────────────────────────
+// ── تصدير CSV — RC1 Fix Pack 1 (S1: "Spreadsheet Formula Injection Reopened") ──
+// لا توليد CSV هنا بعد الآن، ولا أي تطهير محلي مكرَّر — كانت هذه الدالة
+// تبني CSV بالكامل من جهة العميل (Blob) بتهريب علامات الاقتباس فقط، بلا حماية
+// sanitize_spreadsheet_cell() المُضافة في Phase 9C Final Security Fix (تلك
+// الحماية تعيش حصراً داخل PGE_Invitation_Export::build_dataset() في الإضافة).
+// الزر الآن يُقدِّم نموذجاً مخفياً مباشرة لنفس نقطة تصدير الإضافة المعتمَدة
+// (pge_invitation_mgmt_export_csv) — نفس نمط triggerInvitationExport() في
+// templates/event-invitations.php حرفياً (POST مخفٍ، لا fetch/blob) — فتصبح
+// تلك النقطة المصدر الوحيد لتوليد CSV وللحماية من حقن الصيغ في كامل النظام.
+// ملاحظة نطاق مُقرَّة صراحة: هذا يُصدِّر كل دعوات المناسبة (نفس افتراض نقطة
+// التصدير المعتمَدة بلا فلاتر) بدل "الصفوف الظاهرة فقط" كما كان سابقاً —
+// تكرار منطق فلترة القائمة القديم هنا كان سيعني إعادة اختراع تعيين بين
+// فلاتر هذه الصفحة وفلاتر list_invitations()، وهو ممنوع صراحة ("Do NOT
+// duplicate... Filtering"). راجع docs/RC1-AUDIT.md قسم S1 للتفصيل الكامل.
 exportCsvBtn?.addEventListener('click', () => {
-    // نصدّر الصفوف الظاهرة فقط (بعد تطبيق الفلتر/البحث الحالي)، بنفس منطق
-    // whatsappAllBtn وselectAllGuests — بدل تصدير كل المدعوين دوماً.
-    const rows = getRows().filter(r => r.style.display !== 'none');
-    if (!rows.length) { showMsg('error','لا توجد بيانات.'); return; }
-    const data = [['الاسم','الجوال','الملاحظة','RSVP','Check-in']];
-    rows.forEach(row => {
-        const statusMap = { yes:'سيحضر', no:'اعتذر', pending:'لم يرد' };
-        data.push([
-            row.dataset.name||'',
-            row.dataset.phone||'',
-            row.dataset.note||'',
-            statusMap[row.dataset.status]||row.dataset.status||'',
-            row.dataset.checked==='yes' ? 'تم' : '',
-        ]);
-    });
-    const esc = v => `"${String(v||'').replace(/"/g,'""')}"`;
-    const csv = '﻿' + data.map(r => r.map(esc).join(',')).join('\n');
-    const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})),
-        download: `guests-<?= (int)$event_id ?>.csv`
-    });
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = cfg.ajax || '';
+    form.style.display = 'none';
+    const addHiddenField = (name, value) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+    };
+    addHiddenField('action', 'pge_invitation_mgmt_export_csv');
+    addHiddenField('nonce', cfg.nonce || '');
+    addHiddenField('event_id', cfg.eventId || '');
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
 });
 
 // ── Code Actions ──────────────────────────────────────────────────

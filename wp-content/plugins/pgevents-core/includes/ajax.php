@@ -56,11 +56,25 @@ add_action('wp_ajax_pge_checkin_guest', function () {
     global $wpdb;
     $rsvp_table = $wpdb->prefix . 'pge_event_rsvps';
 
-    $already_checked = (int) $wpdb->get_var($wpdb->prepare(
-        "SELECT checked_in FROM {$rsvp_table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
+    $existing_row = $wpdb->get_row($wpdb->prepare(
+        "SELECT id, checked_in, created_at FROM {$rsvp_table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
         $event_id,
         $phone_n
     ));
+
+    // RC1 Final Release Blocker: RSVP Write Path Unification — نفس القرار
+    // الموحَّد المُستخدَم في كل مسارات كتابة RSVP الأخرى (راجع
+    // PGE_Invitation_Repository::current_or_null()). هذا المسار القديم كان
+    // يقرأ/يكتب checked_in مباشرة على أي صف مطابق للهاتف بلا أي تحقق من
+    // انتمائه لدورة حياة الدعوة الحالية — صف يتيم من دعوة محذوفة سابقاً كان
+    // يمكن أن يُبلِّغ "مسجل مسبقاً" خطأً، أو يُحدَّث مباشرة عبر
+    // ON DUPLICATE KEY UPDATE (القيد الفريد الحقيقي على الجدول). الاستدعاء
+    // أدناه يُصفِّر الصف اليتيم فوراً إن وُجد قبل أي قراءة/كتابة لاحقة هنا.
+    if (class_exists('PGE_Invitation_Repository')) {
+        $existing_row = PGE_Invitation_Repository::current_or_null($event_id, $phone_n, $existing_row);
+    }
+
+    $already_checked = $existing_row ? (int) $existing_row->checked_in : 0;
 
     // إذا مسجل مسبقًا
     if ($already_checked === 1) {

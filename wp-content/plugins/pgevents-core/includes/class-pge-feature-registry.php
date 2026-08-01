@@ -40,10 +40,19 @@ class PGE_Feature_Registry
      * ذلك الجدول: key, type, default, category, admin_label, description,
      * validation, lifecycle.
      *
-     * القيمة 'TBD' في حقل default لثلاث ميزات (host_limit,
-     * admin_supervisor_limit, invitation_design_limit) منقولة حرفياً كما هي
-     * في §6 — القيمة الرقمية الفعلية معلَّقة صراحة في §10 من الوثيقة
-     * المعمارية، ولا يجوز اختراعها هنا.
+     * القيمة 'TBD' في حقل default لميزتين (host_limit،
+     * invitation_design_limit) منقولة حرفياً كما هي في §6 — القيمة الرقمية
+     * الفعلية معلَّقة صراحة في §10 من الوثيقة المعمارية، ولا يجوز اختراعها هنا.
+     *
+     * admin_supervisor_limit (Entry Check-in Supervisors — Phase 1، RFC
+     * "Supervisor Entitlement Foundation"): lifecycle رُقِّي من 'planned' إلى
+     * 'production' — هذا تغيير Metadata وصفي بحت (مؤكَّد عبر docs/DECISION-LOG.md
+     * أن lifecycle لا يُستهلَك كفلتر تشغيلي في أي كود قائم)، بلا أي أثر
+     * وظيفي. حقل default يبقى 'TBD' كما هو بلا أي تغيير — القيمة الرقمية
+     * الفعلية تبقى معلَّقة صراحة في §10، ولم تُحسَم ولم تُخترَع هنا. عملياً،
+     * أي Tier لم يُحدَّد له بعد قيمة صريحة عبر لوحة Tier Features يُفسَّر
+     * (int) 'TBD' = 0 من قِبَل الـResolver — قيمة آمنة ومحافِظة ("صفر مشرفين
+     * افتراضياً") لا قيمة عمل مُخترَعة.
      *
      * @return array<string, array>
      */
@@ -72,7 +81,7 @@ class PGE_Feature_Registry
                 'admin_label' => 'عدد مشرفي الدخول',
                 'description' => 'عدد الأشخاص المسموح تفويضهم لتسجيل حضور الضيوف (Check-in)',
                 'validation'  => 'عدد صحيح ≥ 0',
-                'lifecycle'   => 'planned',
+                'lifecycle'   => 'production',
             ],
             'invitation_design_limit' => [
                 'key'         => 'invitation_design_limit',

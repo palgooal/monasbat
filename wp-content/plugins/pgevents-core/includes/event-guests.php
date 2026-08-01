@@ -426,6 +426,24 @@ add_action('wp_ajax_pge_event_guest_update', function () {
     ]);
 });
 
+/**
+ * ============================================================================
+ * RC1 Fix Pack 3B — "Legacy Guest Panel Retirement (Hard Delete Migration)"
+ * ============================================================================
+ * "If deletion currently bypasses the Invitation Service, refactor by moving
+ * deletion into the Service. Do NOT duplicate delete logic." — هذا المعالج
+ * القديم كان يُنفِّذ الحذف مباشرة (unset + remove_phone_refs + save_map) بلا
+ * مرور بأي طبقة خدمة. أصبح الآن يُفوِّض بالكامل لـPGE_Invitation_Service::
+ * delete() (التي تُعيد استخدام **نفس** الخطوات الثلاث حرفياً داخل
+ * PGE_Invitation_Repository::delete() — راجع توثيقها الكامل هناك)، فيصبح
+ * هناك نقطة تنفيذ حذف واحدة فقط في كامل المشروع. **لا تغيير في السلوك
+ * الملحوظ من طرف العميل** (نفس رسائل النجاح/الفشل، نفس بنية 'stats' في
+ * الاستجابة) — فقط إزالة الازدواجية الداخلية. هذا المعالج **لم يعد له أي
+ * زر مُشغِّل في الواجهة** بعد تفكيك لوحة المدعوين القديمة (page-event-
+ * manage.php) — يبقى مُسجَّلاً فعلياً (Legacy AJAX handlers may remain
+ * registered) كطبقة توافق فقط، ويستمر بتطبيق نفس فحوصات التفويض/nonce/
+ * ملكية المناسبة كاملة عبر pge_event_guests_validate_request() أعلاه.
+ */
 add_action('wp_ajax_pge_event_guest_delete', function () {
     $event_id = pge_event_guests_validate_request();
     $phone = pge_event_guests_norm_phone($_POST['phone'] ?? '');
@@ -434,18 +452,18 @@ add_action('wp_ajax_pge_event_guest_delete', function () {
         wp_send_json_error('رقم الجوال غير صالح');
     }
 
-    $guests_map = pge_event_guests_get_map($event_id);
-    if (!isset($guests_map[$phone])) {
+    if (!class_exists('PGE_Invitation_Service')) {
+        wp_send_json_error('تعذّر تنفيذ العملية');
+    }
+
+    $result = PGE_Invitation_Service::delete($event_id, $phone, get_current_user_id());
+    if (($result['result'] ?? '') !== 'deleted') {
         wp_send_json_error('المدعو غير موجود');
     }
 
-    unset($guests_map[$phone]);
-    pge_event_guests_remove_phone_refs($event_id, $phone);
-    $guests_map = pge_event_guests_save_map($event_id, $guests_map);
-
     wp_send_json_success([
         'message' => 'تم حذف المدعو',
-        'stats'   => pge_event_guests_get_stats($event_id, $guests_map),
+        'stats'   => pge_event_guests_get_stats($event_id),
     ]);
 });
 
@@ -496,6 +514,14 @@ add_action('wp_ajax_pge_event_guest_regen_code', function () {
     ]);
 });
 
+/**
+ * RC1 Fix Pack 3B — نفس التفويض/عدم-تكرار-منطق-الحذف الموثَّق أعلى المعالج
+ * المفرد مباشرة. "Reuse the same deletion path repeatedly. Do not create a
+ * second delete algorithm." — حلقة تستدعي PGE_Invitation_Service::delete()
+ * مرة لكل هاتف، تماماً كما يفعل معالج الحذف الجماعي في الإضافة الجديدة
+ * (pge_invitation_mgmt_bulk_delete_handler) — **نفس** الدالة الأساسية،
+ * مُستدعاة من نقطتين مختلفتين فقط، لا نسخة ثانية من منطق الحذف نفسه.
+ */
 add_action('wp_ajax_pge_event_guest_bulk_delete', function () {
     $event_id = pge_event_guests_validate_request();
 
@@ -517,21 +543,22 @@ add_action('wp_ajax_pge_event_guest_bulk_delete', function () {
         wp_send_json_error('اختر مدعوين للحذف');
     }
 
-    $guests_map = pge_event_guests_get_map($event_id);
-    $deleted = 0;
-
-    foreach ($phones as $phone) {
-        if (!isset($guests_map[$phone])) continue;
-        unset($guests_map[$phone]);
-        pge_event_guests_remove_phone_refs($event_id, $phone);
-        $deleted++;
+    if (!class_exists('PGE_Invitation_Service')) {
+        wp_send_json_error('تعذّر تنفيذ العملية');
     }
 
-    $guests_map = pge_event_guests_save_map($event_id, $guests_map);
+    $actor_user_id = get_current_user_id();
+    $deleted = 0;
+    foreach ($phones as $phone) {
+        $result = PGE_Invitation_Service::delete($event_id, $phone, $actor_user_id);
+        if (($result['result'] ?? '') === 'deleted') {
+            $deleted++;
+        }
+    }
 
     wp_send_json_success([
         'message' => sprintf('تم حذف %d مدعو.', $deleted),
         'deleted' => $deleted,
-        'stats'   => pge_event_guests_get_stats($event_id, $guests_map),
+        'stats'   => pge_event_guests_get_stats($event_id),
     ]);
 });

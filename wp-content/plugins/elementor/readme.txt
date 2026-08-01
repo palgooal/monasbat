@@ -4,7 +4,7 @@ Tags: page builder, editor, landing page, drag-and-drop, elementor,
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 4.2.0
+Stable tag: 4.2.1
 Beta tag: 4.2.0-beta2
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
@@ -360,6 +360,13 @@ If you want to contribute, go to our [Elementor GitHub Repository](https://githu
 
 == Changelog ==
 
+= 4.2.1 - 2026-07-28 =
+
+* Fix: Improved code security enforcement in template handling
+* Fix: Improved code security enforcement in document handling
+* Fix: Invalid border-radius values in Global Classes prevent class changes - Atomic Editor
+* Fix: Atomic Variables synced from Atomic Classes are missing after site import - Atomic Editor
+
 = 4.2.0 - 2026-07-20 =
 
 * New: Introducing Grid for building advanced row and column layouts - Atomic Editor
@@ -376,6 +383,5 @@ If you want to contribute, go to our [Elementor GitHub Repository](https://githu
 * Fix: The drop indicator is missing when dragging Atomic elements inside row Containers - Atomic Editor
 * Fix: Global Classes can be shared across multiple Kits instead of being separated per Kit - Atomic Editor
 * Fix: Angie cannot update text in some Atomic elements - Atomic Editor
-
 
 [See changelog for all versions.](https://go.elementor.com/full-changelog/)

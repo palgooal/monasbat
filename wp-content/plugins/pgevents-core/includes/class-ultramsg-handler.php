@@ -218,7 +218,7 @@ class Mon_UltraMsg_Handler
         // تسجيل RSVP
         // ══════════════════════════════════════════════════════════════
         $rsvp_phone = $pending['original_phone'] ?? pge_norm_phone($from_bare);
-        $this->record_rsvp($event_id, $rsvp_phone, $reply);
+        $rsvp_id = $this->record_rsvp($event_id, $rsvp_phone, $reply);
 
         // مسح الدعوة المعلّقة
         if (!empty($pending['wa_number'])) {
@@ -259,11 +259,23 @@ class Mon_UltraMsg_Handler
         $this->send_text_message($send_to, $confirm_msg);
 
         // ── إرسال QR code عند تأكيد الحضور ───────────────────────────────────
-        if ($reply === 'yes' && $invite_code !== '' && function_exists('pge_generate_qr_url')) {
-            $qr_url     = pge_generate_qr_url($invite_code);
-            $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع\n🔑 الرمز: *{$invite_code}*";
-            $this->send_media_message($send_to, $qr_url, $qr_caption);
-            $this->log("📱 QR sent: code=$invite_code | to=$send_to");
+        // Phase 9B QR Architecture Final Fix: حمولة صورة QR الآن هي الحمولة
+        // الكنسية الموقَّعة عبر PGE_Guest_Resolution_Service::
+        // build_scanner_qr_payload() — invite_code يبقى فقط نصاً مرجعياً
+        // بشرياً في التسمية التوضيحية، لا حمولة الماسح نفسها.
+        if ($reply === 'yes' && $rsvp_id > 0 && function_exists('pge_generate_qr_url') && class_exists('PGE_Guest_Resolution_Service')) {
+            $scanner_payload = PGE_Guest_Resolution_Service::build_scanner_qr_payload($event_id, $rsvp_id, $rsvp_phone);
+            if ($scanner_payload !== '') {
+                $qr_url     = pge_generate_qr_url($scanner_payload);
+                $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع"
+                    . ($invite_code !== '' ? "\n🔑 الرمز المرجعي: *{$invite_code}*" : '');
+                $this->send_media_message($send_to, $qr_url, $qr_caption);
+                $this->log("📱 QR sent: rsvp_id=$rsvp_id | to=$send_to");
+            } else {
+                $this->log("⚠️ QR skipped: تعذّر بناء حمولة الماسح الكنسية لـ rsvp_id=$rsvp_id");
+            }
+        } elseif ($reply === 'yes') {
+            $this->log("⚠️ QR skipped: لا rsvp_id صالح للمناسبة $event_id");
         }
 
         $this->log("✅ RSVP: from=$raw_from | rsvp_phone=$rsvp_phone | reply=$reply | event=$event_id");
@@ -520,17 +532,33 @@ class Mon_UltraMsg_Handler
         return '';
     }
 
-    private function record_rsvp(int $event_id, string $phone, string $reply): void
+    /**
+     * Phase 9B QR Architecture Final Fix: أصبحت تُعيد rsvp_id (كان void) —
+     * المستدعي يحتاجه لبناء حمولة QR الكنسية الموقَّعة عبر
+     * PGE_Guest_Resolution_Service::build_scanner_qr_payload() بدل invite_code
+     * الخام. لا تغيير على منطق التخزين نفسه.
+     */
+    private function record_rsvp(int $event_id, string $phone, string $reply): int
     {
         global $wpdb;
         $table = $wpdb->prefix . 'pge_event_rsvps';
         $phone = pge_norm_phone($phone);
 
-        $existing_id = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
+        $existing_row = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
             $event_id,
             $phone
         ));
+
+        // RC1 Final Release Blocker: RSVP Write Path Unification — نفس القرار
+        // الموحَّد المُستخدَم في rsvp-handler.php/Cartat/rsvp-migration.php،
+        // بلا أي نسخة موازية من الشرط هنا (راجع
+        // PGE_Invitation_Repository::current_or_null()).
+        if (class_exists('PGE_Invitation_Repository')) {
+            $existing_row = PGE_Invitation_Repository::current_or_null($event_id, $phone, $existing_row);
+        }
+
+        $existing_id = $existing_row->id ?? null;
 
         if ($existing_id) {
             $wpdb->update(
@@ -538,17 +566,20 @@ class Mon_UltraMsg_Handler
                 ['reply' => $reply, 'created_at' => current_time('mysql')],
                 ['id' => $existing_id]
             );
-        } else {
-            $wpdb->insert($table, [
-                'event_id'    => $event_id,
-                'guest_phone' => $phone,
-                'reply'       => $reply,
-                'companions'  => 0,
-                'note'        => 'via WhatsApp (UltraMsg)',
-                'checked_in'  => 0,
-                'created_at'  => current_time('mysql'),
-            ]);
+            return (int) $existing_id;
         }
+
+        $wpdb->insert($table, [
+            'event_id'    => $event_id,
+            'guest_phone' => $phone,
+            'reply'       => $reply,
+            'companions'  => 0,
+            'note'        => 'via WhatsApp (UltraMsg)',
+            'checked_in'  => 0,
+            'created_at'  => current_time('mysql'),
+        ]);
+
+        return (int) $wpdb->insert_id;
     }
 
     private function get_reminder_text(int $event_id = 0): string

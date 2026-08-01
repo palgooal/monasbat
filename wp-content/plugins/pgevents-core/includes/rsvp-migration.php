@@ -146,10 +146,20 @@ if (!function_exists('pge_migrate_legacy_rsvp_meta')) {
                 $legacy_ts  = !empty($rec['updated_at']) ? strtotime((string) $rec['updated_at']) : 0;
 
                 $existing = $wpdb->get_row($wpdb->prepare(
-                    "SELECT id, reply, companions, note, updated_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
+                    "SELECT id, reply, companions, note, updated_at, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
                     $event_id,
                     $phone
                 ));
+
+                // RC1 Final Release Blocker: RSVP Write Path Unification — نفس
+                // القرار الموحَّد المُستخدَم في rsvp-handler.php/Cartat/UltraMsg
+                // (راجع PGE_Invitation_Repository::current_or_null()). صف SQL
+                // موجود بهذا الهاتف قد يكون يتيماً من دعوة محذوفة؛ إن كان كذلك
+                // يُعامَل الترحيل هذا الصف كغير موجود (يذهب لمسار الإدخال أدناه
+                // بدل تحديث بيانات دعوة محذوفة سهواً)، بلا نسخة موازية من الشرط.
+                if (class_exists('PGE_Invitation_Repository')) {
+                    $existing = PGE_Invitation_Repository::current_or_null($event_id, $phone, $existing);
+                }
 
                 // طبّع NULL والسلسلة الفارغة إلى نفس القيمة عند المقارنة فقط (لا يؤثر على ما يُكتَب)
                 $existing_note_normalized = ($existing && $existing->note !== null && $existing->note !== '')

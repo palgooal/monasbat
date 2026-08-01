@@ -60,6 +60,148 @@ require_once PGE_PATH . 'includes/class-pge-tier-features.php';
 // PGE_Catalog/PGE_Packages — لا كتابة Snapshot، لا استهلاك من أي صفحة مستخدم بعد.
 require_once PGE_PATH . 'includes/feature-resolver.php';
 
+// Supervisor Quota Resolver — Entry Check-in Supervisors، Phase 1
+// ("Supervisor Entitlement Foundation" RFC). دالة معلوماتية بحتة
+// (pge_resolve_supervisor_quota_status()) تقرأ Snapshot الميزات العام
+// (_mon_package_features) وجدول mon_event_supervisors فقط — لا UI، لا AJAX،
+// لا صلاحيات، لا دعوات في هذا الـCommit.
+require_once PGE_PATH . 'includes/supervisor-quota-resolver.php';
+
+// Supervisor Assignment Service — Entry Check-in Supervisors، Phase 2
+// ("Supervisor Invitation Lifecycle" RFC). الوسيط الوحيد المسموح به للكتابة
+// على mon_event_supervisors (إنشاء/قبول/إلغاء)، ودالة الـLookup الداخلية
+// pge_has_active_supervisor_assignment() — بحث بيانات فقط، ليست دالة تفويض
+// أو مصادقة (راجع التوثيق المفصَّل داخل class-pge-supervisor-assignment-
+// service.php: قسم "Blocking Issue #1 — Authentication vs Lookup"). لا UI،
+// لا AJAX، لا صفحات في هذا الـCommit — استهلاك مستقبلي فقط (Phase 3+).
+require_once PGE_PATH . 'includes/class-pge-supervisor-assignment-service.php';
+
+// Supervisor Session — Entry Check-in Supervisors، Phase 3 ("Supervisor
+// Authentication" RFC). جلسة مشرف مستقلة تماماً عن تسجيل دخول WordPress
+// (لا wp_users، لا حساب مطلوب) — الوسيط الوحيد المسموح به للكتابة على
+// mon_supervisor_sessions (إنشاء/تحقق/تسجيل خروج). يوفّر أيضاً pge_is_active_
+// supervisor_for_event($event_id) — دالة التفويض الحقيقية (تعتمد حصراً على
+// جلسة مصادق عليها عبر كوكي، لا على رقم هاتف أو أي معامل طلب). لا معرفة هنا
+// بدورة حياة الدعوة إطلاقاً (راجع تصحيح "Blocking Issue: Decoupling" داخل
+// الملف نفسه) — لا UI، لا مسار HTTP يكتب الكوكي فعلياً بعد (Requirement 9).
+require_once PGE_PATH . 'includes/class-pge-supervisor-session.php';
+
+// Supervisor Authenticator — تصحيح معماري (Blocking Issue: "Invitation
+// Acceptance and Supervisor Authentication are two different
+// responsibilities. They must remain decoupled."). المنسِّق الوحيد الذي يربط
+// بين قبول الدعوة (الملف أعلاه) وإنشاء الجلسة (الملف الذي قبله) — يوفّر
+// PGE_Supervisor_Authenticator::authenticate() وpge_supervisor_authenticate()
+// (غلاف رفيع للتوافق مع الاستدعاءات القائمة). صفر $wpdb هنا؛ كل تفاعل عبر
+// الواجهات العامة للخدمتين فقط. لا UI، لا مسار HTTP — استهلاك مستقبلي.
+require_once PGE_PATH . 'includes/class-pge-supervisor-authenticator.php';
+
+// Supervisor Portal Middleware — Entry Check-in Supervisors، Phase 3.5
+// ("Supervisor Portal Foundation" RFC). الحارس الوحيد لبوابة /supervisor/ —
+// يستهلك PGE_Supervisor_Session::validate_session() وpge_is_active_supervisor_
+// for_event() فقط (لا SQL خاص به)، ويُترجم كل سبب رفض إلى 401/403/404 صريحة.
+require_once PGE_PATH . 'includes/class-pge-supervisor-portal-middleware.php';
+
+// Supervisor Portal Bootstrap — Entry Check-in Supervisors، Phase 3.5. تحميل
+// بيانات عرض قراءة-فقط (الإسناد/المناسبة/المضيف) بعد نجاح التفويض أعلاه فقط.
+// لا مدعوين، لا دعوات، لا حضور — راجع توثيق الملف نفسه.
+require_once PGE_PATH . 'includes/class-pge-supervisor-portal-bootstrap.php';
+
+// Guest Check-in Engine — Entry Check-in Supervisors، Phase 4 ("Guest
+// Check-in Engine" RFC). بنية بيانات (جدول تدقيق Append-Only + أعمدة إضافية
+// على pge_event_rsvps)، خدمة تحقّق QR، خدمة حلّ الضيف (QR أو بحث يدوي، بنفس
+// الكائن الموحَّد)، ومسجِّل الحضور الذري (GET_LOCK، منع تكرار). كل عملية
+// تمرّ حصراً عبر PGE_Supervisor_Portal_Middleware::authorize() (Phase 3.5) —
+// راجع includes/checkin-ajax.php. لا لوحات إحصاء، لا تقارير (خارج النطاق).
+// Phase 9A Final Fix ("Enforce Cancellation in the Real Check-in Path"):
+// PGE_Guest_Resolution_Service::resolve_by_rsvp_id()/resolve_by_phone() تحمل
+// الآن حارس أهلية إداري صغير (يقرأ حالة الدعوة عبر PGE_Invitation_Repository
+// إن كانت مُحمَّلة، وإلا يُعامِل الغياب كـ"نشطة" — توافق قديم) يرفض أي دعوة
+// مُلغاة **قبل** بناء Guest Object وقبل وصول أي شيء لـPGE_Checkin_Recorder —
+// راجع توثيق الدالتين في الملف نفسه. لا تعديل على Recorder/المخطط/الإحصاء.
+require_once PGE_PATH . 'includes/class-pge-checkin-schema.php';
+require_once PGE_PATH . 'includes/class-pge-checkin-qr-service.php';
+require_once PGE_PATH . 'includes/class-pge-guest-resolution-service.php';
+require_once PGE_PATH . 'includes/class-pge-checkin-recorder.php';
+require_once PGE_PATH . 'includes/checkin-ajax.php';
+
+// طبقة عرض/إعادة تشكيل رقيقة إضافية لبحث الحضور اليدوي — Entry Check-in
+// Supervisors، Phase 7 ("Supervisor Check-in User Interface" RFC). تستهلك
+// نفس PGE_Guest_Resolution_Service أعلاه (قراءة فقط، بلا تعديل) وتُسقِط
+// rsvp_id/الهاتف الخام من الاستجابة (Security: "Never expose Raw RSVP IDs").
+// لا كتابة هنا إطلاقاً — الكتابة الفعلية تبقى حصراً عبر
+// pge_supervisor_checkin_confirm أعلاه (checkin-ajax.php)، غير مُعدَّلة.
+require_once PGE_PATH . 'includes/checkin-ui-ajax.php';
+
+// Attendance Statistics Engine — Entry Check-in Supervisors، Phase 5
+// ("Attendance Statistics Engine" RFC). حساب فقط — لا HTML، لا رسوم بيانية،
+// لا تصدير. PGE_Attendance_Statistics_Service: المصدر الوحيد لكل رقم حضور
+// (يُشتَق حصراً من pge_event_rsvps + pge_checkin_audit_log). PGE_Attendance_
+// Dashboard_Provider: حدود الطلب المُخوَّل الوحيدة (مضيف/أدمن أو جلسة مشرف
+// لنفس المناسبة تحديداً) — يُركِّب Event/Supervisor/Attendance Summary وRecent
+// Check-ins معاً. لا AJAX/قالب يستهلك أياً منهما بعد (مُعَدّان للاستهلاك
+// المستقبلي فقط، خارج نطاق هذه المرحلة).
+require_once PGE_PATH . 'includes/class-pge-attendance-statistics-service.php';
+require_once PGE_PATH . 'includes/class-pge-attendance-dashboard-provider.php';
+
+// Supervisor Attendance Dashboard UI — Entry Check-in Supervisors، Phase 6
+// ("Supervisor Attendance Dashboard UI" RFC). عرض فقط — استهلاك حصري لـ
+// PGE_Attendance_Dashboard_Provider أعلاه عبر includes/dashboard-ajax.php
+// (رقيق، بلا حساب/SQL) وtemplates/supervisor-dashboard.php (بلا استعلام
+// قاعدة بيانات من القالب). لا تعديل على أي طبقة حساب/تفويض هنا.
+require_once PGE_PATH . 'includes/dashboard-ajax.php';
+
+// Host Supervisor Management — Entry Check-in Supervisors، Phase 8 ("Host
+// Supervisor Management" RFC). يدير المضيف دورة حياة إسناد المشرفين
+// (إنشاء/تعديل/إعادة إرسال/إلغاء/قائمة مُرقَّمة+بحث) فقط — لا تعديل هنا على
+// المصادقة/الجلسة/محرك تسجيل الحضور/لوحة الإحصاء. التفويض حصراً عبر
+// pge_event_guests_user_can_manage() (نفس تفويض إدارة المدعوين في
+// event-guests.php)، لا عبر PGE_Supervisor_Portal_Middleware (ذاك لجلسات
+// المشرفين أنفسهم، لا للمضيف). جدول تدقيق مستقل تماماً عن pge_checkin_audit_log.
+require_once PGE_PATH . 'includes/class-pge-supervisor-management-schema.php';
+require_once PGE_PATH . 'includes/class-pge-supervisor-management-audit.php';
+require_once PGE_PATH . 'includes/supervisor-management-ajax.php';
+
+// Host Invitation Management — Entry Check-in Supervisors، Phase 9A ("Host
+// Invitation Management" RFC، بعد "Phase 9A Final Fix — Restore Phase 9A
+// Scope Boundary"). النطاق الفعلي المُفعَّل في الإنتاج الآن: List / View /
+// Create / Edit / Cancel / Search / Filters / Pagination / Audit
+// (created/edited/cancelled فقط). "Invitation" يقابل الضيف الحالي
+// (event-guests.php)، لا كياناً جديداً؛ لا تعديل هنا على المصادقة/الجلسة/
+// محرك تسجيل الحضور/الإحصاء/لوحة المشرف/إدارة المشرفين (Phase 8)/الحصة.
+// جدول تدقيق مستقل تماماً عن كل جداول التدقيق السابقة.
+//
+// Phase 9B (مُعتمَدة): Resend + QR Regeneration — PGE_INVITATION_MGMT_
+// RESEND_QR_ENABLED = true، مُسجَّلتان فعلياً (راجع invitation-management-ajax.php).
+// Phase 9C (مُعتمَدة الآن): Invitation Export (CSV/XLSX) — PGE_INVITATION_
+// MGMT_EXPORT_ENABLED = true، مُسجَّلتان فعلياً. طبقتا التصدير الجديدتان
+// (class-pge-invitation-export.php/class-pge-xlsx-writer.php) قراءة فقط
+// بحتة — لا تعديل على Repository/Service/Audit (بنية الجدول والدوال كما
+// هي)، فقط قيمة جديدة مسموحة ضمن بوابة ACTIVE_ACTIONS الحالية
+// (export_completed) — راجع class-pge-invitation-management-audit.php.
+// طبقات Repository/Audit/Service الأربع تُحمَّل الآن صراحة وبترتيب حتمي من
+// هنا مباشرة (لا تحميل ضمني عبر side-effect requires داخل invitation-
+// management-ajax.php كما كان سابقاً) — Loading Audit، Phase 9A Final Fix.
+require_once PGE_PATH . 'includes/class-pge-invitation-management-schema.php';
+require_once PGE_PATH . 'includes/class-pge-invitation-management-audit.php';
+require_once PGE_PATH . 'includes/class-pge-invitation-repository.php';
+require_once PGE_PATH . 'includes/class-pge-invitation-service.php';
+require_once PGE_PATH . 'includes/class-pge-xlsx-writer.php';
+require_once PGE_PATH . 'includes/class-pge-invitation-export.php';
+// RC1 Fix Pack 3A ("Invitation Bulk Add Migration") — طبقة Parser/Validator
+// وحيدة للإضافة الجماعية، تُحمَّل صراحة قبل invitation-management-ajax.php
+// (نفس اصطلاح التحميل الصريح الحتمي أعلاه، Phase 9A Final Fix).
+require_once PGE_PATH . 'includes/class-pge-invitation-bulk-add.php';
+require_once PGE_PATH . 'includes/invitation-management-ajax.php';
+
+// Event Operations — Entry Check-in Supervisors، Phase 10 ("Event
+// Operations" RFC، مُعتمَدة). طبقة تجميع/عرض رقيقة فقط (Orchestration) فوق
+// خدمات مُعتمَدة غير مُعدَّلة في حسابها: PGE_Attendance_Dashboard_Provider
+// (Phase 5/6 — الإضافة الوحيدة هناك معامل $recent_checkins_limit اختياري
+// توافقي خلفياً بالكامل)، PGE_Invitation_Service (Phase 9، بلا تعديل)،
+// PGE_Supervisor_Assignment_Service (Phase 8، بلا تعديل). لا جدول جديد، لا
+// تدقيق جديد (لا Audit::record() هنا إطلاقاً — عرض اللوحة لا يُسجِّل شيئاً).
+require_once PGE_PATH . 'includes/event-operations-ajax.php';
+
 // صفحة إدارة الباقات (خطوة النموذج فقط — عرض HTML بلا معالجة $_POST وبلا
 // استدعاء لـ PGE_Catalog::create_plan() بعد؛ لا حفظ ولا رسائل نجاح/فشل)
 add_action('admin_menu', function () {

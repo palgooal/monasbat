@@ -111,7 +111,12 @@ echo "=== Commit 1: Event Quota Schema (event_quota_mode/event_quota_limit) ===\
 
 // ── 1) DB_VERSION رُفع فعلياً إلى 1.9.0 ────────────────────────────────────
 
-check('1. Mon_Catalog_Schema::DB_VERSION = 1.9.0', Mon_Catalog_Schema::DB_VERSION, '1.9.0');
+// ملاحظة صيانة (Entry Check-in Supervisors — Phase 1/2، آخر تحديث 2026-07-29):
+// DB_VERSION تقدَّم أولاً إلى 1.10.0 (جدول mon_event_supervisors)، ثم إلى
+// 1.11.0 (عمود invitation_token_hash — Phase 2: Supervisor Invitation
+// Lifecycle) — تحديث حرفي لرقم إصدار متوقَّع التقادم، بلا أي تغيير على
+// عمودَي Event Quota أنفسهما أو على أي تأكيد آخر في هذا الملف.
+check_true('1. Mon_Catalog_Schema::DB_VERSION على الأقل 1.11.0 (كان 1.9.0 وقت كتابة هذا الاختبار؛ تقادم إلى 1.12.0 لاحقاً في Phase 3 — mon_supervisor_sessions)', version_compare(Mon_Catalog_Schema::DB_VERSION, '1.11.0', '>='));
 
 // ── 2) نص Schema يحتوي العمودين الجديدين بالتعريف الصحيح تماماً ───────────
 
@@ -137,7 +142,10 @@ check_true('5. replacement_credit_limit لم يتأثر (لا يزال DEFAULT 0
 
 // ── 6) الجداول الخمسة الأخرى لم تتأثر إطلاقاً (نطاق التعديل: mon_plan_tiers فقط) ─
 
-check_true('6. عدد أجزاء SQL المُعادة من get_schema_sql() لا يزال 6 (لم يُضَف جدول جديد)', count($schema_sql_parts) === 6);
+// ملاحظة صيانة (Entry Check-in Supervisors — Phase 1، 2026-07-29): أصبح العدد
+// 7 بعد إضافة جدول mon_event_supervisors السابع — الجداول الستة الأصلية
+// (mon_plans...mon_tier_features) لم تتأثر إطلاقاً (تؤكد ذلك الأسطر التالية).
+check_true('6. عدد أجزاء SQL المُعادة من get_schema_sql() أصبح 7 على الأقل (كان 7 بالضبط وقت كتابة هذا الاختبار؛ تقادم إلى 8 لاحقاً في Phase 3 — mon_supervisor_sessions)', count($schema_sql_parts) >= 7);
 check_true('6. mon_plans (الجزء الأول) لا يحتوي event_quota_mode', strpos($schema_sql_parts[0] ?? '', 'event_quota_mode') === false);
 check_true('6. mon_services لا يحتوي event_quota_mode', strpos($schema_sql_parts[2] ?? '', 'event_quota_mode') === false);
 check_true('6. mon_invitation_credit_ledger لا يحتوي event_quota_mode', strpos($schema_sql_parts[3] ?? '', 'event_quota_mode') === false);

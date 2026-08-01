@@ -108,10 +108,28 @@ if (!function_exists('pge_save_rsvp_response')) {
         $guest_limit = (int) ($plan_limits['guest_limit'] ?? 0);
 
         $existing = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, companions, reply FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
+            "SELECT id, companions, reply, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
             $event_id,
             $phone
         ));
+
+        // RC1 Final Release Blocker: RSVP Write Path Unification — القرار
+        // الموحَّد الوحيد لكل مسار كتابة RSVP في المشروع الآن يعيش حصراً في
+        // PGE_Invitation_Repository::current_or_null() (تستدعيه أيضاً مسارات
+        // واتساب Cartat/UltraMsg وترحيل البيانات القديمة — لا نسخة موازية من
+        // الشرط هنا). Hard Delete لا يلمس هذا الجدول إطلاقاً (راجع
+        // docs/HARD-DELETE-SEMANTICS-AUDIT.md)، فقد يكون الصف الموجود هنا
+        // "يتيماً" من دعوة سابقة حُذفت ثم أُعيد إنشاء دعوة جديدة بنفس الهاتف؛
+        // صف كهذا يُعامَل كغير موجود فيُنشئ upsert صفاً جديداً مستقلاً تماماً
+        // بدلاً من توريث checked_in/checked_in_at/checked_in_by_assignment_id/
+        // checkin_method/actual_entered_count. يقتصر على مسار الضيف العادي
+        // (!$is_host_or_admin) عمداً — مسار المضيف/الأدمن قد يستخدم رقم هاتف
+        // المضيف نفسه (لا يخضع لمفهوم "دعوة" أصلاً)، فتطبيق هذا الحارس عليه
+        // كان سيُنشئ صفاً جديداً في كل مرة بلا داعٍ ويُغيِّر سلوك تدفّق RSVP
+        // القائم لذلك المسار تحديداً — خارج نطاق هذا الإصلاح.
+        if ($existing && !$is_host_or_admin && class_exists('PGE_Invitation_Repository')) {
+            $existing = PGE_Invitation_Repository::current_or_null($event_id, $phone, $existing);
+        }
 
         $old_count         = ($existing && $existing->reply === 'yes') ? (1 + (int) $existing->companions) : 0;
         $current_yes_total = (int) $wpdb->get_var($wpdb->prepare(
