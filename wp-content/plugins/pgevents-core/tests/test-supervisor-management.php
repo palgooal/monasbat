@@ -54,6 +54,50 @@ if (!function_exists('wp_json_encode')) {
     function wp_json_encode($data) { return json_encode($data); }
 }
 
+// ── Supervisor Invitation Delivery via Cartat — تنفيذ: استيعاب الاعتماديات
+// الجديدة التي أصبح pge_supervisor_mgmt_create_handler()/pge_supervisor_mgmt_
+// resend_handler() يحتاجانها فعلياً (PGE_Cartat_Transport/PGE_Supervisor_
+// Invitation_Delivery). محاكاة نجاح تسليم Cartat افتراضياً (رد success من
+// wp_remote_post) — لا اتصال شبكي حقيقي إطلاقاً؛ راجع tests/test-supervisor-
+// cartat-delivery.php للتغطية الكاملة والمُركَّزة لمنطق التسليم نفسه. هذا
+// الملف يبقى مركِّزاً على دورة حياة الإسناد فقط (نطاقه الأصلي).
+$GLOBALS['__test_wa_options'] = [
+    'pge_wa_provider'          => 'cartat',
+    'pge_cartat_api_token'     => 'test-token',
+    'pge_cartat_country_code'  => '966',
+];
+if (!function_exists('get_option')) {
+    function get_option($name, $default = false)
+    {
+        return array_key_exists($name, $GLOBALS['__test_wa_options']) ? $GLOBALS['__test_wa_options'][$name] : $default;
+    }
+}
+if (!function_exists('update_option')) {
+    function update_option($name, $value, $autoload = null)
+    {
+        $GLOBALS['__test_wa_options'][$name] = $value;
+        return true;
+    }
+}
+if (!function_exists('home_url')) {
+    function home_url($path = '') { return 'https://monasbat.test' . $path; }
+}
+if (!function_exists('wp_remote_retrieve_body')) {
+    function wp_remote_retrieve_body($response) { return is_array($response) ? ($response['body'] ?? '') : ''; }
+}
+if (!function_exists('wp_remote_post')) {
+    function wp_remote_post($url, $args = [])
+    {
+        // نجاح افتراضي دائماً (يحاكي قبول Cartat للرسالة) — قابل للتحكم عبر
+        // $GLOBALS['__test_wa_remote_post_override'] إن احتاج سيناريو مستقبلي
+        // في هذا الملف محاكاة رفض/فشل نقل تحديداً (لا سيناريو هنا يحتاج ذلك اليوم).
+        if (isset($GLOBALS['__test_wa_remote_post_override'])) {
+            return $GLOBALS['__test_wa_remote_post_override'];
+        }
+        return ['body' => json_encode(['status' => 'sent', 'id' => 'test-msg-id'])];
+    }
+}
+
 if (!class_exists('WP_Error')) {
     class WP_Error
     {
@@ -484,6 +528,10 @@ require_once __DIR__ . '/../includes/supervisor-quota-resolver.php';
 require_once __DIR__ . '/../includes/class-pge-supervisor-assignment-service.php';
 require_once __DIR__ . '/../includes/class-pge-supervisor-management-audit.php';
 require_once __DIR__ . '/../includes/event-guests.php'; // pge_event_guests_user_can_manage() الحقيقية
+// Supervisor Invitation Delivery via Cartat — تنفيذ: اعتماديتان جديدتان
+// يستدعيهما supervisor-management-ajax.php الآن فعلياً (إنشاء/إعادة إرسال).
+require_once __DIR__ . '/../includes/class-pge-cartat-transport.php';
+require_once __DIR__ . '/../includes/class-pge-supervisor-invitation-delivery.php';
 require_once __DIR__ . '/../includes/supervisor-management-ajax.php';
 
 $total = 0;
@@ -617,6 +665,20 @@ echo "\n=== السيناريو 6: إعادة إرسال الدعوة ===\n";
 $old_hash_6 = $wpdb->supervisors[$assignment1_id]['invitation_token_hash'];
 $old_invited_at_6 = $wpdb->supervisors[$assignment1_id]['invited_at'];
 
+// [مُحدَّث SICD] عدّاد "قبل" — إنشاء المشرف في السيناريو 1 أصبح يُطلِق محاولة
+// تسليم فعلية بذاته الآن (Supervisor Invitation Delivery via Cartat —
+// تنفيذ)، فيسجّل سلسلة delivery_requested/attempted/provider_accepted خاصة
+// به قبل وصولنا هنا. الفحص الصحيح إذاً هو دلتا "بعد − قبل" لهذا الاستدعاء
+// تحديداً، لا عدّاً مطلقاً يفترض أن هذه أول محاولة تسليم للإسناد.
+$count_before_6 = function ($action) use ($wpdb, $assignment1_id) {
+    return count(array_filter($wpdb->audit_log, function ($r) use ($assignment1_id, $action) {
+        return (int) $r['assignment_id'] === $assignment1_id && $r['action'] === $action;
+    }));
+};
+$before_requested_6 = $count_before_6('delivery_requested');
+$before_attempted_6 = $count_before_6('delivery_attempted');
+$before_accepted_6 = $count_before_6('provider_accepted');
+
 $GLOBALS['__test_current_user_id'] = 701;
 $_POST = make_post_fields(901, ['assignment_id' => $assignment1_id]);
 $resp6 = call_ajax_handler('pge_supervisor_mgmt_resend_handler');
@@ -624,11 +686,20 @@ check_true('6. إعادة الإرسال: success', $resp6['success'] ?? false);
 check_true('6. التوكن الخام غير مُعاد للواجهة إطلاقاً', !isset($resp6['data']['invitation_token']));
 check_true('6. invitation_token_hash تغيَّر (توكن جديد فعلياً)', $wpdb->supervisors[$assignment1_id]['invitation_token_hash'] !== $old_hash_6);
 check('6. status يبقى invited (لا إنشاء صف جديد، لا استهلاك حصة إضافية)', $wpdb->supervisors[$assignment1_id]['status'] ?? null, 'invited');
-check_true('6. سجل تدقيق invitation_resent واحد', count(array_filter($wpdb->audit_log, function ($r) use ($assignment1_id) {
-    return (int) $r['assignment_id'] === $assignment1_id && $r['action'] === 'invitation_resent';
-})) === 1);
+// [مُحدَّث SICD] Supervisor Invitation Delivery via Cartat — تنفيذ: الحدث
+// 'invitation_resent' كان يُسجَّل حتى دون أي تسليم فعلي (مضلِّل — لا قناة
+// تسليم كانت مربوطة وقتها). أصبح الآن يُستبدَل بدورة تدقيق صادقة عبر
+// PGE_Supervisor_Invitation_Delivery::deliver(): delivery_requested →
+// delivery_attempted → provider_accepted (محاكاة نجاح Cartat في هذا الملف —
+// راجع stub wp_remote_post أعلى الملف). دلتا واحد بالضبط لكل نوع بسبب هذا
+// الاستدعاء تحديداً.
+check_true('6. سجل تدقيق delivery_requested إضافي واحد بسبب هذا الاستدعاء', $count_before_6('delivery_requested') - $before_requested_6 === 1);
+check_true('6. سجل تدقيق delivery_attempted إضافي واحد بسبب هذا الاستدعاء', $count_before_6('delivery_attempted') - $before_attempted_6 === 1);
+check_true('6. سجل تدقيق provider_accepted إضافي واحد (لا invitation_resent المضلِّل)', $count_before_6('provider_accepted') - $before_accepted_6 === 1);
 
-// إعادة إرسال لإسناد active يُرفَض (not_resendable)
+// إعادة إرسال لإسناد active يُرفَض — deliver() تُعيد الآن 'not_eligible'
+// (تحل محل 'not_resendable' القديمة؛ نفس المعنى التجاري: لا معنى لتسليم
+// دعوة لإسناد نشط بالفعل — لا Cartat يُستدعى إطلاقاً في هذه الحالة).
 $active_row_id = null;
 foreach ($wpdb->supervisors as $id => $row) {
     if ((int) $row['event_id'] === 901) { $active_row_id = $id; break; }
@@ -637,7 +708,7 @@ $wpdb->supervisors[$active_row_id]['status'] = 'active'; // محاكاة قبو�
 $_POST = make_post_fields(901, ['assignment_id' => $active_row_id]);
 $resp6b = call_ajax_handler('pge_supervisor_mgmt_resend_handler');
 check_true('6ب. إعادة إرسال لإسناد active: success=false', !($resp6b['success'] ?? true));
-check('6ب. السبب not_resendable', $resp6b['data']['reason'] ?? null, 'not_resendable');
+check('6ب. السبب not_eligible [مُحدَّث SICD]', $resp6b['data']['reason'] ?? null, 'not_eligible');
 $wpdb->supervisors[$active_row_id]['status'] = 'invited'; // إعادة الحالة لبقية السيناريوهات
 
 // ============================================================================
@@ -751,7 +822,23 @@ echo "\n=== السيناريو 10: توليد سجل التدقيق ===\n";
 
 $audit_rows_1 = PGE_Supervisor_Management_Audit::list_for_assignment($assignment1_id);
 $audit_actions_1 = array_column($audit_rows_1, 'action');
-check('10. سجل الإسناد الأول يحوي: created, edited, invitation_resent, revoked بالترتيب الزمني', $audit_actions_1, ['created', 'edited', 'invitation_resent', 'revoked']);
+// [مُحدَّث SICD] راجع تحديث السيناريو 6 أعلاه. تسلسل التدقيق الفعلي الآن
+// يحمل دورتَي تسليم كاملتين لهذا الإسناد: الأولى تلقائية عند الإنشاء نفسه
+// (السيناريو 1 — Supervisor Invitation Delivery via Cartat تُطلِق محاولة
+// تسليم فورية بعد create_supervisor_assignment() الناجحة)، والثانية عند
+// إعادة الإرسال الصريحة (السيناريو 6). لا 'invitation_resent' المضلِّلة
+// إطلاقاً بعد الآن.
+check(
+    '10. سجل الإسناد الأول يحوي دورتَي تسليم كاملتين حول edited/revoked بالترتيب الزمني الصحيح',
+    $audit_actions_1,
+    [
+        'created',
+        'delivery_requested', 'delivery_attempted', 'provider_accepted', // تسليم تلقائي عند الإنشاء
+        'edited',
+        'delivery_requested', 'delivery_attempted', 'provider_accepted', // تسليم صريح عند إعادة الإرسال (السيناريو 6)
+        'revoked',
+    ]
+);
 check_true('10. كل صف تدقيق يحمل actor_user_id وcreated_at', array_reduce($audit_rows_1, function ($carry, $r) {
     return $carry && (int) $r['actor_user_id'] > 0 && !empty($r['created_at']);
 }, true));

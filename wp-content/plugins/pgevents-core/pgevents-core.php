@@ -159,6 +159,25 @@ require_once PGE_PATH . 'includes/dashboard-ajax.php';
 // المشرفين أنفسهم، لا للمضيف). جدول تدقيق مستقل تماماً عن pge_checkin_audit_log.
 require_once PGE_PATH . 'includes/class-pge-supervisor-management-schema.php';
 require_once PGE_PATH . 'includes/class-pge-supervisor-management-audit.php';
+
+// Cartat Transport (Option B — Supervisor Invitation Delivery via Cartat).
+// محمَّلة هنا صراحة (بدلاً من موقعها التاريخي عند مفتاح pge_wa_provider
+// أسفل هذا الملف) لأنها مطلوبة الآن من PGE_Supervisor_Invitation_Delivery
+// أدناه، التي تُستهلَك من supervisor-management-ajax.php — أبكر بكثير في
+// ترتيب التحميل من مفتاح pge_wa_provider. هذا الملف صفر اعتماديات (يقرأ
+// wp_options فقط عند الإنشاء)، فتحميله المبكر آمن تماماً؛ Mon_Cartat_Handler
+// (المُحمَّل لاحقاً عند مفتاح pge_wa_provider) يعتمد عليها بدوره الآن —
+// require_once يمنع أي تحميل مزدوج بين الموقعين.
+require_once PGE_PATH . 'includes/class-pge-cartat-transport.php';
+
+// Supervisor Invitation Delivery (Supervisor Invitation Delivery via Cartat،
+// تنفيذ). النقطة المركزية الوحيدة لطلب تسليم دعوة مشرف فعلي عبر Cartat —
+// تعتمد على PGE_Supervisor_Assignment_Service (أعلاه)، PGE_Cartat_Transport
+// (السطر أعلاه مباشرة)، وPGE_Supervisor_Management_Audit (السطر الذي قبله).
+// لا اعتماد عكسي: PGE_Supervisor_Assignment_Service/PGE_Cartat_Transport لا
+// تعرفان بوجود هذا الملف إطلاقاً.
+require_once PGE_PATH . 'includes/class-pge-supervisor-invitation-delivery.php';
+
 require_once PGE_PATH . 'includes/supervisor-management-ajax.php';
 
 // Host Invitation Management — Entry Check-in Supervisors، Phase 9A ("Host
@@ -2351,7 +2370,11 @@ require_once PGE_PATH . 'includes/class-mon-events-users.php';
 // 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)
 require_once PGE_PATH . 'includes/class-salla-handler.php';
 
-// 3. تكامل واتساب — يُحمَّل المزوّد النشط فقط (Cartat أو UltraMsg)
+// 3. تكامل واتساب — يُحمَّل المزوّد النشط فقط (Cartat أو UltraMsg). ملاحظة:
+// class-pge-cartat-transport.php (طبقة النقل المشتركة، Option B) تُحمَّل
+// الآن مبكراً بالأعلى (قرب Phase 8 Supervisor Management) لأن PGE_Supervisor_
+// Invitation_Delivery تحتاجها هناك — require_once هنا (داخل class-cartat-
+// handler.php نفسها) لا يُعيد تحميلها، فقط يضمن توفرها إن لم يسبق تحميلها.
 $_pge_wa_provider = get_option('pge_wa_provider', 'cartat');
 if ($_pge_wa_provider === 'ultramsg') {
     require_once PGE_PATH . 'includes/class-ultramsg-handler.php';

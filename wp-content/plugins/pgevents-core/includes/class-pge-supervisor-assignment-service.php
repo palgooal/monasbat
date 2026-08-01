@@ -412,6 +412,91 @@ class PGE_Supervisor_Assignment_Service
 
     /**
      * ============================================================================
+     * توليد توكن تسليم جديد (Supervisor Invitation Delivery via Cartat —
+     * تنفيذ) — غلاف عام حول generate_invitation_token()/hash_invitation_token()
+     * الخاصتين أعلاه، بلا أي كتابة على قاعدة البيانات. مصمَّمة خصيصاً لتمكين
+     * "ترتيب التسليم الآمن" المطلوب صراحةً في التكليف: يجب توليد توكن جديد
+     * وبناء رابط القبول منه **قبل** أي التزام في invitation_token_hash، بحيث
+     * لو رفض Cartat الرسالة أو فشل النقل، يبقى التوكن القديم سارياً (لا يُستبدَل
+     * أبداً إلا بعد قبول المزوّد فعلياً — راجع commit_new_token_hash() أدناه
+     * وPGE_Supervisor_Invitation_Delivery::deliver() المستهلك الوحيد لكلتيهما).
+     *
+     * لا هذه الدالة ولا commit_new_token_hash() تُعيدان تعريف آلية التوليد/
+     * الهاش — كلتاهما تستدعيان نفس private static methods الموجودتين أعلاه
+     * حرفياً (DRY حقيقي، لا نسخة موازية).
+     *
+     * @return array{raw:string, hash:string}
+     */
+    public static function generate_delivery_token(): array
+    {
+        $raw = self::generate_invitation_token();
+        return ['raw' => $raw, 'hash' => self::hash_invitation_token($raw)];
+    }
+
+    /**
+     * ============================================================================
+     * تثبيت هاش توكن جديد بعد قبول التسليم فعلياً (Supervisor Invitation
+     * Delivery via Cartat — تنفيذ)
+     * ============================================================================
+     * نصف الكتابة من resend_invitation() الأصلية سابقاً (توليد+كتابة معاً)،
+     * مفصولة الآن عمداً عن التوليد: المستدعي (PGE_Supervisor_Invitation_
+     * Delivery) يُولِّد التوكن عبر generate_delivery_token() *قبل* محاولة
+     * الإرسال، ولا يستدعي هذه الدالة إلا **بعد** أن يقبل Cartat الرسالة
+     * فعلياً — بذلك لا يُصبح التوكن القديم غير صالح إلا بعد أن يصبح رابط
+     * التوكن الجديد قد أُرسِل فعلياً وقُبِل من المزوّد، لا قبل ذلك أبداً.
+     *
+     * شرط WHERE مركَّب (id + الحالة المتوقَّعة $expected_status معاً) — نفس
+     * فلسفة accept_invitation()/revoke_supervisor_assignment() تماماً: يحمي
+     * من تغيّر حالة الإسناد (مثلاً إلغاء متزامن) بين لحظة التحقق من الأهلية
+     * في المستدعي ولحظة هذه الكتابة الفعلية. $updated === 0 يعني تعارض
+     * تزامن حقيقي (الحالة تغيّرت)، وليس بالضرورة خطأً برمجياً.
+     *
+     * @return array{result:string, ...}
+     *   'committed' — نجح تثبيت الهاش الجديد فعلياً. يتضمن 'id'.
+     *   'error'     — id غير صالح/hash فارغ، أو تعارض تزامن (الحالة تغيّرت
+     *                 قبل وصول هذه الكتابة). يتضمن 'reason'.
+     */
+    public static function commit_new_token_hash($id, $expected_status, $new_token_hash): array
+    {
+        $normalized_id = self::normalize_positive_id($id);
+        if ($normalized_id === 0) {
+            return ['result' => 'error', 'reason' => 'invalid_id'];
+        }
+
+        $expected_status = is_scalar($expected_status) ? (string) $expected_status : '';
+        $new_token_hash = is_scalar($new_token_hash) ? (string) $new_token_hash : '';
+        if ($expected_status === '' || $new_token_hash === '') {
+            return ['result' => 'error', 'reason' => 'invalid_arguments'];
+        }
+
+        global $wpdb;
+        $table = self::table_name();
+        $now = current_time('mysql', true);
+
+        $updated = $wpdb->update(
+            $table,
+            [
+                'invitation_token_hash' => $new_token_hash,
+                'invited_at'            => $now,
+                'updated_at'            => $now,
+            ],
+            [
+                'id'     => $normalized_id,
+                'status' => $expected_status,
+            ],
+            ['%s', '%s', '%s'],
+            ['%d', '%s']
+        );
+
+        if ($updated === false || $updated === 0) {
+            return ['result' => 'error', 'reason' => 'concurrent_status_change'];
+        }
+
+        return ['result' => 'committed', 'id' => $normalized_id];
+    }
+
+    /**
+     * ============================================================================
      * إعادة إرسال الدعوة — Phase 8 (Requirement "Resend Invitation: must NOT
      * create another assignment, must NOT consume another slot, must NOT
      * duplicate invitations")
@@ -422,6 +507,19 @@ class PGE_Supervisor_Assignment_Service
      * invited/pending (نفس ACCEPTABLE_STATUSES) — إعادة إرسال دعوة مقبولة
      * (active) أو ملغاة (revoked) لا معنى له. شرط WHERE مركَّب (id + status)
      * لأمان تزامن (نفس فلسفة accept_invitation()/revoke_supervisor_assignment()).
+     *
+     * Supervisor Invitation Delivery via Cartat — تنفيذ: أُعيدت كتابة جسم
+     * هذه الدالة لاستدعاء generate_delivery_token()/commit_new_token_hash()
+     * أعلاه بدل تكرار نفس منطق التوليد+الكتابة محلياً (DRY) — **بلا أي تغيير
+     * في القيم المُعادة أو شروطها** (نفس 'resent'/'error'/'not_resendable'/
+     * 'concurrent_status_change' تماماً)، فتبقى متوافقة خلفياً مع كل مستدعٍ
+     * قائم. ملاحظة معمارية: هذه الدالة (الالتزام الفوري) تبقى متاحة لأي
+     * مستهلك مستقبلي يحتاج "تدوير فوري بلا تسليم فعلي"، لكن مسار الإنتاج
+     * الفعلي لتسليم دعوات المشرفين (إنشاء/إعادة إرسال عبر الواجهة) لا يستدعي
+     * هذه الدالة بعد الآن — يستدعي generate_delivery_token()/commit_new_
+     * token_hash() منفصلتين عبر PGE_Supervisor_Invitation_Delivery::deliver()
+     * لضمان عدم إبطال التوكن القديم قبل قبول Cartat فعلياً (راجع توثيق
+     * الدالتين أعلاه).
      *
      * @return array{result:string, ...}
      *   'resent' — نجحت إعادة الإرسال. يتضمن 'id' و'invitation_token' (الخام،
@@ -446,33 +544,14 @@ class PGE_Supervisor_Assignment_Service
             return ['result' => 'error', 'reason' => 'not_resendable', 'status' => $current_status];
         }
 
-        global $wpdb;
-        $table = self::table_name();
+        $token = self::generate_delivery_token();
+        $commit = self::commit_new_token_hash($normalized_id, $current_status, $token['hash']);
 
-        $raw_token = self::generate_invitation_token();
-        $token_hash = self::hash_invitation_token($raw_token);
-        $now = current_time('mysql', true);
-
-        $updated = $wpdb->update(
-            $table,
-            [
-                'invitation_token_hash' => $token_hash,
-                'invited_at'            => $now,
-                'updated_at'            => $now,
-            ],
-            [
-                'id'     => $normalized_id,
-                'status' => $current_status,
-            ],
-            ['%s', '%s', '%s'],
-            ['%d', '%s']
-        );
-
-        if ($updated === false || $updated === 0) {
+        if (($commit['result'] ?? '') !== 'committed') {
             return ['result' => 'error', 'reason' => 'concurrent_status_change'];
         }
 
-        return ['result' => 'resent', 'id' => $normalized_id, 'invitation_token' => $raw_token];
+        return ['result' => 'resent', 'id' => $normalized_id, 'invitation_token' => $token['raw']];
     }
 
     /**

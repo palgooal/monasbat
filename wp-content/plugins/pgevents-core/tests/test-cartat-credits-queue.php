@@ -453,6 +453,10 @@ $GLOBALS['__test_options']['pge_cartat_country_code'] = '966';
 // ── تحميل الملفين الحقيقيين من المشروع (بلا أي تعديل عليهما) ───────────────
 
 require_once __DIR__ . '/../includes/class-pge-invitation-credit-ledger.php';
+// Supervisor Invitation Delivery via Cartat — تنفيذ (Option B): class-cartat-
+// handler.php أصبح يعتمد على PGE_Cartat_Transport داخلياً (نفس منطق الإرسال
+// حرفياً، منقول فقط) — يجب تحميلها قبله الآن.
+require_once __DIR__ . '/../includes/class-pge-cartat-transport.php';
 require_once __DIR__ . '/../includes/class-cartat-handler.php';
 
 // ── أدوات الاختبار ──────────────────────────────────────────────────────────

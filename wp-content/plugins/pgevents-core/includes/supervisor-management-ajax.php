@@ -119,6 +119,52 @@ if (!function_exists('pge_supervisor_mgmt_reshape_row')) {
     }
 }
 
+if (!function_exists('pge_supervisor_delivery_result_message')) {
+    /**
+     * ============================================================================
+     * رسالة عرض صادقة لنتيجة PGE_Supervisor_Invitation_Delivery::deliver()
+     * (Supervisor Invitation Delivery via Cartat — تنفيذ)
+     * ============================================================================
+     * تنسيق عرض بحت (نفس فلسفة pge_supervisor_mgmt_reshape_row() أعلاه) — لا
+     * منطق أعمال هنا، فقط ترجمة فئة فشل مُطبَّعة إلى نص عربي مفهوم للمضيف. لا
+     * تكشف أبداً: التوكن الخام، رابط القبول، جسم استجابة Cartat، أو أي معرّف
+     * قاعدة بيانات داخلي.
+     */
+    function pge_supervisor_delivery_result_message(array $delivery): string
+    {
+        if (($delivery['result'] ?? '') === 'provider_accepted') {
+            return 'تم قبول طلب التسليم عبر واتساب';
+        }
+
+        $reason = (string) ($delivery['reason'] ?? '');
+        $status = (string) ($delivery['status'] ?? '');
+
+        if ($reason === 'not_eligible' && $status === 'active') {
+            return 'المشرف نشط بالفعل — لا حاجة لإعادة الإرسال';
+        }
+        if ($reason === 'not_eligible' && $status === 'revoked') {
+            return 'تم إلغاء إسناد هذا المشرف — لا يمكن إرسال دعوة';
+        }
+
+        $labels = [
+            'provider_not_active'    => 'مزوّد واتساب النشط ليس Cartat',
+            'missing_settings'       => 'إعدادات Cartat غير مكتملة',
+            'transport_error'        => 'تعذّر الاتصال بواتساب (خطأ شبكة مؤقت)',
+            'provider_rejected'      => 'رفض واتساب إرسال الرسالة',
+            'lock_busy'              => 'يوجد طلب إرسال قيد التنفيذ بالفعل لهذا المشرف، حاول لاحقاً',
+            'token_commit_failed'    => 'تعذّر تثبيت رابط الدعوة (تغيّرت حالة الإسناد أثناء الإرسال)',
+            'assignment_not_found'   => 'المشرف غير موجود',
+            'not_eligible'           => 'حالة الإسناد الحالية لا تسمح بإرسال دعوة',
+            'assignment_incomplete'  => 'بيانات الإسناد غير مكتملة',
+            'service_unavailable'    => 'الخدمة غير متاحة حالياً',
+            'transport_unavailable'  => 'خدمة الإرسال غير متاحة حالياً',
+            'invalid_assignment_id'  => 'معرّف غير صالح',
+        ];
+
+        return $labels[$reason] ?? 'تعذّر إتمام عملية الإرسال';
+    }
+}
+
 // ── قائمة المشرفين (بحث + ترقيم) — Requirement "Search/Pagination" ──────────
 // دوال مُسمَّاة (لا closures) — نفس اصطلاح checkin-ajax.php (Phase 4/7) المُتَّبع
 // عمداً لأنه يجعل كل معالج قابلاً للاستدعاء المباشر بالاسم من الاختبارات
@@ -181,13 +227,30 @@ function pge_supervisor_mgmt_create_handler()
     $outcome = (string) ($result['result'] ?? '');
 
     if ($outcome === 'created') {
+        $new_assignment_id = (int) $result['id'];
+
         if (class_exists('PGE_Supervisor_Management_Audit')) {
-            PGE_Supervisor_Management_Audit::record($event_id, (int) $result['id'], get_current_user_id(), 'created', '');
+            PGE_Supervisor_Management_Audit::record($event_id, $new_assignment_id, get_current_user_id(), 'created', '');
+        }
+
+        // Supervisor Invitation Delivery via Cartat — تنفيذ: محاولة تسليم
+        // فعلي فوراً بعد الإنشاء (نفس مسار deliver() المستخدَم لإعادة
+        // الإرسال أدناه — لا تكرار منطق). نجاح/فشل التسليم لا يُبطِل نجاح
+        // إنشاء الإسناد نفسه (الإسناد أُنشئ فعلاً بصرف النظر عن نتيجة
+        // الإرسال) — الرسالة المُعادة صادقة بكلا الجزأين.
+        $delivery_message = 'تمت إضافة المشرف';
+        if (class_exists('PGE_Supervisor_Invitation_Delivery')) {
+            $delivery = PGE_Supervisor_Invitation_Delivery::deliver($new_assignment_id, get_current_user_id());
+            $delivery_outcome = (string) ($delivery['result'] ?? '');
+
+            $delivery_message = ($delivery_outcome === 'provider_accepted')
+                ? 'تمت إضافة المشرف وإرسال الدعوة عبر واتساب'
+                : 'تمت إضافة المشرف، لكن تعذّر إرسال الدعوة عبر واتساب: ' . pge_supervisor_delivery_result_message($delivery);
         }
 
         wp_send_json_success([
-            'message' => 'تمت إضافة المشرف',
-            'id'      => (int) $result['id'],
+            'message' => $delivery_message,
+            'id'      => $new_assignment_id,
         ]);
     }
 
@@ -245,11 +308,19 @@ function pge_supervisor_mgmt_edit_handler()
 add_action('wp_ajax_pge_supervisor_mgmt_edit', 'pge_supervisor_mgmt_edit_handler');
 
 // ── إعادة إرسال الدعوة — Requirement "Resend Invitation" ────────────────────
+// Supervisor Invitation Delivery via Cartat — تنفيذ: يستدعي الآن
+// PGE_Supervisor_Invitation_Delivery::deliver() بدل PGE_Supervisor_
+// Assignment_Service::resend_invitation() مباشرة — الأخيرة تبقى موجودة
+// وموثَّقة (راجع توثيقها) لكنها لم تعد تُستدعى من مسار الإنتاج هذا: deliver()
+// تُطبِّق ترتيب تدوير التوكن الآمن (لا إبطال قبل قبول Cartat فعلياً) وتُسجِّل
+// دورة تدقيق صادقة (delivery_requested/attempted/provider_accepted|failed)
+// بدل الحدث المضلِّل 'invitation_resent' السابق (كان يُسجَّل حتى عندما لم
+// يكن هناك أي تسليم فعلي).
 function pge_supervisor_mgmt_resend_handler()
 {
     $event_id = pge_supervisor_mgmt_validate_request();
 
-    if (!class_exists('PGE_Supervisor_Assignment_Service')) {
+    if (!class_exists('PGE_Supervisor_Assignment_Service') || !class_exists('PGE_Supervisor_Invitation_Delivery')) {
         wp_send_json_error(['message' => 'الخدمة غير متاحة حالياً', 'reason' => 'service_unavailable']);
     }
 
@@ -260,25 +331,20 @@ function pge_supervisor_mgmt_resend_handler()
         wp_send_json_error(['message' => 'المشرف غير موجود ضمن هذه المناسبة', 'reason' => 'not_found']);
     }
 
-    $result = PGE_Supervisor_Assignment_Service::resend_invitation($assignment_id);
-    $outcome = (string) ($result['result'] ?? '');
+    $delivery = PGE_Supervisor_Invitation_Delivery::deliver($assignment_id, get_current_user_id());
+    $outcome = (string) ($delivery['result'] ?? '');
 
-    if ($outcome === 'resent') {
-        if (class_exists('PGE_Supervisor_Management_Audit')) {
-            PGE_Supervisor_Management_Audit::record($event_id, $assignment_id, get_current_user_id(), 'invitation_resent', '');
-        }
-
-        // ملاحظة صريحة: $result['invitation_token'] (الخام) لا يُعاد للواجهة
-        // عمداً — لا مسار تسليم فعلي (واتساب/SMS/بريد) بُني بعد لهذه المرحلة
-        // (خارج النطاق صراحة). القيمة تبقى داخل استجابة الخدمة الخادمية فقط.
-        wp_send_json_success(['message' => 'تمت إعادة إرسال الدعوة']);
+    if ($outcome === 'provider_accepted') {
+        // ملاحظة صريحة: لا التوكن الخام ولا رابط القبول يُعادان للواجهة
+        // إطلاقاً — التسليم تم فعلياً عبر واتساب، لا حاجة لعرضهما في لوحة الإدارة.
+        wp_send_json_success(['message' => pge_supervisor_delivery_result_message($delivery)]);
     }
 
-    if ($outcome === 'error' && ($result['reason'] ?? '') === 'not_resendable') {
-        wp_send_json_error(['message' => 'لا يمكن إعادة إرسال الدعوة لهذه الحالة', 'reason' => 'not_resendable']);
-    }
-
-    wp_send_json_error(['message' => 'تعذّرت إعادة إرسال الدعوة', 'reason' => (string) ($result['reason'] ?? 'unknown_error')]);
+    $reason = (string) ($delivery['reason'] ?? 'unknown_error');
+    wp_send_json_error([
+        'message' => 'تعذّرت إعادة إرسال الدعوة: ' . pge_supervisor_delivery_result_message($delivery),
+        'reason'  => $reason,
+    ]);
 }
 add_action('wp_ajax_pge_supervisor_mgmt_resend', 'pge_supervisor_mgmt_resend_handler');
 

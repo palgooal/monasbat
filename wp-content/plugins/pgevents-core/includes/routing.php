@@ -47,6 +47,17 @@ add_action('init', function () {
     // هوية من معاملات الطلب). راجع includes/class-pge-supervisor-portal-
     // middleware.php للتفويض الفعلي.
     add_rewrite_rule('^supervisor/logout/?$', 'index.php?pge_action=supervisor_logout', 'top');
+
+    // 3ب. قبول دعوة المشرف عبر واتساب (Supervisor Invitation Delivery via
+    // Cartat): monasbat.test/supervisor/accept/{token}/ — التوكن الخام
+    // (64 حرف hex، bin2hex(random_bytes(32))) هو المُعرِّف الوحيد في الرابط،
+    // لا معرِّف إسناد ولا معرِّف مناسبة (نفس فلسفة /supervisor/ أعلاه تماماً).
+    // هذا المسار Route فقط — محوِّل HTTP رفيع لا أكثر، يستدعي
+    // PGE_Supervisor_Authenticator::authenticate() الموجودة والمعتمدة فعلياً
+    // (Phase 3) دون أي إعادة تنفيذ لمنطقها. راجع المعالج أسفل هذا الملف تحت
+    // template_redirect لكامل التفصيل والتوثيق.
+    add_rewrite_rule('^supervisor/accept/([^/]+)/?$', 'index.php?pge_action=supervisor_accept_invitation&pge_token=$matches[1]', 'top');
+
     add_rewrite_rule('^supervisor/?$', 'index.php?pge_action=supervisor_portal', 'top');
 
     // 4. لوحة إحصاءات الحضور للمشرف (Entry Check-in Supervisors — Phase 6):
@@ -69,6 +80,7 @@ add_filter('query_vars', function ($vars) {
     $vars[] = 'pge_action';
     $vars[] = 'event_id';
     $vars[] = 'pge_short_event';
+    $vars[] = 'pge_token';
     return $vars;
 });
 
@@ -137,6 +149,200 @@ add_action('template_redirect', function () {
 
     wp_safe_redirect($default_redirect);
     exit;
+}, 1);
+
+/**
+ * ============================================================================
+ * قبول دعوة المشرف عبر واتساب — Supervisor Invitation Delivery via Cartat
+ * ============================================================================
+ * "The route is only an HTTP adapter. Do not duplicate assignment acceptance
+ * or session logic inside routing.php." — هذا المعالج لا يحتوي أي منطق قبول
+ * دعوة ولا أي منطق جلسة بنفسه: يستخرج التوكن من الرابط فقط، يستدعي
+ * PGE_Supervisor_Authenticator::authenticate() الموجودة والمعتمدة فعلياً
+ * (Phase 3/Blocker fix #3)، ثم يترجم نتيجتها إلى (أ) كوكي جلسة + إعادة توجيه
+ * عند النجاح، أو (ب) صفحة خطأ RTL آمنة ودنيا عند الفشل — تماماً بنفس فلسفة
+ * الرفض الآمن في templates/supervisor-portal.php أعلاه.
+ *
+ * لا تسجيل (logging) للتوكن الخام في أي مسار من هذا المعالج — لا عبر
+ * error_log ولا عبر أي استدعاء آخر؛ التحقق من "شكل" التوكن (Requirement:
+ * "validate token shape without logging") يحدث محلياً بمقارنة نمط فقط دون
+ * أي كتابة لقيمته في أي مكان.
+ */
+if (!function_exists('pge_supervisor_accept_token_shape_valid')) {
+    /**
+     * تحقّق "شكل" التوكن فقط — دالة نقية بحتة (لا $wpdb، لا استعلام، لا
+     * تسجيل، بلا أي أثر جانبي)، مُستخرَجة عمداً لتكون قابلة للاختبار مباشرة
+     * (tests/test-supervisor-cartat-delivery.php) بمعزل عن exit()/الكوكي/
+     * إعادة التوجيه في المعالج أدناه. bin2hex(random_bytes(32)) يُنتج دائماً
+     * 64 حرف hex صغير — أي قيمة أخرى شكلياً غير صالحة برفض فوري بلا استعلام.
+     */
+    function pge_supervisor_accept_token_shape_valid(string $raw_token): bool
+    {
+        return (bool) preg_match('/^[a-f0-9]{64}$/', $raw_token);
+    }
+}
+
+if (!function_exists('pge_supervisor_accept_classify_auth_error')) {
+    /**
+     * ترجمة نتيجة فاشلة من PGE_Supervisor_Authenticator::authenticate() إلى
+     * إحدى صفحات الخطأ الآمنة الست (بلا حالة 'authenticated' — تُعالَج في
+     * المعالج نفسه، لا هنا) — دالة نقية بحتة (bool/string in، array out، بلا
+     * $wpdb/كوكي/exit)، مُستخرَجة عمداً من جسم المعالج لتكون قابلة للاختبار
+     * التنفيذي المباشر لكل مسار من مسارات هذا الجدول دون تشغيل exit() فعلياً.
+     * لا كشف لاسم reason التقني الخام في أي رسالة — فقط عنوان/رسالة عربيان
+     * ثابتان مسبقاً لكل فئة.
+     *
+     * @return array{title:string, message:string, http_status:int}
+     */
+    function pge_supervisor_accept_classify_auth_error(array $auth_result): array
+    {
+        $stage = (string) ($auth_result['stage'] ?? '');
+        $reason = (string) ($auth_result['reason'] ?? '');
+
+        if ($stage === 'session') {
+            // حالة 5: قبول الدعوة نجح فعلياً (التوكن استُهلِك بشكل دائم) لكن
+            // إنشاء الجلسة فشل — القاعدة المعتمدة صراحة في class-pge-
+            // supervisor-authenticator.php (معالجة الفشل الجزئي): لا تراجع،
+            // لا إعادة توليد دعوة، لا اقتراح "أعد فتح هذا الرابط" (التوكن لم
+            // يعد صالحاً أصلاً بعد نجاح القبول). الرسالة هنا صادقة بالكامل.
+            return [
+                'title' => 'تعذّر إكمال تسجيل الدخول',
+                'message' => 'تم تأكيد قبولك للدعوة بنجاح، لكن تعذّر فتح جلسة الدخول تلقائياً حالياً. تواصل مع المضيف لمساعدتك في الدخول إلى بوابة المشرف.',
+                'http_status' => 500,
+            ];
+        }
+
+        if ($reason === 'assignment_not_acceptable') {
+            // حالة 3: الإسناد موجود لكن حالته لا تسمح بالقبول (مُلغى/منتهٍ).
+            return [
+                'title' => 'الدعوة لم تعد سارية',
+                'message' => 'تم إلغاء دعوتك للإشراف على هذه المناسبة أو لم تعد سارية. تواصل مع المضيف إذا كنت تظن أن هذا خطأ.',
+                'http_status' => 403,
+            ];
+        }
+
+        if ($reason === 'invalid_token' || $reason === 'token_already_used_or_invalid') {
+            // حالة 2: توكن غير موجود أصلاً، أو استُهلِك مسبقاً (قبول سابق
+            // ناجح أو تعارض تزامن مع طلب آخر لنفس الرابط).
+            return [
+                'title' => 'الرابط غير صالح',
+                'message' => 'تم استخدام رابط الدعوة هذا مسبقاً أو لم يعد صالحاً. تواصل مع المضيف للحصول على رابط دخول جديد.',
+                'http_status' => 410,
+            ];
+        }
+
+        // حالة 4: أي سبب آخر غير متوقَّع من مرحلة "invitation" (مثلاً:
+        // assignment_not_active_after_acceptance، missing_assignment_id) —
+        // رسالة عامة مؤقتة آمنة، بلا كشف لاسم السبب التقني نفسه.
+        return [
+            'title' => 'تعذّر تسجيل الدخول',
+            'message' => 'تعذّر إكمال تسجيل الدخول حالياً. حاول مرة أخرى بعد قليل، أو تواصل مع المضيف إذا استمرت المشكلة.',
+            'http_status' => 500,
+        ];
+    }
+}
+
+if (!function_exists('pge_render_supervisor_accept_error')) {
+    /**
+     * صفحة خطأ RTL آمنة ودنيا — نفس البنية البصرية (البطاقة المستديرة) في
+     * templates/supervisor-portal.php حرفياً، لضمان اتساق تجربة المستخدم بين
+     * كل صفحات بوابة المشرف. لا تُعرِض هذه الدالة أبداً: التوكن الخام، معرِّف
+     * الإسناد، معرِّف المناسبة، رسالة قاعدة بيانات، أو أي أثر تقني داخلي —
+     * فقط عنوان ورسالة عربيتان مُعدَّتان سلفاً من قائمة ثابتة.
+     */
+    function pge_render_supervisor_accept_error(string $title, string $message, int $http_status): void
+    {
+        status_header($http_status);
+        nocache_headers();
+        ?>
+<!DOCTYPE html>
+<html <?php language_attributes(); ?> dir="rtl">
+<head>
+    <meta charset="<?php bloginfo('charset'); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><?php echo esc_html($title); ?> — بوابة المشرف</title>
+    <?php wp_head(); ?>
+</head>
+<body>
+    <div class="relative flex min-h-screen items-center justify-center bg-background px-4 font-arabic" dir="rtl">
+        <div class="w-full max-w-sm rounded-3xl border border-border bg-white p-8 text-center shadow-xl">
+            <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-2xl text-destructive-text">⚠️</div>
+            <h1 class="text-lg font-extrabold text-foreground"><?php echo esc_html($title); ?></h1>
+            <p class="mt-3 text-sm leading-relaxed text-foreground/75"><?php echo esc_html($message); ?></p>
+        </div>
+    </div>
+    <?php wp_footer(); ?>
+</body>
+</html>
+        <?php
+        exit;
+    }
+}
+
+add_action('template_redirect', function () {
+    $action = get_query_var('pge_action');
+    if ($action !== 'supervisor_accept_invitation') return;
+
+    // فشل آمن إن كانت البيئة غير مكتملة — نفس نمط supervisor-portal.php.
+    if (!class_exists('PGE_Supervisor_Authenticator') || !class_exists('PGE_Supervisor_Session')) {
+        // حالة 6: الخدمة غير متاحة حالياً (فشل تحميل — لا كشف تفاصيل داخلية).
+        pge_render_supervisor_accept_error('تعذّر تسجيل الدخول', 'تعذّر تحميل بوابة المشرف حالياً. حاول لاحقاً.', 503);
+    }
+
+    $raw_token_from_url = (string) get_query_var('pge_token');
+    $raw_token_from_url = rawurldecode($raw_token_from_url);
+
+    // ── حالة 1: شكل التوكن غير صالح (Requirement: "validate token shape
+    // without logging") — تحقّق نمطي محلي بحت (pge_supervisor_accept_token_
+    // shape_valid())، بلا أي استعلام قاعدة بيانات وبلا أي تسجيل لقيمة التوكن
+    // نفسها في أي مكان ──────────────────────────────────────────────────────
+    if (!pge_supervisor_accept_token_shape_valid($raw_token_from_url)) {
+        pge_render_supervisor_accept_error(
+            'رابط الدعوة غير صالح',
+            'رابط الدعوة غير صالح. تأكد من نسخ الرابط بالكامل من رسالة واتساب، أو تواصل مع المضيف للحصول على رابط جديد.',
+            400
+        );
+    }
+
+    // ── المحوِّل الفعلي: استدعاء واحد لدالة التنسيق الموجودة فعلاً، بلا أي
+    // إعادة تنفيذ لخطواتها الداخلية هنا ─────────────────────────────────────
+    $auth_result = PGE_Supervisor_Authenticator::authenticate($raw_token_from_url);
+    $result = (string) ($auth_result['result'] ?? '');
+
+    if ($result === 'authenticated') {
+        $session_token = (string) ($auth_result['session_token'] ?? '');
+        $expires_at = (string) ($auth_result['expires_at'] ?? '');
+        $expires_timestamp = $expires_at !== '' ? strtotime($expires_at) : (time() + PGE_Supervisor_Session::SESSION_TTL_SECONDS);
+
+        if ($session_token !== '' && !headers_sent()) {
+            // كوكي الجلسة: HttpOnly دائماً، Secure عند HTTPS، SameSite=Lax
+            // (رابط قادم من واتساب — طلب تصفّح عادي من موقع خارجي، يحتاج
+            // Lax لا Strict كي تُرسَل الكوكي عند أول تحميل بعد الضغط على
+            // الرابط)، مسار الكوكي الجذر (نفس اتفاقية إتلافها في معالج
+            // supervisor_logout أعلاه)، بلا أي معرِّف داخلي في قيمتها —
+            // القيمة هي التوكن الخام نفسه فقط، تماماً كما تُقرَأ في
+            // pge_is_active_supervisor_for_event().
+            setcookie(PGE_Supervisor_Session::SESSION_COOKIE_NAME, $session_token, [
+                'expires' => $expires_timestamp,
+                'path' => COOKIEPATH ?: '/',
+                'domain' => COOKIE_DOMAIN,
+                'secure' => is_ssl(),
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
+        }
+
+        // إعادة توجيه للمسار الرسمي لبوابة المشرف — لا أي معرِّف داخلي
+        // (assignment_id/event_id) في رابط إعادة التوجيه.
+        wp_safe_redirect(home_url('/supervisor/'));
+        exit;
+    }
+
+    // ── فشل — ترجمة الأسباب المستقرة الصادرة عن Authenticator إلى إحدى
+    // صفحات الخطأ الست الآمنة عبر pge_supervisor_accept_classify_auth_error()
+    // (دالة نقية مُختبَرة مباشرة)، دون كشف أي تفصيل داخلي إضافي هنا ──────────
+    $error_page = pge_supervisor_accept_classify_auth_error($auth_result);
+    pge_render_supervisor_accept_error($error_page['title'], $error_page['message'], $error_page['http_status']);
 }, 1);
 
 /**

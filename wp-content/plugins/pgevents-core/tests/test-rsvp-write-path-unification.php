@@ -300,6 +300,9 @@ require_once __DIR__ . '/../includes/class-pge-invitation-service.php';
 require_once __DIR__ . '/../includes/rsvp-handler.php';
 require_once __DIR__ . '/../includes/class-pge-guest-resolution-service.php';
 require_once __DIR__ . '/../includes/class-pge-checkin-qr-service.php';
+// Supervisor Invitation Delivery via Cartat — تنفيذ (Option B): class-cartat-
+// handler.php أصبح يعتمد على PGE_Cartat_Transport داخلياً — يجب تحميلها قبله.
+require_once __DIR__ . '/../includes/class-pge-cartat-transport.php';
 require_once __DIR__ . '/../includes/class-cartat-handler.php';
 require_once __DIR__ . '/../includes/class-ultramsg-handler.php';
 require_once __DIR__ . '/../includes/rsvp-migration.php';

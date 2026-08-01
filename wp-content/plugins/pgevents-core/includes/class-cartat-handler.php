@@ -9,14 +9,20 @@ if (!defined('ABSPATH')) exit;
  */
 class Mon_Cartat_Handler
 {
-    private string $api_token;
-    private string $api_base    = 'https://api.cartat.net';
-    private string $country_code;
+    /**
+     * طبقة النقل المشتركة (Supervisor Invitation Delivery via Cartat —
+     * تنفيذ، Option B) — تحل محل الدوال الأربع الخاصة السابقة (api_request/
+     * send_text_message/send_media_message/format_wa_number) وinterpret_
+     * cartat_result، الآن جميعها في includes/class-pge-cartat-transport.php
+     * حصراً (نفس منطقها الداخلي بلا أي تغيير). هذا الكلاس يستهلكها فقط، لا
+     * يعيد تعريف أي منها — تطبيق نقل Cartat الوحيد في المشروع بعد هذا
+     * الاستخراج.
+     */
+    private PGE_Cartat_Transport $transport;
 
     public function __construct()
     {
-        $this->api_token    = (string) get_option('pge_cartat_api_token', '');
-        $this->country_code = (string) get_option('pge_cartat_country_code', '966');
+        $this->transport = new PGE_Cartat_Transport();
 
         add_action('rest_api_init',               [$this, 'register_webhook_route']);
         add_action('wp_ajax_pge_send_wa_invites', [$this, 'handle_send_invitations_ajax']);
@@ -156,7 +162,7 @@ class Mon_Cartat_Handler
         $reply = $this->parse_rsvp_reply($body);
         if (!$reply) {
             $send_to = $pending['wa_number'] ?? $raw_from;
-            $this->send_text_message($send_to, $this->get_reminder_text());
+            $this->transport->send_text($send_to, $this->get_reminder_text());
             return new WP_REST_Response(['status' => 'invalid_reply'], 200);
         }
 
@@ -252,7 +258,7 @@ class Mon_Cartat_Handler
             $confirm_msg .= $location_line;
         }
 
-        $confirm_result = $this->send_text_message($send_to, $confirm_msg);
+        $confirm_result = $this->transport->send_text($send_to, $confirm_msg);
         $confirm_ok = $confirm_result !== null
             && !(isset($confirm_result['status']) && $confirm_result['status'] === 'error')
             && !(isset($confirm_result['success']) && $confirm_result['success'] === false);
@@ -284,7 +290,7 @@ class Mon_Cartat_Handler
                     $qr_url     = pge_generate_qr_url($scanner_payload);
                     $qr_caption = "🔳 *بطاقة دخولك*\nأرِها عند الباب للدخول السريع"
                         . ($invite_code !== '' ? "\n🔑 الرمز المرجعي: *{$invite_code}*" : '');
-                    $qr_result  = $this->send_media_message($send_to, $qr_url, $qr_caption);
+                    $qr_result  = $this->transport->send_media($send_to, $qr_url, $qr_caption);
                     $qr_ok = $qr_result !== null
                         && !(isset($qr_result['status']) && $qr_result['status'] === 'error')
                         && !(isset($qr_result['success']) && $qr_result['success'] === false);
@@ -304,7 +310,7 @@ class Mon_Cartat_Handler
                 }
                 $map_caption .= "\n{$location_url}";
 
-                $map_result = $this->send_media_message($send_to, $static_map_image, $map_caption);
+                $map_result = $this->transport->send_media($send_to, $static_map_image, $map_caption);
                 $map_ok = $map_result !== null
                     && !(isset($map_result['status']) && $map_result['status'] === 'error')
                     && !(isset($map_result['success']) && $map_result['success'] === false);
@@ -336,14 +342,14 @@ class Mon_Cartat_Handler
         if (!$event_id || !pge_is_host_or_admin($event_id)) {
             wp_send_json_error(['message' => 'Forbidden']);
         }
-        if (empty($this->api_token)) {
+        if (!$this->transport->has_credentials()) {
             wp_send_json_error(['message' => 'لم يتم ضبط Cartat API Token']);
         }
         if ($test_phone === '') {
             wp_send_json_error(['message' => 'أدخل رقم الجوال للاختبار']);
         }
 
-        $wa_number  = $this->format_wa_number($test_phone);
+        $wa_number  = $this->transport->format_number($test_phone);
         $norm_phone = pge_norm_phone($test_phone);
 
         $event          = get_post($event_id);
@@ -368,8 +374,8 @@ class Mon_Cartat_Handler
         ]);
 
         $result = $image_url
-            ? $this->send_media_message($wa_number, $image_url, $caption)
-            : $this->send_text_message($wa_number, $caption);
+            ? $this->transport->send_media($wa_number, $image_url, $caption)
+            : $this->transport->send_text($wa_number, $caption);
 
         $is_error = ($result === null)
                  || (isset($result['status']) && $result['status'] === 'error')
@@ -401,7 +407,7 @@ class Mon_Cartat_Handler
             wp_send_json_error(['message' => 'Forbidden']);
         }
 
-        if (empty($this->api_token)) {
+        if (!$this->transport->has_credentials()) {
             wp_send_json_error(['message' => 'لم يتم ضبط Cartat API Token في الإعدادات']);
         }
 
@@ -451,7 +457,7 @@ class Mon_Cartat_Handler
         $sent = $failed = 0;
 
         foreach ($phones as $phone) {
-            $wa_number  = $this->format_wa_number($phone);
+            $wa_number  = $this->transport->format_number($phone);
             $guest_name = $guests_map[$phone]['name'] ?? 'ضيفنا العزيز';
             $norm_phone = pge_norm_phone($phone);
 
@@ -476,9 +482,9 @@ class Mon_Cartat_Handler
 
             // إرسال صورة أو نص حسب توفر الصورة
             if ($image_url) {
-                $result = $this->send_media_message($wa_number, $image_url, $caption);
+                $result = $this->transport->send_media($wa_number, $image_url, $caption);
             } else {
-                $result = $this->send_text_message($wa_number, $caption);
+                $result = $this->transport->send_text($wa_number, $caption);
             }
 
             // تأخير عشوائي بين 2-4 ثوانٍ — يشبه السلوك البشري ويقلل خطر الحظر
@@ -546,112 +552,13 @@ class Mon_Cartat_Handler
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // API Wrappers
-    // ══════════════════════════════════════════════════════════════════════════
-
-    private function send_text_message(string $number, string $message): ?array
-    {
-        return $this->api_request('/message/text', [
-            'number'  => $number,
-            'message' => $message,
-        ]);
-    }
-
-    private function send_media_message(string $number, string $media_url, string $caption = ''): ?array
-    {
-        return $this->api_request('/message/media', [
-            'number'    => $number,
-            'media_url' => $media_url,
-            'caption'   => $caption,
-        ]);
-    }
-
-    private function api_request(string $endpoint, array $body): ?array
-    {
-        $response = wp_remote_post($this->api_base . $endpoint, [
-            'headers' => [
-                'Accept'        => 'application/json',
-                'Content-Type'  => 'application/json',
-                'Authorization' => 'Bearer ' . $this->api_token,
-                'Expect'        => '', // منع Expect: 100-continue الذي يُعلّق الاتصال
-            ],
-            'body'        => wp_json_encode($body),
-            'timeout'     => 20,
-            'httpversion' => '1.1',  // تجنب مشاكل HTTP/2
-            'sslverify'   => true,
-        ]);
-
-        if (is_wp_error($response)) {
-            error_log('❌ Cartat API Error: ' . $response->get_error_message());
-            return null;
-        }
-
-        $decoded = json_decode(wp_remote_retrieve_body($response), true);
-        error_log('📤 Cartat API Response [' . $endpoint . ']: ' . json_encode($decoded));
-        return $decoded;
-    }
-
-    /**
-     * تفسير موحَّد لنتيجة api_request() — نقطة واحدة بدل المنطق المكرر
-     * (Invitation Credits Engine، المرحلة الثالثة A). لا تُغيّر عقد Cartat
-     * الحالي (نفس شرطَي status==='error' وsuccess===false المعتمَدين فعلياً
-     * في كل مكان آخر بالملف) — فقط تُفصِّل حالتَي الفشل السابقتين
-     * ($result===null مقابل رفض صريح) بدل دمجهما معاً في $is_error واحد،
-     * لأن الفرق بينهما جوهري لقرار الخصم:
-     *  - 'transport_error': $result === null — الطلب لم يصل لأي استجابة
-     *    JSON مفهومة (انقطاع شبكة/DNS/SSL قبل is_wp_error، أو استجابة غير
-     *    JSON). لا نعرف هل وصلت الرسالة فعلاً لـCartat أم لا — لا يجوز
-     *    اعتبارها لا نجاحاً قاطعاً ولا فشلاً قاطعاً.
-     *  - 'rejected': استجابة JSON فعلية لكن بمحتوى رفض صريح
-     *    (status==='error' أو success===false).
-     *  - 'accepted': أي استجابة أخرى غير الحالتين أعلاه (تطابق تماماً ما
-     *    كان الكود القديم يعتبره نجاحاً ضمنياً: status=queued/sent/success
-     *    أو غياب الحقلين كليّاً).
-     */
-    private function interpret_cartat_result($result): string
-    {
-        if ($result === null) {
-            return 'transport_error';
-        }
-
-        if (
-            (isset($result['status']) && $result['status'] === 'error')
-            || (isset($result['success']) && $result['success'] === false)
-        ) {
-            return 'rejected';
-        }
-
-        return 'accepted';
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════
     // Helpers
     // ══════════════════════════════════════════════════════════════════════════
-
-    /**
-     * تحويل رقم الجوال إلى صيغة واتساب الدولية (966XXXXXXXXX)
-     * يعالج: 00XXXXXXXX / 0XXXXXXXX / XXXXXXXX / +XXXXXXXX
-     */
-    private function format_wa_number(string $phone): string
-    {
-        $phone = pge_norm_phone($phone); // أرقام فقط
-
-        // 00XXXXXXXXX → الرقم يحمل كود الدولة بعد الـ 00
-        if (str_starts_with($phone, '00')) {
-            $phone = substr($phone, 2);
-        }
-        // 0XXXXXXXXX → رقم محلي، أضف كود الدولة بدل الصفر
-        elseif (str_starts_with($phone, '0')) {
-            $phone = $this->country_code . substr($phone, 1);
-        }
-        // رقم قصير (أقل من 10) بدون كود دولة → أضفه
-        elseif (strlen($phone) < 10) {
-            $phone = $this->country_code . $phone;
-        }
-        // رقم ≥ 10 أرقام لا يبدأ بـ 0 → كود الدولة موجود مسبقاً (972, 966, 962...)
-
-        return $phone;
-    }
+    // ملاحظة: send_text_message/send_media_message/api_request/interpret_
+    // cartat_result/format_wa_number السابقة هنا انتقلت بالكامل (نفس المنطق
+    // حرفياً، بلا أي تغيير) إلى includes/class-pge-cartat-transport.php
+    // (Supervisor Invitation Delivery via Cartat — تنفيذ، Option B) — راجع
+    // $this->transport أعلى الملف. لا نسخة موازية منها بقيت هنا.
 
     /**
      * تحليل رد المدعو إلى 'yes' أو 'no'
@@ -844,7 +751,7 @@ class Mon_Cartat_Handler
         if (!$event_id || !pge_is_host_or_admin($event_id)) {
             wp_send_json_error(['message' => 'Forbidden']);
         }
-        if (empty($this->api_token)) {
+        if (!$this->transport->has_credentials()) {
             wp_send_json_error(['message' => 'لم يتم ضبط Cartat API Token']);
         }
 
@@ -1517,7 +1424,7 @@ class Mon_Cartat_Handler
                     // 'claimed' فقط تتابع إلى الإرسال الفعلي أدناه.
                 }
 
-                $wa_number  = $this->format_wa_number($phone);
+                $wa_number  = $this->transport->format_number($phone);
                 $norm_phone = pge_norm_phone($phone);
                 $guest_name = $queue['guests_map'][$phone]['name'] ?? 'ضيفنا العزيز';
 
@@ -1540,10 +1447,10 @@ class Mon_Cartat_Handler
                 ]);
 
                 $result = $queue['image_url']
-                    ? $this->send_media_message($wa_number, $queue['image_url'], $caption)
-                    : $this->send_text_message($wa_number, $caption);
+                    ? $this->transport->send_media($wa_number, $queue['image_url'], $caption)
+                    : $this->transport->send_text($wa_number, $caption);
 
-                $outcome = $this->interpret_cartat_result($result);
+                $outcome = $this->transport->interpret_result($result);
 
                 if ($outcome === 'accepted') {
                     // pending ACK — بلا أي تغيير عن السلوك الحالي إطلاقاً
