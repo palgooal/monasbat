@@ -403,15 +403,17 @@ add_action('template_redirect', function () {
 /**
  * ============================================================================
  * مصادقة توكن الدخول — Supervisor Login Architecture (Post-Activation Login) RFC
+ * + Login Link Preview Safety Fix (GET غير هدّام/POST يستهلك)
  * ============================================================================
  * محوِّل HTTP رفيع تماماً — بلا أي منطق مصادقة/جلسة بنفسه، مطابق بنيوياً
  * لمعالج supervisor_accept_invitation أعلاه، لكنه **مسار مستقل بالكامل**:
  * يستدعي PGE_Supervisor_Login_Authenticator::authenticate() (لا Authenticator
- * الأصلي إطلاقاً). عند النجاح: نفس آلية كوكي الجلسة بالضبط (PGE_Supervisor_
- * Session::SESSION_COOKIE_NAME — الجلسة نفسها مفهوم مشترك بين المسارين، لا
- * "جلسة دخول" منفصلة)، لكن إعادة التوجيه إلى /supervisor/checkin/ مباشرة
- * (لا /supervisor/) — المشرف مُفعَّل بالفعل، لا حاجة لعرض شاشة الترحيب
- * الأولى (portal shell) في كل تسجيل دخول لاحق.
+ * الأصلي إطلاقاً). عند النجاح (على POST فقط الآن — راجع Preview Safety Fix
+ * أدناه): نفس آلية كوكي الجلسة بالضبط (PGE_Supervisor_Session::
+ * SESSION_COOKIE_NAME — الجلسة نفسها مفهوم مشترك بين المسارين، لا "جلسة
+ * دخول" منفصلة)، ثم إعادة توجيه إلى `/supervisor/` (بوابة المشرف الرسمية —
+ * "redirect to the Supervisor Portal" حرفياً وفق تصحيح Preview Safety، بدل
+ * `/supervisor/checkin/` المباشر المعتمَد قبل هذا التصحيح).
  *
  * pge_supervisor_accept_token_shape_valid()/pge_render_supervisor_accept_error()
  * المُعرَّفتان أعلاه (نقيتان بالكامل، لا محتوى خاص بالدعوة في منطقهما — فحص
@@ -419,6 +421,27 @@ add_action('template_redirect', function () {
  * استخدامهما هنا حرفياً — إعادة استخدام أداة عامة، لا "إعادة استخدام خدمة
  * الدعوة" (الممنوعة صراحةً هي إعادة استخدام PGE_Supervisor_Authenticator/
  * accept_invitation()/المسار نفسه، لا أي دالة نقية عامة الغرض).
+ *
+ * ── Login Link Preview Safety Fix ───────────────────────────────────────
+ * روابط الدخول تُفتَح غالباً أولاً بواسطة معاينات آلية (WhatsApp/تطبيقات
+ * المراسلة تجلب OpenGraph metadata عبر GET قبل عرض الرابط للمستخدم)،
+ * زواحف/فاحصات أمنية، أو Prefetch من المتصفح — لا واحد منها يعرف كيف
+ * يُرسِل POST بنموذج حقيقي بنية. لذلك نفس المسار (`/supervisor/login/
+ * {token}/`) صار يتفرّع حسب طريقة الطلب:
+ *
+ *   GET  → قراءة فقط عبر PGE_Supervisor_Assignment_Service::
+ *          peek_login_token() (SELECT بحت، **بلا UPDATE إطلاقاً**) — يعرض
+ *          صفحة تأكيد (templates/supervisor-login-confirm.php) إن كان
+ *          التوكن صالحاً، أو صفحة خطأ آمنة إن لم يكن. لا استدعاء لـ
+ *          PGE_Supervisor_Login_Authenticator::authenticate() على GET
+ *          إطلاقاً — الاستهلاك الفعلي مستحيل بنيوياً على هذا الفرع.
+ *   POST → يتحقق من nonce (`pge_supervisor_login_confirm`) أولاً، ثم
+ *          يستدعي PGE_Supervisor_Login_Authenticator::authenticate() (نفس
+ *          الاستدعاء الذي كان يحدث على GET سابقاً، بلا أي تكرار لمنطقها) —
+ *          هذا هو المسار الوحيد الذي يستهلك التوكن فعلياً وينشئ جلسة.
+ *
+ * لا استعلام قاعدة بيانات كتابةً واحداً يحدث على فرع GET من هذا المعالج —
+ * تحقّق ثابت عبر التدقيق الساكن (§"Static Audit" في تقرير هذا التصحيح).
  */
 if (!function_exists('pge_supervisor_login_classify_auth_error')) {
     /**
@@ -469,51 +492,203 @@ if (!function_exists('pge_supervisor_login_classify_auth_error')) {
     }
 }
 
+/**
+ * اسم الـnonce المستخدَم حصراً لتأكيد POST تسجيل الدخول — غرض واحد فقط،
+ * غير مرتبط بأي نموذج/إجراء آخر في المشروع (لا `pge_supervisor_logout`، لا
+ * `pge_supervisor_login_request`). التحقّق منه لا يستبدل تحقّق أهلية/صحة
+ * التوكن نفسه (يبقى ذلك من مسؤولية PGE_Supervisor_Login_Authenticator
+ * بالكامل) — هو حارس CSRF إضافي مستقل على نموذج التأكيد وحده.
+ */
+if (!defined('PGE_SUPERVISOR_LOGIN_CONFIRM_NONCE_ACTION')) {
+    define('PGE_SUPERVISOR_LOGIN_CONFIRM_NONCE_ACTION', 'pge_supervisor_login_confirm');
+}
+
+/**
+ * ── دوال قرار مستخرَجة، نقية قدر الإمكان — Login Link Preview Safety Fix ───
+ * كل منطق "ماذا يجب أن يحدث" مُستخرَج هنا (قابل للاختبار التنفيذي المباشر،
+ * بلا exit()/echo/header)، بينما الـclosure أدناه يبقى محوِّل HTTP رفيعاً
+ * بحتاً (قراءة $_SERVER/$_POST، استدعاء هذه الدوال، تنفيذ الأثر الجانبي
+ * الفعلي الوحيد المطلوب: كوكي/exit/echo) — بنفس فلسفة
+ * pge_supervisor_process_logout_token() المُستخرَجة سابقاً لنفس السبب.
+ */
+
+if (!function_exists('pge_supervisor_login_evaluate_get_request')) {
+    /**
+     * قرار GET بالكامل — **قراءة فقط**: فحص شكل التوكن ثم
+     * PGE_Supervisor_Assignment_Service::peek_login_token() (SELECT بحت،
+     * بلا أي UPDATE). لا استدعاء لـauthenticate()/consume_login_token() هنا
+     * إطلاقاً — استحالة بنيوية للاستهلاك عبر GET، لا مجرد اتفاقية.
+     *
+     * @return array{mode:string, error?:array{title:string,message:string,http_status:int}}
+     *   mode='confirm' — التوكن صالح، اعرض صفحة التأكيد.
+     *   mode='error'   — اعرض صفحة الخطأ الآمنة المرفَقة في 'error'.
+     */
+    function pge_supervisor_login_evaluate_get_request(string $raw_token): array
+    {
+        if (!pge_supervisor_accept_token_shape_valid($raw_token)) {
+            return [
+                'mode' => 'error',
+                'error' => [
+                    'title' => 'رابط الدخول غير صالح',
+                    'message' => 'رابط الدخول غير صالح. تأكد من نسخ الرابط بالكامل، أو اطلب رابطاً جديداً من المضيف.',
+                    'http_status' => 400,
+                ],
+            ];
+        }
+
+        $preview_result = PGE_Supervisor_Assignment_Service::peek_login_token($raw_token);
+
+        if (($preview_result['result'] ?? '') === 'valid') {
+            return ['mode' => 'confirm'];
+        }
+
+        return ['mode' => 'error', 'error' => pge_supervisor_login_classify_auth_error($preview_result)];
+    }
+}
+
+if (!function_exists('pge_supervisor_login_handle_post_confirmation')) {
+    /**
+     * قرار POST بالكامل — التحقّق من nonce أولاً (بلا أي استدعاء لـ
+     * authenticate() إن فشل — التوكن يبقى بلا أي لمس)، ثم استدعاء واحد لـ
+     * PGE_Supervisor_Login_Authenticator::authenticate() الموجودة فعلاً (لا
+     * إعادة تنفيذ لمنطق الاستهلاك/الجلسة هنا — "Do not duplicate
+     * authenticator/session logic inside routing.php" حرفياً). لا setcookie()
+     * ولا wp_safe_redirect()/exit() هنا — هذه أفعال HTTP صرفة تبقى في
+     * الـclosure نفسه، هذه الدالة تُقرِّر فقط.
+     *
+     * @return array{mode:string, auth_result?:array, error?:array{title:string,message:string,http_status:int}}
+     *   mode='authenticated' — نجح الاستهلاك + إنشاء الجلسة، 'auth_result'
+     *                          يحمل session_token/expires_at كما أعادتهما
+     *                          PGE_Supervisor_Login_Authenticator::authenticate().
+     *   mode='error'         — فشل نونس أو فشل مصادقة، 'error' جاهز للعرض.
+     */
+    function pge_supervisor_login_handle_post_confirmation(string $raw_token, string $submitted_nonce): array
+    {
+        // 1. التحقّق من nonce أولاً — فشل نونس ≠ فشل توكن، لا نكشف حالة
+        // التوكن هنا، فقط أن نموذج التأكيد نفسه لم يعد صالحاً (مثلاً صفحة
+        // قديمة مفتوحة لفترة طويلة). لا استدعاء لـauthenticate() إطلاقاً في
+        // هذا الفرع — التوكن يبقى كما هو تماماً، لا استهلاك.
+        if (!wp_verify_nonce($submitted_nonce, PGE_SUPERVISOR_LOGIN_CONFIRM_NONCE_ACTION)) {
+            return [
+                'mode' => 'error',
+                'error' => [
+                    'title' => 'تعذّر تأكيد الدخول',
+                    'message' => 'انتهت صلاحية نموذج التأكيد هذا. أعد فتح رابط الدخول وحاول مرة أخرى.',
+                    'http_status' => 403,
+                ],
+            ];
+        }
+
+        // 2. التحقّق من شكل التوكن — نفس الفحص النمطي المستخدَم على GET
+        // (pge_supervisor_accept_token_shape_valid())، يمنع استعلام قاعدة
+        // بيانات غير ضروري لمدخل مشوَّه شكلياً بوضوح.
+        if (!pge_supervisor_accept_token_shape_valid($raw_token)) {
+            return [
+                'mode' => 'error',
+                'error' => [
+                    'title' => 'رابط الدخول غير صالح',
+                    'message' => 'رابط الدخول غير صالح. تأكد من نسخ الرابط بالكامل، أو اطلب رابطاً جديداً من المضيف.',
+                    'http_status' => 400,
+                ],
+            ];
+        }
+
+        // 3-5. استدعاء واحد للمصادِق الموجود فعلاً — يستهلك التوكن ذرياً
+        // وينشئ الجلسة داخلياً، بلا أي إعادة تنفيذ لمنطقهما هنا.
+        $auth_result = PGE_Supervisor_Login_Authenticator::authenticate($raw_token);
+
+        if (($auth_result['result'] ?? '') === 'authenticated') {
+            return ['mode' => 'authenticated', 'auth_result' => $auth_result];
+        }
+
+        return ['mode' => 'error', 'error' => pge_supervisor_login_classify_auth_error($auth_result)];
+    }
+}
+
+if (!function_exists('pge_supervisor_login_session_cookie_params')) {
+    /**
+     * معاملات كوكي الجلسة لهذا المسار تحديداً — دالة نقية (بلا setcookie()
+     * فعلي)، تُستخدَم فقط داخل فرع POST الناجح في الـclosure أدناه. نفس
+     * القيم الأمنية المعتمَدة أصلاً (secure=is_ssl()، httponly=true،
+     * samesite='Lax') — **بلا أي تغيير** على هذه السياسة، فقط استُخرِجت إلى
+     * دالة قابلة للاختبار التنفيذي المباشر لإثبات عدم تغيّرها.
+     *
+     * @return array{expires:int, path:string, domain:string, secure:bool, httponly:bool, samesite:string}
+     */
+    function pge_supervisor_login_session_cookie_params(string $expires_at): array
+    {
+        $expires_timestamp = $expires_at !== '' ? strtotime($expires_at) : (time() + PGE_Supervisor_Session::SESSION_TTL_SECONDS);
+
+        return [
+            'expires' => $expires_timestamp,
+            'path' => COOKIEPATH ?: '/',
+            'domain' => COOKIE_DOMAIN,
+            'secure' => is_ssl(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ];
+    }
+}
+
 add_action('template_redirect', function () {
     $action = get_query_var('pge_action');
     if ($action !== 'supervisor_login_authenticate') return;
 
-    if (!class_exists('PGE_Supervisor_Login_Authenticator') || !class_exists('PGE_Supervisor_Session')) {
+    if (!class_exists('PGE_Supervisor_Login_Authenticator') || !class_exists('PGE_Supervisor_Assignment_Service') || !class_exists('PGE_Supervisor_Session')) {
         pge_render_supervisor_accept_error('تعذّر تسجيل الدخول', 'تعذّر تحميل بوابة المشرف حالياً. حاول لاحقاً.', 503);
     }
 
     $raw_token_from_url = (string) get_query_var('pge_login_token');
     $raw_token_from_url = rawurldecode($raw_token_from_url);
 
-    if (!pge_supervisor_accept_token_shape_valid($raw_token_from_url)) {
-        pge_render_supervisor_accept_error(
-            'رابط الدخول غير صالح',
-            'رابط الدخول غير صالح. تأكد من نسخ الرابط بالكامل، أو اطلب رابطاً جديداً من المضيف.',
-            400
-        );
-    }
+    $request_method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper((string) $_SERVER['REQUEST_METHOD']) : 'GET';
 
-    $auth_result = PGE_Supervisor_Login_Authenticator::authenticate($raw_token_from_url);
-    $result = (string) ($auth_result['result'] ?? '');
+    // ── POST — المسار الوحيد الذي يستهلك التوكن فعلياً وينشئ جلسة ──────────
+    if ($request_method === 'POST') {
+        $submitted_nonce = isset($_POST['pge_login_confirm_nonce'])
+            ? sanitize_text_field(wp_unslash($_POST['pge_login_confirm_nonce']))
+            : '';
 
-    if ($result === 'authenticated') {
-        $session_token = (string) ($auth_result['session_token'] ?? '');
-        $expires_at = (string) ($auth_result['expires_at'] ?? '');
-        $expires_timestamp = $expires_at !== '' ? strtotime($expires_at) : (time() + PGE_Supervisor_Session::SESSION_TTL_SECONDS);
+        $decision = pge_supervisor_login_handle_post_confirmation($raw_token_from_url, $submitted_nonce);
 
-        if ($session_token !== '' && !headers_sent()) {
-            setcookie(PGE_Supervisor_Session::SESSION_COOKIE_NAME, $session_token, [
-                'expires' => $expires_timestamp,
-                'path' => COOKIEPATH ?: '/',
-                'domain' => COOKIE_DOMAIN,
-                'secure' => is_ssl(),
-                'httponly' => true,
-                'samesite' => 'Lax',
-            ]);
+        if ($decision['mode'] === 'authenticated') {
+            $auth_result = $decision['auth_result'];
+            $session_token = (string) ($auth_result['session_token'] ?? '');
+            $expires_at = (string) ($auth_result['expires_at'] ?? '');
+
+            if ($session_token !== '' && !headers_sent()) {
+                setcookie(
+                    PGE_Supervisor_Session::SESSION_COOKIE_NAME,
+                    $session_token,
+                    pge_supervisor_login_session_cookie_params($expires_at)
+                );
+            }
+
+            // إعادة توجيه إلى بوابة المشرف الرسمية — "redirect to the
+            // Supervisor Portal" حرفياً (لا معرِّف داخلي في رابط إعادة
+            // التوجيه).
+            wp_safe_redirect(home_url('/supervisor/'));
+            exit;
         }
 
-        // إعادة توجيه إلى واجهة تسجيل الحضور مباشرة (لا بوابة الترحيب الأولى) —
-        // الفرق الوحيد المقصود عن نتيجة مسار /supervisor/accept/ أعلاه.
-        wp_safe_redirect(home_url('/supervisor/checkin/'));
+        $error_page = $decision['error'];
+        pge_render_supervisor_accept_error($error_page['title'], $error_page['message'], $error_page['http_status']);
+    }
+
+    // ── GET — قراءة فقط، بلا أي أثر جانبي (Link Preview Safety Fix) ───────
+    // كل القرار في pge_supervisor_login_evaluate_get_request() أعلاه —
+    // استعلام SELECT بحت (peek_login_token())، لا UPDATE، لا تدقيق، لا
+    // جلسة، لا كوكي. معاينات الروابط الآلية (WhatsApp وغيرها) تصل إلى هنا فقط.
+    $decision = pge_supervisor_login_evaluate_get_request($raw_token_from_url);
+
+    if ($decision['mode'] === 'confirm') {
+        $pge_login_confirm_url = home_url('/supervisor/login/' . rawurlencode($raw_token_from_url) . '/');
+        $pge_login_confirm_nonce = wp_create_nonce(PGE_SUPERVISOR_LOGIN_CONFIRM_NONCE_ACTION);
+        require PGE_PATH . 'templates/supervisor-login-confirm.php';
         exit;
     }
 
-    $error_page = pge_supervisor_login_classify_auth_error($auth_result);
+    $error_page = $decision['error'];
     pge_render_supervisor_accept_error($error_page['title'], $error_page['message'], $error_page['http_status']);
 }, 1);
 

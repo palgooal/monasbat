@@ -956,6 +956,62 @@ class PGE_Supervisor_Assignment_Service
     }
 
     /**
+     * ============================================================================
+     * تحقّق غير هدّام من توكن دخول (Login Link Preview Safety Fix) — قراءة
+     * بحتة، **بلا أي كتابة على الإطلاق**، توأم read-only لـ
+     * consume_login_token() أعلاه، بنفس منطق البحث/الأهلية حرفياً (نفس الهاش،
+     * نفس شرط status==='active')، لكن بلا استعلام UPDATE إطلاقاً.
+     *
+     * السبب: روابط الدخول تُفتَح غالباً أولاً بواسطة معاينات الروابط
+     * (WhatsApp/تطبيقات المراسلة) أو زواحف/فاحصات أمنية أو Prefetch المتصفح —
+     * جميعها تُرسِل طلب GET قبل أن يفتح المشرف الرابط فعلياً. إن كان GET
+     * يستهلك التوكن (كما في accept_invitation()/consume_login_token() القديم
+     * عبر GET مباشرة)، فقد تُستهلَك الرابط من معاينة آلية قبل وصول المشرف
+     * الحقيقي إليه — هذه الدالة هي الأساس الذي يبني عليه مسار GET الجديد
+     * (routing.php) صفحة تأكيد بلا أي أثر جانبي.
+     *
+     * @return array{result:string, id?:int, event_id?:int, reason?:string, status?:string}
+     *   'valid' — التوكن موجود، والإسناد المرتبط به active فعلاً. يتضمن
+     *             'id'، 'event_id' (لا يُستخدَمان في أي رابط/استجابة مُعادة
+     *             للمتصفح — للاستخدام الداخلي فقط إن احتاجه المستدعي لاحقاً).
+     *   'error'  — نفس أسباب consume_login_token() بالضبط (invalid_token/
+     *             assignment_not_active بنفس الحقول) — عمداً، ليعمل
+     *             pge_supervisor_login_classify_auth_error() القائمة فعلاً
+     *             على نتيجة هذه الدالة دون أي تعديل عليها.
+     */
+    public static function peek_login_token($raw_token): array
+    {
+        $raw_token = is_scalar($raw_token) ? trim((string) $raw_token) : '';
+        if ($raw_token === '') {
+            return ['result' => 'error', 'reason' => 'invalid_token'];
+        }
+
+        $token_hash = self::hash_invitation_token($raw_token);
+
+        global $wpdb;
+        $table = self::table_name();
+
+        $existing = $wpdb->get_row(
+            $wpdb->prepare("SELECT id, event_id, status FROM $table WHERE login_token_hash = %s LIMIT 1", $token_hash),
+            ARRAY_A
+        );
+
+        if ($existing === null) {
+            return ['result' => 'error', 'reason' => 'invalid_token'];
+        }
+
+        $current_status = (string) ($existing['status'] ?? '');
+        $existing_id = (int) $existing['id'];
+        $existing_event_id = (int) ($existing['event_id'] ?? 0);
+
+        if ($current_status !== 'active') {
+            return ['result' => 'error', 'reason' => 'assignment_not_active', 'status' => $current_status, 'id' => $existing_id, 'event_id' => $existing_event_id];
+        }
+
+        return ['result' => 'valid', 'id' => $existing_id, 'event_id' => $existing_event_id];
+    }
+
+    /**
      * قراءة كل الإسنادات النشطة (status = 'active') لهاتف مُطبَّع مُعطى، عبر
      * كل المناسبات — Supervisor Login Architecture RFC، تُستهلَك حصراً من
      * تدفّق "Request Login Link" الذاتي (/supervisor/login) حيث لا event_id

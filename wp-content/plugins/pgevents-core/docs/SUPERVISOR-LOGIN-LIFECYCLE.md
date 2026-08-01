@@ -119,19 +119,28 @@ PGE_Supervisor_Login_Service::generate()   ← يُلتزَم أولاً (Option
 مع Cartat كطبقة تسليم اختيارية فوقه، مطابقاً لنفس نمط الفصل المعماري
 (Service يولِّد/يلتزم، Delivery يعرف Cartat وحده).
 
-## 6. المصادقة — `/supervisor/login/{token}/` (مسار مستقل عن القبول)
+## 6. المصادقة — `/supervisor/login/{token}/` (مسار مستقل عن القبول، GET/POST منفصلان)
 
 ```
 includes/routing.php
   ^supervisor/login/([^/]+)/?$  →  pge_action = supervisor_login_authenticate
         │
-        ▼
-PGE_Supervisor_Login_Authenticator::authenticate($raw_token)
-        │  PGE_Supervisor_Assignment_Service::consume_login_token()
-        │     (يبحث في login_token_hash فقط — لا علاقة بـinvitation_token_hash)
-        │  نجاح: PGE_Supervisor_Session::create_session($assignment_id, $event_id)
-        ▼
-كوكي جلسة + redirect إلى /supervisor/checkin/
+        ├── GET  → pge_supervisor_login_evaluate_get_request($raw_token)
+        │            │  PGE_Supervisor_Assignment_Service::peek_login_token()
+        │            │     (SELECT بحت — بلا أي UPDATE)
+        │            ▼
+        │          صفحة تأكيد (templates/supervisor-login-confirm.php)
+        │          أو صفحة خطأ آمنة — **بلا أي أثر جانبي على الإطلاق**
+        │
+        └── POST → pge_supervisor_login_handle_post_confirmation($raw_token, $nonce)
+                     │  1. wp_verify_nonce($nonce, 'pge_supervisor_login_confirm')
+                     │  2. pge_supervisor_accept_token_shape_valid($raw_token)
+                     │  3. PGE_Supervisor_Login_Authenticator::authenticate($raw_token)
+                     │       │  PGE_Supervisor_Assignment_Service::consume_login_token()
+                     │       │     (يبحث في login_token_hash فقط)
+                     │       │  نجاح: PGE_Supervisor_Session::create_session(...)
+                     ▼
+                   كوكي جلسة + redirect إلى /supervisor/
 ```
 
 **"Do NOT reuse /supervisor/accept/{token}"** مُطبَّقة حرفياً: مسار منفصل
@@ -148,6 +157,65 @@ error()` (عارض HTML عام).
 (مخزَّن في عمود مختلف تماماً)، فيُرفَض دائماً بـ`invalid_token`. وبالمثل،
 `accept_invitation()` الأصلية تبحث حصراً في `invitation_token_hash` — توكن
 دخول صالح لا يمكنه تفعيل دعوة أبداً لنفس السبب.
+
+## 6ب. Link Preview Safety Fix — لماذا يجب أن يكون GET غير هدّام
+
+### التهديد: معاينات الروابط الآلية
+
+روابط الدخول تُرسَل عادة عبر واتساب (Cartat) أو تُنسَخ يدوياً وتُلصَق في قناة
+مراسلة. قبل أن يفتح المشرف الرابط فعلياً، عدة أطراف آلية قد تُرسِل طلب **GET**
+لنفس الرابط دون علم المستخدم:
+
+- **معاينات WhatsApp/تطبيقات المراسلة**: تجلب الرابط لعرض معاينة (OpenGraph
+  metadata) فور وصول الرسالة، قبل أن يضغط أحد عليه إطلاقاً.
+- **زواحف/فاحصات أمنية** (بعض حلول أمن الشركات تفحص الروابط الواردة تلقائياً
+  قبل السماح بوصولها للمستخدم).
+- **Prefetch من المتصفح** (بعض المتصفحات/الإضافات تجلب الروابط الظاهرة على
+  الشاشة مسبقاً لتسريع التنقل).
+- **برامج مكافحة الفيروسات** التي تفحص عناوين URL الواردة في الرسائل.
+
+كان التصميم السابق يستهلك توكن الدخول (يُصفِّر `login_token_hash`، يُنشئ
+جلسة) **فور وصول أي طلب GET** — أي طرف من الأطراف أعلاه كان قادراً على
+استهلاك رابط الدخول الحقيقي الوحيد قبل أن يصل المشرف إليه فعلياً، فيرى رابطاً
+"غير صالح" رغم أنه لم يفتحه من قبل.
+
+### الحل: فصل "المعاينة" عن "الاستهلاك"
+
+- **GET غير هدّام تماماً**: يتحقق فقط من صحة التوكن عبر
+  `PGE_Supervisor_Assignment_Service::peek_login_token()` — استعلام `SELECT`
+  بحت، بلا أي `UPDATE`. يعرض صفحة تأكيد (`templates/supervisor-login-
+  confirm.php`) تطلب من المستخدم ضغط زر "الدخول إلى لوحة المشرف" صراحةً.
+  معاينات آلية غير محدودة العدد لنفس الرابط لا تُغيِّر أي شيء في قاعدة
+  البيانات ولا تستهلك التوكن أبداً.
+- **POST هو الاستهلاك الوحيد**: لا يحدث الاستهلاك الفعلي (تصفير
+  `login_token_hash`) ولا إنشاء الجلسة إلا عند إرسال نموذج POST حقيقي —
+  والذي لا تُرسِله معاينات الروابط الآلية إطلاقاً (لا تملأ نماذج ولا تضغط
+  أزراراً). النموذج نفسه محمي بـnonce وحيد الغرض
+  (`pge_supervisor_login_confirm`) لمنع أي POST مُزوَّر من صفحة خارجية
+  (CSRF)، بمعزل تام عن صلاحية التوكن نفسه.
+
+هذا يجعل GET **idempotent بالكامل** (أي عدد من طلبات GET المتكررة لا يُغيِّر
+حالة النظام) — خاصية أساسية في تصميم HTTP الصحيح، وتحديداً هنا: خاصية أمنية
+حرجة تمنع أي طرف ثالث آلي من "حرق" رابط دخول لمرة واحدة نيابة عن المستخدم.
+
+### توافق واتساب (WhatsApp Compatibility)
+
+النتيجة العملية: رابط الدخول يعمل بشكل طبيعي تماماً عند إرساله عبر واتساب —
+معاينة واتساب تفتحه (GET، بلا أثر)، ثم يضغط المشرف على الرابط في محادثته
+(GET ثانٍ، لا يزال بلا أثر، يعرض صفحة التأكيد)، ثم يضغط زر "الدخول إلى لوحة
+المشرف" (POST، الاستهلاك الفعلي الوحيد). لا حاجة لأي تغيير في طريقة الإرسال
+عبر Cartat — الرسالة النصية والرابط نفسه بلا أي تعديل.
+
+### التزامن (Concurrency)
+
+- **GET لا يتنافس على استهلاك التوكن إطلاقاً** — لا قفل، لا معاملة كتابة، لا
+  حتى إمكانية تعارض بنيوياً (استعلام `SELECT` بحت).
+- **POST يستهلك ذرياً عبر شرط `WHERE` مزدوج** (نفس آلية `consume_login_
+  token()` الأصلية، بلا أي تغيير عليها): `UPDATE ... WHERE id = ? AND
+  login_token_hash = ?`. إن وصل طلبا POST متزامنَين لنفس التوكن، الأول الذي
+  يصل لقاعدة البيانات ينجح ويُصفِّر الهاش، والثاني لا يجد صفاً يطابق الهاش
+  القديم فيفشل بـ`token_already_used_or_invalid` — **نتيجة واحدة ناجحة فقط،
+  دائماً**، بغضّ النظر عن ترتيب الوصول الفعلي أو عدد المحاولات المتزامنة.
 
 ## 7. الأهلية (Eligibility)
 
@@ -238,6 +306,14 @@ error()` (عارض HTML عام).
 
 كل الأحداث append-only، بلا تعديل أو حذف على أي صف سابق.
 
+**GET على `/supervisor/login/{token}/` لا يكتب أي حدث تدقيق إطلاقاً** — لا
+`login_authenticated` (لم يحدث استهلاك)، ولا حدث "معاينة" جديد لم يكن موجوداً
+أصلاً (لا داعٍ لتسجيل حركة معاينات آلية بلا أي أثر جانبي فعلي؛ إضافة حدث كهذا
+كانت ستُنتج ضجيج تدقيق مضلِّلاً — سجل مليء بمحاولات "دخول" لم تحدث فعلياً).
+`login_authenticated` يُكتَب **فقط** من داخل
+`PGE_Supervisor_Login_Authenticator::authenticate()`، المُستدعاة حصراً من فرع
+POST.
+
 ## 12. الأمان — ملخّص الضمانات
 
 - توكن واحد نشط (`login_token_hash`) لكل إسناد في أي لحظة — كل توليد جديد
@@ -253,6 +329,14 @@ error()` (عارض HTML عام).
 - نفس استراتيجية القفل المعتمَدة في بقية الميزة (`GET_LOCK`/`RELEASE_LOCK`
   ذري، اسم قفل مستقل بادئته `pge_supervisor_login_`، لا تنافس مع أقفال
   الدعوة/الرابط اليدوي).
+- **GET على `/supervisor/login/{token}/` غير هدّام بالكامل (Link Preview
+  Safety Fix)** — قراءة `SELECT` بحتة فقط، لا يمكن لمعاينات الروابط الآلية
+  (WhatsApp، زواحف، Prefetch) استهلاك التوكن. راجع §6ب للتفصيل الكامل.
+- **POST محمي بـnonce وحيد الغرض** (`pge_supervisor_login_confirm`) —
+  مستقل تماماً عن أي nonce آخر في المشروع (لا `pge_supervisor_logout`، لا
+  `pge_supervisor_login_request`). فشل التحقّق يُرفَض فوراً **قبل** أي
+  استدعاء لـ`PGE_Supervisor_Login_Authenticator::authenticate()` — التوكن
+  يبقى بلا أي لمس عند فشل nonce.
 
 ## 13. تسجيل الخروج — يدمّر الجلسة فقط
 
@@ -275,14 +359,21 @@ error()` (عارض HTML عام).
 ## 14. التوافق مع الإصدارات السابقة (Backward Compatibility)
 
 **لم يتغيَّر أي شيء في**: قبول الدعوة (`accept_invitation()`،
-`PGE_Supervisor_Authenticator`)، تسليم دعوة Cartat
+`PGE_Supervisor_Authenticator`، مسار `/supervisor/accept/{token}/` بالكامل —
+لا يزال يستهلك على GET مباشرة، تصميمه الأصلي المعتمَد، **خارج نطاق Link
+Preview Safety Fix كلياً**)، تسليم دعوة Cartat
 (`PGE_Supervisor_Invitation_Delivery`)، الرابط اليدوي للدعوة
 (`PGE_Supervisor_Manual_Link_Service`)، إسناد المشرفين
 (`PGE_Supervisor_Assignment_Service` — إضافات فقط، لا تعديل على الدوال
 القائمة)، الحضور (Attendance/Check-in)، الإحصاء (Statistics)، الحصة (Quota)،
-QR، حلّ هوية الضيف (Guest Resolution). كل الإضافات في هذه الميزة إضافية بحتة
-(أعمدة جديدة، خدمات جديدة، مسارات جديدة، حقول إرجاع إضافية) — لا حذف ولا
-تعديل سلوكي على أي مسار موجود.
+QR (لم تُضَف أي ميزة QR جديدة لهذا التصحيح ولا يوجد أي تعديل على QR الحضور
+القائم)، حلّ هوية الضيف (Guest Resolution)، معمارية توكن الدخول نفسها (§2-§4 —
+Option A، Eligibility، أعمدة Schema) بلا أي تغيير، تسليم Cartat لرابط الدخول
+(§5). التغيير الوحيد غير الإضافي في هذا التصحيح: وجهة إعادة التوجيه بعد نجاح
+POST تغيَّرت من `/supervisor/checkin/` إلى `/supervisor/` (بوابة المشرف
+الرسمية) — طلب صريح من مواصفة Link Preview Safety Fix نفسها ("redirect to the
+Supervisor Portal"). كل الإضافات الأخرى إضافية بحتة (دوال قرار جديدة، قالب
+تأكيد جديد، عمود لم يتغيَّر) — لا حذف ولا تعديل سلوكي على أي مسار آخر.
 
 ## 15. الاختبارات التنفيذية
 
@@ -295,14 +386,30 @@ QR، حلّ هوية الضيف (Guest Resolution). كل الإضافات في �
   (تطابق/عدم تطابق بنفس الرسالة، nonce)، تسجيل الخروج (يدمّر الجلسة فقط،
   تدقيق مرة واحدة، لا ضجيج عند التكرار)، وانحدار (تسليم الدعوة/الرابط
   اليدوي/القبول الأصلي كلها تعمل دون أي أثر).
+- `tests/test-supervisor-login-preview-safety.php` (50 اختباراً — Link
+  Preview Safety Fix): GET لا يستهلك التوكن (فحوصات مباشرة + تدقيق ساكن على
+  جسم `pge_supervisor_login_evaluate_get_request()` يثبت غياب أي
+  `setcookie`/`create_session`/`consume_login_token`/استدعاء المصادِق)، GET
+  لا يغيِّر `login_token_hash` ولا ينشئ جلسة ولا يكتب `login_authenticated`،
+  ثلاث طلبات GET متتالية تترك التوكن صالحاً، POST ينجح/يستهلك/ينشئ
+  جلسة/يضبط معاملات كوكي آمنة (`httponly`/`samesite=Lax`/`secure`)/يعيد
+  التوجيه فعلياً إلى `/supervisor/`، POST ثانٍ بنفس التوكن يفشل، حالات خطأ
+  آمنة (توكن غير صالح/مُستخدَم/إسناد ملغى/nonce غير صالح أو مفقود) بلا أي
+  استهلاك، **محاكاة معاينة WhatsApp صريحة** (ثلاث طلبات GET متتالية ثم POST
+  حقيقي ينجح رغمها)، انحدار على تسليم Cartat/الرابط اليدوي (يعمل بنجاح عبر
+  تدفّق GET→POST الجديد بالكامل)/قبول الدعوة الأصلي (بلا أي تعديل، تدقيق
+  ساكن يثبت غياب أي `REQUEST_METHOD` في معالجه)، إثبات عدم إنشاء أي حساب
+  WordPress (`wp_insert_user()` لم تُستدعَ ولو مرة)، وتدقيق ساكن إضافي (لا
+  مسار دخول مكرَّر، لا أي إشارة QR في نطاق مسار الدخول، استدعاء واحد فقط
+  للمصادِق عبر كامل الملف).
 - تحديثات على اختبارات قائمة (تأكيدات تقادمت بسبب هذه الميزة، لا تراجع
   سلوكي): `tests/test-supervisor-schema.php` (+13 اختباراً لعمود
   `login_token_hash`/`upgrade_to_1_13_0()`)، `tests/test-supervisor-manual-
   link-ui.php` (تحديث 4 تأكيدات لتوقيع `openManualLinkFallback(url, kindLabel)`
   المعمَّم ونص زر الإلغاء الديناميكي).
 
-**نتيجة الانحدار الكامل عبر 17 ملف اختبار متعلق بالمشرفين (`test-supervisor-
-*.php` + `test-rc1-fixpack*.php`): 1128 اختباراً، كلها ناجحة، صفر فشل.**
+**نتيجة الانحدار الكامل عبر 18 ملف اختبار متعلق بالمشرفين (`test-supervisor-
+*.php` + `test-rc1-fixpack*.php`): 1178 اختباراً، كلها ناجحة، صفر فشل.**
 
 ## 16. المسار خارج النطاق (Scope Guard) — لم يُنفَّذ عمداً
 
@@ -311,4 +418,5 @@ QR، حلّ هوية الضيف (Guest Resolution). كل الإضافات في �
 متعددة نشطة لنفس المشرف في آنٍ واحد (Multi-Session)، "تذكرني" أو أي استمرارية
 متصفح، تسليم عبر UltraMsg لهذه الميزة تحديداً، أو أي تعديل على انتهاء صلاحية
 الجلسة نفسها (`mon_supervisor_sessions.expires_at`) — لا شيء من هذا لُمِس في
-هذا التنفيذ.
+هذا التنفيذ. **ميزة QR لم تُضَف في Link Preview Safety Fix ولا في أي جزء من
+هذا المستند** — لا صفحة تأكيد الدخول ولا أي مسار جديد يتضمّن أي منطق QR.
