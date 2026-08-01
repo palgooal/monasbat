@@ -263,6 +263,13 @@ get_header();
           '<div class="flex flex-wrap gap-1.5">' +
             '<button type="button" class="edit-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">تعديل</button>' +
             (canResend ? '<button type="button" class="resend-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold">إعادة إرسال</button>' : '') +
+            // RC1 Enhancement — Supervisor Invitation Manual Link (UI Only): زر
+            // ثانوي إضافي، نفس شرط الظهور بالضبط المُستخدَم فعلياً لزر "إعادة
+            // إرسال" أعلاه (canResend = invited/pending) — لا منطق حالة جديد
+            // اختُرِع هنا، إعادة استخدام صريحة لنفس الشرط القائم. لا رابط
+            // حقيقي يُولَّد، لا توكن، لا AJAX — راجع handleCopyLinkPlaceholder()
+            // أسفل الملف؛ زر placeholder بحت لميزة "نسخ رابط الدعوة" مستقبلية.
+            (canResend ? '<button type="button" class="copy-link-sup-btn h-9 px-2.5 rounded-lg border border-border text-xs font-semibold" aria-label="نسخ رابط دعوة المشرف (متوفر في التحديث القادم)">نسخ رابط الدعوة</button>' : '') +
             (canRevoke ? '<button type="button" class="revoke-sup-btn h-9 px-2.5 rounded-lg bg-destructive/10 text-destructive-text text-xs font-semibold">إلغاء</button>' : '') +
           '</div>' +
         '</td>';
@@ -271,6 +278,13 @@ get_header();
 
       var resendBtn = tr.querySelector('.resend-sup-btn');
       if (resendBtn) resendBtn.addEventListener('click', function () { handleResend(row.id, resendBtn); });
+
+      // RC1 Enhancement — Supervisor Invitation Manual Link (UI Only): زر
+      // placeholder بحت — لا AJAX، لا fetch() جديد، لا توليد رابط، لا نسخ فعلي
+      // إلى الحافظة، لا تدوير توكن، لا استدعاء Cartat. يعرض فقط رسالة معلوماتية
+      // عبر مكوّن التنبيه القائم (showToast) — راجع handleCopyLinkPlaceholder().
+      var copyLinkBtn = tr.querySelector('.copy-link-sup-btn');
+      if (copyLinkBtn) copyLinkBtn.addEventListener('click', function () { handleCopyLinkPlaceholder(); });
 
       var revokeBtn = tr.querySelector('.revoke-sup-btn');
       if (revokeBtn) revokeBtn.addEventListener('click', function () { handleRevoke(row.id, revokeBtn); });
@@ -443,6 +457,15 @@ get_header();
       btn.disabled = false;
       showToast('تعذّر الاتصال بالخادم', true);
     });
+  }
+
+  // ── نسخ رابط الدعوة (RC1 Enhancement — UI Only) ─────────────────────────
+  // Placeholder بحت لميزة مستقبلية. لا AJAX هنا، لا fetch() خارج postAjax()
+  // القائمة أعلاه (غير مُستخدَمة في هذه الدالة إطلاقاً)، لا نقطة نهاية جديدة،
+  // لا توليد/نسخ لأي رابط فعلي، لا تدوير توكن، لا إعادة إرسال دعوة، لا
+  // استدعاء Cartat — فقط رسالة معلوماتية عبر showToast() القائمة فعلاً.
+  function handleCopyLinkPlaceholder() {
+    showToast('ستتوفر ميزة نسخ رابط الدعوة في التحديث القادم.', false);
   }
 
   // ── إلغاء إسناد مشرف ──────────────────────────────────────────────────
