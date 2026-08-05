@@ -537,6 +537,17 @@ class Mon_UltraMsg_Handler
      * المستدعي يحتاجه لبناء حمولة QR الكنسية الموقَّعة عبر
      * PGE_Guest_Resolution_Service::build_scanner_qr_payload() بدل invite_code
      * الخام. لا تغيير على منطق التخزين نفسه.
+     *
+     * WhatsApp RSVP Reply Parsing Verification — إصلاح خلل تكافؤ حقيقي بين
+     * المزوّدَين: هذه الدالة كانت تفتقر لاستدعاء pge_maybe_grant_replacement_
+     * entitlement() الموجود في Cartat::record_rsvp() منذ المرحلة 4B (راجع
+     * includes/replacement-entitlement-grant.php وclass-cartat-handler.php).
+     * الأثر العملي المؤكَّد: ضيف يعتذر (rsvp=no) عبر UltraMsg لا يمنح المضيف
+     * رصيد استبدال (Replacement Credit) رغم أن نفس الفعل بالضبط عبر Cartat أو
+     * عبر الويب (rsvp-handler.php) يمنحه — سلوك تجاري غير متطابق بين قناتين
+     * لنفس الحدث. السطر التالي (SELECT) وسّع القائمة لتشمل `reply` (لالتقاط
+     * old_reply قبل الكتابة) تماماً كما في Cartat، ولا تغيير آخر على منطق
+     * upsert/current_or_null() القائم.
      */
     private function record_rsvp(int $event_id, string $phone, string $reply): int
     {
@@ -545,7 +556,7 @@ class Mon_UltraMsg_Handler
         $phone = pge_norm_phone($phone);
 
         $existing_row = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
+            "SELECT id, reply, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
             $event_id,
             $phone
         ));
@@ -559,6 +570,7 @@ class Mon_UltraMsg_Handler
         }
 
         $existing_id = $existing_row->id ?? null;
+        $old_reply   = $existing_row->reply ?? null;
 
         if ($existing_id) {
             $wpdb->update(
@@ -566,20 +578,29 @@ class Mon_UltraMsg_Handler
                 ['reply' => $reply, 'created_at' => current_time('mysql')],
                 ['id' => $existing_id]
             );
-            return (int) $existing_id;
+            $rsvp_id = (int) $existing_id;
+        } else {
+            $wpdb->insert($table, [
+                'event_id'    => $event_id,
+                'guest_phone' => $phone,
+                'reply'       => $reply,
+                'companions'  => 0,
+                'note'        => 'via WhatsApp (UltraMsg)',
+                'checked_in'  => 0,
+                'created_at'  => current_time('mysql'),
+            ]);
+            $rsvp_id = (int) $wpdb->insert_id;
         }
 
-        $wpdb->insert($table, [
-            'event_id'    => $event_id,
-            'guest_phone' => $phone,
-            'reply'       => $reply,
-            'companions'  => 0,
-            'note'        => 'via WhatsApp (UltraMsg)',
-            'checked_in'  => 0,
-            'created_at'  => current_time('mysql'),
-        ]);
+        // المرحلة 4B (تكافؤ UltraMsg مع Cartat): منح Replacement Entitlement
+        // عند انتقال RSVP حقيقي إلى اعتذار — بعد نجاح تخزين الرد أعلاه فقط.
+        // نفس الاستدعاء الحرفي الموجود في Cartat::record_rsvp()، بلا أي
+        // منطق أهلية مُعاد تنفيذه هنا (يبقى بالكامل داخل الدالة المركزية).
+        if ($reply === 'no' && function_exists('pge_maybe_grant_replacement_entitlement')) {
+            pge_maybe_grant_replacement_entitlement($event_id, $phone, $old_reply, $reply);
+        }
 
-        return (int) $wpdb->insert_id;
+        return $rsvp_id;
     }
 
     private function get_reminder_text(int $event_id = 0): string
