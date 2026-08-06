@@ -87,13 +87,23 @@ class Mon_Cartat_Handler
         // حدث ACK — نستخدمه لربط msg_id بالـ LID قبل وصول الرد
         // ══════════════════════════════════════════════════════════════
         if ($event_type === 'ack') {
-            // نعالج فقط أول ACK (server) لتجنب التكرار
-            if ((int)($payload['ack'] ?? 0) === 1) {
+            // ══════════════════════════════════════════════════════════
+            // RC1 Cartat ACK Compatibility Fix — دليل إنتاجي مؤكَّد: كارتات
+            // يُصدر فعلياً ack=2 و/أو ack=3 لمسار ربط LID تحديداً، لا ack=1
+            // حصراً كما كان مفترَضاً سابقاً. القيد السابق (=== 1) كان يمنع
+            // بناء الخريطة كلياً كلما وصل ACK بمستوى غير 1، رغم صحة تطابق
+            // msg_id ووجود pending. الشرط الجديد: أي مستوى ACK موجب (>= 1
+            // — مُرسَل/مُسلَّم/مقروء) مؤهَّل؛ 0 (لم يُرسَل بعد) وأي قيمة سالبة
+            // (فشل صريح) يبقيان غير مؤهَّلين، كما هما بلا أي تغيير إضافي.
+            if ((int)($payload['ack'] ?? 0) >= 1) {
                 $msg_id  = $payload['id']  ?? '';
                 $raw_to  = $payload['to']  ?? '';
                 $to_bare = preg_replace('/@.*$/', '', $raw_to);
 
-                if ($msg_id && $to_bare) {
+                // شرط إضافي مطلوب صراحة: لا نبني خريطة LID إلا إذا كانت
+                // الوجهة LID فعلاً (raw_to يحوي @lid) — نفس فحص @lid المستخدَم
+                // أصلاً في مسار message_received أدناه، بلا دالة/منطق جديد.
+                if ($msg_id && $to_bare && str_contains($raw_to, '@lid')) {
                     $pending = get_option('pge_wa_pending_msgid_' . $msg_id);
                     if ($pending && !empty($pending['event_id'])) {
                         update_option('pge_wa_pending_lid_' . $to_bare, $pending, false);

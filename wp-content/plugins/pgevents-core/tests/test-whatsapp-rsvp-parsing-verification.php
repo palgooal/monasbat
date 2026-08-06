@@ -305,6 +305,10 @@ function cartat_payload($from, $body, $from_me = false) {
 function um_payload($from, $body, $type = 'chat', $self = '0') {
     return json_encode(['event_type' => 'message_received', 'data' => ['from' => $from, 'body' => $body, 'type' => $type, 'self' => $self]]);
 }
+function seed_pending_msgid($msg_id, array $data) { update_option('pge_wa_pending_msgid_' . $msg_id, $data, false); }
+function cartat_ack_payload($ack, $id, $to) {
+    return json_encode(['event' => 'ack', 'ack' => $ack, 'id' => $id, 'to' => $to]);
+}
 
 echo "=== RC1 Final Gap: WhatsApp RSVP Reply Parsing Verification — تنفيذي حقيقي ===\n";
 
@@ -666,7 +670,66 @@ check_true('SEC4. [موثَّق كخطر أمني قائم مسبقاً — خا
     substr_count($src_cartat, "'permission_callback' => '__return_true'") >= 1
     && substr_count($src_um, "'permission_callback' => '__return_true'") >= 1);
 
-echo "\n=== النتيجة النهائية (بعد إصلاح BUG1): $passed / $total ===\n";
+// ============================================================================
+// 13. RC1 Cartat ACK Compatibility Fix — تحقّق تنفيذي حقيقي عبر handle_incoming_message
+// ============================================================================
+// دليل إنتاجي: كارتات يُصدر ack=2/3 لا =1 فقط لمسار ربط LID. الشرط الجديد:
+// ack>=1 (لا =1 فقط) + الوجهة LID فعلاً (raw_to يحوي @lid) + msg_id/pending
+// صالحان — كلها via الاستدعاء الحقيقي لـhandle_incoming_message()، بلا Reflection.
+
+// ACK1: ack=2 يبني الخريطة
+seed_pending_msgid('MSGID-ACK2', ['event_id' => 8001, 'wa_number' => '596000001', 'norm_phone' => '596000001', 'original_phone' => '0596000001']);
+$ack1 = $cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(2, 'MSGID-ACK2', '920000000001@lid')))->get_data();
+check('ACK1. الاستجابة ack_ok', $ack1, ['status' => 'ack_ok']);
+check_true('ACK1ب. ack=2 يبني خريطة pge_wa_pending_lid_920000000001', get_option('pge_wa_pending_lid_920000000001', null) !== null);
+check('ACK1ج. الخريطة المبنية تشير للمناسبة الصحيحة', get_option('pge_wa_pending_lid_920000000001')['event_id'] ?? null, 8001);
+
+// ACK2: ack=3 يبني/يُحدِّث الخريطة (مستوى تسليم أعلى، نفس المسار)
+seed_pending_msgid('MSGID-ACK3', ['event_id' => 8001, 'wa_number' => '596000002', 'norm_phone' => '596000002', 'original_phone' => '0596000002']);
+$cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(3, 'MSGID-ACK3', '920000000002@lid')));
+check('ACK2. ack=3 أيضاً يبني الخريطة (لا يقتصر الشرط على ack=1 أو ack=2)', get_option('pge_wa_pending_lid_920000000002')['event_id'] ?? null, 8001);
+
+// ACK3: تكرار ACK (2 ثم 3) لنفس id/to — استقرار (Idempotent)، لا خطأ ولا تكرار
+seed_pending_msgid('MSGID-DUP', ['event_id' => 8001, 'wa_number' => '596000003', 'norm_phone' => '596000003', 'original_phone' => '0596000003']);
+$dup1 = $cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(2, 'MSGID-DUP', '920000000003@lid')))->get_data();
+$dup2 = $cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(3, 'MSGID-DUP', '920000000003@lid')))->get_data();
+check('ACK3. كلا الاستدعاءين المتكرَّرين (ack=2 ثم ack=3) يُعيدان ack_ok بلا استثناء', [$dup1, $dup2], [['status' => 'ack_ok'], ['status' => 'ack_ok']]);
+check('ACK3ب. الخريطة بعد التكرار لا تزال تشير لنفس المناسبة (استبدال آمن، لا تراكم)', get_option('pge_wa_pending_lid_920000000003')['event_id'] ?? null, 8001);
+
+// ACK4: لا pending محفوظ لهذا msg_id → لا شيء يُبنى
+$cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(2, 'MSGID-NEVER-SENT', '920000000004@lid')));
+check_true('ACK4. ack بلا pending مطابق → لا خريطة LID تُبنى', get_option('pge_wa_pending_lid_920000000004', null) === null);
+
+// ACK5: pending موجود لكن الوجهة ليست LID (رقم هاتف عادي) → لا شيء يُبنى
+seed_pending_msgid('MSGID-NOLID', ['event_id' => 8001, 'wa_number' => '596000005', 'norm_phone' => '596000005', 'original_phone' => '0596000005']);
+$cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(2, 'MSGID-NOLID', '966500000009')));
+check_true('ACK5. الوجهة رقم هاتف عادي (بلا @lid) → لا خريطة pge_wa_pending_lid_ تُبنى', get_option('pge_wa_pending_lid_966500000009', null) === null);
+
+// ACK6: مستوى ACK غير مؤهَّل (0 = لم يُرسَل بعد) → لا شيء يُبنى، رغم صحة الباقي
+seed_pending_msgid('MSGID-ACK0', ['event_id' => 8001, 'wa_number' => '596000006', 'norm_phone' => '596000006', 'original_phone' => '0596000006']);
+$cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(0, 'MSGID-ACK0', '920000000006@lid')));
+check_true('ACK6. ack=0 (لم يُرسَل بعد) → لا خريطة LID تُبنى', get_option('pge_wa_pending_lid_920000000006', null) === null);
+seed_pending_msgid('MSGID-ACKNEG', ['event_id' => 8001, 'wa_number' => '596000007', 'norm_phone' => '596000007', 'original_phone' => '0596000007']);
+$cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(-1, 'MSGID-ACKNEG', '920000000007@lid')));
+check_true('ACK6ب. ack سالب (فشل صريح) → لا خريطة LID تُبنى', get_option('pge_wa_pending_lid_920000000007', null) === null);
+
+// ACK7: رد الضيف بعد ack=2 يصل فعلياً لـRSVP (المسار الكامل من الإرسال حتى التسجيل)
+PGE_Invitation_Service::create(8001, '0596000008', 'ضيف-ack2', '', 401);
+seed_pending_msgid('MSGID-E2E-ACK2', ['event_id' => 8001, 'wa_number' => '596000008', 'norm_phone' => '596000008', 'original_phone' => '0596000008']);
+$cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(2, 'MSGID-E2E-ACK2', '920000000008@lid')));
+$reply_after_ack2 = $cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_payload('920000000008@lid', '1')))->get_data();
+check('ACK7. رد الضيف عبر LID بعد ack=2 → success (يصل لـRSVP فعلياً، لا no_pending)', $reply_after_ack2, ['status' => 'success', 'reply' => 'yes']);
+check('ACK7ب. الرد فعلياً مُسجَّل yes في RSVP الحقيقي', PGE_Guest_Resolution_Service::resolve_by_phone(8001, '0596000008')['guest']['reply'], 'yes');
+
+// ACK8: رد الضيف بعد ack=3 يصل فعلياً لـRSVP (نفس المسار بمستوى تسليم مختلف)
+PGE_Invitation_Service::create(8001, '0596000009', 'ضيف-ack3', '', 401);
+seed_pending_msgid('MSGID-E2E-ACK3', ['event_id' => 8001, 'wa_number' => '596000009', 'norm_phone' => '596000009', 'original_phone' => '0596000009']);
+$cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_ack_payload(3, 'MSGID-E2E-ACK3', '920000000009@lid')));
+$reply_after_ack3 = $cartat->handle_incoming_message(new Fake_Wa_Rest_Request(cartat_payload('920000000009@lid', '2')))->get_data();
+check('ACK8. رد الضيف عبر LID بعد ack=3 → success (يصل لـRSVP فعلياً، لا no_pending)', $reply_after_ack3, ['status' => 'success', 'reply' => 'no']);
+check('ACK8ب. الرد فعلياً مُسجَّل no في RSVP الحقيقي', PGE_Guest_Resolution_Service::resolve_by_phone(8001, '0596000009')['guest']['reply'], 'no');
+
+echo "\n=== النتيجة النهائية (بعد إصلاح BUG1 + RC1 Cartat ACK Compatibility Fix): $passed / $total ===\n";
 if (!empty($failures)) {
     echo "الحالات الفاشلة:\n";
     foreach ($failures as $f) echo " - $f\n";

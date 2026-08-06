@@ -199,6 +199,16 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
 }
 
 /* ── Focus-visible: يُطبَّق الآن عالمياً من input.css (رمز واحد لكل الصفحات) ───────────── */
+
+/* ── UX Review Phase 2 — 2026-08-06 (P0، بند "Hover/Focus/Active"):
+   أزرار تصفية الحالة (.status-filter: الكل/سيحضر/اعتذر/لم يرد) كانت الأزرار
+   التفاعلية الوحيدة في الصفحة بلا أي حالة hover على الإطلاق — كل زر آخر في
+   الملف يملك transition-colors + hover. :not(.bg-primary) يستهدف الزر غير
+   النشط فقط تلقائياً (bg-primary تُضاف/تُزال بالكامل عبر classList.add/remove
+   الموجود أصلاً في applyFilters()/معالج النقر — لم يُمَس أي جافاسكربت هنا،
+   فقط CSS جديد يقرأ نفس الـ class القائم). ─────────────────────────────── */
+.status-filter { transition: background-color .15s, color .15s; }
+.status-filter:not(.bg-primary):hover { background: var(--color-secondary); }
 </style>
 
 <div dir="rtl">
@@ -216,7 +226,10 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
       <div class="font-bold text-sm truncate text-foreground"><?= esc_html(get_the_title($event_id)) ?></div>
       <div class="text-[11px] text-foreground/65"><?= esc_html($event_date_label) ?></div>
     </div>
-    <a href="<?= esc_url($event_url) ?>" target="_blank" rel="noopener" class="px-3 py-2 rounded-xl bg-primary text-white text-xs font-bold flex-shrink-0">فتح</a>
+    <!-- UX Review Phase 2 (P0، بند "Hover/Focus/Active"): hover مفقود على زر Primary
+         الوحيد بلا hover في كل الصفحة — بقية أزرار bg-primary (إضافة مدعو، إرسال
+         تلقائي، ...) لديها transition-colors hover:bg-primary-hover أصلاً. -->
+    <a href="<?= esc_url($event_url) ?>" target="_blank" rel="noopener" class="px-3 py-2 rounded-xl bg-primary text-white text-xs font-bold flex-shrink-0 transition-colors hover:bg-primary-hover">فتح</a>
     <a href="<?= esc_url($edit_url) ?>" aria-label="تعديل المناسبة" class="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary/60 text-foreground/70">
       <svg aria-hidden="true" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     </a>
@@ -275,25 +288,42 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
       </div>
     </div>
 
-    <!-- إجراءات سريعة: شريط أفقي واحد بارتفاع موحّد، مباشرة أسفل ملخص المناسبة -->
+    <!-- إجراءات سريعة: شريط أفقي واحد بارتفاع موحّد، مباشرة أسفل ملخص المناسبة.
+         UX Review 2026-08-06 (P0-1/P0-2/P0-3، راجع docs/product/EVENT-MANAGE-UX-REVIEW.md):
+         — زر "استيراد المدعوين" أُزيل: كان يقود لنفس وجهة "إضافة مدعو" و"إدارة
+           الدعوات" حرفياً (focusBulkImport() و focusAddGuest() كلاهما ينفّذ
+           window.location.href = cfg.invitationsUrl) — تكرار مؤكَّد من الكود
+           نفسه، لا تخمين. الدالة focusBulkImport() نفسها لم تُمَس (تبقى معرَّفة
+           لكن غير مستدعاة من هذه الصفحة، بنفس نمط الإبقاء على كود غير مستخدَم
+           المتّبع أصلاً في تمريرات Fix Pack 3B).
+         — الأزرار مُجمَّعة الآن بصرياً في 3 مجموعات (إجراء أساسي / إجراءات على
+           المناسبة الحالية / تنقّل لوحدات أخرى) بفاصل رأسي خفيف، بنفس نمط
+           الفاصل (h-6 w-px bg-border/60) المستخدم أصلاً أسفل في شريط الإجراءات
+           الجماعية — إعادة استخدام نمط قائم، لا نمط جديد.
+         — لون "تعديل المناسبة" غُيِّر من الذهبي (كان يتشارك لون رمز الدعوة/
+           الباقة دون علاقة فعلية) إلى نفس الأسلوب المحايد لبقية الأزرار الثانوية.
+         لا تغيير على أي href/id/onclick قائم — فقط ترتيب/تجميع/تصنيف بصري. -->
     <div class="relative border-t border-border/70 px-8 py-3.5">
       <h2 class="sr-only">إجراءات سريعة</h2>
       <div class="flex flex-wrap items-center gap-2.5">
         <button type="button" onclick="focusAddGuest()" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white shadow-sm shadow-primary/30 transition-colors duration-200 hover:bg-primary-hover">
           <span aria-hidden="true">➕</span> إضافة مدعو
         </button>
-        <button type="button" onclick="focusBulkImport()" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
-          <span aria-hidden="true">📋</span> استيراد المدعوين
-        </button>
+
+        <div class="hidden sm:block h-6 w-px bg-border/60" aria-hidden="true"></div>
+
         <button type="button" onclick="shareInviteLink()" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
           <span aria-hidden="true">📤</span> مشاركة الدعوة
         </button>
         <a href="<?= esc_url($event_url) ?>" target="_blank" rel="noopener" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
           عرض الدعوة
         </a>
-        <a href="<?= esc_url($edit_url) ?>" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-[1.5px] border-gold bg-white px-4 text-sm font-bold text-gold-text transition-colors duration-200 hover:bg-gold/[0.06]">
+        <a href="<?= esc_url($edit_url) ?>" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
           تعديل المناسبة
         </a>
+
+        <div class="hidden sm:block h-6 w-px bg-border/60" aria-hidden="true"></div>
+
         <!-- RC1 Fix Pack 1 (A3 — Navigation): روابط فقط، بنفس تنسيق الروابط
              أعلاه حرفياً (h-11 border-border bg-white)، بلا أي إعادة تصميم أو
              تخطيط جديد — تُتيح الوصول للوحدات الثلاث المكتملة سابقاً (المراحل
@@ -395,10 +425,13 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
          الكاملة. ══ -->
     <div class="mx-4 mb-3 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 lg:mx-0">
       <span aria-hidden="true" class="text-sm">💡</span>
+      <!-- Phase 4 (P1، اختصار البانر العلوي): نص مختصر فقط، بلا إشارة لـ"أقسام أدناه"
+           لم تعد موجودة في الصفحة (أُزيلت أصلاً منذ RC1 Fix Pack 3B). لا تغيير على
+           id="navInvitationsLegacyBanner" أو الرابط أو أي منطق. -->
       <p class="text-xs font-semibold text-foreground/70">
-        إدارة المدعوين (إضافة/تعديل/حذف) انتقلت بالكامل إلى
+        إضافة/تعديل/حذف المدعوين متاح الآن من
         <a href="<?= esc_url($invitations_url) ?>" id="navInvitationsLegacyBanner" class="font-bold text-primary-text underline">صفحة إدارة الدعوات</a>
-        (مع التصدير ورمز QR وسجلّ التدقيق). أقسام الإضافة/التعديل/الحذف أدناه لم تعد متاحة هنا — استخدم الصفحة الجديدة. إرسال دعوات واتساب لا يزال متاحاً هنا كما هو.
+        — إرسال دعوات واتساب لا يزال هنا كما هو.
       </p>
     </div>
 
@@ -445,12 +478,26 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
            الفعلي (فردياً وجماعياً) انتقل بالكامل إلى صفحة إدارة الدعوات
            المعتمَدة (راجع الشريط أعلى القسم). bulkWhatsappBtn باقٍ بلا أي
            تغيير — قناة الإرسال الوحيدة، خارج نطاق هذا الفيكس باك. -->
+      <!-- UX Review 2026-08-06 (P0-4، راجع docs/product/EVENT-MANAGE-UX-REVIEW.md):
+           "📨 إرسال تلقائي" هو الإجراء الحقيقي (الإرسال الفعلي عبر الطابور
+           الخلفي) وكان يظهر بنفس الوزن البصري تقريباً بجانب 4 أزرار أخرى
+           متشابهة الشكل — أكبر نقطة احتكاك رُصدت في المراجعة (بند 10: قد
+           يحتاج المستخدم الجديد أكثر من بضع ثوانٍ للتمييز بينها). التغيير هنا:
+           [إرسال تلقائي + تقرير] كمجموعة أساسية أولاً، ثم فاصل، ثم [WA للمحدد /
+           للكل / تجريبي] كمجموعة ثانوية (إجراءات معاينة/يدوية). لا تغيير على
+           أي id أو معالج حدث — إعادة ترتيب DOM وتجميع بصري فقط؛ كل الأزرار
+           مربوطة بمعرّفاتها (getElementById) لا بترتيبها. -->
       <div class="flex flex-wrap items-center gap-2">
-        <button id="bulkWhatsappBtn" type="button" disabled class="h-11 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40 disabled:hover:bg-emerald-600"><span aria-hidden="true">📲</span> WA</button>
-        <button id="whatsappAllBtn" type="button" class="h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100"><span aria-hidden="true">📲</span> للكل</button>
-        <button id="waTestSendBtn" type="button" class="h-11 rounded-xl border border-gold/30 bg-gold/10 px-3 text-xs font-bold text-gold-text transition-colors hover:bg-gold/20"><span aria-hidden="true">🧪</span> تجريبي</button>
         <button id="sendWaInvitesBtn" type="button" class="h-11 rounded-xl bg-primary px-3 text-xs font-bold text-white transition-colors hover:bg-primary-hover"><span aria-hidden="true">📨</span> إرسال تلقائي</button>
         <button id="waReportBtn" type="button" class="h-11 rounded-xl border border-border bg-white px-3 text-xs font-bold text-foreground/70 transition-colors hover:bg-secondary/50"><span aria-hidden="true">📊</span> تقرير</button>
+
+        <div class="hidden sm:block h-6 w-px bg-border/60" aria-hidden="true"></div>
+
+        <button id="bulkWhatsappBtn" type="button" disabled class="h-11 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40 disabled:hover:bg-emerald-600"><span aria-hidden="true">📲</span> WA</button>
+        <!-- Phase 4 (P1، تسمية زر "للكل"): تسمية أدق + title توضيحي فقط — التنفيذ
+             البرمجي (يحترم الفلتر النشط أصلاً) لم يتغيّر إطلاقاً، لا id، لا JS. -->
+        <button id="whatsappAllBtn" type="button" title="يرسل فقط للمدعوين الظاهرين بعد تطبيق الفلتر." class="h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100"><span aria-hidden="true">📲</span> للظاهرين</button>
+        <button id="waTestSendBtn" type="button" class="h-11 rounded-xl border border-gold/30 bg-gold/10 px-3 text-xs font-bold text-gold-text transition-colors hover:bg-gold/20"><span aria-hidden="true">🧪</span> تجريبي</button>
       </div>
 
       <div class="hidden h-6 w-px bg-border/60 lg:block" aria-hidden="true"></div>
@@ -498,7 +545,11 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
           <div class="guest-card overflow-hidden">
             <!-- صف علوي: checkbox + avatar + الاسم (الأقوى بصرياً) + شارة الرد + الجوال (ثانوي) -->
             <div class="flex items-center gap-3 p-3.5 pb-2.5">
-              <label class="flex-shrink-0">
+              <!-- Phase 4 (P1، Checkbox المدعو): توسيع مساحة اللمس عبر padding + negative
+                   margin متساويين على الـlabel المُغلِّف — الموضع البصري والمحاذاة
+                   وحجم الـcheckbox المرئي (h-5 w-5) لا يتغيّرون إطلاقاً؛ فقط منطقة
+                   اللمس غير المرئية تكبر لتقارب 44px (20px + 10px×2). CSS فقط. -->
+              <label class="flex-shrink-0 inline-flex items-center justify-center p-2.5 -m-2.5 cursor-pointer">
                 <span class="sr-only">تحديد <?= $g_name !== '' ? esc_html($g_name) : esc_html($phone) ?></span>
                 <input type="checkbox" class="guest-checkbox h-5 w-5 rounded-md border-border accent-primary flex-shrink-0" data-phone="<?= esc_attr($phone) ?>" />
               </label>
@@ -521,8 +572,13 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
               <div class="flex items-center gap-1.5 min-w-0 xl:flex-1">
                 <?php if ($g_code !== ''): ?>
                 <span class="guest-code-display inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold font-mono tracking-widest text-gold-text bg-gold/10 ring-1 ring-gold/20 whitespace-nowrap"><?= esc_html($g_code) ?></span>
-                <button type="button" class="guest-copy-code-btn w-11 h-11 rounded-lg bg-secondary/60 flex items-center justify-center text-sm transition-colors hover:bg-secondary" data-code="<?= esc_attr($g_code) ?>" aria-label="نسخ رمز الدعوة">📋</button>
-                <button type="button" class="guest-regen-code-btn w-11 h-11 rounded-lg bg-secondary/60 flex items-center justify-center text-sm transition-colors hover:bg-secondary" data-phone="<?= esc_attr($phone) ?>" aria-label="توليد رمز جديد">🔄</button>
+                <!-- UX Review Phase 2 (P0، بند "Border Radius"): rounded-lg (8px) كانت
+                     القيمة الوحيدة الشاذة بين كل أزرار الصفحة — كل الأزرار الأخرى
+                     بنفس الحجم تستخدم rounded-xl (12px) أو rounded-full. تم توحيدها
+                     هنا لتطابق بقية نظام الزوايا في الصفحة؛ لا تغيير على الحجم أو
+                     المنطق أو data attributes. -->
+                <button type="button" class="guest-copy-code-btn w-11 h-11 rounded-xl bg-secondary/60 flex items-center justify-center text-sm transition-colors hover:bg-secondary" data-code="<?= esc_attr($g_code) ?>" aria-label="نسخ رمز الدعوة">📋</button>
+                <button type="button" class="guest-regen-code-btn w-11 h-11 rounded-xl bg-secondary/60 flex items-center justify-center text-sm transition-colors hover:bg-secondary" data-phone="<?= esc_attr($phone) ?>" aria-label="توليد رمز جديد">🔄</button>
                 <?php else: ?>
                 <button type="button" class="guest-regen-code-btn text-xs text-primary-text underline font-semibold" data-phone="<?= esc_attr($phone) ?>">+ توليد رمز</button>
                 <?php endif; ?>
@@ -638,26 +694,19 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
         </div>
       </div>
 
-      <!-- ══ RC1 Fix Pack 3B ("Legacy Guest Panel Retirement — Hard Delete
-           Migration"): إشعار انتقالي يستبدل بطاقة "إدارة المدعوين" القديمة
-           بالكامل (تعديل/إضافة/إضافة جماعية) — لم تعد هذه العناصر متاحة هنا.
-           "Do NOT remove code immediately... Replace its body with a
-           transitional notice... Provide one button: Open Invitation
-           Management." — لا حذف لملف الثيم نفسه، فقط استبدال محتوى هذا
-           القسم بالإشعار المطلوب صراحةً. addSection/editGuestCard/
-           bulkImportSection وnماذجها الثلاثة (addGuestForm/editGuestForm/
-           bulkGuestForm) لم تعد موجودة في الصفحة؛ معالجات AJAX الخاصة بها
-           (pge_event_guest_add/update/bulk_add في event-guests.php) تبقى
-           مُسجَّلة كما هي (لا تعديل، لا حذف) توافقاً مع "Legacy AJAX handlers
-           may remain registered". ══ -->
-      <div class="rounded-2xl border border-border bg-white p-5 text-center lg:p-6">
-        <span aria-hidden="true" class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-2xl">📇</span>
-        <h3 class="mt-3 font-extrabold text-sm text-foreground">انتقلت إدارة المدعوين</h3>
-        <p class="mt-1.5 text-xs text-foreground/65">أصبحت إضافة/تعديل/حذف المدعوين (فردياً وجماعياً) متاحة الآن في صفحة إدارة الدعوات المعتمَدة.</p>
-        <a href="<?= esc_url($invitations_url) ?>" class="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-white transition-colors hover:bg-primary-hover">
-          <span aria-hidden="true">📇</span> فتح إدارة الدعوات
-        </a>
-      </div>
+      <!-- ══ UX Review Phase 2 — 2026-08-06 (P0، راجع
+           docs/product/EVENT-MANAGE-UX-REVIEW-PHASE2.md، بند "إزالة التكرار
+           الحقيقي"): بطاقة "انتقلت إدارة المدعوين" التي كانت هنا حُذفت بالكامل.
+           كانت تكرر — بنفس الرسالة تقريباً ونفس الوجهة (invitations_url) —
+           البانر الظاهر أصلاً أعلى قائمة المدعوين مباشرة (id="navInvitationsLegacyBanner"،
+           انظر أعلى قسم "GUEST SECTION" في هذا الملف)، والذي يبقى الآن هو
+           النسخة الوحيدة من هذا الإشعار في الصفحة (CTA واحد بدل اثنين لنفس
+           الوجهة). هذا حذف Markup بحت — لا id فريد داخل البطاقة المحذوفة كان
+           مستهدَفاً من أي جافاسكربت أو AJAX، ولا شيء غيرها يعتمد عليها.
+           addSection/editGuestCard/bulkImportSection ومعالجات AJAX الخاصة بها
+           (pge_event_guest_add/update/bulk_add في event-guests.php) تبقى كما
+           كانت — غير موجودة في الصفحة أصلاً منذ RC1 Fix Pack 3B (راجع
+           docs/RC1-AUDIT.md §15)، ولا علاقة لهذا الحذف بها. ══ -->
 
       <!-- ══ التواصل عبر واتساب: القوالب التلقائية + قالب الإرسال اليدوي — بطاقة واحدة على الديسكتوب فقط.
            بطاقة عادية دائمة الظهور (لا تفاعل طي على مستوى المجموعة) — التجميع
@@ -674,6 +723,8 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
             <span class="text-[11px] font-bold rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 px-2 py-0.5">تخصيص</span>
           </summary>
           <div class="border-t border-border p-4 space-y-4 lg:px-3 lg:pb-3">
+            <!-- Phase 4 (P1، توضيح الفرق بين القالبين): سطر توضيحي قصير فقط — لا تغيير منطق. -->
+            <p class="text-xs font-semibold text-emerald-700">يُستخدم مع الإرسال التلقائي عبر زر "📨 إرسال تلقائي".</p>
             <p class="text-sm text-foreground/70">اتركها فارغة لاستخدام النص الافتراضي.</p>
             <?php
             $wa_tpl_fields = [
@@ -701,8 +752,13 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
             <?php endforeach; ?>
             <div id="waTplMsg" class="hidden text-xs font-semibold rounded-xl px-3 py-2"></div>
             <div class="flex gap-2">
-              <button id="saveWaTplBtn" class="flex-1 h-11 rounded-2xl bg-emerald-600 text-sm font-bold text-white"><span aria-hidden="true">💾</span> حفظ القوالب</button>
-              <button id="resetWaTplBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70"><span aria-hidden="true">↩️</span> استعادة الافتراضي</button>
+              <!-- UX Review Phase 2 (P0، بند "Hover/Focus/Active"): أُضيف transition-colors
+                   + hover مطابق لبقية أزرار الصفحة من نفس الفئة (emerald للحفظ،
+                   neutral outline للاستعادة) — كانا الاستثناء الوحيد المفقود ضمن
+                   عائلتيهما (بقية الأزرار الخضراء/المحايدة في الصفحة لديها هذه
+                   الحالة أصلاً). لا تغيير على id أو المنطق. -->
+              <button id="saveWaTplBtn" class="flex-1 h-11 rounded-2xl bg-emerald-600 text-sm font-bold text-white transition-colors hover:bg-emerald-700"><span aria-hidden="true">💾</span> حفظ القوالب</button>
+              <button id="resetWaTplBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70 transition-colors hover:bg-secondary/50"><span aria-hidden="true">↩️</span> استعادة الافتراضي</button>
             </div>
           </div>
         </details>
@@ -714,19 +770,26 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
             <span class="text-[11px] font-bold rounded-full bg-secondary/60 text-foreground/70 ring-1 ring-border px-2 py-0.5">Template</span>
           </summary>
           <div class="border-t border-border p-4 space-y-3 lg:px-3 lg:pb-3">
+            <!-- Phase 4 (P1، توضيح الفرق بين القالبين): سطر توضيحي قصير فقط — لا تغيير منطق. -->
+            <p class="text-xs font-semibold text-foreground/70">يُستخدم مع الإرسال اليدوي عبر زر "📱 واتساب" لكل مدعو، وزر "📲 للظاهرين".</p>
             <label for="whatsappTemplateInput" class="sr-only">قالب رسالة الدعوة</label>
             <textarea id="whatsappTemplateInput" rows="6"
               class="w-full rounded-2xl border border-border px-4 py-3 text-sm outline-none focus:border-primary"
               placeholder="نص رسالة الدعوة..."></textarea>
             <div class="flex flex-wrap gap-1.5">
               <?php foreach (['guest_name','event_title','event_url','image_url','invite_code','guest_phone'] as $var): ?>
-              <span class="cursor-pointer rounded-full bg-secondary/60 px-2 py-1 ring-1 ring-border text-[11px] font-mono text-foreground/70 hover:bg-secondary"
-                onclick="navigator.clipboard.writeText('{{<?= $var ?>}}')">{{<?= $var ?>}}</span>
+              <!-- Phase 4 (P0، Accessibility): span → button type="button" — نفس onclick
+                   حرفياً، نفس classes، بدون أي تغيير سلوك. يطابق الآن نمط .wa-var-insert
+                   المجاور في القسم المقابل (يدعم لوحة المفاتيح وقارئ الشاشة أصلاً). -->
+              <button type="button" class="cursor-pointer rounded-full bg-secondary/60 px-2 py-1 ring-1 ring-border text-[11px] font-mono text-foreground/70 hover:bg-secondary"
+                onclick="navigator.clipboard.writeText('{{<?= $var ?>}}')">{{<?= $var ?>}}</button>
               <?php endforeach; ?>
             </div>
             <div class="flex gap-2">
-              <button id="resetWhatsappTemplateBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70">استعادة الافتراضي</button>
-              <button id="copyWhatsappPreviewBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70">نسخ المعاينة</button>
+              <!-- UX Review Phase 2 (P0، بند "Hover/Focus/Active"): نفس الإصلاح أعلاه —
+                   hover مفقود مقارنة ببقية الأزرار المحايدة (border-border) في الصفحة. -->
+              <button id="resetWhatsappTemplateBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70 transition-colors hover:bg-secondary/50">استعادة الافتراضي</button>
+              <button id="copyWhatsappPreviewBtn" class="flex-1 h-11 rounded-2xl border border-border text-xs font-semibold text-foreground/70 transition-colors hover:bg-secondary/50">نسخ المعاينة</button>
             </div>
             <div class="rounded-xl bg-secondary/40 p-3 ring-1 ring-border">
               <div class="text-[11px] font-semibold text-foreground/65 mb-1">معاينة</div>
@@ -779,11 +842,15 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
   </div>
 </div>
 
-<!-- ══ WA Test Modal ════════════════════════════════════════════ -->
-<div id="waTestModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" dir="rtl">
+<!-- ══ WA Test Modal ════════════════════════════════════════════
+     Phase 4 (P1، Dialog Accessibility): role="dialog" + aria-modal="true" +
+     aria-labelledby يشير للعنوان الموجود أصلاً (h3 أدناه، أُضيف له id لهذا
+     الغرض فقط). لا Focus Trap ولا Escape ضمن هذه المرحلة (خارج النطاق صراحة).
+     لا تغيير على أي منطق أو AJAX أو سلوك فتح/إغلاق الموجود أصلاً. ══ -->
+<div id="waTestModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="waTestModalTitle">
   <div class="bg-white rounded-3xl shadow-[0_25px_70px_-20px_rgba(45,25,20,0.35)] w-full max-w-md p-6 space-y-4">
     <div class="flex items-center justify-between">
-      <h3 class="text-lg font-extrabold text-foreground"><span aria-hidden="true">🧪</span> إرسال رسالة تجريبية</h3>
+      <h3 id="waTestModalTitle" class="text-lg font-extrabold text-foreground"><span aria-hidden="true">🧪</span> إرسال رسالة تجريبية</h3>
       <button id="waTestModalClose" aria-label="إغلاق" class="w-11 h-11 rounded-full bg-secondary/60 flex items-center justify-center text-foreground/70 text-lg font-bold">×</button>
     </div>
     <p class="text-sm text-foreground/65">اختبر الدعوة قبل الإرسال الجماعي. لن يُسجَّل RSVP.</p>
@@ -798,7 +865,9 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
     <div id="waTestResult" class="hidden text-sm font-semibold rounded-2xl p-3"></div>
     <div class="flex gap-3">
       <button id="waTestSendConfirmBtn" class="flex-1 h-12 rounded-2xl bg-primary text-sm font-bold text-white transition-colors hover:bg-primary-hover">📨 إرسال التجربة</button>
-      <button id="waTestModalClose2" class="h-12 px-4 rounded-2xl border border-border text-sm font-semibold text-foreground/70">إلغاء</button>
+      <!-- UX Review Phase 2 (P0، بند "Hover/Focus/Active"): نفس الإصلاح — hover مفقود
+           مقارنة بزر "إرسال التجربة" المجاور له وبكل الأزرار المحايدة الأخرى بالصفحة. -->
+      <button id="waTestModalClose2" class="h-12 px-4 rounded-2xl border border-border text-sm font-semibold text-foreground/70 transition-colors hover:bg-secondary/50">إلغاء</button>
     </div>
   </div>
 </div>
@@ -1306,10 +1375,14 @@ async function showWaReport() {
     const m = document.createElement('div');
     m.id='waReportModal';
     m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
-    m.innerHTML=`<div style="background:#fff;border-radius:20px;width:100%;max-width:600px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;" dir="rtl">
+    // Phase 4 (P1/P2، Dialog Accessibility + close-button aria-label): role="dialog"
+    // + aria-modal="true" + aria-labelledby يشيران للعنوان الموجود أصلاً (h3 أدناه،
+    // أُضيف له id لهذا الغرض فقط). aria-label="إغلاق" على زر × — لا Focus Trap ولا
+    // Escape ضمن هذه المرحلة (خارج النطاق صراحة). لا تغيير على أي منطق أو AJAX.
+    m.innerHTML=`<div style="background:#fff;border-radius:20px;width:100%;max-width:600px;max-height:80vh;overflow:hidden;display:flex;flex-direction:column;" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="waReportModalTitle">
         <div style="padding:16px 20px;border-bottom:1px solid var(--color-border);display:flex;justify-content:space-between;align-items:center;">
-          <h3 style="font-weight:800;font-size:16px;">📊 تقرير الإرسال</h3>
-          <button onclick="document.getElementById('waReportModal').remove()" style="font-size:22px;cursor:pointer;line-height:1;">×</button>
+          <h3 id="waReportModalTitle" style="font-weight:800;font-size:16px;">📊 تقرير الإرسال</h3>
+          <button onclick="document.getElementById('waReportModal').remove()" aria-label="إغلاق" style="font-size:22px;cursor:pointer;line-height:1;">×</button>
         </div>
         <div style="padding:12px 20px;background:var(--color-background);border-bottom:1px solid var(--color-border);display:flex;gap:20px;font-size:13px;flex-wrap:wrap;">
           <span>${statusLabel[d.status]??d.status}</span>
