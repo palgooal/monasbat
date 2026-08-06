@@ -170,6 +170,17 @@ class WP_Query
     }
 }
 
+// is_wp_error() هي دالة ووردبريس أساسية (wp-includes/load.php) متاحة دوماً في
+// أي طلب حقيقي — لم تكن مُستَخدَمة قبل إصلاح header_img لأن $can_header_img
+// كان دائماً false بالصدفة في بيانات هذا الاختبار (لا 'header_img' في أي
+// $plan_limits هنا)، فبقي فرع pge_handle_featured_image_upload()/is_wp_error()
+// في event-factory.php ميتاً محلياً. بعد الإصلاح (header_img=true دائماً لكل
+// الباقات، وهو التغيير المقصود) أصبح هذا الفرع يُنفَّذ فعلياً في كل إنشاء
+// مناسبة، فيلزم Stub حقيقي لهذه الدالة الأساسية بدل تركها غير معرَّفة.
+if (!function_exists('is_wp_error')) {
+    function is_wp_error($thing) { return $thing instanceof WP_Error; }
+}
+
 function wp_insert_post($postarr)
 {
     if (!empty($GLOBALS['__test_force_wp_insert_post_failure'])) {

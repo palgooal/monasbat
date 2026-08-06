@@ -332,6 +332,20 @@ if (!function_exists('pge_normalize_catalog_features_meta')) {
 if (!function_exists('pge_plan_feature_enabled_for_events')) {
     function pge_plan_feature_enabled_for_events($limits, $feature_key)
     {
+        // قرار منتج نهائي: صورة الهيدر ليست ميزة مدفوعة/محكومة بالباقة —
+        // يجب أن تكون متاحة لكل مستخدم وكل باقة بلا استثناء (Legacy وCatalog،
+        // مستخدمون قدامى بـSnapshot مجمَّد أو بلا Snapshot إطلاقاً، ومستخدمون
+        // جدد). Short-circuit صريح قبل أي قراءة لـ$limits أو أي مصدر بيانات،
+        // لضمان تجاوز أي قيمة '0'/false مخزَّنة سابقاً في mon_packages_settings
+        // أو في أي Snapshot مستخدم. مقيَّد حرفياً بمقارنة صارمة (===) على
+        // 'header_img' فقط — بقية الـ13 مفتاح ميزة الأخرى (event_barcode,
+        // event_date, countdown, google_map, stc_pay, guest_photos,
+        // guest_video, public_chat, private_chat, prev_events, next_events,
+        // guest_history, archive) تكمل تنفيذ نفس المنطق أدناه دون أي تغيير.
+        if ((string) $feature_key === 'header_img') {
+            return true;
+        }
+
         if (class_exists('PGE_Packages') && method_exists('PGE_Packages', 'is_feature_enabled')) {
             return PGE_Packages::is_feature_enabled((array) $limits, (string) $feature_key);
         }
