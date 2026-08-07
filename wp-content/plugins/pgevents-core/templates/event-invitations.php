@@ -342,8 +342,13 @@ get_header();
         </div>
       </div>
 
-      <!-- حالة التحقق — Phase 5 (UX): تظهر أثناء رفع/تحليل الملف فقط (منع Double Submit). -->
-      <div id="excelValidatingState" class="hidden py-10 text-center text-sm text-foreground/60" aria-live="polite">جارٍ التحقق من الملف...</div>
+      <!-- حالة التحقق — Phase 5/5.1 (UX فقط): تظهر أثناء رفع/تحليل الملف (Preview) —
+           Spinner + نص + تلميح، بلا اعتماد على اللون وحده (نص مرافق دائماً). -->
+      <div id="excelValidatingState" class="hidden py-10 text-center" aria-live="polite">
+        <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" aria-hidden="true"></div>
+        <p class="text-sm font-semibold text-foreground/70">جارٍ رفع الملف والتحقق منه...</p>
+        <p class="mt-1 text-[11px] text-foreground/45">إذا كان الملف كبيراً فقد تستغرق العملية عدة ثوانٍ.</p>
+      </div>
 
       <!-- حالة المعاينة -->
       <div id="excelPreviewState" class="hidden">
@@ -370,8 +375,12 @@ get_header();
         </div>
       </div>
 
-      <!-- حالة المعالجة -->
-      <div id="excelProcessingState" class="hidden py-10 text-center text-sm text-foreground/60" aria-live="polite">جارٍ الاستيراد...</div>
+      <!-- حالة المعالجة — Phase 5.1 (UX فقط): Spinner + نص + تلميح، بلا أي أرقام/تقدير زمني. -->
+      <div id="excelProcessingState" class="hidden py-10 text-center" aria-live="polite">
+        <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" aria-hidden="true"></div>
+        <p class="text-sm font-semibold text-foreground/70">جارٍ استيراد المدعوين...</p>
+        <p class="mt-1 text-[11px] text-foreground/45">إذا كان الملف كبيراً فقد تستغرق العملية عدة ثوانٍ.</p>
+      </div>
 
       <!-- حالة النتيجة -->
       <div id="excelResultState" class="hidden">
@@ -1146,12 +1155,15 @@ get_header();
     });
   }
 
+  var closeExcelImportBtn = document.getElementById('closeExcelImportBtn');
+
   function excelOpenModal() {
     excelClearError();
     excelFileInput.value = '';
     excelFileInfo.classList.add('hidden');
     excelFileInfo.textContent = '';
     excelUploadToken = null;
+    closeExcelImportBtn.disabled = false; // إعادة ضبط احترازية (Phase 5.1) عند كل فتح.
     excelShowState('upload');
     excelModal.classList.remove('hidden');
   }
@@ -1161,7 +1173,7 @@ get_header();
 
   var openExcelImportBtn = document.getElementById('openExcelImportBtn');
   if (openExcelImportBtn) openExcelImportBtn.addEventListener('click', excelOpenModal);
-  document.getElementById('closeExcelImportBtn').addEventListener('click', excelCloseModal);
+  closeExcelImportBtn.addEventListener('click', excelCloseModal);
   document.getElementById('excelCancelBtn').addEventListener('click', excelCloseModal);
   document.getElementById('excelBackBtn').addEventListener('click', function () {
     excelClearError();
@@ -1172,8 +1184,12 @@ get_header();
     excelShowState('upload');
   });
 
-  // Phase 5 (UX): حالة "جارٍ التحقق" ظاهرة أثناء الطلب + تعطيل زر الرفع/اختيار
-  // ملف جديد وزر Confirm طوال مدة الطلب — منع Double Submit صراحةً (القسم 6).
+  // Phase 5 (UX): حالة "جارٍ التحقق" ظاهرة أثناء الطلب. Phase 5.1 (UX فقط،
+  // بلا Queue/Polling/SSE): تعطيل صريح لكل الأزرار القادرة على إطلاق طلب
+  // جديد أو مقاطعة الحالة أثناء الطلب — زر الرفع، اختيار ملف جديد، وزر
+  // إغلاق الـModal (×) أيضاً (الأزرار الأخرى داخل excelUploadState/
+  // excelPreviewState خامدة بنيوياً بالفعل لأن حاويتها hidden أثناء
+  // validating/processing — لا حاجة لتعطيلها فردياً).
   document.getElementById('excelUploadBtn').addEventListener('click', function () {
     if (excelInFlight) return;
     excelClearError();
@@ -1182,11 +1198,13 @@ get_header();
     excelInFlight = true;
     excelUploadBtn.disabled = true;
     excelFileInput.disabled = true;
+    closeExcelImportBtn.disabled = true;
     excelShowState('validating');
     postFileAjax('pge_invitation_mgmt_excel_preview', file).then(function (json) {
       excelInFlight = false;
       excelUploadBtn.disabled = false;
       excelFileInput.disabled = false;
+      closeExcelImportBtn.disabled = false;
       if (!json || !json.success) {
         excelShowState('upload');
         excelShowError(excelResolveErrorMessage(json, 'تعذّرت معاينة الملف'));
@@ -1229,6 +1247,7 @@ get_header();
       excelInFlight = false;
       excelUploadBtn.disabled = false;
       excelFileInput.disabled = false;
+      closeExcelImportBtn.disabled = false;
       excelShowState('upload');
       excelShowError('تعذّر الاتصال بالخادم');
     });
@@ -1237,14 +1256,19 @@ get_header();
   excelConfirmBtn.addEventListener('click', function () {
     if (excelInFlight || !excelUploadToken) return;
     excelInFlight = true;
+    // Phase 5.1: تعطيل فوري لكل زر قادر على إطلاق طلب جديد أو مقاطعة الحالة —
+    // Confirm نفسه، وإغلاق الـModal (×). "رفع ملف جديد"/"تحميل نموذج" خامدان
+    // بنيوياً بالفعل (داخل excelUploadState المخفية أثناء processing).
     excelConfirmBtn.disabled = true; // منع نقرة ثانية فوراً (القسم 11).
-    excelConfirmBtn.textContent = 'جارٍ الاستيراد...';
+    excelConfirmBtn.textContent = 'جارٍ استيراد المدعوين...';
+    closeExcelImportBtn.disabled = true;
     excelClearError();
     excelShowState('processing');
     // "Confirm receives token only" — لا صفوف/بيانات معاينة تُرسَل من المتصفح
     // إطلاقاً؛ الخادم يُعيد التحليل + التحقّق + فحص التكرار من الصفر.
     postAjax('pge_invitation_mgmt_excel_confirm', { upload_token: excelUploadToken }).then(function (json) {
       excelInFlight = false;
+      closeExcelImportBtn.disabled = false;
       var tokenWasAlreadyConsumed = excelUploadToken !== null;
       excelUploadToken = null; // التوكن يُستهلَك دائماً من جانب الخادم بعد Confirm — لا إعادة استخدام.
       if (!json || !json.success) {
@@ -1286,6 +1310,7 @@ get_header();
       if (imported > 0) showToast(resultText, false);
     }).catch(function () {
       excelInFlight = false;
+      closeExcelImportBtn.disabled = false;
       excelShowState('upload');
       excelShowError('تعذّر الاتصال بالخادم');
     });

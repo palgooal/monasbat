@@ -108,9 +108,9 @@ check_contains('6. حالة الرفع (excelUploadState) موجودة', $templa
 check_contains('6ب. عنوان حالة الرفع: "استيراد المدعوين من Excel"', $template_source, 'استيراد المدعوين من Excel');
 check_contains('6ج. الوصف القصير المطلوب حرفياً', $template_source, 'ارفع ملف Excel أو CSV يحتوي على الاسم ورقم الجوال والملاحظة.');
 
-// 7) Validating state
+// 7) Validating state (Phase 5.1: النص المحدَّث + Spinner)
 check_contains('7. حالة التحقق (excelValidatingState) موجودة', $template_source, 'id="excelValidatingState"');
-check_contains('7ب. نص "جارٍ التحقق من الملف..." موجود', $template_source, 'جارٍ التحقق من الملف...');
+check_contains('7ب. نص "جارٍ رفع الملف والتحقق منه..." موجود (Phase 5.1)', $template_source, 'جارٍ رفع الملف والتحقق منه...');
 
 // 8) Preview summary
 check_contains('8. صندوق ملخص المعاينة (excelSummaryBox) موجود', $template_source, 'id="excelSummaryBox"');
@@ -143,10 +143,11 @@ $confirm_listener = extract_listener_body($template_source, "excelConfirmBtn.add
 check_true('13. حارس الدخول المزدوج في بداية معالج نقرة Confirm (excelInFlight)', strpos($confirm_listener, 'if (excelInFlight || !excelUploadToken) return;') !== false);
 check_true('13ب. تعطيل الزر فوراً داخل نفس المعالج قبل أي طلب شبكة', strpos($confirm_listener, 'excelConfirmBtn.disabled = true;') !== false);
 
-// 14) Importing state
-check_contains('14. حالة المعالجة تعرض "جارٍ الاستيراد..." (excelProcessingState)', $template_source, 'id="excelProcessingState" class="hidden py-10 text-center text-sm text-foreground/60" aria-live="polite">جارٍ الاستيراد...');
-check_true('14ب. نص الزر نفسه يتحوَّل إلى "جارٍ الاستيراد..." عند النقر', strpos($confirm_listener, "excelConfirmBtn.textContent = 'جارٍ الاستيراد...';") !== false);
-check_true('14ج. لا عرض لـupload_token أو أي معلومة تقنية داخل نص حالة المعالجة', strpos($confirm_listener, "'جارٍ الاستيراد...'") !== false && strpos($confirm_listener, 'excelUploadToken +') === false);
+// 14) Importing state (Phase 5.1: Spinner + النص المحدَّث "جارٍ استيراد المدعوين...")
+check_contains('14. حالة المعالجة (excelProcessingState) موجودة مع aria-live', $template_source, 'id="excelProcessingState" class="hidden py-10 text-center" aria-live="polite">');
+check_contains('14أ. نص "جارٍ استيراد المدعوين..." ظاهر داخل حالة المعالجة', $template_source, 'جارٍ استيراد المدعوين...');
+check_true('14ب. نص الزر نفسه يتحوَّل إلى "جارٍ استيراد المدعوين..." عند النقر', strpos($confirm_listener, "excelConfirmBtn.textContent = 'جارٍ استيراد المدعوين...';") !== false);
+check_true('14ج. لا عرض لـupload_token أو أي معلومة تقنية داخل نص حالة المعالجة', strpos($confirm_listener, "'جارٍ استيراد المدعوين...'") !== false && strpos($confirm_listener, 'excelUploadToken +') === false);
 
 // 15) Result success message
 check_contains("15. رسالة النجاح الواضحة عند imported > 0 وبلا تخطٍّ", $template_source, "resultText = 'تم استيراد ' + imported + ' مدعو بنجاح.';");
@@ -186,7 +187,7 @@ check_contains('24ب. excelImportModal يحمل aria-modal="true"', $template_so
 
 // 25) aria-live/alert
 check_contains('25. excelFileInfo يحمل aria-live="polite"', $template_source, 'id="excelFileInfo" class="hidden mt-1.5 text-[11px] text-foreground/60" aria-live="polite"');
-check_contains('25ب. excelValidatingState يحمل aria-live="polite"', $template_source, 'id="excelValidatingState" class="hidden py-10 text-center text-sm text-foreground/60" aria-live="polite"');
+check_contains('25ب. excelValidatingState يحمل aria-live="polite" (Phase 5.1)', $template_source, 'id="excelValidatingState" class="hidden py-10 text-center" aria-live="polite"');
 check_contains('25ج. excelResultMsg يحمل aria-live="polite"', $template_source, 'id="excelResultMsg" class="mb-3 text-sm font-bold text-foreground" aria-live="polite"');
 check_contains('25د. excelImportErrorMsg يحمل role="alert"', $template_source, 'id="excelImportErrorMsg" class="hidden mb-3 text-xs font-semibold rounded-xl px-3 py-2 bg-destructive/10 text-destructive-text" role="alert"');
 check_contains('25هـ. excelNoValidMsg يحمل role="alert"', $template_source, 'id="excelNoValidMsg" class="hidden mt-2 text-xs font-semibold text-destructive-text" role="alert"');
@@ -217,6 +218,54 @@ check_contains('30ب. bulkOpenModal لا تزال موجودة', $template_sourc
 check_contains('30ج. BULK_STATUS_LABELS لا تزال موجودة بنفس القيم', $template_source, "valid: 'صالح', invalid: 'غير صالح',");
 check_contains('30د. bulkRenderSummaryBadges لا تزال موجودة ومنفصلة عن excelRenderSummaryBadges', $template_source, 'function bulkRenderSummaryBadges(container, summary, keyLabels)');
 check_true('30هـ. لا تعارض تسمية: الدوال الخاصة بـExcel جميعها مسبوقة بـexcel وليست bulk', strpos($template_source, 'function excelRenderSummaryBadges(container, summary, keyLabels)') !== false);
+
+// ============================================================================
+// Phase 5.1 — Loading Feedback فقط (Spinner/تعطيل أزرار)، بلا Queue/Polling/SSE
+// ============================================================================
+
+// Spinner مرئي في حالتَي التحقق والمعالجة (Tailwind animate-spin فقط، بلا مكتبة جديدة).
+check_contains('31. Spinner ظاهر في حالة التحقق (excelValidatingState)', $template_source, 'border-4 border-border border-t-primary animate-spin');
+check_true('31ب. Spinner واحد على الأقل في حالة المعالجة أيضاً (نمط مطابق)', substr_count($template_source, 'border-4 border-border border-t-primary animate-spin') >= 2);
+check_contains('31ج. تلميح "قد تستغرق العملية عدة ثوانٍ" بلا أرقام/تقدير زمني', $template_source, 'إذا كان الملف كبيراً فقد تستغرق العملية عدة ثوانٍ.');
+check_true('31د. لا رقم تقديري (بالثواني/الدقائق) مذكور في التلميح', !preg_match('/\d+\s*(ثانية|ثوانٍ|دقيقة|دقائق)/u', $template_source));
+
+// منع Double Submit: تعطيل صريح لكل زر قادر على إطلاق طلب جديد أو مقاطعة الحالة.
+check_contains('32. زر الرفع يُعطَّل أثناء طلب Preview', $template_source, 'excelUploadBtn.disabled = true;');
+check_contains('32ب. حقل اختيار الملف يُعطَّل أثناء طلب Preview', $template_source, 'excelFileInput.disabled = true;');
+check_contains('32ج. زر إغلاق الـModal (×) يُعطَّل أثناء طلب Preview', $template_source, 'closeExcelImportBtn.disabled = true;');
+check_true('32د. زر إغلاق الـModal يُعاد تفعيله في مسار النجاح لطلب Preview', strpos($template_source, "closeExcelImportBtn.disabled = false;") !== false);
+check_true(
+    '32هـ. زر إغلاق الـModal يُعاد تفعيله في مسار فشل الاتصال (catch) لطلب Preview أيضاً',
+    (function () use ($template_source) {
+        $anchor = "postFileAjax('pge_invitation_mgmt_excel_preview', file).then(function (json) {";
+        $start = strpos($template_source, $anchor);
+        if ($start === false) return false;
+        $catch_pos = strpos($template_source, '.catch(function () {', $start);
+        $next_block = substr($template_source, $catch_pos, 260);
+        return strpos($next_block, 'closeExcelImportBtn.disabled = false;') !== false;
+    })()
+);
+check_true('32و. حارس excelInFlight لا يزال أول سطر فعلي في معالج نقرة Confirm (منع تنفيذ متزامن)', strpos(ltrim($confirm_listener, "{ \n\r\t"), 'if (excelInFlight || !excelUploadToken) return;') === 0);
+check_true('32ز. زر إغلاق الـModal يُعطَّل أيضاً عند بدء Confirm', strpos($confirm_listener, 'closeExcelImportBtn.disabled = true;') !== false);
+check_true('32ح. زر إغلاق الـModal يُعاد تفعيله بعد استجابة Confirm (نجاح أو فشل)', strpos($confirm_listener, 'closeExcelImportBtn.disabled = false;') !== false);
+
+// Accessibility: Spinner لا يعتمد على اللون وحده — دائماً مرافَق بنص داخل نفس الحاوية aria-live.
+check_true('33. Spinner يحمل aria-hidden="true" (زخرفي بحت، النص المرافق هو الحامل الدلالي)', substr_count($template_source, 'animate-spin" aria-hidden="true">') >= 2);
+check_true(
+    '33ب. كل Spinner مرافَق بنص داخل نفس الحاوية aria-live="polite" (لا اعتماد على اللون فقط)',
+    strpos($template_source, 'aria-live="polite">' . "\n        <div class=\"mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin\" aria-hidden=\"true\"></div>\n        <p class=\"text-sm font-semibold text-foreground/70\">جارٍ رفع الملف والتحقق منه...") !== false
+    && strpos($template_source, 'aria-live="polite">' . "\n        <div class=\"mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin\" aria-hidden=\"true\"></div>\n        <p class=\"text-sm font-semibold text-foreground/70\">جارٍ استيراد المدعوين...") !== false
+);
+
+// Performance: لا مكتبة/Animation ثقيلة جديدة — فقط Tailwind الموجود (animate-spin مدمجة أصلاً).
+check_not_contains('34. لا استيراد مكتبة Animation جديدة (مثل GSAP/Lottie/anime.js)', $template_source, 'gsap');
+check_not_contains('34ب. لا وسم <script src= خارجي جديد داخل هذا الملف', $template_source, '<script src=');
+
+// Regression الأساسي المضمَّن هنا: لا Endpoint/Route/Queue/Polling/SSE جديد.
+check_not_contains('35. لا استدعاء setInterval (لا Polling)', $template_source, 'setInterval(');
+check_not_contains('35ب. لا استخدام EventSource (لا SSE)', $template_source, 'EventSource');
+check_not_contains('35ج. لا استخدام WebSocket', $template_source, 'WebSocket');
+check_true('35د. لا إجراء AJAX جديد يخص Excel غير المعروفَين أصلاً (preview/confirm فقط)', substr_count($template_source, "pge_invitation_mgmt_excel_") === substr_count($template_source, 'pge_invitation_mgmt_excel_preview') + substr_count($template_source, 'pge_invitation_mgmt_excel_confirm') + substr_count($template_source, 'pge_invitation_mgmt_excel_template'));
 
 echo "\n========================================\n";
 echo "النتيجة: $passed / $total نجحت.\n";
