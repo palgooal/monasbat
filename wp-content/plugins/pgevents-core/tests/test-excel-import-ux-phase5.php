@@ -143,8 +143,9 @@ $confirm_listener = extract_listener_body($template_source, "excelConfirmBtn.add
 check_true('13. حارس الدخول المزدوج في بداية معالج نقرة Confirm (excelInFlight)', strpos($confirm_listener, 'if (excelInFlight || !excelUploadToken) return;') !== false);
 check_true('13ب. تعطيل الزر فوراً داخل نفس المعالج قبل أي طلب شبكة', strpos($confirm_listener, 'excelConfirmBtn.disabled = true;') !== false);
 
-// 14) Importing state (Phase 5.1: Spinner + النص المحدَّث "جارٍ استيراد المدعوين...")
-check_contains('14. حالة المعالجة (excelProcessingState) موجودة مع aria-live', $template_source, 'id="excelProcessingState" class="hidden py-10 text-center" aria-live="polite">');
+// 14) Importing state (Phase 5.1: Spinner + النص المحدَّث "جارٍ استيراد المدعوين..."؛
+// تحديث Modal Layout: أُضيف overflow-y-auto/px-5 احترازياً — لا علاقة بالمنطق).
+check_contains('14. حالة المعالجة (excelProcessingState) موجودة مع aria-live', $template_source, 'id="excelProcessingState" class="hidden overflow-y-auto px-5 py-10 text-center" aria-live="polite">');
 check_contains('14أ. نص "جارٍ استيراد المدعوين..." ظاهر داخل حالة المعالجة', $template_source, 'جارٍ استيراد المدعوين...');
 check_true('14ب. نص الزر نفسه يتحوَّل إلى "جارٍ استيراد المدعوين..." عند النقر', strpos($confirm_listener, "excelConfirmBtn.textContent = 'جارٍ استيراد المدعوين...';") !== false);
 check_true('14ج. لا عرض لـupload_token أو أي معلومة تقنية داخل نص حالة المعالجة', strpos($confirm_listener, "'جارٍ استيراد المدعوين...'") !== false && strpos($confirm_listener, 'excelUploadToken +') === false);
@@ -187,15 +188,21 @@ check_contains('24ب. excelImportModal يحمل aria-modal="true"', $template_so
 
 // 25) aria-live/alert
 check_contains('25. excelFileInfo يحمل aria-live="polite"', $template_source, 'id="excelFileInfo" class="hidden mt-1.5 text-[11px] text-foreground/60" aria-live="polite"');
-check_contains('25ب. excelValidatingState يحمل aria-live="polite" (Phase 5.1)', $template_source, 'id="excelValidatingState" class="hidden py-10 text-center" aria-live="polite"');
+check_contains('25ب. excelValidatingState يحمل aria-live="polite" (Phase 5.1)', $template_source, 'id="excelValidatingState" class="hidden overflow-y-auto px-5 py-10 text-center" aria-live="polite"');
 check_contains('25ج. excelResultMsg يحمل aria-live="polite"', $template_source, 'id="excelResultMsg" class="mb-3 text-sm font-bold text-foreground" aria-live="polite"');
-check_contains('25د. excelImportErrorMsg يحمل role="alert"', $template_source, 'id="excelImportErrorMsg" class="hidden mb-3 text-xs font-semibold rounded-xl px-3 py-2 bg-destructive/10 text-destructive-text" role="alert"');
+// مُحدَّث — انتقل شريط الخطأ إلى داخل Header الثابت (mt-3 بدل mb-3، لأنه أصبح
+// يلي صف العنوان/الإغلاق مباشرة بدل أن يسبق حالة الرفع) — لا يزال role="alert".
+check_contains('25د. excelImportErrorMsg يحمل role="alert"', $template_source, 'id="excelImportErrorMsg" class="hidden mt-3 text-xs font-semibold rounded-xl px-3 py-2 bg-destructive/10 text-destructive-text" role="alert"');
 check_contains('25هـ. excelNoValidMsg يحمل role="alert"', $template_source, 'id="excelNoValidMsg" class="hidden mt-2 text-xs font-semibold text-destructive-text" role="alert"');
 
 // 26) Mobile overflow guard
 check_contains('26. صف أزرار حالة الرفع قابل للالتفاف (flex-wrap) لمنع overflow أفقي', $template_source, "<div class=\"flex flex-wrap justify-end gap-2 mt-3\">\n          <button type=\"button\" id=\"excelCancelBtn\"");
-check_contains('26ب. صف أزرار حالة المعاينة قابل للالتفاف (flex-wrap)', $template_source, "<div class=\"flex flex-wrap justify-end gap-2 mt-3\">\n          <button type=\"button\" id=\"excelBackBtn\"");
-check_contains('26ج. غلاف جدول المعاينة يدعم scroll أفقي وعمودي محدود (overflow-x-auto + max-h-72 overflow-y-auto)', $template_source, 'overflow-x-auto rounded-xl border border-border max-h-72 overflow-y-auto');
+// 26ب: مُحدَّث لتحسين UX تصميم الـModal (Header/Body/Footer) — صف أزرار المعاينة
+// أصبح داخل حاوية "الجزء الثابت السفلي" (مستوى Indentation إضافي)، لا يزال flex-wrap.
+check_contains('26ب. صف أزرار حالة المعاينة قابل للالتفاف (flex-wrap)', $template_source, "<div class=\"flex flex-wrap justify-end gap-2 mt-3\">\n            <button type=\"button\" id=\"excelBackBtn\"");
+// 26ج: مُحدَّث — غلاف الجدول أصبح flex-1 min-h-0 max-h-[55vh] (بدل max-h-72 ثابت)
+// ضمن بنية Header/Body/Footer الجديدة، ولا يزال يدعم scroll أفقي وعمودي معاً.
+check_contains('26ج. غلاف جدول المعاينة يدعم scroll أفقي وعمودي محدود (max-h-[55vh] + overflow-x-auto/y-auto)', $template_source, 'min-h-0 max-h-[55vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border');
 
 // 27) لا تغيير في Payload الـConfirm — upload_token فقط
 check_contains(
@@ -266,6 +273,91 @@ check_not_contains('35. لا استدعاء setInterval (لا Polling)', $templa
 check_not_contains('35ب. لا استخدام EventSource (لا SSE)', $template_source, 'EventSource');
 check_not_contains('35ج. لا استخدام WebSocket', $template_source, 'WebSocket');
 check_true('35د. لا إجراء AJAX جديد يخص Excel غير المعروفَين أصلاً (preview/confirm فقط)', substr_count($template_source, "pge_invitation_mgmt_excel_") === substr_count($template_source, 'pge_invitation_mgmt_excel_preview') + substr_count($template_source, 'pge_invitation_mgmt_excel_confirm') + substr_count($template_source, 'pge_invitation_mgmt_excel_template'));
+
+// ============================================================================
+// Modal Layout — Header/Body/Footer (UX فقط، بلا تغيير على Upload/Preview
+// Logic/Confirm/Validation/Duplicate Detection/Parsing/AJAX/Backend)
+// ============================================================================
+
+// 36) اللوحة نفسها flex-col بارتفاع أقصى ثابت، بلا Scrollbar خاص بها (التمرير
+// يُفوَّض للمناطق الداخلية بدل اللوحة كلها).
+check_contains('36. لوحة الـModal flex-col بارتفاع أقصى 90vh و overflow-hidden (لا تمرير للّوحة كلها)', $template_source, 'flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white');
+
+// 37) Header ثابت: يحوي العنوان + زر الإغلاق + شريط الخطأ، shrink-0 (لا يتمرّر، لا يتقلّص).
+check_contains('37. حاوية الـHeader الثابتة (shrink-0) تسبق مباشرة عنوان excelImportHeading', $template_source, "<div class=\"shrink-0 border-b border-border px-5 pt-5 pb-3\">\n        <div class=\"flex items-center justify-between\">\n          <h2 id=\"excelImportHeading\"");
+
+// 38) حالة المعاينة (excelPreviewState) هي الجزء المُعاد هيكلته فعلياً —
+// flex-1 min-h-0 لتملأ الارتفاع المتبقي أسفل الـHeader، محدودة بسقف اللوحة.
+check_contains('38. excelPreviewState أصبحت flex min-h-0 flex-1 flex-col (تملأ المساحة المتبقية)', $template_source, 'id="excelPreviewState" class="hidden flex min-h-0 flex-1 flex-col px-5 py-4"');
+
+// 39) الجزء الثابت العلوي داخل المعاينة (ملخص الاستيراد) — لا يتمرّر مع الجدول.
+check_contains('39. ملخص الاستيراد (excelSummaryBox/excelSummaryDetails) داخل حاوية shrink-0 ثابتة أعلى حالة المعاينة', $template_source, "<div class=\"shrink-0\">\n          <div id=\"excelSummaryBox\"");
+
+// 40) Body قابل للتمرير فقط: يحوي جدول Preview حصراً (لا أزرار/رسائل بداخله)،
+// بارتفاع أقصى محدود (55vh) بصرف النظر عن عدد الصفوف.
+$table_wrapper_start = strpos($template_source, 'min-h-0 max-h-[55vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border');
+check_true('40. غلاف الجدول موجود بـmax-h-[55vh] (ارتفاع مناسب بصرف النظر عن عدد الصفوف)', $table_wrapper_start !== false);
+check_true(
+    '40ب. الجدول (id=excelPreviewBody) هو المحتوى الوحيد داخل الغلاف القابل للتمرير — لا أزرار ولا رسائل بداخله',
+    (function () use ($template_source, $table_wrapper_start) {
+        if ($table_wrapper_start === false) return false;
+        $div_open = strpos($template_source, '>', $table_wrapper_start) ; // نهاية وسم <div ...>
+        $close_anchor = '</table>';
+        $table_close = strpos($template_source, $close_anchor, $div_open);
+        if ($table_close === false) return false;
+        $inner = substr($template_source, $div_open, ($table_close + strlen($close_anchor)) - $div_open);
+        return strpos($inner, '<table') !== false
+            && strpos($inner, 'id="excelPreviewBody"') !== false
+            && strpos($inner, '<button') === false
+            && strpos($inner, 'id="excelConfirmBtn"') === false;
+    })()
+);
+
+// 41) Footer ثابت: يحوي زر الاستيراد + اختيار ملف آخر + الرسائل المرتبطة —
+// shrink-0، لا يتمرّر مع الجدول، يبقى ظاهراً دائماً.
+check_contains(
+    '41. حاوية الـFooter الثابتة (shrink-0) تحوي excelPreviewTruncatedMsg وexcelNoValidMsg قبل صف الأزرار',
+    $template_source,
+    "<div class=\"shrink-0\">\n          <p id=\"excelPreviewTruncatedMsg\""
+);
+check_contains('41ب. زر الاستيراد (excelConfirmBtn) وزر اختيار ملف آخر (excelBackBtn) داخل نفس صف الأزرار الثابت', $template_source, "<button type=\"button\" id=\"excelBackBtn\"");
+check_true(
+    '41ج. زرا الـFooter (Back/Confirm) يقعان بعد غلاف الجدول القابل للتمرير في الترميز (تحت الجدول، خارج نطاق تمريره)',
+    strpos($template_source, 'id="excelBackBtn"') > strpos($template_source, 'min-h-0 max-h-[55vh] flex-1 overflow-x-auto')
+);
+
+// ============================================================================
+// حد عرض 30 صفاً — تحسين عرض بحت، الاستيراد الفعلي يبقى يشمل كل الصفوف الصالحة
+// ============================================================================
+
+// 42) الثابت 30 معرَّف صراحة في الواجهة.
+check_contains('42. حد عرض المعاينة يساوي 30 صفاً (EXCEL_PREVIEW_DISPLAY_LIMIT)', $template_source, 'var EXCEL_PREVIEW_DISPLAY_LIMIT = 30;');
+
+$render_preview_rows_body_v2 = extract_js_function_body($template_source, 'excelRenderPreviewRows');
+
+// 43) القص للعرض فقط — rowsToRender مشتقة من rows.slice() عند التجاوز، بلا حذف
+// من المصفوفة الأصلية rows نفسها (تبقى كاملة، فقط ما يُعرَض في DOM يُقتَطع).
+check_contains('43. دالة عرض المعاينة تستخدم rows.slice(0, EXCEL_PREVIEW_DISPLAY_LIMIT) عند التجاوز', $render_preview_rows_body_v2, 'rows.slice(0, EXCEL_PREVIEW_DISPLAY_LIMIT)');
+check_true('43ب. الشرط total > EXCEL_PREVIEW_DISPLAY_LIMIT هو ما يحدد القص (لا Pagination/صفحات)', strpos($render_preview_rows_body_v2, 'total > EXCEL_PREVIEW_DISPLAY_LIMIT') !== false);
+
+// 44) رسالة توضيحية تحت الجدول عند التجاوز فقط، تؤكد أن كل الصفوف الصالحة ستُستورَد.
+check_contains('44. نص رسالة القص يذكر "أول 30 صفاً" و"سيتم استيراد جميع الصفوف الصالحة"', $render_preview_rows_body_v2, "'يتم عرض أول ' + EXCEL_PREVIEW_DISPLAY_LIMIT + ' صفاً فقط للمراجعة. وسيتم استيراد جميع الصفوف الصالحة.'");
+check_true('44ب. الرسالة تظهر فقط عند التجاوز، وتُخفى وتُفرَّغ خلاف ذلك', strpos($render_preview_rows_body_v2, "excelPreviewTruncatedMsg.classList.remove('hidden');") !== false && strpos($render_preview_rows_body_v2, "excelPreviewTruncatedMsg.classList.add('hidden');") !== false);
+check_contains('44ج. عنصر الرسالة excelPreviewTruncatedMsg يحمل aria-live="polite"', $template_source, 'id="excelPreviewTruncatedMsg" class="hidden mt-2 text-[11px] text-foreground/55" aria-live="polite"');
+
+// 45) الملفات الصغيرة (٣٠ صفاً أو أقل) تُعرَض بالكامل — لا قص، لا رسالة.
+check_true('45. الشرط يستخدم > صراحة (أكبر من)، فلا يُطبَّق القص عند 30 صفاً بالضبط أو أقل', strpos($render_preview_rows_body_v2, 'total > EXCEL_PREVIEW_DISPLAY_LIMIT ? rows.slice') !== false);
+
+// 46) عدّاد Confirm الحقيقي (validCount) مصدره summary.valid القادم من الخادم —
+// غير مرتبط إطلاقاً بعدد الصفوف المعروضة في الجدول (rows.length/rowsToRender).
+check_true('46. لا اشتقاق لعدد Confirm من rows.length أو rowsToRender — المصدر الوحيد summary.valid (بلا تغيير عن Phase 5)', strpos($template_source, "var validCount = summary.valid || 0;") !== false);
+check_not_contains('46ب. لا أي استخدام لـrowsToRender أو EXCEL_PREVIEW_DISPLAY_LIMIT خارج دالة العرض (لا تأثير على منطق Confirm/العدّ)', $confirm_listener, 'rowsToRender');
+check_not_contains('46ج. لا أي استخدام لـEXCEL_PREVIEW_DISPLAY_LIMIT داخل معالج نقرة Confirm', $confirm_listener, 'EXCEL_PREVIEW_DISPLAY_LIMIT');
+
+// 47) لا Pagination/Virtual Scroll/Lazy Loading/مكتبة جديدة أُضيفت لأجل هذا التحسين.
+check_not_contains('47. لا أي مؤشر Pagination جديد (renderPagination الوحيدة الموجودة أصلاً لقائمة الدعوات، غير مُستخدَمة هنا)', $render_preview_rows_body_v2, 'renderPagination');
+check_not_contains('47ب. لا IntersectionObserver (لا Lazy Loading/Virtual Scroll)', $template_source, 'IntersectionObserver');
+check_not_contains('47ج. لا مكتبة Virtual Scroll معروفة (react-window/react-virtualized/clusterize)', $template_source, 'clusterize');
 
 echo "\n========================================\n";
 echo "النتيجة: $passed / $total نجحت.\n";

@@ -311,16 +311,28 @@ get_header();
        معاينة من المتصفح إطلاقاً — الخادم يُعيد التحليل والتحقّق وفحص التكرار من
        الصفر عند Confirm؛ Phase 5 لم يغيّر شيئاً من هذا العقد). ══ -->
   <div id="excelImportModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="excelImportHeading">
-    <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 id="excelImportHeading" class="text-sm font-extrabold text-foreground">استيراد من Excel</h2>
-        <button type="button" id="closeExcelImportBtn" class="h-9 w-9 rounded-lg border border-border text-sm font-bold text-foreground/70" aria-label="إغلاق">×</button>
+    <!-- بنية Header/Body/Footer (تحسين UX — بلا أي تغيير على Upload/Preview
+         Logic/Confirm/Validation/Duplicate Detection/Parsing/AJAX/Backend):
+         اللوحة نفسها flex-col بارتفاع أقصى ثابت (max-h-[90vh])، overflow-hidden
+         (لا Scrollbar للوحة كلها) — كل حالة تُمرَّر داخلياً بنفسها عند الحاجة
+         بدل تمدّد اللوحة كلها. حالة المعاينة (excelPreviewState) تحديداً هي
+         المعاد هيكلتها فعلياً لثلاثة أجزاء (ملخص ثابت أعلى / جدول قابل للتمرير
+         بارتفاع محدود 55vh / أزرار ورسائل ثابتة أسفل) — الحالات الأخرى قصيرة
+         بطبيعتها ولا تعاني من نفس المشكلة، فأُبقيت ببنيتها الأصلية + overflow-
+         y-auto احترازي فقط. -->
+    <div class="flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white">
+
+      <!-- Header ثابت: عنوان + زر إغلاق + شريط الخطأ العام. يظهر في كل الحالات، لا يتمرّر أبداً. -->
+      <div class="shrink-0 border-b border-border px-5 pt-5 pb-3">
+        <div class="flex items-center justify-between">
+          <h2 id="excelImportHeading" class="text-sm font-extrabold text-foreground">استيراد من Excel</h2>
+          <button type="button" id="closeExcelImportBtn" class="h-9 w-9 rounded-lg border border-border text-sm font-bold text-foreground/70" aria-label="إغلاق">×</button>
+        </div>
+        <div id="excelImportErrorMsg" class="hidden mt-3 text-xs font-semibold rounded-xl px-3 py-2 bg-destructive/10 text-destructive-text" role="alert"></div>
       </div>
 
-      <div id="excelImportErrorMsg" class="hidden mb-3 text-xs font-semibold rounded-xl px-3 py-2 bg-destructive/10 text-destructive-text" role="alert"></div>
-
       <!-- حالة الرفع — Phase 5 (UX): عنوان + وصف قصير + صيغ مدعومة + تنبيه عمود الجوال + رابط النموذج، بلا شرح تقني (Scientific Notation/Cell Types) للمستخدم العادي. -->
-      <div id="excelUploadState">
+      <div id="excelUploadState" class="overflow-y-auto px-5 py-4">
         <h3 class="text-sm font-extrabold text-foreground mb-1">استيراد المدعوين من Excel</h3>
         <p class="text-xs text-foreground/60 mb-3">ارفع ملف Excel أو CSV يحتوي على الاسم ورقم الجوال والملاحظة.</p>
 
@@ -344,17 +356,26 @@ get_header();
 
       <!-- حالة التحقق — Phase 5/5.1 (UX فقط): تظهر أثناء رفع/تحليل الملف (Preview) —
            Spinner + نص + تلميح، بلا اعتماد على اللون وحده (نص مرافق دائماً). -->
-      <div id="excelValidatingState" class="hidden py-10 text-center" aria-live="polite">
+      <div id="excelValidatingState" class="hidden overflow-y-auto px-5 py-10 text-center" aria-live="polite">
         <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" aria-hidden="true"></div>
         <p class="text-sm font-semibold text-foreground/70">جارٍ رفع الملف والتحقق منه...</p>
         <p class="mt-1 text-[11px] text-foreground/45">إذا كان الملف كبيراً فقد تستغرق العملية عدة ثوانٍ.</p>
       </div>
 
-      <!-- حالة المعاينة -->
-      <div id="excelPreviewState" class="hidden">
-        <div id="excelSummaryBox" class="flex flex-wrap gap-2 mb-1.5" aria-live="polite"></div>
-        <div id="excelSummaryDetails" class="hidden mb-3 text-[11px] text-foreground/55"></div>
-        <div class="overflow-x-auto rounded-xl border border-border max-h-72 overflow-y-auto">
+      <!-- حالة المعاينة — مُعاد هيكلتها لثلاثة أجزاء داخلية (Header/Body/Footer
+           الفعليان لهذه الحالة تحديداً، وهي الوحيدة التي تحتوي جدولاً قد يطول):
+           flex-1 min-h-0 تجعلها تملأ الارتفاع المتبقّي أسفل هيدر اللوحة، محدودة
+           بسقف اللوحة (max-h-[90vh]) — الجدول وحده يتمدد/يتمرّر داخلياً. -->
+      <div id="excelPreviewState" class="hidden flex min-h-0 flex-1 flex-col px-5 py-4">
+        <!-- الجزء الثابت العلوي (ملخص الاستيراد) — لا يتمرّر أبداً. -->
+        <div class="shrink-0">
+          <div id="excelSummaryBox" class="flex flex-wrap gap-2 mb-1.5" aria-live="polite"></div>
+          <div id="excelSummaryDetails" class="hidden mb-3 text-[11px] text-foreground/55"></div>
+        </div>
+
+        <!-- الجزء القابل للتمرير — جدول Preview فقط، بارتفاع أقصى محدود (55vh)
+             بصرف النظر عن عدد الصفوف — لا يتمدد الـModal معه إطلاقاً. -->
+        <div class="min-h-0 max-h-[55vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border">
           <table class="w-full text-xs">
             <caption class="sr-only">معاينة صفوف استيراد Excel قبل التأكيد</caption>
             <thead>
@@ -368,22 +389,27 @@ get_header();
             <tbody id="excelPreviewBody"></tbody>
           </table>
         </div>
-        <p id="excelNoValidMsg" class="hidden mt-2 text-xs font-semibold text-destructive-text" role="alert">لا توجد صفوف صالحة للاستيراد.</p>
-        <div class="flex flex-wrap justify-end gap-2 mt-3">
-          <button type="button" id="excelBackBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">اختيار ملف آخر</button>
-          <button type="button" id="excelConfirmBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white disabled:opacity-40">استيراد المدعوين الصالحين</button>
+
+        <!-- الجزء الثابت السفلي (رسائل + أزرار) — يبقى ظاهراً دائماً، لا يتمرّر مع الجدول. -->
+        <div class="shrink-0">
+          <p id="excelPreviewTruncatedMsg" class="hidden mt-2 text-[11px] text-foreground/55" aria-live="polite"></p>
+          <p id="excelNoValidMsg" class="hidden mt-2 text-xs font-semibold text-destructive-text" role="alert">لا توجد صفوف صالحة للاستيراد.</p>
+          <div class="flex flex-wrap justify-end gap-2 mt-3">
+            <button type="button" id="excelBackBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">اختيار ملف آخر</button>
+            <button type="button" id="excelConfirmBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white disabled:opacity-40">استيراد المدعوين الصالحين</button>
+          </div>
         </div>
       </div>
 
       <!-- حالة المعالجة — Phase 5.1 (UX فقط): Spinner + نص + تلميح، بلا أي أرقام/تقدير زمني. -->
-      <div id="excelProcessingState" class="hidden py-10 text-center" aria-live="polite">
+      <div id="excelProcessingState" class="hidden overflow-y-auto px-5 py-10 text-center" aria-live="polite">
         <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" aria-hidden="true"></div>
         <p class="text-sm font-semibold text-foreground/70">جارٍ استيراد المدعوين...</p>
         <p class="mt-1 text-[11px] text-foreground/45">إذا كان الملف كبيراً فقد تستغرق العملية عدة ثوانٍ.</p>
       </div>
 
       <!-- حالة النتيجة -->
-      <div id="excelResultState" class="hidden">
+      <div id="excelResultState" class="hidden overflow-y-auto px-5 py-4">
         <p id="excelResultMsg" class="mb-3 text-sm font-bold text-foreground" aria-live="polite"></p>
         <div id="excelResultSummaryBox" class="flex flex-wrap gap-2 mb-3"></div>
         <div class="flex justify-end gap-2 mt-3">
@@ -1091,6 +1117,7 @@ get_header();
   var excelSummaryBox = document.getElementById('excelSummaryBox');
   var excelSummaryDetails = document.getElementById('excelSummaryDetails');
   var excelPreviewBody = document.getElementById('excelPreviewBody');
+  var excelPreviewTruncatedMsg = document.getElementById('excelPreviewTruncatedMsg');
   var excelNoValidMsg = document.getElementById('excelNoValidMsg');
   var excelResultMsg = document.getElementById('excelResultMsg');
   var excelResultSummaryBox = document.getElementById('excelResultSummaryBox');
@@ -1140,9 +1167,17 @@ get_header();
     });
   }
 
+  // حد عرض Preview فقط (لا علاقة له بعدد الصفوف المستوردة فعلياً — ذلك يُحسَم
+  // بالكامل من طرف الخادم عبر excelUploadToken عند Confirm، بصرف النظر عمّا
+  // عُرِض في الجدول). ملفات كبيرة تعرض أول 30 صفاً فقط لتفادي جدول طويل جداً
+  // داخل الـModal — تحسين عرض بحت، بلا أي تغيير في منطق الاستيراد.
+  var EXCEL_PREVIEW_DISPLAY_LIMIT = 30;
+
   function excelRenderPreviewRows(rows) {
     excelPreviewBody.innerHTML = '';
-    rows.forEach(function (row) {
+    var total = rows.length;
+    var rowsToRender = total > EXCEL_PREVIEW_DISPLAY_LIMIT ? rows.slice(0, EXCEL_PREVIEW_DISPLAY_LIMIT) : rows;
+    rowsToRender.forEach(function (row) {
       var tr = document.createElement('tr');
       tr.className = 'border-b border-border/60 last:border-0';
       var badgeClass = EXCEL_STATUS_BADGE_CLASS[row.status] || 'bg-secondary/40 text-foreground/70';
@@ -1153,6 +1188,16 @@ get_header();
         '<td class="px-2.5 py-2"><span class="inline-block rounded-md px-2 py-0.5 font-bold ' + badgeClass + '">' + escapeHtml(row.status_label) + '</span></td>';
       excelPreviewBody.appendChild(tr);
     });
+
+    // رسالة توضيحية أسفل الجدول عند القص فقط — الاستيراد الفعلي (Confirm) يظل
+    // يشمل جميع الصفوف الصالحة دائماً، هذا القص للعرض المرئي فقط.
+    if (total > EXCEL_PREVIEW_DISPLAY_LIMIT) {
+      excelPreviewTruncatedMsg.textContent = 'يتم عرض أول ' + EXCEL_PREVIEW_DISPLAY_LIMIT + ' صفاً فقط للمراجعة. وسيتم استيراد جميع الصفوف الصالحة.';
+      excelPreviewTruncatedMsg.classList.remove('hidden');
+    } else {
+      excelPreviewTruncatedMsg.classList.add('hidden');
+      excelPreviewTruncatedMsg.textContent = '';
+    }
   }
 
   var closeExcelImportBtn = document.getElementById('closeExcelImportBtn');
