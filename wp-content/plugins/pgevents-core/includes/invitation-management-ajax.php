@@ -29,6 +29,7 @@ require_once __DIR__ . '/class-pge-invitation-service.php';
 require_once __DIR__ . '/class-pge-invitation-export.php'; // Phase 9C — طبقة تصدير قراءة فقط
 require_once __DIR__ . '/class-pge-xlsx-writer.php';        // Phase 9C — كاتب XLSX بلا اعتماديات
 require_once __DIR__ . '/class-pge-invitation-bulk-add.php'; // RC1 Fix Pack 3A — Parser/Validator للإضافة الجماعية
+require_once __DIR__ . '/class-pge-invitation-excel-import.php'; // Excel Import Phase 2/3 — قراءة/تحقق/تكرار فقط
 
 /**
  * ============================================================================
@@ -428,14 +429,14 @@ if (PGE_INVITATION_MGMT_EXPORT_ENABLED) {
     add_action('wp_ajax_pge_invitation_mgmt_export_excel', 'pge_invitation_mgmt_export_excel_handler');
 }
 
-// ── استيراد المدعوين من Excel — Phase 1 فقط: تنزيل النموذج الرسمي ──────────
+// ── استيراد المدعوين من Excel — تنزيل النموذج الرسمي (Phase 1) ─────────────
 /**
  * "Import Guests from Excel" — راجع docs/EXCEL-GUEST-IMPORT-SPEC.md.
- * Phase 1 حصراً: endpoint واحد يُنزِّل النموذج الرسمي الفارغ. لا Parsing،
- * لا Preview، لا Confirm، لا SimpleXLSX، لا Temporary Storage/upload_token —
- * هذه كلها Phases لاحقة غير مُعتمَدة بعد. بوابة نطاق مستقلة بنفس نمط بقية
- * ثوابت هذا الملف (PGE_INVITATION_MGMT_EXPORT_ENABLED إلخ) — ستُستخدَم لاحقاً
- * لبقية endpoints الاستيراد (Preview/Confirm) عند اعتمادها في Phases قادمة.
+ * Phase 1: endpoint تنزيل النموذج الرسمي الفارغ (أدناه مباشرة). بوابة نطاق
+ * واحدة تُغطّي كل endpoints الاستيراد الحالية (Template + Preview الآن في
+ * Phase 3، انظر لاحقاً في هذا الملف) — بنفس نمط بقية ثوابت هذا الملف
+ * (PGE_INVITATION_MGMT_EXPORT_ENABLED إلخ). لا يزال لا يوجد Confirm/Import
+ * فعلي حتى الآن — Phase لاحقة غير مُعتمَدة بعد.
  */
 if (!defined('PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED')) {
     define('PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED', true);
@@ -486,6 +487,256 @@ function pge_invitation_mgmt_excel_template_handler()
 }
 if (PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED) {
     add_action('wp_ajax_pge_invitation_mgmt_excel_template', 'pge_invitation_mgmt_excel_template_handler');
+}
+
+// ── استيراد المدعوين من Excel — Phase 3: Upload + Parse + Validate + Duplicate Detection + Preview ──
+/**
+ * ============================================================================
+ * "Import Guests from Excel" — Phase 3 فقط (راجع docs/EXCEL-GUEST-IMPORT-SPEC.md)
+ * ============================================================================
+ * الهدف الحصري لهذه المرحلة: ربط طبقة قراءة Excel (Phase 2) بمنطق التحقق +
+ * فحص التكرار، وعرض شاشة Preview فقط. **لا إنشاء أي مدعو هنا إطلاقاً** — لا
+ * استدعاء PGE_Invitation_Service::create()، لا PGE_Invitation_Bulk_Add_
+ * Service، لا Audit، لا QR، لا Invitation Code، لا INSERT قاعدة بيانات، ولا
+ * حذف للملف المؤقت (يبقى على القرص + الـ transient قائماً — التنظيف مسؤولية
+ * مرحلة الـ Confirm اللاحقة حصراً، غير موجودة بعد).
+ *
+ * المسار الكامل لهذا المعالج الوحيد:
+ *   Upload → تخزين مؤقت (5.3) → إنشاء upload_token/Transient (5.2) →
+ *   parse_file() (Phase 2) → apply_duplicate_detection() (Phase 3) →
+ *   Preview Response.
+ *
+ * upload_token: نفس التصميم المعتمَد في القسم 5.2 من الوثيقة — WordPress
+ * Transient قياسي `pge_excel_import_{token}` يحمل user_id/event_id/file_path/
+ * file_type/created_at، TTL ساعة واحدة (HOUR_IN_SECONDS). المتصفح يعرف
+ * upload_token فقط — file_path لا يُرسَل للعميل إطلاقاً في أي استجابة.
+ */
+if (!defined('PGE_INVITATION_MGMT_EXCEL_IMPORT_MAX_BYTES')) {
+    // 2MB — حد أقصى موثَّق صراحةً في القسم 7 (جدول المخاطر) من الوثيقة المعتمدة.
+    define('PGE_INVITATION_MGMT_EXCEL_IMPORT_MAX_BYTES', 2 * 1024 * 1024);
+}
+
+if (!function_exists('pge_invitation_mgmt_excel_upload_error_message')) {
+    function pge_invitation_mgmt_excel_upload_error_message(string $reason): string
+    {
+        $messages = [
+            'no_file'              => 'لم يتم اختيار ملف',
+            'upload_error'          => 'تعذّر رفع الملف، حاول مرة أخرى',
+            'file_too_large'        => 'حجم الملف أكبر من الحد المسموح (2 ميجابايت)',
+            'unsupported_extension' => 'صيغة الملف غير مدعومة. المسموح: xlsx أو csv فقط.',
+            'invalid_mime'          => 'نوع الملف الفعلي لا يطابق الامتداد',
+            'storage_failed'        => 'تعذّر تخزين الملف مؤقتاً على الخادم',
+        ];
+        return $messages[$reason] ?? ($reason !== '' ? $reason : 'خطأ غير معروف');
+    }
+}
+
+/**
+ * القسم 5.3 من الوثيقة: مجلد مخصص `wp-content/uploads/pge-excel-import/`،
+ * وليس `sys_get_temp_dir()`/`wp_tempnam()` (سبب القرار موثَّق بالكامل هناك).
+ */
+if (!function_exists('pge_invitation_mgmt_excel_import_base_dir')) {
+    function pge_invitation_mgmt_excel_import_base_dir(): string
+    {
+        $uploads = wp_upload_dir();
+        $basedir = isset($uploads['basedir']) ? (string) $uploads['basedir'] : '';
+        return rtrim($basedir, '/\\') . '/pge-excel-import';
+    }
+}
+
+/**
+ * حماية المجلد: `.htaccess` يمنع تنفيذ PHP ويمنع الوصول المباشر لأي ملف
+ * داخل المجلد بالكامل (القسم 5.3) — بنفس فلسفة `.htaccess` الحالي في جذر
+ * المشروع. يُنشَأ مرة واحدة فقط عند أول استخدام فعلي للمجلد (idempotent).
+ */
+if (!function_exists('pge_invitation_mgmt_excel_import_ensure_protected_dir')) {
+    function pge_invitation_mgmt_excel_import_ensure_protected_dir(string $dir): void
+    {
+        if (!file_exists($dir)) {
+            wp_mkdir_p($dir);
+        }
+
+        $htaccess_path = $dir . '/.htaccess';
+        if (!file_exists($htaccess_path)) {
+            $contents = "Options -Indexes\n"
+                . "<IfModule mod_php.c>\n  php_flag engine off\n</IfModule>\n"
+                . "<IfModule mod_php7.c>\n  php_flag engine off\n</IfModule>\n"
+                . "<FilesMatch \"\\.(php|phtml|php\\d)$\">\n"
+                . "  <IfModule mod_authz_core.c>\n    Require all denied\n  </IfModule>\n"
+                . "  <IfModule !mod_authz_core.c>\n    Order allow,deny\n    Deny from all\n  </IfModule>\n"
+                . "</FilesMatch>\n"
+                . "<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n"
+                . "<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n";
+            @file_put_contents($htaccess_path, $contents);
+        }
+
+        $index_path = $dir . '/index.html';
+        if (!file_exists($index_path)) {
+            @file_put_contents($index_path, '');
+        }
+    }
+}
+
+/**
+ * ملصق حالة الصف لجدول Preview (✅/⚠) — يُطبَّق فقط على العرض، لا يغيّر قيمة
+ * 'status' الفعلية المُرجَعة (تبقى الحالة التفصيلية الخام كما هي).
+ */
+if (!function_exists('pge_invitation_mgmt_excel_import_status_label')) {
+    function pge_invitation_mgmt_excel_import_status_label(string $status): string
+    {
+        $labels = [
+            'valid'                   => '✅ صالح',
+            'duplicate'               => '⚠ مكرر',
+            'invalid_phone'           => '⚠ رقم غير صالح',
+            'invalid_phone_cell_type' => '⚠ رقم غير صالح',
+            'missing_name'            => '⚠ اسم مفقود',
+            'missing_phone'           => '⚠ رقم مفقود',
+            'empty_row'               => '⚠ صف فارغ',
+        ];
+        return $labels[$status] ?? $status;
+    }
+}
+
+if (!function_exists('pge_invitation_mgmt_reshape_excel_import_row')) {
+    function pge_invitation_mgmt_reshape_excel_import_row(array $row): array
+    {
+        return [
+            'name'         => (string) $row['name'],
+            'phone'        => (string) $row['phone'],
+            'note'         => (string) $row['note'],
+            'status'       => (string) $row['status'],
+            'status_label' => pge_invitation_mgmt_excel_import_status_label((string) $row['status']),
+        ];
+    }
+}
+
+/**
+ * أغلفة رقيقة حول `is_uploaded_file()`/`move_uploaded_file()` الأصليتين —
+ * كلتاهما تتطلبان سياق رفع HTTP حقيقياً بنيوياً (PHP الأساسية)، فلا يمكن
+ * محاكاتهما في اختبار CLI تنفيذي حقيقي بدون هذا الغلاف القابل للاستبدال
+ * (نفس اصطلاح `function_exists()` guard المُتَّبع فعلاً في هذا الملف/المشروع
+ * لإتاحة استبدال دوال WP من طبقة الاختبار قبل تحميل هذا الملف — مثال:
+ * `pge_generate_invite_code()` في اختبارات أخرى). الإنتاج يستخدم السلوك
+ * الحقيقي دائماً؛ لا تغيير سلوكي هنا على الإطلاق.
+ */
+if (!function_exists('pge_invitation_mgmt_is_uploaded_file')) {
+    function pge_invitation_mgmt_is_uploaded_file(string $path): bool
+    {
+        return is_uploaded_file($path);
+    }
+}
+if (!function_exists('pge_invitation_mgmt_move_uploaded_file')) {
+    function pge_invitation_mgmt_move_uploaded_file(string $src, string $dst): bool
+    {
+        return move_uploaded_file($src, $dst);
+    }
+}
+
+/**
+ * المعالج الوحيد لهذه المرحلة — Upload Endpoint الكامل (رفع + تخزين مؤقت +
+ * تحليل + تحقق + فحص تكرار + Preview)، بلا أي كتابة بيانات إطلاقاً.
+ */
+function pge_invitation_mgmt_excel_preview_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+
+    if (empty($_FILES['file']) || !is_array($_FILES['file'])) {
+        wp_send_json_error(['message' => pge_invitation_mgmt_excel_upload_error_message('no_file'), 'reason' => 'no_file']);
+    }
+    $file = $_FILES['file'];
+
+    $error_code = isset($file['error']) ? (int) $file['error'] : UPLOAD_ERR_NO_FILE;
+    if ($error_code === UPLOAD_ERR_NO_FILE) {
+        wp_send_json_error(['message' => pge_invitation_mgmt_excel_upload_error_message('no_file'), 'reason' => 'no_file']);
+    }
+    if ($error_code !== UPLOAD_ERR_OK) {
+        wp_send_json_error(['message' => pge_invitation_mgmt_excel_upload_error_message('upload_error'), 'reason' => 'upload_error']);
+    }
+
+    $size = isset($file['size']) ? (int) $file['size'] : 0;
+    if ($size <= 0 || $size > PGE_INVITATION_MGMT_EXCEL_IMPORT_MAX_BYTES) {
+        wp_send_json_error(['message' => pge_invitation_mgmt_excel_upload_error_message('file_too_large'), 'reason' => 'file_too_large']);
+    }
+
+    $original_name = isset($file['name']) ? (string) $file['name'] : '';
+    $ext = strtolower((string) pathinfo($original_name, PATHINFO_EXTENSION));
+    if (!in_array($ext, PGE_Invitation_Excel_Import_Service::SUPPORTED_TYPES, true)) {
+        wp_send_json_error(['message' => pge_invitation_mgmt_excel_upload_error_message('unsupported_extension'), 'reason' => 'unsupported_extension']);
+    }
+
+    $tmp_path = isset($file['tmp_name']) ? (string) $file['tmp_name'] : '';
+    if ($tmp_path === '' || !pge_invitation_mgmt_is_uploaded_file($tmp_path)) {
+        wp_send_json_error(['message' => pge_invitation_mgmt_excel_upload_error_message('upload_error'), 'reason' => 'upload_error']);
+    }
+
+    // مطابقة MIME حقيقية (finfo) — طبقة دفاع إضافية إلى جانب فحص الامتداد
+    // (القسم 7 من الوثيقة، خطر "رفع ملفات ضارة"). fallback صامت إن غاب finfo.
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $real_mime = $finfo ? finfo_file($finfo, $tmp_path) : false;
+        if ($finfo) finfo_close($finfo);
+
+        $allowed_mimes = $ext === 'xlsx'
+            ? ['application/zip', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream']
+            : ['text/plain', 'text/csv', 'application/csv'];
+
+        if ($real_mime && !in_array($real_mime, $allowed_mimes, true)) {
+            wp_send_json_error(['message' => pge_invitation_mgmt_excel_upload_error_message('invalid_mime'), 'reason' => 'invalid_mime']);
+        }
+    }
+
+    $base_dir = pge_invitation_mgmt_excel_import_base_dir();
+    pge_invitation_mgmt_excel_import_ensure_protected_dir($base_dir);
+
+    $event_dir = $base_dir . '/' . $event_id;
+    if (!file_exists($event_dir)) {
+        wp_mkdir_p($event_dir);
+    }
+
+    // اسم الملف الداخلي = token عشوائي فقط — لا يُقرأ ولا يُخزَّن اسم الملف
+    // الأصلي الذي رفعه المستخدم بأي حال (القسم 5.3).
+    $token = bin2hex(random_bytes(16));
+    $target_path = $event_dir . '/' . $token . '.' . $ext;
+
+    $moved = pge_invitation_mgmt_move_uploaded_file($tmp_path, $target_path);
+    if (!$moved) {
+        wp_send_json_error(['message' => pge_invitation_mgmt_excel_upload_error_message('storage_failed'), 'reason' => 'storage_failed']);
+    }
+
+    // القسم 5.2: الـ Transient يُنشَأ فور تخزين الملف، قبل أي محاولة تحليل —
+    // حتى لو فشل parse_file() لاحقاً، يبقى الملف + الـ transient قائمَين (لا
+    // حذف في هذه المرحلة، ممنوع صراحةً في نطاق Phase 3 الحالي).
+    set_transient('pge_excel_import_' . $token, [
+        'user_id'    => get_current_user_id(),
+        'event_id'   => $event_id,
+        'file_path'  => $target_path,
+        'file_type'  => $ext,
+        'created_at' => time(),
+    ], HOUR_IN_SECONDS);
+
+    $parsed = PGE_Invitation_Excel_Import_Service::parse_file($target_path, $ext);
+    if (!$parsed['ok']) {
+        wp_send_json_error([
+            'message'      => (string) $parsed['message'],
+            'reason'       => (string) $parsed['error'],
+            'upload_token' => $token,
+        ]);
+    }
+
+    $rows = $parsed['rows'];
+    PGE_Invitation_Excel_Import_Service::apply_duplicate_detection($event_id, $rows);
+    $summary = PGE_Invitation_Excel_Import_Service::summarize_preview($rows);
+
+    wp_send_json_success([
+        'upload_token' => $token,
+        'summary'      => $summary,
+        'rows'         => array_map('pge_invitation_mgmt_reshape_excel_import_row', $rows),
+        // "سيتم تنفيذ الاستيراد في المرحلة التالية." — لا زر تأكيد بعد، لا Import هنا.
+        'note'         => 'سيتم تنفيذ الاستيراد في المرحلة التالية.',
+    ]);
+}
+if (PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED) {
+    add_action('wp_ajax_pge_invitation_mgmt_excel_preview', 'pge_invitation_mgmt_excel_preview_handler');
 }
 
 // ── الإضافة الجماعية (RC1 Fix Pack 3A — "Invitation Bulk Add Migration") ────

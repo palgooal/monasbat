@@ -3,20 +3,26 @@ if (!defined('ABSPATH')) exit;
 
 /**
  * ============================================================================
- * PGE Invitation Excel Import — Parsing Adapter (Phase 2)
+ * PGE Invitation Excel Import — Parsing Adapter (Phase 2) + Duplicate
+ * Detection (Phase 3)
  * ============================================================================
  * راجع docs/EXCEL-GUEST-IMPORT-SPEC.md (القسم 8: خطة التنفيذ المرحلية).
  *
- * نطاق هذه المرحلة (Phase 2) حصراً: قراءة ملف مدعوين (.xlsx أو .csv) وتحويله
- * إلى مصفوفة صفوف موحَّدة `['name','phone','note','status']`. **لا يكتب هذا
- * الملف أي بيانات على الإطلاق** — لا استدعاء لـ`PGE_Invitation_Service::create()`،
- * لا لمس لـ`PGE_Invitation_Repository`، لا Audit، لا قاعدة بيانات، لا AJAX،
- * لا Preview UI، لا `upload_token`/Transient/Temporary Storage — كل هذه من
- * مسؤولية Phases لاحقة (3 وما بعدها) حصراً.
+ * نطاق Phase 2 (parse_file() وما يتصل بها مباشرة): قراءة ملف مدعوين (.xlsx
+ * أو .csv) وتحويله إلى مصفوفة صفوف موحَّدة `['name','phone','note','status']`.
+ *
+ * نطاق Phase 3 المُضاف هنا (apply_duplicate_detection()/summarize_preview()):
+ * تصنيف الصفوف الصالحة بنيوياً إلى valid/duplicate عبر مقارنتها بضيوف
+ * المناسبة الحاليين فعلياً، وبناء ملخص أعداد لشاشة Preview. **لا يكتب هذا
+ * الملف أي بيانات على الإطلاق حتى الآن** — لا استدعاء لـ
+ * `PGE_Invitation_Service::create()`، لا لمس لـ`PGE_Invitation_Repository`،
+ * لا Audit، لا قاعدة بيانات — هذه من مسؤولية Phase الـ Confirm اللاحقة حصراً.
  *
  * هذا الملف هو **محوّل مصدر بيانات (Adapter)** بحت: يقرأ → يتحقق من العقد
- * (Template Contract) → يطبِّع → يُرجِع مصفوفة. لا Repository جديد، لا جدول
- * جديد، لا Normalizer جديد (`pge_norm_phone()` الموجودة فقط، helpers.php).
+ * (Template Contract) → يطبِّع → يفحص التكرار (قراءة فقط) → يُرجِع مصفوفة.
+ * لا Repository جديد، لا جدول جديد، لا Normalizer جديد (`pge_norm_phone()`
+ * الموجودة فقط، helpers.php)، ولا قاعدة تكرار جديدة (`pge_event_guests_get_
+ * map()` الموجودة فقط، event-guests.php — نفس ما يستخدمه Repository داخلياً).
  *
  * القارئ المُعتمَد لملفات XLSX: `\Shuchkin\SimpleXLSX` (إصدار 1.1.16، MIT)،
  * مُضمَّن يدوياً بلا Composer في `includes/lib/simplexlsx/` — راجع
@@ -33,7 +39,12 @@ class PGE_Invitation_Excel_Import_Service
      */
     const EXPECTED_HEADER = ['الاسم', 'رقم الجوال', 'ملاحظة'];
 
-    /** حالات الصف المدعومة في Phase 2 — لا "duplicate" هنا (مسؤولية Phase 3). */
+    /**
+     * حالات الصف. أُضيفَت 'duplicate' في Phase 3 (Duplicate Detection ضمن نفس
+     * المناسبة) — لا تُنتَج مباشرة من parse_file() نفسها (التي لا تزال تُنتِج
+     * فقط الحالات الست الأصلية من Phase 2)، بل تُطبَّق لاحقاً كتحويل على صفوف
+     * status='valid' عبر apply_duplicate_detection() أدناه.
+     */
     const ROW_STATUSES = [
         'valid',
         'empty_row',
@@ -41,7 +52,10 @@ class PGE_Invitation_Excel_Import_Service
         'missing_phone',
         'invalid_phone',
         'invalid_phone_cell_type',
+        'duplicate',
     ];
+
+    const STATUS_DUPLICATE = 'duplicate';
 
     /**
      * نقطة الدخول الوحيدة. لا يكتب أي بيانات، لا يستدعي أي طبقة إنشاء ضيوف.
@@ -79,7 +93,22 @@ class PGE_Invitation_Excel_Import_Service
             require_once __DIR__ . '/lib/simplexlsx/SimpleXLSX.php';
         }
 
-        $xlsx = \Shuchkin\SimpleXLSX::parse($path);
+        /**
+         * Phase 3 hardening (إضافة صغيرة خارج الحرف الدقيق لنص Phase 2/3، لكن
+         * ضرورية): مكتبة الطرف الثالث SimpleXLSX قد تُطلق استثناء/خطأ PHP غير
+         * مُلتقَط داخلياً في حالات نادرة من ملفات ZIP/XML مشوَّهة جداً (بدل
+         * إرجاع false بهدوء كما في الحالة المُختبَرة الشائعة). بدون try/catch
+         * هنا، طلب AJAX كامل كان سيتحطَّم بخطأ PHP فادح خام يصل للمستخدم بدل
+         * استجابة JSON نظيفة — يخالف مبدأ "Return stable business errors"
+         * المُتَّبع في كل هذا المشروع. هذا التقاط دفاعي بحت حول استدعاء مكتبة
+         * خارجية واحدة تحديداً؛ لا تغيير على منطق العقد/التحقق نفسه.
+         */
+        try {
+            $xlsx = \Shuchkin\SimpleXLSX::parse($path);
+        } catch (\Throwable $e) {
+            return self::file_error('xlsx_parse_error', 'تعذّر تحليل ملف Excel. تأكد أن الملف غير تالف وبصيغة xlsx صحيحة.');
+        }
+
         if (!$xlsx) {
             return self::file_error('malformed_xlsx', 'الملف تالف أو ليس بصيغة Excel صالحة.');
         }
@@ -267,5 +296,92 @@ class PGE_Invitation_Excel_Import_Service
     private static function file_error(string $code, string $message): array
     {
         return ['ok' => false, 'error' => $code, 'message' => $message, 'rows' => []];
+    }
+
+    // ============================================================ Phase 3 ==
+
+    /**
+     * ============================================================================
+     * Phase 3 — Duplicate Detection ضمن نفس المناسبة فقط
+     * ============================================================================
+     * "Reuse existing duplicate protection. Do not invent a second duplicate
+     * rule." — يُعاد استخدام pge_event_guests_get_map($event_id) حرفياً، وهي
+     * **نفس مصدر الحقيقة** الذي يستخدمه PGE_Invitation_Repository::create()
+     * داخلياً لفحص التكرار (قراءة فقط هنا، بلا أي أثر جانبي). عمداً **لا
+     * يُستدعى PGE_Invitation_Bulk_Add_Service** هنا (ممنوع صراحةً في نطاق
+     * Phase 3 الحالي) — يُعاد استخدام مصدر البيانات نفسه مباشرة بدل الخدمة.
+     *
+     * النطاق الحالي محصور بحرفية النص المطلوب: "هل الرقم موجود داخل نفس
+     * المناسبة" فقط — لا فحص تكرار داخل الدفعة نفسها (نفس الملف قد يحتوي
+     * رقماً مكرراً مرتين)، ذلك خارج نطاق Phase 3 الحالي عمداً.
+     *
+     * لا يمسّ الصفوف التي فشلت التحقّق أصلاً (status !== 'valid') — تبقى كما
+     * هي؛ سبب الفشل الأصلي (اسم مفقود، جوال غير صالح، إلخ) أهم من فحص تكرار
+     * لن يُطبَّق عليها أصلاً.
+     *
+     * @param array<int,array> $rows نتيجة parse_file()['rows'] — تُعدَّل بالمرجع.
+     */
+    public static function apply_duplicate_detection(int $event_id, array &$rows): void
+    {
+        $existing_guests_map = function_exists('pge_event_guests_get_map')
+            ? pge_event_guests_get_map($event_id)
+            : [];
+
+        foreach ($rows as &$row) {
+            if ($row['status'] !== 'valid') {
+                continue;
+            }
+            if (isset($existing_guests_map[$row['phone']])) {
+                $row['status'] = self::STATUS_DUPLICATE;
+            }
+        }
+        unset($row);
+    }
+
+    /**
+     * ملخص عددي لصفوف المعاينة (Phase 3) — تُجمَّع 'invalid_phone' و
+     * 'invalid_phone_cell_type' تحت فئة عرض واحدة "رقم غير صالح" (نفس ما ورد
+     * في مثال شاشة Preview بالمهمة)، بينما تبقى الحالة التفصيلية الكاملة
+     * محفوظة في كل صف (row['status']) لعرضها في الجدول عند الحاجة.
+     *
+     * @return array{total:int,valid:int,duplicate:int,invalid_phone:int,missing_name:int,missing_phone:int,empty_row:int}
+     */
+    public static function summarize_preview(array $rows): array
+    {
+        $summary = [
+            'total'         => count($rows),
+            'valid'         => 0,
+            'duplicate'     => 0,
+            'invalid_phone' => 0,
+            'missing_name'  => 0,
+            'missing_phone' => 0,
+            'empty_row'     => 0,
+        ];
+
+        foreach ($rows as $row) {
+            switch ($row['status']) {
+                case 'valid':
+                    $summary['valid']++;
+                    break;
+                case self::STATUS_DUPLICATE:
+                    $summary['duplicate']++;
+                    break;
+                case 'invalid_phone':
+                case 'invalid_phone_cell_type':
+                    $summary['invalid_phone']++;
+                    break;
+                case 'missing_name':
+                    $summary['missing_name']++;
+                    break;
+                case 'missing_phone':
+                    $summary['missing_phone']++;
+                    break;
+                case 'empty_row':
+                    $summary['empty_row']++;
+                    break;
+            }
+        }
+
+        return $summary;
     }
 }
