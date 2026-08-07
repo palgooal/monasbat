@@ -95,8 +95,9 @@ get_header();
       <!-- RC1 Fix Pack 3B ("Legacy Guest Panel Retirement — Hard Delete Migration"): زر حذف الدعوات المحدَّدة — نفس تنسيق أزرار cancel-inv-btn (bg-destructive/10)، مُعطَّل حتى يُحدَّد صف واحد على الأقل (نفس فلسفة bulkDeleteBtn/refreshBulkDeleteState القديمة في page-event-manage.php). -->
       <button type="button" id="bulkDeleteInvBtn" disabled class="h-11 px-4 rounded-xl bg-destructive/10 text-destructive-text text-sm font-semibold disabled:opacity-40">حذف المحدَّد</button>
       <button type="button" id="openBulkAddBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إضافة جماعية</button>
-      <!-- استيراد المدعوين من Excel — Phase 1 فقط (docs/EXCEL-GUEST-IMPORT-SPEC.md): زر تنزيل النموذج الرسمي حصراً، بلا Modal رفع/معاينة/استيراد (Phases لاحقة غير مُعتمَدة بعد). -->
+      <!-- استيراد المدعوين من Excel (docs/EXCEL-GUEST-IMPORT-SPEC.md): تنزيل النموذج الرسمي (Phase 1) + Modal رفع/معاينة/استيراد كامل (Phase 3 رفع+معاينة، Phase 4 تأكيد+استيراد فعلي). -->
       <button type="button" id="downloadExcelTemplateBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">📥 تحميل نموذج Excel</button>
+      <button type="button" id="openExcelImportBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">📤 استيراد من Excel</button>
       <button type="button" id="exportCsvBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">تصدير CSV</button>
       <button type="button" id="exportExcelBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">تصدير Excel</button>
     </div>
@@ -293,6 +294,69 @@ get_header();
         </div>
         <div class="flex justify-end gap-2 mt-3">
           <button type="button" id="bulkCloseResultBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">إغلاق</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ "Import Guests from Excel" (Phase 3: رفع+معاينة، Phase 4: تأكيد+استيراد فعلي) — نافذة استيراد Excel ══
+       نفس نمط نافذة bulkAddModal أعلاه حرفياً (dialog/fixed/bg-black40/rounded-2xl،
+       نفس فئات الجدول/الشارات/الأزرار) — لا تصميم جديد. أربع حالات تُبدَّل عبر hidden:
+       رفع (excelUploadState) → معاينة (excelPreviewState) → معالجة
+       (excelProcessingState) → نتيجة (excelResultState). زر التأكيد يُرسل
+       upload_token فقط (لا صفوف/بيانات معاينة من المتصفح إطلاقاً — الخادم
+       يُعيد التحليل والتحقّق وفحص التكرار من الصفر عند Confirm). ══ -->
+  <div id="excelImportModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="excelImportHeading">
+    <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 id="excelImportHeading" class="text-sm font-extrabold text-foreground">استيراد من Excel</h2>
+        <button type="button" id="closeExcelImportBtn" class="h-9 w-9 rounded-lg border border-border text-sm font-bold text-foreground/70" aria-label="إغلاق">×</button>
+      </div>
+
+      <div id="excelImportErrorMsg" class="hidden mb-3 text-xs font-semibold rounded-xl px-3 py-2 bg-destructive/10 text-destructive-text" role="alert"></div>
+
+      <!-- حالة الرفع -->
+      <div id="excelUploadState">
+        <label for="excelFileInput" class="block text-xs font-semibold text-foreground/70 mb-1.5">اختر ملف Excel (.xlsx) أو CSV (.csv)</label>
+        <input id="excelFileInput" type="file" accept=".xlsx,.csv" class="block w-full text-sm rounded-xl border border-border p-3" />
+        <p class="mt-1.5 text-[11px] text-foreground/50">يجب أن يطابق الملف النموذج الرسمي (3 أعمدة بالضبط: الاسم | رقم الجوال | ملاحظة). يمكنك تحميل النموذج من زر "تحميل نموذج Excel" أعلاه.</p>
+        <div class="flex justify-end gap-2 mt-3">
+          <button type="button" id="excelCancelBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إلغاء</button>
+          <button type="button" id="excelUploadBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">رفع ومعاينة</button>
+        </div>
+      </div>
+
+      <!-- حالة المعاينة -->
+      <div id="excelPreviewState" class="hidden">
+        <div id="excelSummaryBox" class="flex flex-wrap gap-2 mb-3"></div>
+        <div class="overflow-x-auto rounded-xl border border-border max-h-72 overflow-y-auto">
+          <table class="w-full text-xs">
+            <caption class="sr-only">معاينة صفوف استيراد Excel قبل التأكيد</caption>
+            <thead>
+              <tr class="border-b border-border bg-secondary/30 text-right font-bold text-foreground/70">
+                <th scope="col" class="px-2.5 py-2">الاسم</th>
+                <th scope="col" class="px-2.5 py-2">الجوال</th>
+                <th scope="col" class="px-2.5 py-2">ملاحظة</th>
+                <th scope="col" class="px-2.5 py-2">الحالة</th>
+              </tr>
+            </thead>
+            <tbody id="excelPreviewBody"></tbody>
+          </table>
+        </div>
+        <div class="flex justify-end gap-2 mt-3">
+          <button type="button" id="excelBackBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">رجوع</button>
+          <button type="button" id="excelConfirmBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">استيراد المدعوين الصالحين</button>
+        </div>
+      </div>
+
+      <!-- حالة المعالجة -->
+      <div id="excelProcessingState" class="hidden py-10 text-center text-sm text-foreground/60">جارٍ الاستيراد...</div>
+
+      <!-- حالة النتيجة -->
+      <div id="excelResultState" class="hidden">
+        <div id="excelResultSummaryBox" class="flex flex-wrap gap-2 mb-3"></div>
+        <div class="flex justify-end gap-2 mt-3">
+          <button type="button" id="excelCloseResultBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">إغلاق</button>
         </div>
       </div>
     </div>
@@ -916,6 +980,174 @@ get_header();
   document.getElementById('bulkCloseResultBtn').addEventListener('click', function () {
     bulkTextarea.value = '';
     bulkCloseModal();
+    fetchList(1);
+  });
+
+  // ══ "Import Guests from Excel" — Phase 3 (رفع+معاينة) / Phase 4 (تأكيد+استيراد) ══
+  // إعادة استخدام postAjax()/escapeHtml()/showToast()/fetchList() الحالية أعلاه
+  // حرفياً. postFileAjax() الجديدة أدناه ضرورية فقط لأن postAjax() الحالية
+  // تُرسل application/x-www-form-urlencoded (لا تدعم رفع ملفات) — رفع الملف
+  // الفعلي يحتاج multipart/form-data عبر FormData. زر التأكيد لا يستخدم
+  // postFileAjax() إطلاقاً — يُرسل upload_token فقط عبر postAjax() العادية،
+  // بلا أي ملف أو صفوف ("Never trust the preview result sent by the browser").
+  function postFileAjax(action, file) {
+    var formData = new FormData();
+    formData.append('action', action);
+    formData.append('nonce', CONFIG.nonce);
+    formData.append('event_id', CONFIG.eventId);
+    formData.append('file', file);
+    return fetch(CONFIG.ajaxUrl, {
+      method: 'POST', credentials: 'same-origin', body: formData,
+    }).then(function (res) { return res.json(); });
+  }
+
+  var EXCEL_STATUS_BADGE_CLASS = {
+    valid: 'bg-green-100 text-green-800',
+    duplicate: 'bg-amber-100 text-amber-800',
+    invalid_phone: 'bg-destructive/10 text-destructive-text',
+    invalid_phone_cell_type: 'bg-destructive/10 text-destructive-text',
+    missing_name: 'bg-destructive/10 text-destructive-text',
+    missing_phone: 'bg-destructive/10 text-destructive-text',
+    empty_row: 'bg-secondary/40 text-foreground/70',
+  };
+  var excelModal = document.getElementById('excelImportModal');
+  var excelFileInput = document.getElementById('excelFileInput');
+  var excelErrorMsg = document.getElementById('excelImportErrorMsg');
+  var excelUploadState = document.getElementById('excelUploadState');
+  var excelPreviewState = document.getElementById('excelPreviewState');
+  var excelProcessingState = document.getElementById('excelProcessingState');
+  var excelResultState = document.getElementById('excelResultState');
+  var excelSummaryBox = document.getElementById('excelSummaryBox');
+  var excelPreviewBody = document.getElementById('excelPreviewBody');
+  var excelResultSummaryBox = document.getElementById('excelResultSummaryBox');
+  var excelConfirmBtn = document.getElementById('excelConfirmBtn');
+  var excelInFlight = false;
+  var excelUploadToken = null; // upload_token الحالي — العنصر الوحيد المُرسَل لـConfirm.
+
+  function excelShowState(name) {
+    excelUploadState.classList.toggle('hidden', name !== 'upload');
+    excelPreviewState.classList.toggle('hidden', name !== 'preview');
+    excelProcessingState.classList.toggle('hidden', name !== 'processing');
+    excelResultState.classList.toggle('hidden', name !== 'result');
+  }
+  function excelShowError(message) {
+    excelErrorMsg.textContent = message;
+    excelErrorMsg.classList.remove('hidden');
+  }
+  function excelClearError() {
+    excelErrorMsg.classList.add('hidden');
+    excelErrorMsg.textContent = '';
+  }
+
+  function excelRenderSummaryBadges(container, summary, keyLabels) {
+    container.innerHTML = '';
+    keyLabels.forEach(function (kl) {
+      var span = document.createElement('span');
+      span.className = 'inline-flex items-center gap-1 rounded-lg bg-secondary/40 px-2.5 py-1 text-xs font-bold text-foreground/75';
+      span.textContent = kl.label + ': ' + (summary[kl.key] != null ? summary[kl.key] : 0);
+      container.appendChild(span);
+    });
+  }
+
+  function excelRenderPreviewRows(rows) {
+    excelPreviewBody.innerHTML = '';
+    rows.forEach(function (row) {
+      var tr = document.createElement('tr');
+      tr.className = 'border-b border-border/60 last:border-0';
+      var badgeClass = EXCEL_STATUS_BADGE_CLASS[row.status] || 'bg-secondary/40 text-foreground/70';
+      tr.innerHTML =
+        '<td class="px-2.5 py-2 font-semibold text-foreground">' + (escapeHtml(row.name) || '<span class="text-foreground/40">—</span>') + '</td>' +
+        '<td class="px-2.5 py-2 font-mono text-foreground/80" dir="ltr">' + (escapeHtml(row.phone) || '—') + '</td>' +
+        '<td class="px-2.5 py-2 text-foreground/70">' + (escapeHtml(row.note) || '—') + '</td>' +
+        '<td class="px-2.5 py-2"><span class="inline-block rounded-md px-2 py-0.5 font-bold ' + badgeClass + '">' + escapeHtml(row.status_label) + '</span></td>';
+      excelPreviewBody.appendChild(tr);
+    });
+  }
+
+  function excelOpenModal() {
+    excelClearError();
+    excelFileInput.value = '';
+    excelUploadToken = null;
+    excelShowState('upload');
+    excelModal.classList.remove('hidden');
+  }
+  function excelCloseModal() {
+    excelModal.classList.add('hidden');
+  }
+
+  var openExcelImportBtn = document.getElementById('openExcelImportBtn');
+  if (openExcelImportBtn) openExcelImportBtn.addEventListener('click', excelOpenModal);
+  document.getElementById('closeExcelImportBtn').addEventListener('click', excelCloseModal);
+  document.getElementById('excelCancelBtn').addEventListener('click', excelCloseModal);
+  document.getElementById('excelBackBtn').addEventListener('click', function () {
+    excelClearError();
+    excelUploadToken = null;
+    excelFileInput.value = '';
+    excelShowState('upload');
+  });
+
+  document.getElementById('excelUploadBtn').addEventListener('click', function () {
+    if (excelInFlight) return;
+    excelClearError();
+    var file = excelFileInput.files && excelFileInput.files[0];
+    if (!file) { excelShowError('اختر ملفاً أولاً'); return; }
+    excelInFlight = true;
+    postFileAjax('pge_invitation_mgmt_excel_preview', file).then(function (json) {
+      excelInFlight = false;
+      if (!json || !json.success) {
+        excelShowError((json && json.data && json.data.message) || 'تعذّرت معاينة الملف');
+        return;
+      }
+      excelUploadToken = json.data.upload_token || null;
+      excelRenderSummaryBadges(excelSummaryBox, json.data.summary, [
+        { key: 'total', label: 'الإجمالي' }, { key: 'valid', label: 'صالح' },
+        { key: 'duplicate', label: 'مكرَّر' }, { key: 'invalid_phone', label: 'رقم غير صالح' },
+        { key: 'missing_name', label: 'اسم مفقود' }, { key: 'missing_phone', label: 'رقم مفقود' },
+        { key: 'empty_row', label: 'صف فارغ' },
+      ]);
+      excelRenderPreviewRows(json.data.rows || []);
+      var validCount = (json.data.summary && json.data.summary.valid) || 0;
+      excelConfirmBtn.textContent = 'استيراد ' + validCount + ' مدعو';
+      excelConfirmBtn.disabled = !excelUploadToken || validCount === 0;
+      excelShowState('preview');
+    }).catch(function () { excelInFlight = false; excelShowError('تعذّر الاتصال بالخادم'); });
+  });
+
+  excelConfirmBtn.addEventListener('click', function () {
+    if (excelInFlight || !excelUploadToken) return;
+    excelInFlight = true;
+    excelClearError();
+    excelShowState('processing');
+    // "Confirm receives token only" — لا صفوف/بيانات معاينة تُرسَل من المتصفح
+    // إطلاقاً؛ الخادم يُعيد التحليل + التحقّق + فحص التكرار من الصفر.
+    postAjax('pge_invitation_mgmt_excel_confirm', { upload_token: excelUploadToken }).then(function (json) {
+      excelInFlight = false;
+      excelUploadToken = null; // التوكن يُستهلَك دائماً من جانب الخادم بعد Confirm — لا إعادة استخدام.
+      if (!json || !json.success) {
+        excelShowState('upload');
+        excelFileInput.value = '';
+        excelShowError((json && json.data && json.data.message) || 'تعذّر تنفيذ الاستيراد');
+        return;
+      }
+      var s = json.data.summary || {};
+      excelRenderSummaryBadges(excelResultSummaryBox, s, [
+        { key: 'imported', label: 'تم استيراد' },
+        { key: 'duplicates', label: 'تم تخطي المكرر' },
+        { key: 'invalid', label: 'غير صالح' },
+        { key: 'failed', label: 'فشل' },
+      ]);
+      excelShowState('result');
+      showToast('اكتمل استيراد Excel', false);
+    }).catch(function () {
+      excelInFlight = false;
+      excelShowState('upload');
+      excelShowError('تعذّر الاتصال بالخادم');
+    });
+  });
+
+  document.getElementById('excelCloseResultBtn').addEventListener('click', function () {
+    excelFileInput.value = '';
+    excelCloseModal();
     fetchList(1);
   });
 

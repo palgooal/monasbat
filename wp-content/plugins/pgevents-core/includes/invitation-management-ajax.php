@@ -600,13 +600,18 @@ if (!function_exists('pge_invitation_mgmt_excel_import_status_label')) {
 if (!function_exists('pge_invitation_mgmt_reshape_excel_import_row')) {
     function pge_invitation_mgmt_reshape_excel_import_row(array $row): array
     {
-        return [
+        $shaped = [
             'name'         => (string) $row['name'],
             'phone'        => (string) $row['phone'],
             'note'         => (string) $row['note'],
             'status'       => (string) $row['status'],
             'status_label' => pge_invitation_mgmt_excel_import_status_label((string) $row['status']),
         ];
+        // Phase 4 — يُضاف فقط من مسار Confirm (نفس نمط pge_invitation_mgmt_reshape_bulk_row()).
+        if (isset($row['result'])) {
+            $shaped['result'] = (string) $row['result'];
+        }
+        return $shaped;
     }
 }
 
@@ -737,6 +742,216 @@ function pge_invitation_mgmt_excel_preview_handler()
 }
 if (PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED) {
     add_action('wp_ajax_pge_invitation_mgmt_excel_preview', 'pge_invitation_mgmt_excel_preview_handler');
+}
+
+/**
+ * تنظيف مؤكَّد (حذف الملف المؤقت + الـ transient) — يُستدعى فقط بعد إثبات
+ * أن الطلب الحالي يملك هذا الـ token فعلاً (القسم 7 من EXCEL-GUEST-IMPORT-
+ * SPEC.md: "لا تحذف ملفاً لا دليل على صلته بالطلب الحالي"). لهذا لا يوجد
+ * استدعاء لهذه الدالة في نقاط الرفض المبكرة (token غير موجود / يخص مستخدماً
+ * أو مناسبة أخرى) — فقط بعد نقطة التحقق من user_id + event_id.
+ *
+ * ملاحظة تصميم مهمة: لا اعتماد على `finally` في المعالج أدناه رغم أنها كانت
+ * ستعمل داخل اختبارات CLI (حيث wp_send_json_error/success تُحاكَى برمي
+ * استثناء قابل للالتقاط). في ووردبريس الحقيقي تستدعي هاتان الدالتان
+ * wp_die()، وهي بشكل افتراضي exit()/die() — إنهاء عملية PHP صلب لا يُنفِّذ
+ * كتل `finally`. لذلك يُستدعى هذا التنظيف صراحةً وبشكل مباشر قبل كل نقطة
+ * إرسال استجابة بعد إثبات الملكية، لا داخل `finally`.
+ */
+if (!function_exists('pge_invitation_mgmt_excel_cleanup')) {
+    function pge_invitation_mgmt_excel_cleanup(string $token, string $file_path): void
+    {
+        if ($file_path !== '' && file_exists($file_path)) {
+            @unlink($file_path);
+        }
+        delete_transient('pge_excel_import_' . $token);
+    }
+}
+
+/**
+ * ── تأكيد الاستيراد الفعلي (Confirm) ─────────────────────────────────────
+ * Phase 4 — EXCEL-GUEST-IMPORT-SPEC.md. يقبل من المتصفح: nonce + event_id +
+ * upload_token فقط. "Forbidden to receive or trust: rows, names, phones,
+ * notes, counts, statuses, file_path, preview data" — كل هذه تُعاد بناؤها
+ * من الملف الخام المخزَّن على الخادم فقط.
+ *
+ * التسلسل الإلزامي: upload_token → إعادة التحقق من التفويض → إعادة تحميل
+ * الـ transient → التحقق من user_id + event_id → قراءة file_path من الـ
+ * transient حصراً → إعادة تحليل نفس الملف الخام → إعادة التحقق من الصفوف →
+ * إعادة تشغيل فحص التكرار من حالة المناسبة الحالية → استيراد الصفوف الصالحة
+ * فقط → تدقيق → حذف الملف المؤقت + الـ transient → إرجاع النتيجة النهائية.
+ *
+ * "Never rely on status=duplicate/valid coming from Preview" — الصفوف تُعاد
+ * تحليلها وفحص تكرارها من الصفر هنا (القسم 3)، لأن ضيفاً قد يكون أُضيف
+ * يدوياً بين Preview وConfirm (الاختبار الإلزامي #12/#9 Race Condition).
+ *
+ * رسالة الرفض الموحَّدة أدناه (token غير موجود / يخص مستخدماً آخر / يخص
+ * مناسبة أخرى) مقصودة أمنياً — لمنع مهاجم من التمييز بين "Token غير موجود"
+ * و"Token موجود لكن يخص طرفاً آخر" (Token enumeration).
+ */
+function pge_invitation_mgmt_excel_confirm_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+    $token = isset($_POST['upload_token']) ? sanitize_text_field(wp_unslash($_POST['upload_token'])) : '';
+    $actor_user_id = get_current_user_id();
+
+    $expired_message = 'انتهت صلاحية جلسة الاستيراد أو تم تنفيذها مسبقاً.';
+
+    if ($token === '') {
+        wp_send_json_error(['message' => $expired_message, 'reason' => 'invalid_token']);
+    }
+
+    $transient_key = 'pge_excel_import_' . $token;
+    $stored = get_transient($transient_key);
+
+    if (!is_array($stored)) {
+        // لا دليل على ملكية أي ملف بعد — بلا cleanup هنا عمداً (القسم 7).
+        wp_send_json_error(['message' => $expired_message, 'reason' => 'token_not_found']);
+    }
+
+    $stored_user_id = isset($stored['user_id']) ? (int) $stored['user_id'] : 0;
+    $stored_event_id = isset($stored['event_id']) ? (int) $stored['event_id'] : 0;
+    $stored_file_path = isset($stored['file_path']) ? (string) $stored['file_path'] : '';
+    $stored_file_type = isset($stored['file_type']) ? (string) $stored['file_type'] : '';
+
+    if ($stored_user_id !== $actor_user_id || $stored_event_id !== $event_id) {
+        // نفس الرسالة/السبب الموحَّد عمداً — راجع تعليق منع Token enumeration أعلاه.
+        wp_send_json_error(['message' => $expired_message, 'reason' => 'token_not_found']);
+    }
+
+    // من هذه النقطة: الملكية مُثبَتة — أي رفض لاحق يُنظِّف الملف + الـ transient أولاً.
+    if ($stored_file_type === '' || !in_array($stored_file_type, PGE_Invitation_Excel_Import_Service::SUPPORTED_TYPES, true)) {
+        pge_invitation_mgmt_excel_cleanup($token, $stored_file_path);
+        wp_send_json_error(['message' => $expired_message, 'reason' => 'invalid_file_type']);
+    }
+
+    if ($stored_file_path === '' || !is_readable($stored_file_path)) {
+        pge_invitation_mgmt_excel_cleanup($token, $stored_file_path);
+        wp_send_json_error(['message' => $expired_message, 'reason' => 'file_missing']);
+    }
+
+    // القسم 2: إعادة تحليل الملف الخام نفسه من الصفر — لا اعتماد إطلاقاً على نتائج Preview السابقة.
+    $parsed = PGE_Invitation_Excel_Import_Service::parse_file($stored_file_path, $stored_file_type);
+    if (!$parsed['ok']) {
+        pge_invitation_mgmt_excel_cleanup($token, $stored_file_path);
+        wp_send_json_error(['message' => (string) $parsed['message'], 'reason' => (string) $parsed['error']]);
+    }
+
+    $rows = $parsed['rows'];
+
+    // القسم 3: فحص تكرار جديد كلياً من حالة المناسبة الحالية لحظة التأكيد.
+    PGE_Invitation_Excel_Import_Service::apply_duplicate_detection($event_id, $rows);
+
+    $imported = 0;
+    $duplicates = 0;
+    $invalid = 0;
+    $empty = 0;
+    $failed = 0;
+    $valid_before_import = 0;
+
+    foreach ($rows as &$row) {
+        $status = (string) ($row['status'] ?? '');
+
+        if ($status === PGE_Invitation_Excel_Import_Service::STATUS_DUPLICATE) {
+            $duplicates++;
+            $row['result'] = 'duplicate';
+            continue;
+        }
+
+        if ($status === 'empty_row') {
+            $empty++;
+            $row['result'] = 'empty';
+            continue;
+        }
+
+        if ($status !== 'valid') {
+            // missing_name / missing_phone / invalid_phone / invalid_phone_cell_type
+            $invalid++;
+            $row['result'] = 'invalid';
+            continue;
+        }
+
+        $valid_before_import++;
+
+        // القسم 4: مسار الإنشاء الوحيد المسموح — بلا INSERT مباشر، بلا
+        // كتابة مباشرة على Repository، بلا استدعاء دالة حفظ خريطة الضيوف
+        // مباشرة من هنا، بلا أي Service مواز.
+        try {
+            $create_result = PGE_Invitation_Service::create(
+                $event_id,
+                (string) $row['phone'],
+                (string) $row['name'],
+                (string) $row['note'],
+                $actor_user_id
+            );
+
+            $outcome = (string) ($create_result['result'] ?? '');
+            if ($outcome === 'created') {
+                $imported++;
+                $row['result'] = 'imported';
+            } elseif ($outcome === 'duplicate') {
+                // Race condition (القسم 9): اكتُشف كمكرَّر داخل create() نفسها
+                // (أُضيف يدوياً بين Preview وConfirm) — لا إعادة محاولة، لا إضافة مضاعفة.
+                $duplicates++;
+                $row['result'] = 'duplicate';
+            } else {
+                $failed++;
+                $row['result'] = 'failed';
+            }
+        } catch (\Throwable $e) {
+            // القسم 5: Best-effort — فشل صف واحد لا يوقف بقية الصفوف. لا تسريب
+            // لتفاصيل الاستثناء الداخلية (لا رسالة، لا Stack Trace) في الاستجابة.
+            error_log(sprintf(
+                '[pge_excel_import_row_failed] event_id=%d user_id=%d exception_class=%s',
+                $event_id,
+                $actor_user_id,
+                get_class($e)
+            ));
+            $failed++;
+            $row['result'] = 'failed';
+        }
+    }
+    unset($row);
+
+    // "total_rows == imported + duplicates + invalid + empty + failed" — هوية
+    // جامعة حقيقية عبر 5 دِلاء نهائية. valid_before_import حقل وصفي منفصل
+    // فقط (عدد الصفوف valid فور فحص التكرار الطازج، قبل أي محاولة create())،
+    // وليس جزءاً من هذا الجمع.
+    $result_summary = [
+        'total_rows'          => count($rows),
+        'valid_before_import' => $valid_before_import,
+        'imported'            => $imported,
+        'duplicates'          => $duplicates,
+        'invalid'             => $invalid,
+        'empty'               => $empty,
+        'failed'              => $failed,
+    ];
+
+    // القسم 6: حدث تدقيق واحد على مستوى المناسبة دائماً عند اكتمال العملية
+    // هيكلياً (حتى لو imported=0) — نفس سياسة bulk_create_completed الحالية
+    // لـ Bulk Add تماماً. Payload صارم: {"source":"excel","count":<imported>}
+    // فقط — بلا اسم ملف، بلا أرقام هواتف، بلا صفوف، بلا token، بلا مسار.
+    if (class_exists('PGE_Invitation_Management_Audit')) {
+        PGE_Invitation_Management_Audit::record(
+            $event_id,
+            PGE_Invitation_Management_Audit::EVENT_LEVEL_BULK_ADD_SENTINEL,
+            $actor_user_id,
+            'bulk_create_completed',
+            wp_json_encode(['source' => 'excel', 'count' => $imported])
+        );
+    }
+
+    // القسم 7: تنظيف مضمون بعد النجاح — استدعاء صريح مباشر (لا `finally`،
+    // راجع تعليق pge_invitation_mgmt_excel_cleanup() أعلاه لسبب ذلك).
+    pge_invitation_mgmt_excel_cleanup($token, $stored_file_path);
+
+    wp_send_json_success([
+        'summary' => $result_summary,
+        'rows'    => array_map('pge_invitation_mgmt_reshape_excel_import_row', $rows),
+    ]);
+}
+if (PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED) {
+    add_action('wp_ajax_pge_invitation_mgmt_excel_confirm', 'pge_invitation_mgmt_excel_confirm_handler');
 }
 
 // ── الإضافة الجماعية (RC1 Fix Pack 3A — "Invitation Bulk Add Migration") ────
