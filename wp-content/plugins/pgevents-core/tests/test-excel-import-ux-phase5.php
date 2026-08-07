@@ -359,6 +359,52 @@ check_not_contains('47. لا أي مؤشر Pagination جديد (renderPagination
 check_not_contains('47ب. لا IntersectionObserver (لا Lazy Loading/Virtual Scroll)', $template_source, 'IntersectionObserver');
 check_not_contains('47ج. لا مكتبة Virtual Scroll معروفة (react-window/react-virtualized/clusterize)', $template_source, 'clusterize');
 
+// ============================================================================
+// بطاقة "مشاكل خارج المعاينة" — تحسين عرض إضافي فوق حد الـ30 صفاً (بلا تغيير
+// على Backend/Parsing/Validation/Confirm/Upload/Preview Logic/عدد الصفوف المستوردة)
+// ============================================================================
+
+// 48) عناصر البطاقة موجودة في الترميز، بجوار رسالة القص، وتحمل aria-live.
+check_contains('48. بطاقة مشاكل خارج المعاينة (excelOutOfPreviewIssuesCard) موجودة بعنوانها الحرفي', $template_source, 'صفوف تحتوي على مشاكل خارج المعاينة');
+check_contains('48ب. البطاقة تحمل aria-live="polite"', $template_source, 'id="excelOutOfPreviewIssuesCard" class="hidden mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" aria-live="polite"');
+check_contains('48ج. قائمة المشاكل (excelOutOfPreviewIssuesList) موجودة داخل البطاقة', $template_source, 'id="excelOutOfPreviewIssuesList"');
+check_contains('48د. عنصر "مشكلة إضافية" (excelOutOfPreviewIssuesMore) موجود داخل البطاقة', $template_source, 'id="excelOutOfPreviewIssuesMore"');
+check_true('48هـ. البطاقة تقع داخل الجزء الثابت السفلي (Footer) لحالة المعاينة، بعد رسالة القص مباشرة', strpos($template_source, 'excelPreviewTruncatedMsg') < strpos($template_source, 'excelOutOfPreviewIssuesCard') && strpos($template_source, 'excelOutOfPreviewIssuesCard') < strpos($template_source, 'excelNoValidMsg'));
+
+$render_out_of_preview_body = extract_js_function_body($template_source, 'excelRenderOutOfPreviewIssues');
+
+// 49) حد 10 مشاكل مُعرَّف صراحة، ويُستخدَم فعلياً للقص.
+check_contains('49. حد بطاقة المشاكل يساوي 10 (EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT)', $template_source, 'var EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT = 10;');
+check_contains('49ب. القائمة المعروضة فعلياً مقصوصة عبر issues.slice(0, EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT)', $render_out_of_preview_body, 'issues.slice(0, EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT)');
+
+// 50) المصدر الوحيد للمشاكل هو الصفوف الواقعة بعد حد الـ30 (rows.slice(EXCEL_PREVIEW_DISPLAY_LIMIT))
+// — لا فحص لصفوف ضمن أول 30 (تلك ظاهرة أصلاً في الجدول عبر badge الحالة).
+check_contains('50. المشاكل تُستخرَج فقط من rows.slice(EXCEL_PREVIEW_DISPLAY_LIMIT) (الصفوف غير المعروضة في الجدول)', $render_out_of_preview_body, 'rows.slice(EXCEL_PREVIEW_DISPLAY_LIMIT)');
+check_contains('50ب. الفلترة على row.status !== \'valid\' فقط (كل الحالات غير الصالحة تُعتبَر مشكلة، يشمل duplicate)', $render_out_of_preview_body, "row.status !== 'valid'");
+
+// 51) رقم الصف المعروض = فهرس الصف ضمن الجزء المخفي + حد الـ30 + 2 (تعويض
+// فهرسة الصفر + صف الهيدر) — رقم Excel حقيقي كما يراه المستخدم في ملفه.
+check_contains('51. حساب رقم الصف الحقيقي: EXCEL_PREVIEW_DISPLAY_LIMIT + i + 2', $render_out_of_preview_body, 'EXCEL_PREVIEW_DISPLAY_LIMIT + i + 2');
+
+// 52) صياغة كل سطر مشكلة: "الصف N — سبب المشكلة" (label جاهز من الخادم، بلا كود تقني خام).
+check_contains('52. صياغة سطر المشكلة "الصف \' + issue.rowNumber + \' — \' + issue.label"', $render_out_of_preview_body, "'الصف ' + issue.rowNumber + ' — ' + issue.label");
+check_true('52ب. يُستخدَم li.textContent (لا innerHTML) — بلا حاجة لـescapeHtml، وآمن أصلاً ضد XSS', strpos($render_out_of_preview_body, 'li.textContent =') !== false);
+
+// 53) سطر "X مشكلة إضافية" يظهر فقط عند تجاوز 10، بالصياغة المطلوبة حرفياً.
+check_contains('53. صياغة سطر المشاكل الإضافية "... وهناك \' + (...) + \' مشكلة إضافية."', $render_out_of_preview_body, "'... وهناك ' + (issues.length - EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT) + ' مشكلة إضافية.'");
+check_true('53ب. سطر "مشكلة إضافية" يظهر فقط ضمن شرط issues.length > EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT', strpos($render_out_of_preview_body, 'if (issues.length > EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT)') !== false);
+
+// 54) البطاقة تُخفى تماماً إذا لم توجد أي مشكلة خارج أول 30 صفاً (يشمل حالة
+// "لا تجاوز أصلاً" — hiddenRows فارغة، وحالة "تجاوز لكن كل الصفوف المخفية صالحة").
+check_contains('54. البطاقة تُخفى إذا لم توجد مشاكل خارج المعاينة (issues.length === 0)', $render_out_of_preview_body, "if (issues.length === 0) {\n      excelOutOfPreviewIssuesCard.classList.add('hidden');\n      return;");
+
+// 55) الدالة تُستدعى من داخل excelRenderPreviewRows نفسها — تتحدث تلقائياً مع كل معاينة جديدة.
+check_contains('55. excelRenderPreviewRows تستدعي excelRenderOutOfPreviewIssues(rows) في كل مرة', $render_preview_rows_body_v2, 'excelRenderOutOfPreviewIssues(rows);');
+
+// 56) لا تأثير على منطق Confirm/العدّ الحقيقي — نفس تأكيد البند 46 بالضبط، لكن لهذه الميزة تحديداً.
+check_not_contains('56. لا أي استخدام لـexcelOutOfPreviewIssuesCard/List/More داخل معالج نقرة Confirm', $confirm_listener, 'excelOutOfPreviewIssues');
+check_not_contains('56ب. لا أي استخدام لـEXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT داخل معالج نقرة Confirm', $confirm_listener, 'EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT');
+
 echo "\n========================================\n";
 echo "النتيجة: $passed / $total نجحت.\n";
 if ($failures) {

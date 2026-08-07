@@ -393,6 +393,16 @@ get_header();
         <!-- الجزء الثابت السفلي (رسائل + أزرار) — يبقى ظاهراً دائماً، لا يتمرّر مع الجدول. -->
         <div class="shrink-0">
           <p id="excelPreviewTruncatedMsg" class="hidden mt-2 text-[11px] text-foreground/55" aria-live="polite"></p>
+
+          <!-- بطاقة "مشاكل خارج المعاينة" — تحسين عرض بحت (لا Backend/Parsing/
+               Validation/Confirm): تنبّه المستخدم لصفوف بها مشكلة تقع بعد أول
+               30 صفاً المعروضة، بلا الحاجة لعرض الجدول كاملاً. -->
+          <div id="excelOutOfPreviewIssuesCard" class="hidden mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" aria-live="polite">
+            <p class="text-[11px] font-bold text-amber-800">صفوف تحتوي على مشاكل خارج المعاينة</p>
+            <ul id="excelOutOfPreviewIssuesList" class="mt-1 list-none space-y-0.5 text-[11px] text-amber-800"></ul>
+            <p id="excelOutOfPreviewIssuesMore" class="hidden mt-1 text-[11px] text-amber-700"></p>
+          </div>
+
           <p id="excelNoValidMsg" class="hidden mt-2 text-xs font-semibold text-destructive-text" role="alert">لا توجد صفوف صالحة للاستيراد.</p>
           <div class="flex flex-wrap justify-end gap-2 mt-3">
             <button type="button" id="excelBackBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">اختيار ملف آخر</button>
@@ -1118,6 +1128,9 @@ get_header();
   var excelSummaryDetails = document.getElementById('excelSummaryDetails');
   var excelPreviewBody = document.getElementById('excelPreviewBody');
   var excelPreviewTruncatedMsg = document.getElementById('excelPreviewTruncatedMsg');
+  var excelOutOfPreviewIssuesCard = document.getElementById('excelOutOfPreviewIssuesCard');
+  var excelOutOfPreviewIssuesList = document.getElementById('excelOutOfPreviewIssuesList');
+  var excelOutOfPreviewIssuesMore = document.getElementById('excelOutOfPreviewIssuesMore');
   var excelNoValidMsg = document.getElementById('excelNoValidMsg');
   var excelResultMsg = document.getElementById('excelResultMsg');
   var excelResultSummaryBox = document.getElementById('excelResultSummaryBox');
@@ -1173,6 +1186,48 @@ get_header();
   // داخل الـModal — تحسين عرض بحت، بلا أي تغيير في منطق الاستيراد.
   var EXCEL_PREVIEW_DISPLAY_LIMIT = 30;
 
+  // حد بطاقة "مشاكل خارج المعاينة" — أول 10 مشاكل فقط تُسرَد صراحةً، والباقي
+  // يُلخَّص بسطر عددي واحد. تحسين عرض إضافي فوق حد الـ30 صفاً أعلاه، بنفس
+  // الفلسفة: لا يُغيّر أي شيء في ما يُستورَد فعلياً، فقط ما يُعرَض للمستخدم.
+  var EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT = 10;
+
+  // يبني قائمة "الصف N — سبب المشكلة" لأي صف status !== 'valid' يقع بعد أول
+  // EXCEL_PREVIEW_DISPLAY_LIMIT صفاً (أي غير ظاهر أصلاً في الجدول). رقم الصف
+  // المعروض هو رقم صف Excel الحقيقي كما يراه المستخدم في الملف (فهرس المصفوفة
+  // + 2: +1 لأن rows[] تبدأ فهرستها من صفر، و+1 إضافي لأن الصف الأول في الملف
+  // هو صف الهيدر ولا يُحسَب ضمن rows[] أصلاً — راجع build_from_rows_ex()).
+  function excelRenderOutOfPreviewIssues(rows) {
+    excelOutOfPreviewIssuesList.innerHTML = '';
+    excelOutOfPreviewIssuesMore.classList.add('hidden');
+    excelOutOfPreviewIssuesMore.textContent = '';
+
+    var hiddenRows = rows.length > EXCEL_PREVIEW_DISPLAY_LIMIT ? rows.slice(EXCEL_PREVIEW_DISPLAY_LIMIT) : [];
+    var issues = [];
+    hiddenRows.forEach(function (row, i) {
+      if (row.status !== 'valid') {
+        issues.push({ rowNumber: EXCEL_PREVIEW_DISPLAY_LIMIT + i + 2, label: row.status_label });
+      }
+    });
+
+    if (issues.length === 0) {
+      excelOutOfPreviewIssuesCard.classList.add('hidden');
+      return;
+    }
+
+    issues.slice(0, EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT).forEach(function (issue) {
+      var li = document.createElement('li');
+      li.textContent = 'الصف ' + issue.rowNumber + ' — ' + issue.label; // textContent فقط — لا innerHTML، بلا حاجة لـescapeHtml.
+      excelOutOfPreviewIssuesList.appendChild(li);
+    });
+
+    if (issues.length > EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT) {
+      excelOutOfPreviewIssuesMore.textContent = '... وهناك ' + (issues.length - EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT) + ' مشكلة إضافية.';
+      excelOutOfPreviewIssuesMore.classList.remove('hidden');
+    }
+
+    excelOutOfPreviewIssuesCard.classList.remove('hidden');
+  }
+
   function excelRenderPreviewRows(rows) {
     excelPreviewBody.innerHTML = '';
     var total = rows.length;
@@ -1198,6 +1253,8 @@ get_header();
       excelPreviewTruncatedMsg.classList.add('hidden');
       excelPreviewTruncatedMsg.textContent = '';
     }
+
+    excelRenderOutOfPreviewIssues(rows);
   }
 
   var closeExcelImportBtn = document.getElementById('closeExcelImportBtn');
