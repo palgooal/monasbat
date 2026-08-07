@@ -119,23 +119,26 @@ $r6 = $SVC::build_from_rows_ex([
 check('6. status=valid', $r6['rows'][0]['status'], 'valid');
 check('6. الجوال محفوظ بالصفر البادئ', $r6['rows'][0]['phone'], '0599123456');
 
-// 7) جوال Numeric صحيح شكلياً لكنه يجب أن يُرفض (type='n'، قيمة نظيفة بلا صيغة علمية)
+// 7) جوال Numeric صحيح شكلياً (type='n'، int حقيقي، بلا صيغة علمية/كسر) —
+// تحديث سياسة القسم 5.1: لم يعد يُرفَض تلقائياً بمجرد كونه Numeric. راجع
+// tests/test-excel-import-numeric-phone-policy.php للتغطية الكاملة للسياسة
+// الجديدة (5 شروط) — هذا البند هنا محدَّث فقط ليعكس السلوك الصحيح الجديد
+// بدل الرفض القديم، إثباتاً لعدم وجود "انحدار زائف" في مجموعة اختبارات Phase 2.
 $r7 = $SVC::build_from_rows_ex([
     header_row(),
     [xcell('s', 'فيصل'), xcell('n', 599123456), xcell('s', '')],
 ]);
-check('7. status=invalid_phone_cell_type', $r7['rows'][0]['status'], 'invalid_phone_cell_type');
-check('7. phone فارغ (لا تخمين)', $r7['rows'][0]['phone'], '');
+check('7. status=valid (رقم Numeric صحيح — سياسة محدَّثة، راجع ملف اختبار السياسة الجديدة)', $r7['rows'][0]['status'], 'valid');
+check('7. الرقم محفوظ كما هو حرفياً بلا أي تغيير', $r7['rows'][0]['phone'], '599123456');
 
-// 8) Scientific Notation يجب أن يُرفض
+// 8) Scientific Notation يجب أن يُرفض (لا يزال هذا صحيحاً بعد التحديث — أي
+// شيء غير PHP int حقيقي يُرفَض فوراً، بما فيه سلسلة نصية بصيغة علمية).
 $r8 = $SVC::build_from_rows_ex([
     header_row(),
     [xcell('s', 'نورة'), xcell('n', '5.99123E+11'), xcell('s', '')],
 ]);
 check('8. status=invalid_phone_cell_type', $r8['rows'][0]['status'], 'invalid_phone_cell_type');
 check('8. phone فارغ (لا تخمين)', $r8['rows'][0]['phone'], '');
-// تأكيد إضافي: نفس آلية الرفض (النوع فقط) بصرف النظر عن شكل القيمة — 7 و8 لهما نفس status.
-check('7=8. نفس آلية الرفض (النوع لا الشكل)', $r7['rows'][0]['status'], $r8['rows'][0]['status']);
 
 // 9) missing name
 $r9 = $SVC::build_from_rows_ex([

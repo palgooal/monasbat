@@ -58,6 +58,23 @@ class PGE_Invitation_Excel_Import_Service
     const STATUS_DUPLICATE = 'duplicate';
 
     /**
+     * حدّ أدنى لعدد أرقام خلية Excel الرقمية (Numeric) ليُعتبَر "رقم هاتف
+     * محتمل" آمناً للتحويل إلى نص — تحديث سياسة القسم 5.1 (لا يمسّ خلايا
+     * Text، تلك تبقى بلا أي حد أدنى كما كانت دائماً — pge_norm_phone() فقط
+     * هي من يحسم الفراغ بعد التطبيع). نفس حد "looks_like_phone" المُستخدَم
+     * فعلياً في checkin-ui-ajax.php (راجع resolve_by_phone) — قيمة موثَّقة
+     * ومُستخدَمة سلفاً في المشروع بدل رقم جديد مُخترَع.
+     */
+    const MIN_SAFE_NUMERIC_PHONE_DIGITS = 7;
+
+    /**
+     * حدّ أقصى لعدد أرقام خلية Excel الرقمية — نفس MAX_PHONE_DIGITS الموثَّقة
+     * في class-pge-invitation-bulk-add.php (لا رقم هاتف حقيقي يتجاوز ~15
+     * رقماً وفق E.164، مع هامش أمان لغاية 20).
+     */
+    const MAX_SAFE_NUMERIC_PHONE_DIGITS = 20;
+
+    /**
      * نقطة الدخول الوحيدة. لا يكتب أي بيانات، لا يستدعي أي طبقة إنشاء ضيوف.
      *
      * @param string $path مسار ملف محلي موجود بالفعل على القرص (لا يُبنى من
@@ -149,17 +166,23 @@ class PGE_Invitation_Excel_Import_Service
             }
 
             $name_raw = isset($cells[0]['value']) ? (string) $cells[0]['value'] : '';
-            $phone_raw = isset($cells[1]['value']) ? (string) $cells[1]['value'] : '';
+            $phone_value_raw = $cells[1]['value'] ?? ''; // خام كما أعادتها SimpleXLSX: قد تكون int/float/string.
             $phone_type = isset($cells[1]['type']) ? (string) $cells[1]['type'] : '';
+            $phone_display = (string) $phone_value_raw; // للتحقق من الفراغ فقط (missing_phone) — لا علاقة له بالثقة.
             $note_raw = isset($cells[2]['value']) ? (string) $cells[2]['value'] : '';
 
-            // القسم 5.1: type === 's' فقط (Shared/Inline String حقيقي) يُعامَل
-            // كنص موثوق. أي شيء آخر (رقمي، صيغة علمية، أو أي نوع لم يُثبَت أنه
-            // نص) → مرفوض بلا أي محاولة استخلاص. لا علاقة لهذا الفحص بكون
+            // القسم 5.1 (تحديث سياسة الأرقام الرقمية — راجع
+            // resolve_safe_numeric_phone_text() أدناه لتفاصيل الشروط الخمسة):
+            // type === 's' (Shared/Inline String حقيقي) لا يزال نصاً موثوقاً
+            // كما كان تماماً، بلا أي تغيير. لأي نوع آخر: قد تكون خلية رقمية
+            // آمنة قابلة للتحويل بلا فقدان بيانات — يُحسَم ذلك عبر الدالة
+            // المخصصة، لا عبر تخمين مباشر هنا. لا علاقة لهذا الفحص بكون
             // الخلية فارغة أم لا — ذلك يُحسَم لاحقاً داخل build_row().
-            $phone_is_text_cell = ($phone_type === 's');
+            $phone_trusted_text = ($phone_type === 's')
+                ? $phone_display
+                : self::resolve_safe_numeric_phone_text($phone_value_raw);
 
-            $rows[] = self::build_row($name_raw, $phone_raw, $note_raw, $phone_is_text_cell);
+            $rows[] = self::build_row($name_raw, $phone_display, $note_raw, $phone_trusted_text);
         }
 
         return ['ok' => true, 'error' => null, 'message' => null, 'rows' => $rows];
@@ -224,8 +247,9 @@ class PGE_Invitation_Excel_Import_Service
             $phone_raw = isset($cols[1]) && $cols[1] !== null ? (string) $cols[1] : '';
             $note_raw = isset($cols[2]) && $cols[2] !== null ? (string) $cols[2] : '';
 
-            // true دائماً: CSV بلا Cell Types، القيمة النصية الخام تُمرَّر مباشرة.
-            $rows[] = self::build_row($name_raw, $phone_raw, $note_raw, true);
+            // نص موثوق دائماً: CSV بلا Cell Types، القيمة النصية الخام تُمرَّر
+            // مباشرة كما كانت (لا تغيير على CSV إطلاقاً — النطاق محصور بـXLSX فقط).
+            $rows[] = self::build_row($name_raw, $phone_raw, $note_raw, $phone_raw);
         }
 
         return ['ok' => true, 'error' => null, 'message' => null, 'rows' => $rows];
@@ -256,13 +280,17 @@ class PGE_Invitation_Excel_Import_Service
      * (يسبق حتى missing_name)، ثم missing_name، ثم missing_phone، ثم رفض
      * نوع الخلية (قبل أي محاولة تطبيع)، ثم رفض المحتوى بعد التطبيع، وأخيراً valid.
      *
-     * @param bool $phone_is_text_cell عند false: لا تُمرَّر القيمة لـ
+     * @param string $phone_display القيمة النصية الخام لغرض فحص الفراغ
+     *        (missing_phone) فقط — بلا علاقة بالثقة/التحويل.
+     * @param ?string $phone_trusted_text null: لا تُمرَّر أي قيمة لـ
      *        pge_norm_phone() إطلاقاً ولا تُعاد ضمن الصف — "لا تخمّن الرقم".
+     *        غير null: النص الآمن (نص Excel موثوق، أو رقمي اجتاز الشروط
+     *        الخمسة عبر resolve_safe_numeric_phone_text()، أو عمود CSV خام).
      */
-    private static function build_row(string $name_raw, string $phone_raw, string $note_raw, bool $phone_is_text_cell): array
+    private static function build_row(string $name_raw, string $phone_display, string $note_raw, ?string $phone_trusted_text): array
     {
         $name = trim($name_raw);
-        $phone_trimmed = trim($phone_raw);
+        $phone_trimmed = trim($phone_display);
         $note = trim($note_raw);
 
         if ($name === '' && $phone_trimmed === '' && $note === '') {
@@ -277,20 +305,101 @@ class PGE_Invitation_Excel_Import_Service
             return ['name' => $name, 'phone' => '', 'note' => $note, 'status' => 'missing_phone'];
         }
 
-        if (!$phone_is_text_cell) {
+        if ($phone_trusted_text === null) {
             return ['name' => $name, 'phone' => '', 'note' => $note, 'status' => 'invalid_phone_cell_type'];
         }
 
         // القسم 7 من الوثيقة: pge_norm_phone() الموجودة فقط — لا Normalizer جديد.
         $normalized = function_exists('pge_norm_phone')
-            ? pge_norm_phone($phone_trimmed)
-            : preg_replace('/\D+/', '', $phone_trimmed);
+            ? pge_norm_phone(trim($phone_trusted_text))
+            : preg_replace('/\D+/', '', trim($phone_trusted_text));
 
         if ($normalized === '') {
             return ['name' => $name, 'phone' => '', 'note' => $note, 'status' => 'invalid_phone'];
         }
 
         return ['name' => $name, 'phone' => $normalized, 'note' => $note, 'status' => 'valid'];
+    }
+
+    /**
+     * ============================================================================
+     * تحديث سياسة القسم 5.1 — تحويل آمن لخلية Excel رقمية إلى نص رقم جوال
+     * ============================================================================
+     * قبل هذا التحديث: أي خلية جوال ليست Shared String حرفياً (type !== 's')
+     * كانت تُرفَض فوراً (invalid_phone_cell_type) — بما فيها أرقام صحيحة
+     * تماماً أدخلها Excel كـ"رقم" (Numeric) بلا أي فقدان أرقام، مثل
+     * 970599000932. هذا التحديث يستبدل الرفض المباشر بفحص أمان صريح، لا
+     * تخمين: يُقبَل رقم Numeric فقط إذا اجتاز الشروط الخمسة التالية معاً؛ أي
+     * مؤشر واحد على فقدان بيانات محتمل يعني رفضاً فورياً كما كان.
+     *
+     * الشروط الخمسة:
+     *   1) ليست Scientific Notation.
+     *   2) لا تحتوي كسوراً (Decimal).
+     *   3) تمثّل رقماً صحيحاً فقط (PHP int حصراً — SimpleXLSX تحوّل أي رقم
+     *      صحيح رياضياً إلى int داخلياً في value()؛ أي float هنا = كسر حقيقي).
+     *   4) قابلة للتحويل إلى String بلا أي تغيير في القيمة (round-trip: رقم
+     *      → نص → رقم يُعيد القيمة ذاتها تماماً).
+     *   5) طول الرقم بعد التحويل ضمن الحدود المقبولة (MIN/MAX_SAFE_NUMERIC_
+     *      PHONE_DIGITS أعلاه)، ثم يُمرَّر لـpge_norm_phone() كأي رقم آخر.
+     *
+     * "لا نخمّن صفراً بادئاً مفقوداً": خلية Numeric لا يمكن أصلاً أن تحتفظ
+     * بصفر بادئ (599000932 وَ 0599000932 يمثّلان نفس القيمة العددية 599000932
+     * في Excel) — هذه الدالة لا تحاول استعادته ولا تعتمد على الطول لإضافة أي
+     * رقم؛ تقبل الرقم كما هو حرفياً أو ترفضه، ولا تُخترَع بيانات مطلقاً.
+     * (0599000932 بصفره البادئ يبقى مدعوماً فقط إذا احتفظ به Excel كخلية Text
+     * حرفياً — تلك تسلك مسار type === 's' الموثوق الموجود أصلاً، بلا مساس.)
+     *
+     * @param mixed $raw_value القيمة الخام كما أعادتها SimpleXLSX::value() —
+     *        عادة int لخلية رقمية صحيحة، float لخلية بها كسر حقيقي، أو string
+     *        لأي نوع آخر (نص/تاريخ/منطقي/خطأ/صيغة...).
+     * @return ?string نص الرقم الآمن، أو null إذا وُجد أي مؤشر فقدان بيانات.
+     */
+    private static function resolve_safe_numeric_phone_text($raw_value): ?string
+    {
+        // شرط 3: PHP int حصراً. أي float يعني كسراً حقيقياً (شرط 2) → رفض.
+        // ملاحظة: هذا يستبعد ضمنياً أيضاً أي خلية Date مُنسَّقة أعادت قيمة
+        // Serial عائمة (float) بدل نص — بلا الحاجة لفحص Type خاص بها هنا.
+        if (!is_int($raw_value)) {
+            return null;
+        }
+
+        // NaN/Infinity مستحيلة بنيوياً لقيمة int في PHP — فحص دفاعي موثَّق فقط.
+        if (!is_finite((float) $raw_value)) {
+            return null;
+        }
+
+        // لا رقم هاتف حقيقي سالب؛ السماح به يعني الاعتماد على pge_norm_phone()
+        // لحذف علامة "-" ضمناً بصمت — تخمين غير مقبول هنا.
+        if ($raw_value < 0) {
+            return null;
+        }
+
+        $as_string = (string) $raw_value;
+
+        // شرط 1 (فحص دفاعي): (string) لعدد int في PHP لا تُنتِج أبداً E/e.
+        if (stripos($as_string, 'e') !== false) {
+            return null;
+        }
+
+        // شرط 2 (فحص دفاعي مكرر — مؤكَّد أصلاً عبر is_int() أعلاه): لا نقطة عشرية.
+        if (strpos($as_string, '.') !== false) {
+            return null;
+        }
+
+        // شرط 4: Round-trip — رقم → نص → رقم يجب أن يُعيد القيمة ذاتها تماماً.
+        if ((int) $as_string !== $raw_value) {
+            return null;
+        }
+
+        // شرط 5: طول ضمن الحدود المقبولة لرقم هاتف حقيقي — لا نُطيل ولا
+        // نُقصّر الرقم، نرفض فقط إن كان طوله غير معقول أصلاً (يشمل هذا
+        // دفاعياً أي Serial تاريخ رقمي قصير تسرَّب من الفحص أعلاه).
+        $len = strlen($as_string);
+        if ($len < self::MIN_SAFE_NUMERIC_PHONE_DIGITS || $len > self::MAX_SAFE_NUMERIC_PHONE_DIGITS) {
+            return null;
+        }
+
+        return $as_string;
     }
 
     private static function file_error(string $code, string $message): array
