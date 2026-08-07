@@ -95,6 +95,8 @@ get_header();
       <!-- RC1 Fix Pack 3B ("Legacy Guest Panel Retirement — Hard Delete Migration"): زر حذف الدعوات المحدَّدة — نفس تنسيق أزرار cancel-inv-btn (bg-destructive/10)، مُعطَّل حتى يُحدَّد صف واحد على الأقل (نفس فلسفة bulkDeleteBtn/refreshBulkDeleteState القديمة في page-event-manage.php). -->
       <button type="button" id="bulkDeleteInvBtn" disabled class="h-11 px-4 rounded-xl bg-destructive/10 text-destructive-text text-sm font-semibold disabled:opacity-40">حذف المحدَّد</button>
       <button type="button" id="openBulkAddBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إضافة جماعية</button>
+      <!-- استيراد المدعوين من Excel — Phase 1 فقط (docs/EXCEL-GUEST-IMPORT-SPEC.md): زر تنزيل النموذج الرسمي حصراً، بلا Modal رفع/معاينة/استيراد (Phases لاحقة غير مُعتمَدة بعد). -->
+      <button type="button" id="downloadExcelTemplateBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">📥 تحميل نموذج Excel</button>
       <button type="button" id="exportCsvBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">تصدير CSV</button>
       <button type="button" id="exportExcelBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">تصدير Excel</button>
     </div>
@@ -375,6 +377,35 @@ get_header();
       attendance_status: state.attendance_status,
       sort_by: state.sort_by,
       sort_dir: state.sort_dir,
+    };
+    for (var key in fields) {
+      if (!Object.prototype.hasOwnProperty.call(fields, key)) continue;
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = fields[key] == null ? '' : fields[key];
+      form.appendChild(input);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+    window.setTimeout(function () { document.body.removeChild(form); }, 1000);
+  }
+
+  // استيراد المدعوين من Excel — Phase 1 فقط: تنزيل النموذج الرسمي حصراً
+  // (لا فلاتر تُرسَل، النموذج ثابت). نفس نمط نموذج POST المخفي المُستخدَم
+  // في triggerInvitationExport() أعلاه — تنزيل حقيقي عبر تنقّل المتصفح، لا
+  // fetch/XHR (يفتح مربع "حفظ الملف" مباشرة، بلا معالجة Blob يدوية).
+  function triggerExcelTemplateDownload() {
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = CONFIG.ajaxUrl;
+    form.style.display = 'none';
+
+    var fields = {
+      action: 'pge_invitation_mgmt_excel_template',
+      nonce: CONFIG.nonce,
+      event_id: CONFIG.eventId,
     };
     for (var key in fields) {
       if (!Object.prototype.hasOwnProperty.call(fields, key)) continue;
@@ -718,6 +749,9 @@ get_header();
   var exportExcelBtn = document.getElementById('exportExcelBtn');
   if (exportCsvBtn) exportCsvBtn.addEventListener('click', function () { triggerInvitationExport('pge_invitation_mgmt_export_csv'); });
   if (exportExcelBtn) exportExcelBtn.addEventListener('click', function () { triggerInvitationExport('pge_invitation_mgmt_export_excel'); });
+
+  var downloadExcelTemplateBtn = document.getElementById('downloadExcelTemplateBtn');
+  if (downloadExcelTemplateBtn) downloadExcelTemplateBtn.addEventListener('click', triggerExcelTemplateDownload);
 
   // ══ RC1 Fix Pack 3A ("Invitation Bulk Add Migration") ═══════════════════
   // إعادة استخدام postAjax()/escapeHtml()/showToast()/fetchList() الحالية

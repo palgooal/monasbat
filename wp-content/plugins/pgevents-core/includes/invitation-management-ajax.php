@@ -428,6 +428,66 @@ if (PGE_INVITATION_MGMT_EXPORT_ENABLED) {
     add_action('wp_ajax_pge_invitation_mgmt_export_excel', 'pge_invitation_mgmt_export_excel_handler');
 }
 
+// ── استيراد المدعوين من Excel — Phase 1 فقط: تنزيل النموذج الرسمي ──────────
+/**
+ * "Import Guests from Excel" — راجع docs/EXCEL-GUEST-IMPORT-SPEC.md.
+ * Phase 1 حصراً: endpoint واحد يُنزِّل النموذج الرسمي الفارغ. لا Parsing،
+ * لا Preview، لا Confirm، لا SimpleXLSX، لا Temporary Storage/upload_token —
+ * هذه كلها Phases لاحقة غير مُعتمَدة بعد. بوابة نطاق مستقلة بنفس نمط بقية
+ * ثوابت هذا الملف (PGE_INVITATION_MGMT_EXPORT_ENABLED إلخ) — ستُستخدَم لاحقاً
+ * لبقية endpoints الاستيراد (Preview/Confirm) عند اعتمادها في Phases قادمة.
+ */
+if (!defined('PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED')) {
+    define('PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED', true);
+}
+
+if (!function_exists('pge_invitation_mgmt_excel_template_filename')) {
+    /**
+     * اسم ملف ثابت (لا مدخل مستخدم في التسمية إطلاقاً) — النموذج عام وغير
+     * مرتبط ببيانات مناسبة بعينها.
+     */
+    function pge_invitation_mgmt_excel_template_filename(): string
+    {
+        $raw = 'excel-import-template.xlsx';
+        return function_exists('sanitize_file_name') ? sanitize_file_name($raw) : preg_replace('/[^A-Za-z0-9_\-\.]/', '', $raw);
+    }
+}
+
+/**
+ * تنزيل نموذج Excel الرسمي — 3 أعمدة بالضبط: الاسم | رقم الجوال | ملاحظة
+ * (القسم 6 من الوثيقة المعتمدة، Template Contract). عمود "رقم الجوال"
+ * (الفهرس 1، 0-based) يُمرَّر ضمن $text_columns لـ PGE_Xlsx_Writer::build()
+ * فيُنسَّق كـ Text Cell (numFmtId="49") — يمنع Excel من حذف صفر بادئ أو
+ * تحويله لصيغة علمية حين يملأ المستخدم الجوال لاحقاً (القسم 5.1، Phone
+ * Column Contract). التحقق من الصلاحية عبر نفس حارس كل معالجات هذا الملف
+ * (pge_mgmt_validate_request()) — النموذج نفسه ثابت وعام، $event_id يُستخدَم
+ * فقط للتأكد أن الطالب مسجّل دخول ولديه صلاحية إدارة مناسبة فعلية، بلا أي
+ * تأثير على محتوى الملف.
+ */
+function pge_invitation_mgmt_excel_template_handler()
+{
+    pge_invitation_mgmt_validate_request();
+
+    $binary = PGE_Xlsx_Writer::build(
+        [['الاسم', 'رقم الجوال', 'ملاحظة']],
+        [1]
+    );
+
+    if (!headers_sent()) {
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . pge_invitation_mgmt_excel_template_filename() . '"');
+        header('Content-Length: ' . strlen($binary));
+        header('X-Content-Type-Options: nosniff');
+    }
+    echo $binary;
+
+    if (function_exists('wp_die')) { wp_die('', '', ['response' => 200]); }
+    exit;
+}
+if (PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED) {
+    add_action('wp_ajax_pge_invitation_mgmt_excel_template', 'pge_invitation_mgmt_excel_template_handler');
+}
+
 // ── الإضافة الجماعية (RC1 Fix Pack 3A — "Invitation Bulk Add Migration") ────
 /**
  * رسائل الأخطاء الموحَّدة (Preview وConfirm معاً) — رموز عمل مستقرة

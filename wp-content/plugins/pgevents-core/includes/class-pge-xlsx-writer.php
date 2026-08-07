@@ -32,9 +32,16 @@ class PGE_Xlsx_Writer
      * كما هو نصاً خاماً في خلاياه).
      *
      * @param array<int,array<int,string>> $rows
+     * @param array<int,int> $text_columns فهارس أعمدة (0-based) يجب تنسيقها
+     *        كـ Text Cell (numFmt "@") بدل التنسيق الافتراضي "General" — يمنع
+     *        Excel من إعادة تفسير القيمة رقمياً لاحقاً (حذف صفر بادئ، تحويل
+     *        لصيغة علمية) عندما يُعدِّل المستخدم الخلية يدوياً بعد فتح الملف.
+     *        اختياري بالكامل، القيمة الافتراضية `[]` تُبقي سلوك بناء أي ملف
+     *        سابق (مثل تصدير الدعوات، Phase 9C) بلا أي تغيير — لا تُمرَّر أي
+     *        قيمة `s` على الخلية فتبقى بنفس التنسيق الافتراضي حرفياً كما كان.
      * @return string المحتوى الثنائي الكامل لملف .xlsx جاهز للإرسال مباشرة.
      */
-    public static function build(array $rows): string
+    public static function build(array $rows, array $text_columns = []): string
     {
         $files = [
             '[Content_Types].xml'        => self::content_types_xml(),
@@ -42,7 +49,7 @@ class PGE_Xlsx_Writer
             'xl/workbook.xml'             => self::workbook_xml(),
             'xl/_rels/workbook.xml.rels' => self::workbook_rels_xml(),
             'xl/styles.xml'               => self::styles_xml(),
-            'xl/worksheets/sheet1.xml'   => self::build_sheet_xml($rows),
+            'xl/worksheets/sheet1.xml'   => self::build_sheet_xml($rows, $text_columns),
         ];
 
         return self::build_zip($files);
@@ -65,8 +72,16 @@ class PGE_Xlsx_Writer
         return $letter;
     }
 
-    private static function build_sheet_xml(array $rows): string
+    /**
+     * @param array<int,array<int,string>> $rows
+     * @param array<int,int> $text_columns فهارس أعمدة (0-based) تُكتَب بمرجع
+     *        نمط (`s="1"`) يشير لخلية Text (`numFmtId="49"`) في styles.xml —
+     *        راجع توثيق الباراميتر في build() أعلاه.
+     */
+    private static function build_sheet_xml(array $rows, array $text_columns = []): string
     {
+        $text_columns = array_flip($text_columns); // بحث O(1) بالفهرس بدل in_array() لكل خلية.
+
         $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n";
         $xml .= '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
         $xml .= '<sheetData>';
@@ -80,7 +95,12 @@ class PGE_Xlsx_Writer
                 $ref = self::col_letter($c) . $r;
                 // t="inlineStr": خلية نصية مضمَّنة — لا حاجة لجدول sharedStrings.xml
                 // منفصل (تبسيط متعمَّد، صالح تماماً حسب معيار OOXML).
-                $xml .= '<c r="' . $ref . '" t="inlineStr"><is><t xml:space="preserve">' . self::xml_escape($cell) . '</t></is></c>';
+                // s="1" (فقط للأعمدة المطلوبة صراحةً في $text_columns): يشير
+                // لنمط الخلية الثاني في styles.xml (numFmtId="49"، Text) —
+                // بلا هذا الفهرس، الخلية تبقى تماماً كما كانت دائماً (بلا أي
+                // خاصية `s`، النمط الافتراضي index 0 "General").
+                $style_attr = isset($text_columns[$c]) ? ' s="1"' : '';
+                $xml .= '<c r="' . $ref . '"' . $style_attr . ' t="inlineStr"><is><t xml:space="preserve">' . self::xml_escape($cell) . '</t></is></c>';
                 $c++;
             }
             $xml .= '</row>';
@@ -131,13 +151,26 @@ class PGE_Xlsx_Writer
     {
         // الحد الأدنى الصالح المطلوب — نمط خط/تعبئة/حد افتراضي واحد فقط،
         // كافٍ لفتح الملف بلا أي طلب "إصلاح" من Excel.
+        //
+        // cellXfs index 0: النمط الافتراضي الأصلي (numFmtId="0" = "General")
+        // — بلا أي تغيير، هو ما تستخدمه كل الخلايا التي لا تحمل `s="..."`
+        // صراحةً (كل الاستخدامات السابقة لهذا الـWriter، مثل تصدير الدعوات).
+        //
+        // cellXfs index 1 (جديد): numFmtId="49" هو المعرِّف المبني مسبقاً
+        // (built-in) في معيار OOXML لتنسيق "@" (Text) — لا يحتاج تعريف
+        // <numFmts> مخصَّص لأنه معرَّف ضمنياً في كل تطبيقات Excel المتوافقة.
+        // يُستخدَم فقط حين يُمرَّر عمود ضمن $text_columns في build()/
+        // build_sheet_xml() أعلاه؛ لا يؤثر على أي خلية لا تُشير له صراحةً.
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
             . '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
             . '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
             . '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
             . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            . '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
+            . '<cellXfs count="2">'
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+            . '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+            . '</cellXfs>'
             . '</styleSheet>';
     }
 
