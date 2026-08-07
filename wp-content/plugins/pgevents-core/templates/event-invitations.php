@@ -313,14 +313,17 @@ get_header();
   <div id="excelImportModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="excelImportHeading">
     <!-- بنية Header/Body/Footer (تحسين UX — بلا أي تغيير على Upload/Preview
          Logic/Confirm/Validation/Duplicate Detection/Parsing/AJAX/Backend):
-         اللوحة نفسها flex-col بارتفاع أقصى ثابت (max-h-[90vh])، overflow-hidden
-         (لا Scrollbar للوحة كلها) — كل حالة تُمرَّر داخلياً بنفسها عند الحاجة
-         بدل تمدّد اللوحة كلها. حالة المعاينة (excelPreviewState) تحديداً هي
-         المعاد هيكلتها فعلياً لثلاثة أجزاء (ملخص ثابت أعلى / جدول قابل للتمرير
-         بارتفاع محدود 55vh / أزرار ورسائل ثابتة أسفل) — الحالات الأخرى قصيرة
-         بطبيعتها ولا تعاني من نفس المشكلة، فأُبقيت ببنيتها الأصلية + overflow-
-         y-auto احترازي فقط. -->
-    <div class="flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white">
+         اللوحة نفسها flex-col بارتفاع أقصى ثابت، overflow-hidden (لا Scrollbar
+         للوحة كلها) — كل حالة تُمرَّر داخلياً بنفسها عند الحاجة بدل تمدّد اللوحة
+         كلها. حالة المعاينة (excelPreviewState) تحديداً هي المعاد هيكلتها فعلياً
+         لثلاثة أجزاء (ملخص ثابت أعلى / جدول قابل للتمرير بارتفاع محدود / أزرار
+         ورسائل ثابتة أسفل) — الحالات الأخرى قصيرة بطبيعتها ولا تعاني من نفس
+         المشكلة، فأُبقيت ببنيتها الأصلية + overflow-y-auto احترازي فقط.
+         تحديث حجم النافذة (ملاحظة UX: "Review Dialog صغير" لا "Full Screen
+         Page"): max-h-[90vh] → max-h-[72vh] — يبقى جزء واضح من الصفحة الخلفية
+         مرئياً خلف الـoverlay، ويُشبه نوافذ المراجعة في Google Drive/GitHub/
+         Notion/Stripe بدل نافذة تكاد تملأ الشاشة. -->
+    <div class="flex w-full max-w-2xl max-h-[72vh] flex-col overflow-hidden rounded-2xl bg-white">
 
       <!-- Header ثابت: عنوان + زر إغلاق + شريط الخطأ العام. يظهر في كل الحالات، لا يتمرّر أبداً. -->
       <div class="shrink-0 border-b border-border px-5 pt-5 pb-3">
@@ -373,9 +376,10 @@ get_header();
           <div id="excelSummaryDetails" class="hidden mb-3 text-[11px] text-foreground/55"></div>
         </div>
 
-        <!-- الجزء القابل للتمرير — جدول Preview فقط، بارتفاع أقصى محدود (55vh)
-             بصرف النظر عن عدد الصفوف — لا يتمدد الـModal معه إطلاقاً. -->
-        <div class="min-h-0 max-h-[55vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border">
+        <!-- الجزء القابل للتمرير — جدول Preview فقط، بارتفاع أقصى محدود (38vh،
+             ضمن نافذة مضغوطة إجمالاً 72vh) بصرف النظر عن عدد الصفوف — لا يتمدد
+             الـModal معه إطلاقاً. -->
+        <div class="min-h-0 max-h-[38vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border">
           <table class="w-full text-xs">
             <caption class="sr-only">معاينة صفوف استيراد Excel قبل التأكيد</caption>
             <thead>
@@ -396,11 +400,14 @@ get_header();
 
           <!-- بطاقة "مشاكل خارج المعاينة" — تحسين عرض بحت (لا Backend/Parsing/
                Validation/Confirm): تنبّه المستخدم لصفوف بها مشكلة تقع بعد أول
-               30 صفاً المعروضة، بلا الحاجة لعرض الجدول كاملاً. -->
-          <div id="excelOutOfPreviewIssuesCard" class="hidden mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" aria-live="polite">
+               15 صفاً المعروضة، بلا الحاجة لعرض الجدول كاملاً. مضغوطة بصرياً
+               عمداً (padding أقل + قائمة بارتفاع أقصى محدود وتمرير داخلي خاص
+               بها) حتى لا تدفع أزرار الـFooter الثابت للأسفل مهما طال عدد
+               المشاكل المسرودة (حتى 10 كحد أقصى أصلاً). -->
+          <div id="excelOutOfPreviewIssuesCard" class="hidden mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5" aria-live="polite">
             <p class="text-[11px] font-bold text-amber-800">صفوف تحتوي على مشاكل خارج المعاينة</p>
-            <ul id="excelOutOfPreviewIssuesList" class="mt-1 list-none space-y-0.5 text-[11px] text-amber-800"></ul>
-            <p id="excelOutOfPreviewIssuesMore" class="hidden mt-1 text-[11px] text-amber-700"></p>
+            <ul id="excelOutOfPreviewIssuesList" class="mt-1 max-h-16 list-none space-y-0.5 overflow-y-auto text-[11px] text-amber-800"></ul>
+            <p id="excelOutOfPreviewIssuesMore" class="hidden mt-0.5 text-[11px] text-amber-700"></p>
           </div>
 
           <p id="excelNoValidMsg" class="hidden mt-2 text-xs font-semibold text-destructive-text" role="alert">لا توجد صفوف صالحة للاستيراد.</p>
@@ -1182,9 +1189,11 @@ get_header();
 
   // حد عرض Preview فقط (لا علاقة له بعدد الصفوف المستوردة فعلياً — ذلك يُحسَم
   // بالكامل من طرف الخادم عبر excelUploadToken عند Confirm، بصرف النظر عمّا
-  // عُرِض في الجدول). ملفات كبيرة تعرض أول 30 صفاً فقط لتفادي جدول طويل جداً
-  // داخل الـModal — تحسين عرض بحت، بلا أي تغيير في منطق الاستيراد.
-  var EXCEL_PREVIEW_DISPLAY_LIMIT = 30;
+  // عُرِض في الجدول). ملفات كبيرة تعرض أول 15 صفاً فقط (هدف Preview مراجعة
+  // سريعة لا استعراض كامل الملف، ضمن نافذة Dialog مضغوطة) — تحسين عرض بحت،
+  // بلا أي تغيير في منطق الاستيراد. (كانت 30 سابقاً، خُفِّضت لملاءمة الحجم
+  // الجديد المضغوط للـModal.)
+  var EXCEL_PREVIEW_DISPLAY_LIMIT = 15;
 
   // حد بطاقة "مشاكل خارج المعاينة" — أول 10 مشاكل فقط تُسرَد صراحةً، والباقي
   // يُلخَّص بسطر عددي واحد. تحسين عرض إضافي فوق حد الـ30 صفاً أعلاه، بنفس
@@ -1247,7 +1256,7 @@ get_header();
     // رسالة توضيحية أسفل الجدول عند القص فقط — الاستيراد الفعلي (Confirm) يظل
     // يشمل جميع الصفوف الصالحة دائماً، هذا القص للعرض المرئي فقط.
     if (total > EXCEL_PREVIEW_DISPLAY_LIMIT) {
-      excelPreviewTruncatedMsg.textContent = 'يتم عرض أول ' + EXCEL_PREVIEW_DISPLAY_LIMIT + ' صفاً فقط للمراجعة. وسيتم استيراد جميع الصفوف الصالحة.';
+      excelPreviewTruncatedMsg.textContent = 'يتم عرض أول ' + EXCEL_PREVIEW_DISPLAY_LIMIT + ' صفاً فقط للمراجعة، وسيتم استيراد جميع الصفوف الصالحة.';
       excelPreviewTruncatedMsg.classList.remove('hidden');
     } else {
       excelPreviewTruncatedMsg.classList.add('hidden');

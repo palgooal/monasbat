@@ -200,9 +200,10 @@ check_contains('26. صف أزرار حالة الرفع قابل للالتفا�
 // 26ب: مُحدَّث لتحسين UX تصميم الـModal (Header/Body/Footer) — صف أزرار المعاينة
 // أصبح داخل حاوية "الجزء الثابت السفلي" (مستوى Indentation إضافي)، لا يزال flex-wrap.
 check_contains('26ب. صف أزرار حالة المعاينة قابل للالتفاف (flex-wrap)', $template_source, "<div class=\"flex flex-wrap justify-end gap-2 mt-3\">\n            <button type=\"button\" id=\"excelBackBtn\"");
-// 26ج: مُحدَّث — غلاف الجدول أصبح flex-1 min-h-0 max-h-[55vh] (بدل max-h-72 ثابت)
-// ضمن بنية Header/Body/Footer الجديدة، ولا يزال يدعم scroll أفقي وعمودي معاً.
-check_contains('26ج. غلاف جدول المعاينة يدعم scroll أفقي وعمودي محدود (max-h-[55vh] + overflow-x-auto/y-auto)', $template_source, 'min-h-0 max-h-[55vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border');
+// 26ج: مُحدَّث — غلاف الجدول أصبح flex-1 min-h-0 max-h-[38vh] (ضمن نافذة مضغوطة
+// UX Review Dialog، بعد تخفيضه من 55vh) ضمن بنية Header/Body/Footer، ولا يزال
+// يدعم scroll أفقي وعمودي معاً.
+check_contains('26ج. غلاف جدول المعاينة يدعم scroll أفقي وعمودي محدود (max-h-[38vh] + overflow-x-auto/y-auto)', $template_source, 'min-h-0 max-h-[38vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border');
 
 // 27) لا تغيير في Payload الـConfirm — upload_token فقط
 check_contains(
@@ -280,8 +281,9 @@ check_true('35د. لا إجراء AJAX جديد يخص Excel غير المعرو
 // ============================================================================
 
 // 36) اللوحة نفسها flex-col بارتفاع أقصى ثابت، بلا Scrollbar خاص بها (التمرير
-// يُفوَّض للمناطق الداخلية بدل اللوحة كلها).
-check_contains('36. لوحة الـModal flex-col بارتفاع أقصى 90vh و overflow-hidden (لا تمرير للّوحة كلها)', $template_source, 'flex w-full max-w-2xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white');
+// يُفوَّض للمناطق الداخلية بدل اللوحة كلها). خُفِّض من 90vh إلى 72vh (ملاحظة UX:
+// "Review Dialog صغير" لا "Full Screen Page" — يبقى جزء من الصفحة الخلفية مرئياً).
+check_contains('36. لوحة الـModal flex-col بارتفاع أقصى 72vh و overflow-hidden (لا تمرير للّوحة كلها)', $template_source, 'flex w-full max-w-2xl max-h-[72vh] flex-col overflow-hidden rounded-2xl bg-white');
 
 // 37) Header ثابت: يحوي العنوان + زر الإغلاق + شريط الخطأ، shrink-0 (لا يتمرّر، لا يتقلّص).
 check_contains('37. حاوية الـHeader الثابتة (shrink-0) تسبق مباشرة عنوان excelImportHeading', $template_source, "<div class=\"shrink-0 border-b border-border px-5 pt-5 pb-3\">\n        <div class=\"flex items-center justify-between\">\n          <h2 id=\"excelImportHeading\"");
@@ -294,9 +296,9 @@ check_contains('38. excelPreviewState أصبحت flex min-h-0 flex-1 flex-col (�
 check_contains('39. ملخص الاستيراد (excelSummaryBox/excelSummaryDetails) داخل حاوية shrink-0 ثابتة أعلى حالة المعاينة', $template_source, "<div class=\"shrink-0\">\n          <div id=\"excelSummaryBox\"");
 
 // 40) Body قابل للتمرير فقط: يحوي جدول Preview حصراً (لا أزرار/رسائل بداخله)،
-// بارتفاع أقصى محدود (55vh) بصرف النظر عن عدد الصفوف.
-$table_wrapper_start = strpos($template_source, 'min-h-0 max-h-[55vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border');
-check_true('40. غلاف الجدول موجود بـmax-h-[55vh] (ارتفاع مناسب بصرف النظر عن عدد الصفوف)', $table_wrapper_start !== false);
+// بارتفاع أقصى محدود (38vh، ضمن نافذة إجمالية 72vh) بصرف النظر عن عدد الصفوف.
+$table_wrapper_start = strpos($template_source, 'min-h-0 max-h-[38vh] flex-1 overflow-x-auto overflow-y-auto rounded-xl border border-border');
+check_true('40. غلاف الجدول موجود بـmax-h-[38vh] (ارتفاع مناسب بصرف النظر عن عدد الصفوف)', $table_wrapper_start !== false);
 check_true(
     '40ب. الجدول (id=excelPreviewBody) هو المحتوى الوحيد داخل الغلاف القابل للتمرير — لا أزرار ولا رسائل بداخله',
     (function () use ($template_source, $table_wrapper_start) {
@@ -330,8 +332,9 @@ check_true(
 // حد عرض 30 صفاً — تحسين عرض بحت، الاستيراد الفعلي يبقى يشمل كل الصفوف الصالحة
 // ============================================================================
 
-// 42) الثابت 30 معرَّف صراحة في الواجهة.
-check_contains('42. حد عرض المعاينة يساوي 30 صفاً (EXCEL_PREVIEW_DISPLAY_LIMIT)', $template_source, 'var EXCEL_PREVIEW_DISPLAY_LIMIT = 30;');
+// 42) الثابت 15 معرَّف صراحة في الواجهة (خُفِّض من 30 — هدف Preview مراجعة
+// سريعة ضمن نافذة Dialog مضغوطة، لا استعراض كامل الملف).
+check_contains('42. حد عرض المعاينة يساوي 15 صفاً (EXCEL_PREVIEW_DISPLAY_LIMIT)', $template_source, 'var EXCEL_PREVIEW_DISPLAY_LIMIT = 15;');
 
 $render_preview_rows_body_v2 = extract_js_function_body($template_source, 'excelRenderPreviewRows');
 
@@ -340,8 +343,9 @@ $render_preview_rows_body_v2 = extract_js_function_body($template_source, 'excel
 check_contains('43. دالة عرض المعاينة تستخدم rows.slice(0, EXCEL_PREVIEW_DISPLAY_LIMIT) عند التجاوز', $render_preview_rows_body_v2, 'rows.slice(0, EXCEL_PREVIEW_DISPLAY_LIMIT)');
 check_true('43ب. الشرط total > EXCEL_PREVIEW_DISPLAY_LIMIT هو ما يحدد القص (لا Pagination/صفحات)', strpos($render_preview_rows_body_v2, 'total > EXCEL_PREVIEW_DISPLAY_LIMIT') !== false);
 
-// 44) رسالة توضيحية تحت الجدول عند التجاوز فقط، تؤكد أن كل الصفوف الصالحة ستُستورَد.
-check_contains('44. نص رسالة القص يذكر "أول 30 صفاً" و"سيتم استيراد جميع الصفوف الصالحة"', $render_preview_rows_body_v2, "'يتم عرض أول ' + EXCEL_PREVIEW_DISPLAY_LIMIT + ' صفاً فقط للمراجعة. وسيتم استيراد جميع الصفوف الصالحة.'");
+// 44) رسالة توضيحية تحت الجدول عند التجاوز فقط، تؤكد أن كل الصفوف الصالحة ستُستورَد
+// (الصياغة الحرفية المحدَّثة: فاصلة "،" بدل نقطة قبل "وسيتم" — طلب المستخدم).
+check_contains('44. نص رسالة القص يذكر "أول 15 صفاً" و"سيتم استيراد جميع الصفوف الصالحة"', $render_preview_rows_body_v2, "'يتم عرض أول ' + EXCEL_PREVIEW_DISPLAY_LIMIT + ' صفاً فقط للمراجعة، وسيتم استيراد جميع الصفوف الصالحة.'");
 check_true('44ب. الرسالة تظهر فقط عند التجاوز، وتُخفى وتُفرَّغ خلاف ذلك', strpos($render_preview_rows_body_v2, "excelPreviewTruncatedMsg.classList.remove('hidden');") !== false && strpos($render_preview_rows_body_v2, "excelPreviewTruncatedMsg.classList.add('hidden');") !== false);
 check_contains('44ج. عنصر الرسالة excelPreviewTruncatedMsg يحمل aria-live="polite"', $template_source, 'id="excelPreviewTruncatedMsg" class="hidden mt-2 text-[11px] text-foreground/55" aria-live="polite"');
 
@@ -366,7 +370,9 @@ check_not_contains('47ج. لا مكتبة Virtual Scroll معروفة (react-win
 
 // 48) عناصر البطاقة موجودة في الترميز، بجوار رسالة القص، وتحمل aria-live.
 check_contains('48. بطاقة مشاكل خارج المعاينة (excelOutOfPreviewIssuesCard) موجودة بعنوانها الحرفي', $template_source, 'صفوف تحتوي على مشاكل خارج المعاينة');
-check_contains('48ب. البطاقة تحمل aria-live="polite"', $template_source, 'id="excelOutOfPreviewIssuesCard" class="hidden mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" aria-live="polite"');
+// مُحدَّث — البطاقة أصبحت أكثر إحكاماً بصرياً (padding/radius أصغر) ضمن تحسين
+// الحجم المضغوط للـModal، ولا تزال تحمل aria-live="polite".
+check_contains('48ب. البطاقة تحمل aria-live="polite"', $template_source, 'id="excelOutOfPreviewIssuesCard" class="hidden mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5" aria-live="polite"');
 check_contains('48ج. قائمة المشاكل (excelOutOfPreviewIssuesList) موجودة داخل البطاقة', $template_source, 'id="excelOutOfPreviewIssuesList"');
 check_contains('48د. عنصر "مشكلة إضافية" (excelOutOfPreviewIssuesMore) موجود داخل البطاقة', $template_source, 'id="excelOutOfPreviewIssuesMore"');
 check_true('48هـ. البطاقة تقع داخل الجزء الثابت السفلي (Footer) لحالة المعاينة، بعد رسالة القص مباشرة', strpos($template_source, 'excelPreviewTruncatedMsg') < strpos($template_source, 'excelOutOfPreviewIssuesCard') && strpos($template_source, 'excelOutOfPreviewIssuesCard') < strpos($template_source, 'excelNoValidMsg'));
@@ -404,6 +410,18 @@ check_contains('55. excelRenderPreviewRows تستدعي excelRenderOutOfPreviewI
 // 56) لا تأثير على منطق Confirm/العدّ الحقيقي — نفس تأكيد البند 46 بالضبط، لكن لهذه الميزة تحديداً.
 check_not_contains('56. لا أي استخدام لـexcelOutOfPreviewIssuesCard/List/More داخل معالج نقرة Confirm', $confirm_listener, 'excelOutOfPreviewIssues');
 check_not_contains('56ب. لا أي استخدام لـEXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT داخل معالج نقرة Confirm', $confirm_listener, 'EXCEL_OUT_OF_PREVIEW_ISSUES_LIMIT');
+
+// ============================================================================
+// تحسين حجم النافذة (Review Dialog مضغوط بدل Full Screen Page) — قيم جديدة فقط
+// ============================================================================
+
+// 57) قائمة بطاقة المشاكل نفسها محدودة الارتفاع وتُمرَّر داخلياً (لا تدفع الأزرار
+// للأسفل مهما طال عدد المشاكل المسرودة، حتى 10 كحد أقصى أصلاً).
+check_contains('57. قائمة مشاكل خارج المعاينة محدودة الارتفاع (max-h-16) وقابلة للتمرير الداخلي الخاص بها', $template_source, 'id="excelOutOfPreviewIssuesList" class="mt-1 max-h-16 list-none space-y-0.5 overflow-y-auto text-[11px] text-amber-800"');
+
+// 58) الحجم الكلي للنافذة (72vh) أصغر بوضوح من ارتفاع منطقة الجدول (38vh) —
+// تناسق داخلي، يبقى Header/Footer دائماً مساحة كافية غير مُستهلَكة بالجدول وحده.
+check_true('58. 72vh (اللوحة) > 38vh (الجدول) — مساحة كافية لِHeader/Footer الثابتَين', 72 > 38);
 
 echo "\n========================================\n";
 echo "النتيجة: $passed / $total نجحت.\n";
