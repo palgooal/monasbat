@@ -299,13 +299,17 @@ get_header();
     </div>
   </div>
 
-  <!-- ══ "Import Guests from Excel" (Phase 3: رفع+معاينة، Phase 4: تأكيد+استيراد فعلي) — نافذة استيراد Excel ══
+  <!-- ══ "Import Guests from Excel" (Phase 3: رفع+معاينة، Phase 4: تأكيد+استيراد فعلي،
+       Phase 5: UX فقط — لا تغيير على أي منطق/عقد Backend) — نافذة استيراد Excel ══
        نفس نمط نافذة bulkAddModal أعلاه حرفياً (dialog/fixed/bg-black40/rounded-2xl،
-       نفس فئات الجدول/الشارات/الأزرار) — لا تصميم جديد. أربع حالات تُبدَّل عبر hidden:
-       رفع (excelUploadState) → معاينة (excelPreviewState) → معالجة
-       (excelProcessingState) → نتيجة (excelResultState). زر التأكيد يُرسل
-       upload_token فقط (لا صفوف/بيانات معاينة من المتصفح إطلاقاً — الخادم
-       يُعيد التحليل والتحقّق وفحص التكرار من الصفر عند Confirm). ══ -->
+       نفس فئات الجدول/الشارات/الأزرار) — لا تصميم جديد. ست حالات تُبدَّل عبر hidden
+       (حالة رئيسية واحدة ظاهرة في كل لحظة، بالإضافة لشريط خطأ عام اختياري فوقها):
+       رفع (excelUploadState) → تحقّق (excelValidatingState) → معاينة
+       (excelPreviewState) → معالجة (excelProcessingState) → نتيجة
+       (excelResultState) → خطأ (excelImportErrorMsg، شريط وليس حالة كاملة، بنفس
+       نمط bulkAddErrorMsg). زر التأكيد يُرسل upload_token فقط (لا صفوف/بيانات
+       معاينة من المتصفح إطلاقاً — الخادم يُعيد التحليل والتحقّق وفحص التكرار من
+       الصفر عند Confirm؛ Phase 5 لم يغيّر شيئاً من هذا العقد). ══ -->
   <div id="excelImportModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="excelImportHeading">
     <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5">
       <div class="flex items-center justify-between mb-3">
@@ -315,45 +319,63 @@ get_header();
 
       <div id="excelImportErrorMsg" class="hidden mb-3 text-xs font-semibold rounded-xl px-3 py-2 bg-destructive/10 text-destructive-text" role="alert"></div>
 
-      <!-- حالة الرفع -->
+      <!-- حالة الرفع — Phase 5 (UX): عنوان + وصف قصير + صيغ مدعومة + تنبيه عمود الجوال + رابط النموذج، بلا شرح تقني (Scientific Notation/Cell Types) للمستخدم العادي. -->
       <div id="excelUploadState">
-        <label for="excelFileInput" class="block text-xs font-semibold text-foreground/70 mb-1.5">اختر ملف Excel (.xlsx) أو CSV (.csv)</label>
+        <h3 class="text-sm font-extrabold text-foreground mb-1">استيراد المدعوين من Excel</h3>
+        <p class="text-xs text-foreground/60 mb-3">ارفع ملف Excel أو CSV يحتوي على الاسم ورقم الجوال والملاحظة.</p>
+
+        <label for="excelFileInput" class="block text-xs font-semibold text-foreground/70 mb-1.5">اختر الملف</label>
         <input id="excelFileInput" type="file" accept=".xlsx,.csv" class="block w-full text-sm rounded-xl border border-border p-3" />
-        <p class="mt-1.5 text-[11px] text-foreground/50">يجب أن يطابق الملف النموذج الرسمي (3 أعمدة بالضبط: الاسم | رقم الجوال | ملاحظة). يمكنك تحميل النموذج من زر "تحميل نموذج Excel" أعلاه.</p>
-        <div class="flex justify-end gap-2 mt-3">
+        <div id="excelFileInfo" class="hidden mt-1.5 text-[11px] text-foreground/60" aria-live="polite"></div>
+
+        <p class="mt-2 text-[11px] text-foreground/50">الصيغ المدعومة: <span class="font-semibold">.xlsx</span> و<span class="font-semibold">.csv</span> — صيغة <span class="font-semibold">.xls</span> القديمة غير مدعومة.</p>
+
+        <div class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          لضمان حفظ أرقام الجوال بشكل صحيح، استخدم نموذج Excel الرسمي ولا تغيّر تنسيق عمود رقم الجوال.
+        </div>
+
+        <button type="button" id="excelInlineTemplateBtn" class="mt-2 text-[11px] font-semibold text-primary underline">📥 تحميل نموذج Excel</button>
+
+        <div class="flex flex-wrap justify-end gap-2 mt-3">
           <button type="button" id="excelCancelBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إلغاء</button>
           <button type="button" id="excelUploadBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">رفع ومعاينة</button>
         </div>
       </div>
 
+      <!-- حالة التحقق — Phase 5 (UX): تظهر أثناء رفع/تحليل الملف فقط (منع Double Submit). -->
+      <div id="excelValidatingState" class="hidden py-10 text-center text-sm text-foreground/60" aria-live="polite">جارٍ التحقق من الملف...</div>
+
       <!-- حالة المعاينة -->
       <div id="excelPreviewState" class="hidden">
-        <div id="excelSummaryBox" class="flex flex-wrap gap-2 mb-3"></div>
+        <div id="excelSummaryBox" class="flex flex-wrap gap-2 mb-1.5" aria-live="polite"></div>
+        <div id="excelSummaryDetails" class="hidden mb-3 text-[11px] text-foreground/55"></div>
         <div class="overflow-x-auto rounded-xl border border-border max-h-72 overflow-y-auto">
           <table class="w-full text-xs">
             <caption class="sr-only">معاينة صفوف استيراد Excel قبل التأكيد</caption>
             <thead>
-              <tr class="border-b border-border bg-secondary/30 text-right font-bold text-foreground/70">
-                <th scope="col" class="px-2.5 py-2">الاسم</th>
-                <th scope="col" class="px-2.5 py-2">الجوال</th>
-                <th scope="col" class="px-2.5 py-2">ملاحظة</th>
-                <th scope="col" class="px-2.5 py-2">الحالة</th>
+              <tr class="sticky top-0 z-10 border-b border-border bg-secondary/30 text-right font-bold text-foreground/70">
+                <th scope="col" class="px-2.5 py-2 bg-secondary/95">الاسم</th>
+                <th scope="col" class="px-2.5 py-2 bg-secondary/95">الجوال</th>
+                <th scope="col" class="px-2.5 py-2 bg-secondary/95">الملاحظة</th>
+                <th scope="col" class="px-2.5 py-2 bg-secondary/95">الحالة</th>
               </tr>
             </thead>
             <tbody id="excelPreviewBody"></tbody>
           </table>
         </div>
-        <div class="flex justify-end gap-2 mt-3">
-          <button type="button" id="excelBackBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">رجوع</button>
-          <button type="button" id="excelConfirmBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">استيراد المدعوين الصالحين</button>
+        <p id="excelNoValidMsg" class="hidden mt-2 text-xs font-semibold text-destructive-text" role="alert">لا توجد صفوف صالحة للاستيراد.</p>
+        <div class="flex flex-wrap justify-end gap-2 mt-3">
+          <button type="button" id="excelBackBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">اختيار ملف آخر</button>
+          <button type="button" id="excelConfirmBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white disabled:opacity-40">استيراد المدعوين الصالحين</button>
         </div>
       </div>
 
       <!-- حالة المعالجة -->
-      <div id="excelProcessingState" class="hidden py-10 text-center text-sm text-foreground/60">جارٍ الاستيراد...</div>
+      <div id="excelProcessingState" class="hidden py-10 text-center text-sm text-foreground/60" aria-live="polite">جارٍ الاستيراد...</div>
 
       <!-- حالة النتيجة -->
       <div id="excelResultState" class="hidden">
+        <p id="excelResultMsg" class="mb-3 text-sm font-bold text-foreground" aria-live="polite"></p>
         <div id="excelResultSummaryBox" class="flex flex-wrap gap-2 mb-3"></div>
         <div class="flex justify-end gap-2 mt-3">
           <button type="button" id="excelCloseResultBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">إغلاق</button>
@@ -1010,22 +1032,67 @@ get_header();
     missing_phone: 'bg-destructive/10 text-destructive-text',
     empty_row: 'bg-secondary/40 text-foreground/70',
   };
+  // Phase 5 (UX فقط): رسائل عربية صديقة مبنية على 'reason' الحقيقي القادم من
+  // الخادم (Phase 1-4 بلا أي تغيير) — بديل أوضح من رسالة الخادم الخام عند
+  // توفّر reason معروف، مع سقوط آمن على رسالة الخادم ثم رسالة عامة أخيراً.
+  // لا كشف لأي stack trace/مسار/token/رمز حالة داخلي في أي مسار هنا.
+  var EXCEL_ERROR_REASON_MESSAGES = {
+    no_file: 'لم يتم اختيار أي ملف.',
+    upload_error: 'حدث خطأ أثناء رفع الملف. حاول مرة أخرى.',
+    file_too_large: 'حجم الملف أكبر من الحد المسموح.',
+    unsupported_extension: 'صيغة الملف غير مدعومة. استخدم XLSX أو CSV.',
+    invalid_mime: 'نوع الملف غير مطابق للامتداد. تأكد من أن الملف سليم.',
+    storage_failed: 'تعذّر حفظ الملف على الخادم. حاول مرة أخرى.',
+    unreadable_file: 'تعذّر قراءة الملف المحدَّد.',
+    xlsx_parse_error: 'تعذر قراءة ملف Excel. تأكد من أن الملف غير تالف.',
+    malformed_xlsx: 'تعذر قراءة ملف Excel. تأكد من أن الملف غير تالف.',
+    malformed_csv: 'الملف لا يبدو ملف CSV صالحاً.',
+    invalid_columns: 'تنسيق الأعمدة لا يطابق نموذج الاستيراد.',
+    invalid_token: 'انتهت جلسة الاستيراد أو تم تنفيذها مسبقاً. أعد رفع الملف.',
+    token_not_found: 'انتهت جلسة الاستيراد أو تم تنفيذها مسبقاً. أعد رفع الملف.',
+    invalid_file_type: 'انتهت جلسة الاستيراد أو تم تنفيذها مسبقاً. أعد رفع الملف.',
+    file_missing: 'انتهت جلسة الاستيراد أو تم تنفيذها مسبقاً. أعد رفع الملف.',
+  };
+  function excelResolveErrorMessage(json, fallback) {
+    var data = json && json.data;
+    if (data && data.reason && EXCEL_ERROR_REASON_MESSAGES[data.reason]) return EXCEL_ERROR_REASON_MESSAGES[data.reason];
+    if (data && data.message) return data.message;
+    return fallback;
+  }
+  // هل هذا الرفض في مرحلة Confirm يعني أن التوكن استُهلِك/انتهى فعلاً؟ في
+  // هذه الحالة فقط لا فائدة من محاولة Confirm بنفس الملف مرة أخرى — يجب
+  // إعادة الرفع من الصفر (نفس فلسفة القسم 15 من المواصفة).
+  var EXCEL_TOKEN_DEAD_REASONS = { invalid_token: true, token_not_found: true, invalid_file_type: true, file_missing: true };
+
+  function excelFormatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' بايت';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' كيلوبايت';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' ميجابايت';
+  }
+
   var excelModal = document.getElementById('excelImportModal');
   var excelFileInput = document.getElementById('excelFileInput');
+  var excelFileInfo = document.getElementById('excelFileInfo');
   var excelErrorMsg = document.getElementById('excelImportErrorMsg');
   var excelUploadState = document.getElementById('excelUploadState');
+  var excelValidatingState = document.getElementById('excelValidatingState');
   var excelPreviewState = document.getElementById('excelPreviewState');
   var excelProcessingState = document.getElementById('excelProcessingState');
   var excelResultState = document.getElementById('excelResultState');
   var excelSummaryBox = document.getElementById('excelSummaryBox');
+  var excelSummaryDetails = document.getElementById('excelSummaryDetails');
   var excelPreviewBody = document.getElementById('excelPreviewBody');
+  var excelNoValidMsg = document.getElementById('excelNoValidMsg');
+  var excelResultMsg = document.getElementById('excelResultMsg');
   var excelResultSummaryBox = document.getElementById('excelResultSummaryBox');
   var excelConfirmBtn = document.getElementById('excelConfirmBtn');
+  var excelUploadBtn = document.getElementById('excelUploadBtn');
   var excelInFlight = false;
   var excelUploadToken = null; // upload_token الحالي — العنصر الوحيد المُرسَل لـConfirm.
 
   function excelShowState(name) {
     excelUploadState.classList.toggle('hidden', name !== 'upload');
+    excelValidatingState.classList.toggle('hidden', name !== 'validating');
     excelPreviewState.classList.toggle('hidden', name !== 'preview');
     excelProcessingState.classList.toggle('hidden', name !== 'processing');
     excelResultState.classList.toggle('hidden', name !== 'result');
@@ -1038,6 +1105,21 @@ get_header();
     excelErrorMsg.classList.add('hidden');
     excelErrorMsg.textContent = '';
   }
+
+  // اختيار ملف جديد — عرض اسمه/نوعه/حجمه محلياً فقط داخل الواجهة (لا يُرسَل
+  // هذا العرض لأي Audit، ولا يُغيّر عقد الرفع — file.name يُرسَل أصلاً ضمن
+  // الرفع الفعلي multipart كجزء بنيوي من العملية، بصرف النظر عن هذا العرض).
+  if (excelFileInput) {
+    excelFileInput.addEventListener('change', function () {
+      var file = excelFileInput.files && excelFileInput.files[0];
+      if (!file) { excelFileInfo.classList.add('hidden'); excelFileInfo.textContent = ''; return; }
+      excelFileInfo.textContent = file.name + ' — ' + (file.type || 'ملف') + ' — ' + excelFormatFileSize(file.size);
+      excelFileInfo.classList.remove('hidden');
+    });
+  }
+
+  var excelInlineTemplateBtn = document.getElementById('excelInlineTemplateBtn');
+  if (excelInlineTemplateBtn) excelInlineTemplateBtn.addEventListener('click', triggerExcelTemplateDownload);
 
   function excelRenderSummaryBadges(container, summary, keyLabels) {
     container.innerHTML = '';
@@ -1067,6 +1149,8 @@ get_header();
   function excelOpenModal() {
     excelClearError();
     excelFileInput.value = '';
+    excelFileInfo.classList.add('hidden');
+    excelFileInfo.textContent = '';
     excelUploadToken = null;
     excelShowState('upload');
     excelModal.classList.remove('hidden');
@@ -1083,61 +1167,123 @@ get_header();
     excelClearError();
     excelUploadToken = null;
     excelFileInput.value = '';
+    excelFileInfo.classList.add('hidden');
+    excelFileInfo.textContent = '';
     excelShowState('upload');
   });
 
+  // Phase 5 (UX): حالة "جارٍ التحقق" ظاهرة أثناء الطلب + تعطيل زر الرفع/اختيار
+  // ملف جديد وزر Confirm طوال مدة الطلب — منع Double Submit صراحةً (القسم 6).
   document.getElementById('excelUploadBtn').addEventListener('click', function () {
     if (excelInFlight) return;
     excelClearError();
     var file = excelFileInput.files && excelFileInput.files[0];
     if (!file) { excelShowError('اختر ملفاً أولاً'); return; }
     excelInFlight = true;
+    excelUploadBtn.disabled = true;
+    excelFileInput.disabled = true;
+    excelShowState('validating');
     postFileAjax('pge_invitation_mgmt_excel_preview', file).then(function (json) {
       excelInFlight = false;
+      excelUploadBtn.disabled = false;
+      excelFileInput.disabled = false;
       if (!json || !json.success) {
-        excelShowError((json && json.data && json.data.message) || 'تعذّرت معاينة الملف');
+        excelShowState('upload');
+        excelShowError(excelResolveErrorMessage(json, 'تعذّرت معاينة الملف'));
         return;
       }
       excelUploadToken = json.data.upload_token || null;
-      excelRenderSummaryBadges(excelSummaryBox, json.data.summary, [
-        { key: 'total', label: 'الإجمالي' }, { key: 'valid', label: 'صالح' },
-        { key: 'duplicate', label: 'مكرَّر' }, { key: 'invalid_phone', label: 'رقم غير صالح' },
-        { key: 'missing_name', label: 'اسم مفقود' }, { key: 'missing_phone', label: 'رقم مفقود' },
-        { key: 'empty_row', label: 'صف فارغ' },
+      var summary = json.data.summary || {};
+      excelRenderSummaryBadges(excelSummaryBox, summary, [
+        { key: 'total', label: 'إجمالي الصفوف' },
+        { key: 'valid', label: 'سيتم استيراد' },
+        { key: 'duplicate', label: 'مكرَّر' },
       ]);
+      // تفاصيل إضافية اختيارية (القسم 7: "الأرقام الأساسية أهم من التفاصيل") —
+      // سطر خفيف منفصل، يظهر فقط للبنود التي قيمتها أكبر من صفر فعلياً.
+      var detailParts = [];
+      [
+        { key: 'missing_name', label: 'اسم مفقود' },
+        { key: 'missing_phone', label: 'رقم مفقود' },
+        { key: 'invalid_phone', label: 'رقم غير صالح' },
+        { key: 'empty_row', label: 'صف فارغ' },
+      ].forEach(function (kl) {
+        var v = summary[kl.key];
+        if (v) detailParts.push(kl.label + ': ' + v);
+      });
+      if (detailParts.length) {
+        excelSummaryDetails.textContent = detailParts.join(' · ');
+        excelSummaryDetails.classList.remove('hidden');
+      } else {
+        excelSummaryDetails.classList.add('hidden');
+        excelSummaryDetails.textContent = '';
+      }
       excelRenderPreviewRows(json.data.rows || []);
-      var validCount = (json.data.summary && json.data.summary.valid) || 0;
+      var validCount = summary.valid || 0;
+      var canImport = !!excelUploadToken && validCount > 0;
       excelConfirmBtn.textContent = 'استيراد ' + validCount + ' مدعو';
-      excelConfirmBtn.disabled = !excelUploadToken || validCount === 0;
+      excelConfirmBtn.disabled = !canImport;
+      excelNoValidMsg.classList.toggle('hidden', validCount !== 0);
       excelShowState('preview');
-    }).catch(function () { excelInFlight = false; excelShowError('تعذّر الاتصال بالخادم'); });
+    }).catch(function () {
+      excelInFlight = false;
+      excelUploadBtn.disabled = false;
+      excelFileInput.disabled = false;
+      excelShowState('upload');
+      excelShowError('تعذّر الاتصال بالخادم');
+    });
   });
 
   excelConfirmBtn.addEventListener('click', function () {
     if (excelInFlight || !excelUploadToken) return;
     excelInFlight = true;
+    excelConfirmBtn.disabled = true; // منع نقرة ثانية فوراً (القسم 11).
+    excelConfirmBtn.textContent = 'جارٍ الاستيراد...';
     excelClearError();
     excelShowState('processing');
     // "Confirm receives token only" — لا صفوف/بيانات معاينة تُرسَل من المتصفح
     // إطلاقاً؛ الخادم يُعيد التحليل + التحقّق + فحص التكرار من الصفر.
     postAjax('pge_invitation_mgmt_excel_confirm', { upload_token: excelUploadToken }).then(function (json) {
       excelInFlight = false;
+      var tokenWasAlreadyConsumed = excelUploadToken !== null;
       excelUploadToken = null; // التوكن يُستهلَك دائماً من جانب الخادم بعد Confirm — لا إعادة استخدام.
       if (!json || !json.success) {
+        var reason = json && json.data && json.data.reason;
         excelShowState('upload');
         excelFileInput.value = '';
-        excelShowError((json && json.data && json.data.message) || 'تعذّر تنفيذ الاستيراد');
+        excelFileInfo.classList.add('hidden');
+        excelFileInfo.textContent = '';
+        // القسم 15: إذا انتهى/استُهلِك التوكن، لا محاولة إعادة استخدامه — العودة
+        // الكاملة لحالة الرفع (بالفعل أعلاه) هي "إعادة رفع الملف".
+        excelShowError(excelResolveErrorMessage(json, tokenWasAlreadyConsumed && reason && EXCEL_TOKEN_DEAD_REASONS[reason] ? 'انتهت جلسة الاستيراد أو تم تنفيذها مسبقاً. أعد رفع الملف.' : 'تعذّر تنفيذ الاستيراد'));
         return;
       }
       var s = json.data.summary || {};
+      var imported = s.imported || 0;
+      var skipped = (s.total_rows || 0) - imported;
       excelRenderSummaryBadges(excelResultSummaryBox, s, [
         { key: 'imported', label: 'تم استيراد' },
         { key: 'duplicates', label: 'تم تخطي المكرر' },
         { key: 'invalid', label: 'غير صالح' },
         { key: 'failed', label: 'فشل' },
       ]);
+      // القسم 12/13: رسالة نجاح واضحة فقط إذا imported>0، بلا نجاح مضلِّل عند
+      // imported=0، وصياغة نجاح جزئي واضحة عند وجود صفوف مستوردة وأخرى لا.
+      var resultText;
+      if (imported > 0 && skipped === 0) {
+        resultText = 'تم استيراد ' + imported + ' مدعو بنجاح.';
+      } else if (imported > 0 && skipped > 0) {
+        resultText = 'تم استيراد ' + imported + ' مدعو، وتعذر استيراد ' + skipped + '.';
+      } else if ((s.total_rows || 0) > 0 && (s.duplicates || 0) === (s.total_rows || 0)) {
+        resultText = 'كل الصفوف كانت مكرَّرة مسبقاً — لم يُضَف أي مدعو جديد.';
+      } else if ((s.total_rows || 0) > 0) {
+        resultText = 'لم يُضَف أي مدعو — لم توجد صفوف صالحة للاستيراد.';
+      } else {
+        resultText = 'لم يتم استيراد أي مدعو.';
+      }
+      excelResultMsg.textContent = resultText;
       excelShowState('result');
-      showToast('اكتمل استيراد Excel', false);
+      if (imported > 0) showToast(resultText, false);
     }).catch(function () {
       excelInFlight = false;
       excelShowState('upload');
@@ -1147,6 +1293,8 @@ get_header();
 
   document.getElementById('excelCloseResultBtn').addEventListener('click', function () {
     excelFileInput.value = '';
+    excelFileInfo.classList.add('hidden');
+    excelFileInfo.textContent = '';
     excelCloseModal();
     fetchList(1);
   });
