@@ -45,6 +45,11 @@ if (!function_exists('pge_manual_activation_guard')) {
 /**
  * قراءة "هل لدى هذا المستخدم باقة فعالة حالياً؟" — قراءة meta فقط، لا كتابة.
  * تعمل على النظامين معاً لأن كليهما يكتب نفس مفتاح _mon_package_status.
+ *
+ * plan_id/tier_id (Manual Reactivation Fix): تُعادان فقط عندما يكون المصدر
+ * الحالي 'catalog' والحالة 'active' — تُستخدَمان حصراً في نقطة نهاية التفعيل
+ * لاكتشاف "إعادة تفعيل نفس Tier" (راجع wp_ajax_pge_manual_activation_activate
+ * أدناه)؛ 0/0 في أي حالة أخرى (Legacy أو لا استحقاق فعال أصلاً).
  */
 if (!function_exists('pge_manual_activation_get_current_status')) {
     function pge_manual_activation_get_current_status($user_id)
@@ -55,10 +60,16 @@ if (!function_exists('pge_manual_activation_get_current_status')) {
         $source = $source === 'catalog' ? 'catalog' : 'legacy';
 
         $label = '';
+        $plan_id = 0;
+        $tier_id = 0;
         if ($status === 'active') {
-            $label = $source === 'catalog'
-                ? (string) get_user_meta($user_id, '_mon_catalog_tier_name', true)
-                : (string) get_user_meta($user_id, '_mon_package_name', true);
+            if ($source === 'catalog') {
+                $label = (string) get_user_meta($user_id, '_mon_catalog_tier_name', true);
+                $plan_id = absint(get_user_meta($user_id, '_mon_catalog_plan_id', true));
+                $tier_id = absint(get_user_meta($user_id, '_mon_catalog_tier_id', true));
+            } else {
+                $label = (string) get_user_meta($user_id, '_mon_package_name', true);
+            }
         }
 
         return [
@@ -66,6 +77,8 @@ if (!function_exists('pge_manual_activation_get_current_status')) {
             'status'    => $status,
             'source'    => $source,
             'label'     => $label,
+            'plan_id'   => $plan_id,
+            'tier_id'   => $tier_id,
         ];
     }
 }
@@ -314,10 +327,31 @@ add_action('wp_ajax_pge_manual_activation_activate', function () {
 
         $package_identifier = 'plan_id:' . $plan_id . ' tier_id:' . $tier_id;
 
-        // نفس الاستدعاء الحرفي الذي تستخدمه process_catalog_match() في
-        // class-salla-handler.php عند نجاح مطابقة Catalog — لا فرق سوى
-        // $external_order_id (فارغ هنا، لأن لا طلب سلة فعلياً وراء هذا التفعيل).
-        $activation_result = Mon_Events_Users::activate_catalog_tier($target_user_id, $plan_id, $tier_id, '');
+        // Manual Reactivation Fix: إعادة تفعيل نفس Tier فعلياً لنفس المستخدم
+        // (نفس plan_id/tier_id الحاليين المخزَّنين له بالفعل — وهذا لا يصل
+        // إلى هنا أصلاً إلا بعد تجاوز بوابة confirm_override أعلاه، أي أن
+        // المسؤول أكَّد العملية صراحةً) ليست "تفعيلاً جديداً" تجارياً، بل
+        // طلب تحديث الحقول الوصفية (مثل guest_limit) لتطابق آخر تعديل على
+        // تعريف الـTier نفسه. activate_catalog_tier() تحتوي حارس Idempotency
+        // مصمَّم لحماية Webhook سلة من إعادة تسليم نفس الطلب — عند التفعيل
+        // اليدوي (external_order_id فارغ دائماً) هذا الحارس يتطابق خطأً مع
+        // "نفس الطلب" فيرجع true فوراً بلا كتابة أي شيء، فتبقى القيم القديمة
+        // معروضة. الحل: عند اكتشاف تطابق Tier الحالي فعلياً، نستدعي
+        // refresh_catalog_tier_snapshot() بدلاً من activate_catalog_tier() —
+        // تُحدِّث الحقول الوصفية فقط ولا تلمس رصيد الدعوات/البديل ولا
+        // credit_cycle_id ولا _mon_last_order_id إطلاقاً (راجع تعليقاتها في
+        // class-mon-events-users.php). لا تغيير على activate_catalog_tier()
+        // نفسها ولا على حارسها — سلوك Webhook سلة يبقى كما هو تماماً.
+        $is_same_tier_reactivation = (
+            $current['is_active']
+            && $current['source'] === 'catalog'
+            && $current['plan_id'] === $plan_id
+            && $current['tier_id'] === $tier_id
+        );
+
+        $activation_result = $is_same_tier_reactivation
+            ? Mon_Events_Users::refresh_catalog_tier_snapshot($target_user_id)
+            : Mon_Events_Users::activate_catalog_tier($target_user_id, $plan_id, $tier_id, '');
 
         if (is_wp_error($activation_result)) {
             $error_message = $activation_result->get_error_message();

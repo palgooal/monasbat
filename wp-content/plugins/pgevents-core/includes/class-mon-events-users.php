@@ -104,104 +104,26 @@ class Mon_Events_Users
             return new WP_Error('invalid_tier_id', 'معرّف المستوى غير صالح.');
         }
 
-        if (!class_exists('PGE_Catalog')) {
-            return new WP_Error('catalog_unavailable', 'كتالوج الباقات غير متاح حاليًا.');
+        // Manual Reactivation Fix — استُخرِجت قراءة/تحقّق صف Tier/Plan وحساب
+        // الحقول الوصفية (السطور التي كانت هنا سابقاً) إلى
+        // resolve_tier_entitlement_fields() المشتركة، دون أي تغيير في السلوك
+        // أو رسائل الخطأ أو ترتيبها — نقل كود حرفي فقط، ليُعاد استخدامه أيضاً
+        // من refresh_catalog_tier_snapshot() أدناه بلا تكرار لنفس التحقّقات.
+        $resolved = self::resolve_tier_entitlement_fields($plan_id, $tier_id);
+        if (is_wp_error($resolved)) {
+            return $resolved;
         }
 
-        $plan = PGE_Catalog::get_plan($plan_id);
-        if (!is_array($plan)) {
-            return new WP_Error('plan_not_found', 'تعذر العثور على الباقة المطلوبة.');
-        }
-
-        if (($plan['status'] ?? '') !== 'active') {
-            return new WP_Error('inactive_plan', 'الباقة المطلوبة غير نشطة.');
-        }
-
-        $tier = PGE_Catalog::get_tier($tier_id);
-        if (!is_array($tier)) {
-            return new WP_Error('tier_not_found', 'تعذر العثور على مستوى الباقة المطلوب.');
-        }
-
-        if (absint($tier['plan_id'] ?? 0) !== absint($plan['id'] ?? 0)) {
-            return new WP_Error('tier_plan_mismatch', 'مستوى الباقة لا يتبع الباقة المطلوبة.');
-        }
-
-        if (($tier['status'] ?? '') !== 'active') {
-            return new WP_Error('inactive_tier', 'مستوى الباقة المطلوب غير نشط.');
-        }
-
-        $price = trim((string) ($tier['price'] ?? ''));
-        if ($price === '' || !preg_match('/^[0-9]+(?:\.[0-9]+)?$/', $price)) {
-            return new WP_Error('invalid_price', 'سعر مستوى الباقة غير صالح.');
-        }
-
-        $currency = sanitize_text_field((string) ($tier['currency'] ?? ''));
-        if ($currency === '') {
-            return new WP_Error('invalid_currency', 'عملة مستوى الباقة غير صالحة.');
-        }
-
-        $plan_key = sanitize_key((string) ($plan['plan_key'] ?? ''));
-        if ($plan_key === '') {
-            return new WP_Error('invalid_plan_key', 'مفتاح الباقة غير صالح.');
-        }
-
-        $guest_limit = $tier['guest_limit'] ?? null;
-        if ($guest_limit !== null) {
-            $guest_limit = is_string($guest_limit) ? trim($guest_limit) : $guest_limit;
-            if (
-                !(is_int($guest_limit) && $guest_limit >= 0)
-                && !(is_string($guest_limit) && preg_match('/^[0-9]+$/', $guest_limit))
-            ) {
-                return new WP_Error('invalid_guest_limit', 'حد المدعوين في مستوى الباقة غير صالح.');
-            }
-            $guest_limit = absint($guest_limit);
-        }
-
-        // رصيد الدعوات (الأساسي والبديل) — مرحلة "تأسيس بيانات فقط" لنظام
-        // Invitation Credits Engine: العمودان الجديدان في mon_plan_tiers هما
-        // INT UNSIGNED NOT NULL DEFAULT 0 (غير NULLable مثل guest_limit)،
-        // فلا حاجة هنا لأي تمييز NULL/فارغ — absint() كافية ومباشرة، وتُعيد
-        // 0 دفاعياً حتى لو غاب المفتاح من صف tier قديم بشكل غير متوقع.
-        $invitation_credit_limit = absint($tier['invitation_credit_limit'] ?? 0);
-        $replacement_credit_limit = absint($tier['replacement_credit_limit'] ?? 0);
-
-        // Event Quota (Commit 3 من معمارية Event Quota المعتمدة) — قراءة
-        // دفاعية بنفس أسلوب invitation_credit_limit/replacement_credit_limit
-        // أعلاه بالضبط (absint()-style casting، بلا استدعاء
-        // PGE_Catalog::normalize_event_quota_*() الخاصتين private، وبلا رفض
-        // للتفعيل عند قيمة غير متوقعة): عمودا mon_plan_tiers.event_quota_mode/
-        // event_quota_limit مضمونان صالحين دوماً من مسار CRUD الوحيد الذي
-        // يكتبهما (PGE_Catalog::create_tier()/update_tier() — Commit 2)، لذا
-        // هذه القراءة دفاعية فقط ضد صف tier غير متوقع (تماماً كتعليق
-        // invitation_credit_limit أعلاه)، لا تحقّقاً أساسياً.
-        //
-        // القرار المعماري الحاسم لهذا الـCommit: القيمتان المكتوبتان في
-        // Snapshot المستخدم أدناه (_mon_event_quota_mode/_mon_event_quota_limit)
-        // هما "الاستحقاق التجاري المشترى في لحظة هذا التفعيل تحديداً" —
-        // نسخة مجمَّدة من صف الـTier الحالي وقت التفعيل، وليست إشارة حية لصف
-        // الـTier. إن عدَّل المسؤول لاحقاً event_quota_limit لنفس الـTier (من
-        // 3 إلى 5 مثلاً)، لا يتأثر أي مستخدم مُفعَّل مسبقاً على هذا الـTier
-        // إطلاقاً — Snapshot ذلك المستخدم يبقى 3 كما اشتراه بالضبط، ولا
-        // تُعاد قراءته من الـTier مطلقاً بعد هذه اللحظة. فقط تفعيل جديد لاحق
-        // (تجديد/ترقية/تخفيض — أي استدعاء لا يمر من فرع "تكرار طلب متطابق"
-        // أدناه) يقرأ القيمة الحالية للـTier ويكتب Snapshot جديداً بها. هذا
-        // يطابق حرفياً نفس مبدأ Snapshot المُطبَّق فعلاً على guest_limit/
-        // invitation_credit_total/replacement_credit_total أعلاه — لا مبدأ
-        // جديد، إعادة استخدام للمبدأ القائم فقط.
-        $event_quota_mode = is_string($tier['event_quota_mode'] ?? null)
-            ? strtolower(trim((string) $tier['event_quota_mode']))
-            : 'limited';
-        if ($event_quota_mode !== 'unlimited') {
-            $event_quota_mode = 'limited';
-        }
-
-        $event_quota_limit_raw = $tier['event_quota_limit'] ?? 1;
-        $event_quota_limit = (is_int($event_quota_limit_raw) || (is_string($event_quota_limit_raw) && preg_match('/^[0-9]+$/', trim($event_quota_limit_raw))))
-            ? (int) $event_quota_limit_raw
-            : 1;
-        if ($event_quota_limit < 1) {
-            $event_quota_limit = 1;
-        }
+        $plan = $resolved['plan'];
+        $tier = $resolved['tier'];
+        $price = $resolved['price'];
+        $currency = $resolved['currency'];
+        $plan_key = $resolved['plan_key'];
+        $guest_limit = $resolved['guest_limit'];
+        $invitation_credit_limit = $resolved['invitation_credit_limit'];
+        $replacement_credit_limit = $resolved['replacement_credit_limit'];
+        $event_quota_mode = $resolved['event_quota_mode'];
+        $event_quota_limit = $resolved['event_quota_limit'];
 
         // معرّف دورة الرصيد (Invitation Credits Engine — المرحلة الثانية):
         // يُولَّد فريداً عند كل كتابة Snapshot فعلية أدناه (لا عند الاستدعاء
@@ -347,6 +269,224 @@ class Mon_Events_Users
             delete_user_meta($user_id, '_mon_last_order_id');
         }
         delete_user_meta($user_id, '_mon_package_deactivated_at');
+
+        return true;
+    }
+
+    /**
+     * قراءة وتحقّق مشترك لصف Tier/Plan الحيّين، وحساب الحقول الوصفية الجاهزة
+     * للكتابة في Snapshot. مُستخرَجة حرفياً (نقل كود بلا أي تغيير سلوك) من
+     * activate_catalog_tier() لإعادة استخدامها في refresh_catalog_tier_snapshot()
+     * أيضاً، بلا تكرار لنفس التحقّقات بين الدالتين.
+     *
+     * لا كتابة User Meta هنا إطلاقاً، ولا قرار تفعيل/تخطي (idempotency)، ولا
+     * أي لمس لحقول الرصيد أو credit_cycle_id — هذه الدالة قراءة وتحقّق محض.
+     *
+     * @param int $plan_id مُطبَّع مسبقاً (self::normalize_positive_id())
+     * @param int $tier_id مُطبَّع مسبقاً (self::normalize_positive_id())
+     * @return array|WP_Error عند النجاح: plan, tier, price, currency, plan_key,
+     *   guest_limit (int|null), invitation_credit_limit, replacement_credit_limit,
+     *   event_quota_mode, event_quota_limit.
+     */
+    private static function resolve_tier_entitlement_fields($plan_id, $tier_id)
+    {
+        if (!class_exists('PGE_Catalog')) {
+            return new WP_Error('catalog_unavailable', 'كتالوج الباقات غير متاح حاليًا.');
+        }
+
+        $plan = PGE_Catalog::get_plan($plan_id);
+        if (!is_array($plan)) {
+            return new WP_Error('plan_not_found', 'تعذر العثور على الباقة المطلوبة.');
+        }
+
+        if (($plan['status'] ?? '') !== 'active') {
+            return new WP_Error('inactive_plan', 'الباقة المطلوبة غير نشطة.');
+        }
+
+        $tier = PGE_Catalog::get_tier($tier_id);
+        if (!is_array($tier)) {
+            return new WP_Error('tier_not_found', 'تعذر العثور على مستوى الباقة المطلوب.');
+        }
+
+        if (absint($tier['plan_id'] ?? 0) !== absint($plan['id'] ?? 0)) {
+            return new WP_Error('tier_plan_mismatch', 'مستوى الباقة لا يتبع الباقة المطلوبة.');
+        }
+
+        if (($tier['status'] ?? '') !== 'active') {
+            return new WP_Error('inactive_tier', 'مستوى الباقة المطلوب غير نشط.');
+        }
+
+        $price = trim((string) ($tier['price'] ?? ''));
+        if ($price === '' || !preg_match('/^[0-9]+(?:\.[0-9]+)?$/', $price)) {
+            return new WP_Error('invalid_price', 'سعر مستوى الباقة غير صالح.');
+        }
+
+        $currency = sanitize_text_field((string) ($tier['currency'] ?? ''));
+        if ($currency === '') {
+            return new WP_Error('invalid_currency', 'عملة مستوى الباقة غير صالحة.');
+        }
+
+        $plan_key = sanitize_key((string) ($plan['plan_key'] ?? ''));
+        if ($plan_key === '') {
+            return new WP_Error('invalid_plan_key', 'مفتاح الباقة غير صالح.');
+        }
+
+        $guest_limit = $tier['guest_limit'] ?? null;
+        if ($guest_limit !== null) {
+            $guest_limit = is_string($guest_limit) ? trim($guest_limit) : $guest_limit;
+            if (
+                !(is_int($guest_limit) && $guest_limit >= 0)
+                && !(is_string($guest_limit) && preg_match('/^[0-9]+$/', $guest_limit))
+            ) {
+                return new WP_Error('invalid_guest_limit', 'حد المدعوين في مستوى الباقة غير صالح.');
+            }
+            $guest_limit = absint($guest_limit);
+        }
+
+        // رصيد الدعوات (الأساسي والبديل) — العمودان في mon_plan_tiers هما
+        // INT UNSIGNED NOT NULL DEFAULT 0 (غير NULLable مثل guest_limit)، فلا
+        // حاجة هنا لأي تمييز NULL/فارغ — absint() كافية ومباشرة، وتُعيد 0
+        // دفاعياً حتى لو غاب المفتاح من صف tier قديم بشكل غير متوقع.
+        $invitation_credit_limit = absint($tier['invitation_credit_limit'] ?? 0);
+        $replacement_credit_limit = absint($tier['replacement_credit_limit'] ?? 0);
+
+        // Event Quota — قراءة دفاعية بنفس الأسلوب أعلاه (absint()-style
+        // casting، بلا استدعاء الدوال الخاصة private، وبلا رفض للتفعيل عند
+        // قيمة غير متوقعة): عمودا mon_plan_tiers.event_quota_mode/
+        // event_quota_limit مضمونان صالحين دوماً من مسار CRUD الوحيد الذي
+        // يكتبهما (PGE_Catalog::create_tier()/update_tier())، لذا هذه القراءة
+        // دفاعية فقط ضد صف tier غير متوقع، لا تحقّقاً أساسياً.
+        $event_quota_mode = is_string($tier['event_quota_mode'] ?? null)
+            ? strtolower(trim((string) $tier['event_quota_mode']))
+            : 'limited';
+        if ($event_quota_mode !== 'unlimited') {
+            $event_quota_mode = 'limited';
+        }
+
+        $event_quota_limit_raw = $tier['event_quota_limit'] ?? 1;
+        $event_quota_limit = (is_int($event_quota_limit_raw) || (is_string($event_quota_limit_raw) && preg_match('/^[0-9]+$/', trim($event_quota_limit_raw))))
+            ? (int) $event_quota_limit_raw
+            : 1;
+        if ($event_quota_limit < 1) {
+            $event_quota_limit = 1;
+        }
+
+        return [
+            'plan'                     => $plan,
+            'tier'                     => $tier,
+            'price'                    => $price,
+            'currency'                 => $currency,
+            'plan_key'                 => $plan_key,
+            'guest_limit'              => $guest_limit,
+            'invitation_credit_limit'  => $invitation_credit_limit,
+            'replacement_credit_limit' => $replacement_credit_limit,
+            'event_quota_mode'         => $event_quota_mode,
+            'event_quota_limit'        => $event_quota_limit,
+        ];
+    }
+
+    /**
+     * تحديث Snapshot الاستحقاق التجاري الحالي لنفس Tier المرتبط فعلياً
+     * بالمستخدم — "إعادة تفعيل يدوية" لا تمثّل شراءً/تجديداً حقيقياً (لا طلب
+     * سلة وراءها)، فهذه الدالة تُعيد مزامنة الحقول الوصفية فقط مع آخر تعديل
+     * أدخله المسؤول على تعريف الـTier نفسه (مثال: تعديل guest_limit)، بلا أي
+     * أثر مالي.
+     *
+     * لا تقبل plan_id/tier_id من الخارج إطلاقاً؛ يُشتقّان حصراً من
+     * _mon_catalog_plan_id/_mon_catalog_tier_id الحاليين المخزَّنين فعلياً
+     * لهذا المستخدم — هذا يمنع معمارياً استخدام الدالة للتبديل إلى Tier
+     * مختلف (ذلك اختصاص activate_catalog_tier() حصراً).
+     *
+     * الفرق الجوهري عن activate_catalog_tier(): هذه الدالة لا تلمس إطلاقاً:
+     * - أياً من مفاتيح رصيد الدعوات الأربعة (_mon_invitation_credit_total/used،
+     *   _mon_replacement_credit_total/used).
+     * - _mon_credit_cycle_id (تبقى القيمة الحالية دون توليد UUID جديد).
+     * - _mon_last_order_id (لا إنشاء ولا حذف).
+     * - _mon_package_activated_at (لا تحديث — ليست "تفعيلاً جديداً" تجارياً).
+     * - _mon_package_status/_mon_catalog_plan_id/_mon_catalog_tier_id (القيم
+     *   نفسها أصلاً، ومصدرها هو نفسه شرط الدخول لهذه الدالة).
+     *
+     * شرط مسبق صارم: تُرفَض إن لم يكن المستخدم يملك حالياً استحقاق Catalog
+     * نشطاً فعلياً — هذه الدالة "تحديث" لا "تفعيل"؛ استخدم activate_catalog_tier()
+     * لتفعيل مستخدم جديد أو تغيير Tier/Plan فعلياً.
+     *
+     * @param mixed $user_id
+     * @return true|WP_Error
+     */
+    public static function refresh_catalog_tier_snapshot($user_id)
+    {
+        $user_id = self::normalize_positive_id($user_id);
+        if ($user_id === 0) {
+            return new WP_Error('invalid_user_id', 'معرّف المستخدم غير صالح.');
+        }
+
+        if (!get_user_by('id', $user_id)) {
+            return new WP_Error('user_not_found', 'تعذر العثور على المستخدم.');
+        }
+
+        if ((string) get_user_meta($user_id, '_mon_package_source', true) !== 'catalog') {
+            return new WP_Error('not_catalog_entitlement', 'لا يملك المستخدم استحقاق باقة من Catalog.');
+        }
+
+        if ((string) get_user_meta($user_id, '_mon_package_status', true) !== 'active') {
+            return new WP_Error('not_active_entitlement', 'استحقاق الباقة الحالي للمستخدم غير نشط.');
+        }
+
+        $plan_id = absint(get_user_meta($user_id, '_mon_catalog_plan_id', true));
+        $tier_id = absint(get_user_meta($user_id, '_mon_catalog_tier_id', true));
+
+        if ($plan_id === 0 || $tier_id === 0) {
+            return new WP_Error('missing_catalog_reference', 'تعذر تحديد الباقة/المستوى الحالي للمستخدم.');
+        }
+
+        $resolved = self::resolve_tier_entitlement_fields($plan_id, $tier_id);
+        if (is_wp_error($resolved)) {
+            return $resolved;
+        }
+
+        $plan = $resolved['plan'];
+        $tier = $resolved['tier'];
+
+        $feature_snapshot = self::build_tier_features_snapshot($tier_id);
+        if (is_wp_error($feature_snapshot)) {
+            return $feature_snapshot;
+        }
+
+        $next_feature_version = self::get_next_package_feature_version($user_id);
+
+        if (!self::update_user_meta_safely($user_id, '_mon_package_features', $feature_snapshot)) {
+            return new WP_Error('meta_update_failed', 'تعذر حفظ Snapshot ميزات الباقة للمستخدم.');
+        }
+
+        if (!self::update_user_meta_safely($user_id, '_mon_package_feature_version', $next_feature_version)) {
+            return new WP_Error('meta_update_failed', 'تعذر حفظ رقم إصدار Snapshot ميزات الباقة للمستخدم.');
+        }
+
+        $features = self::normalize_catalog_features($plan['features'] ?? null);
+
+        // عمداً بلا: _mon_invitation_credit_*، _mon_replacement_credit_*،
+        // _mon_credit_cycle_id، _mon_last_order_id، _mon_package_activated_at،
+        // _mon_package_status، _mon_catalog_plan_id/_mon_catalog_tier_id (نفس
+        // القيمتين أصلاً، ومصدرهما هو نفسه شرط الدخول أعلاه).
+        $snapshot = [
+            '_mon_catalog_plan_key'  => $resolved['plan_key'],
+            '_mon_catalog_plan_name' => sanitize_text_field((string) ($plan['name'] ?? '')),
+            '_mon_catalog_tier_key'  => sanitize_key((string) ($tier['tier_key'] ?? '')),
+            '_mon_catalog_tier_name' => sanitize_text_field((string) ($tier['name'] ?? '')),
+            '_mon_package_price'     => $resolved['price'],
+            '_mon_package_currency'  => $resolved['currency'],
+            '_mon_guest_limit'       => $resolved['guest_limit'] === null ? '' : $resolved['guest_limit'],
+            '_mon_event_quota_mode'  => $resolved['event_quota_mode'],
+            '_mon_event_quota_limit' => $resolved['event_quota_limit'],
+            '_mon_salla_product_id'  => sanitize_text_field((string) ($tier['salla_product_id'] ?? '')),
+            '_mon_catalog_features'  => $features,
+        ];
+
+        foreach ($snapshot as $meta_key => $meta_value) {
+            if (!self::update_user_meta_safely($user_id, $meta_key, $meta_value)) {
+                return new WP_Error('meta_update_failed', 'تعذر حفظ تحديث استحقاق الباقة للمستخدم.');
+            }
+        }
 
         return true;
     }
