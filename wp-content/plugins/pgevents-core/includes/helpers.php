@@ -439,3 +439,71 @@ if (!function_exists('pge_mgmt_validate_request')) {
         return $event_id;
     }
 }
+
+if (!function_exists('pge_resolve_guest_quota_status')) {
+    /**
+     * حالة "حصة المدعوين" (Guest Quota) لمناسبة محددة — نقطة دخول موحّدة
+     * واحدة، مُصمَّمة عمداً لتُعاد استخدامها من كل مسارات إضافة المدعوين
+     * (يدوي/جماعي/Excel) مستقبلاً، حتى تبقى جميعها تعتمد نفس مصدر الحقيقة
+     * (Single Source of Truth) بدل أن يخترع كل مسار حساباً خاصاً به.
+     *
+     * الحد المستخدم: pge_get_user_plan_limits_for_events($author_id)['guest_limit']
+     * — تماماً نفس الرقم المعروض فعلياً للمستخدم في لوحة التحكم تحت
+     * "المدعوين لكل مناسبة" (templates/dashboard-main.php)، ونفس الدالة
+     * المركزية التي يقرأها rsvp-handler.php لإنفاذ سقف حضور RSVP. لا مصدر
+     * جديد، لا حساب مواز.
+     *
+     * العدد الحالي: count(pge_event_guests_get_map($event_id)) — نفس الدالة
+     * التي يعتمد عليها فعلياً كل من PGE_Invitation_Repository::list_all()
+     * وفحص التكرار في مستورِد Excel (apply_duplicate_detection())، وهي
+     * أكثر الدوال اعتماداً عليها في المشروع للإجابة على سؤال "من هم مدعوو
+     * هذه المناسبة الآن فعلياً؟".
+     *
+     * اصطلاح "0 أو أقل = بلا حد" مطابق تماماً للاصطلاح القائم فعلياً في
+     * rsvp-handler.php (`if ($guest_limit > 0 && ...)`) — لا اصطلاح جديد
+     * يُخترَع هنا، فقط إعادة استخدامه بحساب حصة جديد (عدد سجلات الدعوة، لا
+     * عدد ردود RSVP "نعم" المؤكَّدة — هذان مفهومان مختلفان في هذا المشروع،
+     * راجع rsvp-handler.php للسقف المختلف الخاص بالحضور).
+     *
+     * قراءة فقط بالكامل — لا تكتب أي شيء، ولا تُنشئ/تُعدِّل أي بيانات.
+     *
+     * @param int $event_id
+     * @return array{mode:string,limit:int|null,current:int,remaining:int|null}
+     *   mode='unlimited' عندما guest_limit <= 0 (limit/remaining = null).
+     *   mode='limited' عندما guest_limit > 0 (limit/remaining أرقام صحيحة).
+     */
+    function pge_resolve_guest_quota_status($event_id)
+    {
+        $event_id = (int) $event_id;
+
+        $current = 0;
+        if ($event_id > 0 && function_exists('pge_event_guests_get_map')) {
+            $current = count(pge_event_guests_get_map($event_id));
+        }
+
+        $limit = 0;
+        if ($event_id > 0 && function_exists('pge_get_user_plan_limits_for_events')) {
+            $author_id = (int) get_post_field('post_author', $event_id);
+            if ($author_id > 0) {
+                $plan_limits = pge_get_user_plan_limits_for_events($author_id);
+                $limit = (int) ($plan_limits['guest_limit'] ?? 0);
+            }
+        }
+
+        if ($limit <= 0) {
+            return [
+                'mode'      => 'unlimited',
+                'limit'     => null,
+                'current'   => $current,
+                'remaining' => null,
+            ];
+        }
+
+        return [
+            'mode'      => 'limited',
+            'limit'     => $limit,
+            'current'   => $current,
+            'remaining' => max(0, $limit - $current),
+        ];
+    }
+}

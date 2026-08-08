@@ -595,6 +595,10 @@ $csv_mixed_30 = implode("\n", [
 $resp30_preview = do_preview(4003, $csv_mixed_30);
 $resp30 = do_confirm(4003, $resp30_preview['data']['upload_token'] ?? null);
 $summary_30 = $resp30['data']['summary'] ?? [];
+// ملاحظة (حدود الباقة/Guest Limit): أُضيف مفتاح quota_exceeded جديد لملخص
+// Confirm — قيمته 0 هنا لأن المضيف بلا حد باقة مضبوط في هذا الاختبار (0 =
+// بلا حد، راجع pge_resolve_guest_quota_status()). القيمة المتوقَّعة أدناه
+// حُدِّثت لتشمله (تغيير متوقَّع في بنية الإرجاع، لا انحدار حقيقي).
 check('30. الملخص النهائي مطابق تماماً للمتوقع', $summary_30, [
     'total_rows'          => 7,
     'valid_before_import' => 2, // 3 صفوف "بحسب استيراد Excel" لكنها valid فقط بعد فحص التكرار الطازج (الثالث duplicate)
@@ -603,11 +607,12 @@ check('30. الملخص النهائي مطابق تماماً للمتوقع', 
     'invalid'             => 3,
     'empty'               => 1,
     'failed'              => 0,
+    'quota_exceeded'      => 0,
 ]);
 check(
-    '30ب. الهوية الجامعة: total_rows = imported+duplicates+invalid+empty+failed',
+    '30ب. الهوية الجامعة: total_rows = imported+duplicates+invalid+empty+failed+quota_exceeded',
     $summary_30['total_rows'],
-    $summary_30['imported'] + $summary_30['duplicates'] + $summary_30['invalid'] + $summary_30['empty'] + $summary_30['failed']
+    $summary_30['imported'] + $summary_30['duplicates'] + $summary_30['invalid'] + $summary_30['empty'] + $summary_30['failed'] + $summary_30['quota_exceeded']
 );
 
 echo "\n========================================\n";

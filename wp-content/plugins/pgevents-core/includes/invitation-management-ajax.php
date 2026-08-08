@@ -732,10 +732,38 @@ function pge_invitation_mgmt_excel_preview_handler()
     PGE_Invitation_Excel_Import_Service::apply_duplicate_detection($event_id, $rows);
     $summary = PGE_Invitation_Excel_Import_Service::summarize_preview($rows);
 
+    // ── حدود الباقة (Guest Limit/Package Quota) ─────────────────────────
+    // إضافة بحتة بعد اكتمال منطق Preview الحالي بالكامل — لا تغيير في
+    // parse_file()/apply_duplicate_detection()/summarize_preview() ولا في
+    // أي من قيمها. الغرض حصراً: إخبار الواجهة كم سيتم استيراده فعلياً إذا
+    // تجاوزت الصفوف الصالحة الحصة المتبقية في باقة المضيف، حتى تعرض بطاقة
+    // "حدود الباقة" وتُحدِّث نص زر التأكيد. الرقم النهائي الفعلي يُعاد
+    // احتسابه من الصفر عند Confirm (لا اعتماد على ما يُحسَب هنا).
+    $quota = function_exists('pge_resolve_guest_quota_status')
+        ? pge_resolve_guest_quota_status($event_id)
+        : ['mode' => 'unlimited', 'limit' => null, 'current' => 0, 'remaining' => null];
+
+    $valid_rows_count = (int) ($summary['valid'] ?? 0);
+    $will_import = $valid_rows_count;
+    $quota_exceeded = false;
+    if ($quota['mode'] === 'limited' && $valid_rows_count > (int) $quota['remaining']) {
+        $will_import = (int) $quota['remaining'];
+        $quota_exceeded = true;
+    }
+
     wp_send_json_success([
         'upload_token' => $token,
         'summary'      => $summary,
         'rows'         => array_map('pge_invitation_mgmt_reshape_excel_import_row', $rows),
+        'quota'        => [
+            'mode'           => $quota['mode'],
+            'limit'          => $quota['limit'],
+            'current'        => $quota['current'],
+            'remaining'      => $quota['remaining'],
+            'valid_rows'     => $valid_rows_count,
+            'will_import'    => $will_import,
+            'quota_exceeded' => $quota_exceeded,
+        ],
         // "سيتم تنفيذ الاستيراد في المرحلة التالية." — لا زر تأكيد بعد، لا Import هنا.
         'note'         => 'سيتم تنفيذ الاستيراد في المرحلة التالية.',
     ]);
@@ -847,7 +875,19 @@ function pge_invitation_mgmt_excel_confirm_handler()
     $invalid = 0;
     $empty = 0;
     $failed = 0;
+    $quota_exceeded_count = 0;
     $valid_before_import = 0;
+
+    // ── حدود الباقة (Guest Limit/Package Quota) — إعادة احتساب طازجة كاملة ──
+    // "لا تعتمد على الحساب القادم من Preview" (صراحةً): يُعاد استدعاء
+    // pge_resolve_guest_quota_status($event_id) من الصفر هنا، لحظة التأكيد
+    // فعلياً، لأن ضيوفاً قد أُضيفوا/حُذفوا من تبويب آخر أو مستخدم آخر بين
+    // Preview وConfirm. لا قيمة واحدة قادمة من المتصفح أو من استجابة
+    // Preview السابقة تُستخدَم في هذا الحساب مطلقاً.
+    $quota = function_exists('pge_resolve_guest_quota_status')
+        ? pge_resolve_guest_quota_status($event_id)
+        : ['mode' => 'unlimited', 'limit' => null, 'current' => 0, 'remaining' => null];
+    $import_cap = ($quota['mode'] === 'limited') ? (int) $quota['remaining'] : null;
 
     foreach ($rows as &$row) {
         $status = (string) ($row['status'] ?? '');
@@ -872,6 +912,19 @@ function pge_invitation_mgmt_excel_confirm_handler()
         }
 
         $valid_before_import++;
+
+        // حدود الباقة: إن بلغ عدد الاستيرادات الفعلية الناجحة حتى الآن سقف
+        // الحصة المتبقية، يتوقف الاستيراد عند هذا الصف وما بعده — بلا أي
+        // محاولة create() لهذه الصفوف إطلاقاً ("سيتم استيراد أول N مدعواً
+        // صالحاً فقط لأن هذا هو العدد المتبقي في باقتك"). العدّاد يُقارَن
+        // بعدد الاستيرادات الناجحة الفعلية (لا بعدد الصفوف الصالحة المفحوصة)
+        // حتى لا تُهدَر حصة على صف تبيَّن أنه مكرَّر (Race condition) داخل
+        // create() نفسها.
+        if ($import_cap !== null && $imported >= $import_cap) {
+            $quota_exceeded_count++;
+            $row['result'] = 'quota_exceeded';
+            continue;
+        }
 
         // القسم 4: مسار الإنشاء الوحيد المسموح — بلا INSERT مباشر، بلا
         // كتابة مباشرة على Repository، بلا استدعاء دالة حفظ خريطة الضيوف
@@ -913,10 +966,21 @@ function pge_invitation_mgmt_excel_confirm_handler()
     }
     unset($row);
 
-    // "total_rows == imported + duplicates + invalid + empty + failed" — هوية
-    // جامعة حقيقية عبر 5 دِلاء نهائية. valid_before_import حقل وصفي منفصل
-    // فقط (عدد الصفوف valid فور فحص التكرار الطازج، قبل أي محاولة create())،
-    // وليس جزءاً من هذا الجمع.
+    // إعادة حساب حدود الباقة مرة أخيرة بعد اكتمال الاستيراد فعلياً — القيمة
+    // المحسوبة أعلاه ($quota، قبل الحلقة) استُخدمت فقط لاتخاذ قرار السقف
+    // أثناء الاستيراد؛ أما القيمة المُرجَعة في الاستجابة فيجب أن تعكس current/
+    // remaining الحقيقيين بعد أن أصبح المستوردون الجدد جزءاً من المناسبة —
+    // حتى تكون مفيدة فعلاً لأي عرض واجهة أو زر "ترقية الباقة" مستقبلي يعتمد
+    // عليها مباشرة بلا استعلام إضافي.
+    $quota_after_import = function_exists('pge_resolve_guest_quota_status')
+        ? pge_resolve_guest_quota_status($event_id)
+        : $quota;
+
+    // "total_rows == imported + duplicates + invalid + empty + failed +
+    // quota_exceeded" — هوية جامعة حقيقية عبر 6 دِلاء نهائية الآن (أُضيف
+    // quota_exceeded لحدود الباقة). valid_before_import حقل وصفي منفصل فقط
+    // (عدد الصفوف valid فور فحص التكرار الطازج، قبل أي محاولة create() أو
+    // بوابة حدود الباقة)، وليس جزءاً من هذا الجمع، تماماً كما كان.
     $result_summary = [
         'total_rows'          => count($rows),
         'valid_before_import' => $valid_before_import,
@@ -925,6 +989,7 @@ function pge_invitation_mgmt_excel_confirm_handler()
         'invalid'             => $invalid,
         'empty'               => $empty,
         'failed'              => $failed,
+        'quota_exceeded'      => $quota_exceeded_count,
     ];
 
     // القسم 6: حدث تدقيق واحد على مستوى المناسبة دائماً عند اكتمال العملية
@@ -948,6 +1013,18 @@ function pge_invitation_mgmt_excel_confirm_handler()
     wp_send_json_success([
         'summary' => $result_summary,
         'rows'    => array_map('pge_invitation_mgmt_reshape_excel_import_row', $rows),
+        // حدود الباقة كما احتُسبت طازجة لحظة هذا التأكيد تحديداً (بعد إعادة
+        // الحساب أعلاه) — تفيد الواجهة في صياغة رسالة النتيجة، وتُبقي مكاناً
+        // موثَّقاً واضحاً لأي زر "ترقية الباقة" مستقبلي يحتاج معرفة limit/
+        // current/remaining الحاليين دون استعلام إضافي. لا تنفيذ لهذا الزر
+        // في هذه المرحلة — Hook/placeholder فقط (راجع excelQuotaUpgradeHook
+        // في event-invitations.php).
+        'quota'   => [
+            'mode'      => $quota_after_import['mode'],
+            'limit'     => $quota_after_import['limit'],
+            'current'   => $quota_after_import['current'],
+            'remaining' => $quota_after_import['remaining'],
+        ],
     ]);
 }
 if (PGE_INVITATION_MGMT_EXCEL_IMPORT_ENABLED) {

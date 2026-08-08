@@ -410,6 +410,34 @@ get_header();
             <p id="excelOutOfPreviewIssuesMore" class="hidden mt-0.5 text-[11px] text-amber-700"></p>
           </div>
 
+          <!-- بطاقة "حدود الباقة" — Guest Limit/Package Quota: تظهر فقط عندما
+               تتجاوز الصفوف الصالحة العدد المتبقي في باقة المضيف لهذه
+               المناسبة. عرض بحت (لا تغيير في Parser/Validation/Duplicate
+               Detection/Audit/Excel Logic) — الأرقام تأتي حصراً من حقل
+               quota الجديد في استجابة Preview (pge_resolve_guest_quota_status()،
+               نفس مصدر guest_limit المعروض فعلياً في لوحة التحكم كـ"المدعوين
+               لكل مناسبة"). عند التأكيد الفعلي يُعاد احتساب هذا الحد من
+               الصفر على الخادم — هذه الأرقام إعلامية فقط أثناء المعاينة،
+               ولا يُعتمَد عليها في تنفيذ الاستيراد نفسه. مضغوطة بصرياً بنفس
+               فلسفة بطاقة "مشاكل خارج المعاينة" أعلاه حتى لا تدفع أزرار
+               الـFooter الثابت للأسفل. -->
+          <div id="excelQuotaLimitCard" class="hidden mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5" aria-live="polite">
+            <p class="text-[11px] font-bold text-amber-800">حدود الباقة</p>
+            <ul class="mt-1 list-none space-y-0.5 text-[11px] text-amber-800">
+              <li>حد الباقة: <span id="excelQuotaLimitValue"></span></li>
+              <li>المدعوون الحاليون: <span id="excelQuotaCurrentValue"></span></li>
+              <li>المتبقي: <span id="excelQuotaRemainingValue"></span></li>
+              <li>عدد الصفوف الصالحة: <span id="excelQuotaValidRowsValue"></span></li>
+              <li>سيتم استيراد: <span id="excelQuotaWillImportValue"></span> فقط</li>
+            </ul>
+            <p id="excelQuotaLimitMsg" class="mt-1 text-[11px] font-semibold text-amber-900"></p>
+            <!-- Hook/placeholder لزر "ترقية الباقة" مستقبلي — غير مُفعَّل ولا
+                 مُنفَّذ في هذه المرحلة صراحةً (خارج النطاق الحالي). يبقى
+                 مخفياً وفارغاً؛ أي تنفيذ مستقبلي يُضيف زراً داخل هذا الـdiv
+                 فقط دون الحاجة لتعديل بنية البطاقة أعلاه. -->
+            <div id="excelQuotaUpgradeHook" class="hidden mt-1.5"></div>
+          </div>
+
           <p id="excelNoValidMsg" class="hidden mt-2 text-xs font-semibold text-destructive-text" role="alert">لا توجد صفوف صالحة للاستيراد.</p>
           <div class="flex flex-wrap justify-end gap-2 mt-3">
             <button type="button" id="excelBackBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">اختيار ملف آخر</button>
@@ -1138,6 +1166,13 @@ get_header();
   var excelOutOfPreviewIssuesCard = document.getElementById('excelOutOfPreviewIssuesCard');
   var excelOutOfPreviewIssuesList = document.getElementById('excelOutOfPreviewIssuesList');
   var excelOutOfPreviewIssuesMore = document.getElementById('excelOutOfPreviewIssuesMore');
+  var excelQuotaLimitCard = document.getElementById('excelQuotaLimitCard');
+  var excelQuotaLimitValue = document.getElementById('excelQuotaLimitValue');
+  var excelQuotaCurrentValue = document.getElementById('excelQuotaCurrentValue');
+  var excelQuotaRemainingValue = document.getElementById('excelQuotaRemainingValue');
+  var excelQuotaValidRowsValue = document.getElementById('excelQuotaValidRowsValue');
+  var excelQuotaWillImportValue = document.getElementById('excelQuotaWillImportValue');
+  var excelQuotaLimitMsg = document.getElementById('excelQuotaLimitMsg');
   var excelNoValidMsg = document.getElementById('excelNoValidMsg');
   var excelResultMsg = document.getElementById('excelResultMsg');
   var excelResultSummaryBox = document.getElementById('excelResultSummaryBox');
@@ -1235,6 +1270,31 @@ get_header();
     }
 
     excelOutOfPreviewIssuesCard.classList.remove('hidden');
+  }
+
+  // بطاقة "حدود الباقة" — عرض بحت فقط (لا تغيير في الاستيراد نفسه): تُظهر
+  // للمستخدم أن الصفوف الصالحة في ملفه تتجاوز الحصة المتبقية من مدعوي
+  // باقته لهذه المناسبة تحديداً، وأن عدد المستوردين فعلياً سيُقتصَر على
+  // العدد المتبقي فقط. الأرقام تأتي حصراً من حقل quota في استجابة Preview
+  // (الخادم — pge_resolve_guest_quota_status()). لا حساب من جانب المتصفح.
+  function excelRenderQuotaCard(quota) {
+    if (!quota || quota.mode !== 'limited' || !quota.quota_exceeded) {
+      excelQuotaLimitCard.classList.add('hidden');
+      return null;
+    }
+
+    excelQuotaLimitValue.textContent = quota.limit;
+    excelQuotaCurrentValue.textContent = quota.current;
+    excelQuotaRemainingValue.textContent = quota.remaining;
+    excelQuotaValidRowsValue.textContent = quota.valid_rows;
+    excelQuotaWillImportValue.textContent = quota.will_import;
+
+    excelQuotaLimitMsg.textContent = quota.will_import > 0
+      ? 'سيتم استيراد أول ' + quota.will_import + ' مدعواً صالحاً فقط لأن هذا هو العدد المتبقي في باقتك.'
+      : 'باقتك ممتلئة حالياً — لا يمكن استيراد أي مدعو جديد حتى ترقية الباقة.';
+
+    excelQuotaLimitCard.classList.remove('hidden');
+    return quota.will_import;
   }
 
   function excelRenderPreviewRows(rows) {
@@ -1349,8 +1409,14 @@ get_header();
       }
       excelRenderPreviewRows(json.data.rows || []);
       var validCount = summary.valid || 0;
-      var canImport = !!excelUploadToken && validCount > 0;
-      excelConfirmBtn.textContent = 'استيراد ' + validCount + ' مدعو';
+      // حدود الباقة (Guest Limit/Package Quota): إن كانت الصفوف الصالحة
+      // تتجاوز الحصة المتبقية، يعرض زر التأكيد العدد الفعلي الذي سيُستورَد
+      // (المتبقي)، لا إجمالي الصفوف الصالحة — إعلامي بحت هنا، والخادم يعيد
+      // فرض هذا الحد من الصفر بشكل مستقل تماماً عند الضغط فعلياً على تأكيد.
+      var cappedByQuota = excelRenderQuotaCard(json.data.quota || null);
+      var willImportCount = cappedByQuota !== null ? cappedByQuota : validCount;
+      var canImport = !!excelUploadToken && willImportCount > 0;
+      excelConfirmBtn.textContent = 'استيراد ' + willImportCount + ' مدعو';
       excelConfirmBtn.disabled = !canImport;
       excelNoValidMsg.classList.toggle('hidden', validCount !== 0);
       excelShowState('preview');
@@ -1396,16 +1462,26 @@ get_header();
       var s = json.data.summary || {};
       var imported = s.imported || 0;
       var skipped = (s.total_rows || 0) - imported;
+      var quotaExceededCount = s.quota_exceeded || 0;
       excelRenderSummaryBadges(excelResultSummaryBox, s, [
         { key: 'imported', label: 'تم استيراد' },
         { key: 'duplicates', label: 'تم تخطي المكرر' },
         { key: 'invalid', label: 'غير صالح' },
         { key: 'failed', label: 'فشل' },
+        { key: 'quota_exceeded', label: 'تجاوز حد الباقة' },
       ]);
       // القسم 12/13: رسالة نجاح واضحة فقط إذا imported>0، بلا نجاح مضلِّل عند
       // imported=0، وصياغة نجاح جزئي واضحة عند وجود صفوف مستوردة وأخرى لا.
+      // حدود الباقة (Guest Limit/Package Quota): فرعان إضافيان جديدان أعلى
+      // ترتيب الفحص (لأن quotaExceededCount=0 دائماً للاستيرادات التي لا
+      // علاقة لها بالباقة، فالفروع القديمة أدناه تبقى تعمل بلا أي تغيير في
+      // سلوكها لتلك الحالات).
       var resultText;
-      if (imported > 0 && skipped === 0) {
+      if (imported > 0 && quotaExceededCount > 0) {
+        resultText = 'تم استيراد ' + imported + ' مدعواً. لم يتم استيراد ' + quotaExceededCount + ' مدعوين بسبب تجاوز حد الباقة.';
+      } else if (imported === 0 && quotaExceededCount > 0) {
+        resultText = 'باقتك ممتلئة حالياً — لم يتم استيراد أي مدعو بسبب تجاوز حد الباقة.';
+      } else if (imported > 0 && skipped === 0) {
         resultText = 'تم استيراد ' + imported + ' مدعو بنجاح.';
       } else if (imported > 0 && skipped > 0) {
         resultText = 'تم استيراد ' + imported + ' مدعو، وتعذر استيراد ' + skipped + '.';

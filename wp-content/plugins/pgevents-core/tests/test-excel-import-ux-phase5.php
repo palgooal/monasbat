@@ -129,14 +129,19 @@ $render_preview_rows_body = extract_js_function_body($template_source, 'excelRen
 check_true('10. جدول المعاينة يعرض row.status_label (عربي جاهز من الخادم)', strpos($render_preview_rows_body, 'row.status_label') !== false);
 check_true("10ب. لا عرض نصّي مباشر لـrow.status الخام (يُستخدَم فقط لاختيار فئة الشارة CSS)", substr_count($render_preview_rows_body, 'row.status]') <= 1 && strpos($render_preview_rows_body, '>' . '\' + escapeHtml(row.status)') === false);
 
-// 11) valid=0 يعطل Confirm + رسالة توضيحية
-check_contains('11. منطق تعطيل Confirm عند عدم وجود صفوف صالحة', $template_source, 'var canImport = !!excelUploadToken && validCount > 0;');
+// 11) valid=0 يعطل Confirm + رسالة توضيحية (حدود الباقة: canImport/نص الزر أصبحا
+// يعتمدان على willImportCount لا validCount مباشرة — willImportCount = validCount
+// نفسها إن لم تكن الباقة قد فرضت سقفاً، أو المتبقي المحدود من حدود الباقة إن فرضته.
+// excelNoValidMsg وحده لا يزال يعتمد على validCount الخام كما كان تماماً، لأنه يجيب
+// عن سؤال مختلف: "هل توجد صفوف صالحة في الملف أصلاً؟" — لا علاقة له بحدود الباقة.)
+check_contains('11. منطق تعطيل Confirm عند عدم وجود صفوف صالحة (بعد اعتبار حدود الباقة)', $template_source, 'var canImport = !!excelUploadToken && willImportCount > 0;');
 check_contains('11ب. excelConfirmBtn.disabled يُشتَق من canImport', $template_source, 'excelConfirmBtn.disabled = !canImport;');
 check_contains('11ج. رسالة "لا توجد صفوف صالحة للاستيراد." موجودة في الترميز', $template_source, 'لا توجد صفوف صالحة للاستيراد.');
 check_contains('11د. إظهار/إخفاء رسالة عدم وجود صفوف صالحة مرتبط بـvalidCount', $template_source, "excelNoValidMsg.classList.toggle('hidden', validCount !== 0);");
 
-// 12) Confirm يعرض عدد valid الحقيقي
-check_contains('12. نص زر Confirm يتضمَّن عدد valid الحقيقي القادم من Preview', $template_source, "excelConfirmBtn.textContent = 'استيراد ' + validCount + ' مدعو';");
+// 12) Confirm يعرض عدد المستوردين الفعلي (willImportCount) — عدد valid الحقيقي
+// القادم من Preview، أو العدد المتبقي في حدود الباقة إن كان أقل منه (حدود الباقة).
+check_contains('12. نص زر Confirm يتضمَّن العدد الفعلي الذي سيُستورَد (willImportCount)', $template_source, "excelConfirmBtn.textContent = 'استيراد ' + willImportCount + ' مدعو';");
 
 // 13) Double-click prevention
 $confirm_listener = extract_listener_body($template_source, "excelConfirmBtn.addEventListener('click', function () {");
