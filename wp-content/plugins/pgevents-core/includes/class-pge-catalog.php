@@ -624,6 +624,48 @@ class PGE_Catalog
     }
 
     /**
+     * Catalog guest_limit is snapshot-based. Changing a Tier affects only
+     * future activations. Existing users keep their activation snapshot.
+     *
+     * تطبيع guest_limit اختياري بنفس روح normalize_credit_limit() تماماً
+     * (لا تُعيد أبداً false/null لرفض العملية بأكملها) — لكن بعقد قيمة مختلف
+     * عمداً لأن عمود guest_limit في mon_plan_tiers هو NULL DEFAULT NULL (على
+     * عكس invitation_credit_limit/replacement_credit_limit، وهما NOT NULL
+     * DEFAULT 0): هنا القيمة الغائبة/الفارغة/السالبة/غير الرقمية تصبح null
+     * صراحةً (يبقى الفرق بين "بلا حد محدَّد" و"صفر" محفوظاً في قاعدة
+     * البيانات نفسها)، لا 0 — القيمة 0 تبقى 0 إن أُرسلت فعلياً (كلاهما يُفسَّر
+     * لاحقاً "بلا حد" عند القراءة حسب الاصطلاح الموحَّد في المشروع، لكن
+     * التخزين يحترم الفرق كما فعلت activate_catalog_tier() بالفعل من قبل).
+     * تقبل: null (→null)، int (سالب→null، غير ذلك كما هو بما فيها 0)، أو
+     * string: فارغة (→null)، رقم صحيح غير سالب بنمط ^[0-9]+$ (→ القيمة كـint)،
+     * أي شيء آخر (عشري، حروف، سالب نصي) → null. أي نوع غير هذين (bool، array،
+     * object) → null أيضاً. النتيجة دائماً int >= 0 أو null، لا تُعاد أبداً false.
+     */
+    private static function normalize_guest_limit($value)
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_int($value)) {
+            return $value < 0 ? null : $value;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if ($trimmed === '') {
+                return null;
+            }
+            if (preg_match('/^[0-9]+$/', $trimmed)) {
+                return (int) $trimmed;
+            }
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
      * تطبيع event_quota_mode (Event Quota Architecture، Commit 2). القيمتان
      * المسموحتان حصراً: 'limited' أو 'unlimited' — نصّي VARCHAR(20) وليس
      * ENUM، طبقاً للقرار المعماري المعتمد (راجع تعليق العمود في
@@ -1146,6 +1188,12 @@ class PGE_Catalog
         $normalized_event_quota_mode = self::normalize_event_quota_mode($data['event_quota_mode'] ?? null);
         $normalized_event_quota_limit = self::normalize_event_quota_limit($data['event_quota_limit'] ?? null);
 
+        // guest_limit اختياري تماماً بنفس روح invitation_credit_limit/
+        // replacement_credit_limit أعلاه: normalize_guest_limit() لا تُعيد
+        // أبداً false (تحوّل أي قيمة غائبة/سالبة/غير صالحة إلى null بدل رفض
+        // إنشاء المستوى بأكمله)، فلا حاجة لفحص رفض هنا.
+        $normalized_guest_limit = self::normalize_guest_limit($data['guest_limit'] ?? null);
+
         if (self::get_tier_by_key($normalized_plan_id, $normalized_tier_key) !== null) {
             return null;
         }
@@ -1162,6 +1210,7 @@ class PGE_Catalog
                 'plan_id'                   => $normalized_plan_id,
                 'tier_key'                  => $normalized_tier_key,
                 'name'                      => $normalized_name,
+                'guest_limit'               => $normalized_guest_limit,
                 'events_count'              => $normalized_events_count,
                 'invitation_credit_limit'   => $normalized_invitation_credit_limit,
                 'replacement_credit_limit'  => $normalized_replacement_credit_limit,
@@ -1175,7 +1224,7 @@ class PGE_Catalog
                 'status'                    => $normalized_status,
                 'sort_order'                => $normalized_sort_order,
             ],
-            ['%d', '%s', '%s', '%d', '%d', '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d']
+            ['%d', '%s', '%s', '%d', '%d', '%d', '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d']
         );
 
         if (!$inserted) {
@@ -1355,6 +1404,18 @@ class PGE_Catalog
             }
         }
 
+        // guest_limit اختياري هنا بنفس أسلوب events_count أعلاه بالضبط: غياب
+        // المفتاح كلياً عن $data لا يُغيّر القيمة الحالية إطلاقاً — يحمي
+        // مستوى "بلا حد" (NULL) أو محدود برقم مخصَّص من التحوّل بالخطأ بسبب
+        // تحديث لا يخص هذا الحقل (كتحديث السعر فقط). إن كان المفتاح موجوداً
+        // صراحةً، تُطبَّع القيمة عبر normalize_guest_limit() — لا تُعيد أبداً
+        // false، فلا حاجة لفحص رفض هنا كما في events_count.
+        $guest_limit_provided = array_key_exists('guest_limit', $data);
+        $normalized_guest_limit = null;
+        if ($guest_limit_provided) {
+            $normalized_guest_limit = self::normalize_guest_limit($data['guest_limit']);
+        }
+
         // invitation_credit_limit/replacement_credit_limit اختياريان هنا
         // بنفس أسلوب events_count أعلاه بالضبط: غياب المفتاح كلياً عن $data
         // لا يُغيّر القيمة الحالية إطلاقاً (يحمي من تصفير رصيد Tier بالخطأ
@@ -1428,6 +1489,11 @@ class PGE_Catalog
 
         if ($events_count_provided) {
             $update_data['events_count'] = $normalized_events_count;
+            $update_formats[] = '%d';
+        }
+
+        if ($guest_limit_provided) {
+            $update_data['guest_limit'] = $normalized_guest_limit;
             $update_formats[] = '%d';
         }
 

@@ -473,6 +473,7 @@ function pge_render_catalog_tiers_page()
         'sort_order'                => '0',
         'invitation_credit_limit'   => '0',
         'replacement_credit_limit'  => '0',
+        'guest_limit'               => '',
         'event_quota_mode'          => 'limited',
         'event_quota_limit'         => '1',
     ];
@@ -489,6 +490,7 @@ function pge_render_catalog_tiers_page()
         'sort_order'                => '0',
         'invitation_credit_limit'   => '0',
         'replacement_credit_limit'  => '0',
+        'guest_limit'               => '',
         'event_quota_mode'          => 'limited',
         'event_quota_limit'         => '1',
     ];
@@ -592,6 +594,7 @@ function pge_render_catalog_tiers_page()
                 'sort_order'               => wp_unslash($_POST['sort_order'] ?? ''),
                 'invitation_credit_limit'  => wp_unslash($_POST['invitation_credit_limit'] ?? ''),
                 'replacement_credit_limit' => wp_unslash($_POST['replacement_credit_limit'] ?? ''),
+                'guest_limit'              => wp_unslash($_POST['guest_limit'] ?? ''),
                 'event_quota_mode'         => wp_unslash($_POST['event_quota_mode'] ?? ''),
                 'event_quota_limit'        => wp_unslash($_POST['event_quota_limit'] ?? ''),
             ];
@@ -640,6 +643,7 @@ function pge_render_catalog_tiers_page()
                         'sort_order'               => $tier_form_values['sort_order'],
                         'invitation_credit_limit'  => $tier_form_values['invitation_credit_limit'],
                         'replacement_credit_limit' => $tier_form_values['replacement_credit_limit'],
+                        'guest_limit'              => $tier_form_values['guest_limit'],
                         'event_quota_mode'         => $tier_form_values['event_quota_mode'],
                         'event_quota_limit'        => $tier_form_values['event_quota_limit'],
                     ]);
@@ -660,6 +664,7 @@ function pge_render_catalog_tiers_page()
                             'sort_order'               => '0',
                             'invitation_credit_limit'  => '0',
                             'replacement_credit_limit' => '0',
+                            'guest_limit'              => '',
                             'event_quota_mode'         => 'limited',
                             'event_quota_limit'        => '1',
                         ];
@@ -740,6 +745,7 @@ function pge_render_catalog_tiers_page()
                     'sort_order'               => wp_unslash($_POST['sort_order'] ?? ''),
                     'invitation_credit_limit'  => wp_unslash($_POST['invitation_credit_limit'] ?? ''),
                     'replacement_credit_limit' => wp_unslash($_POST['replacement_credit_limit'] ?? ''),
+                    'guest_limit'              => wp_unslash($_POST['guest_limit'] ?? ''),
                     'event_quota_mode'         => wp_unslash($_POST['event_quota_mode'] ?? ''),
                     'event_quota_limit'        => wp_unslash($_POST['event_quota_limit'] ?? ''),
                 ];
@@ -799,6 +805,7 @@ function pge_render_catalog_tiers_page()
                                 'sort_order'               => $tier_edit_form_values['sort_order'],
                                 'invitation_credit_limit'  => $tier_edit_form_values['invitation_credit_limit'],
                                 'replacement_credit_limit' => $tier_edit_form_values['replacement_credit_limit'],
+                                'guest_limit'              => $tier_edit_form_values['guest_limit'],
                                 'event_quota_mode'         => $tier_edit_form_values['event_quota_mode'],
                                 'event_quota_limit'        => $tier_edit_form_values['event_quota_limit'],
                             ]
@@ -823,6 +830,7 @@ function pge_render_catalog_tiers_page()
                                 'sort_order'               => $updated_tier['sort_order'],
                                 'invitation_credit_limit'  => $updated_tier['invitation_credit_limit'] ?? '0',
                                 'replacement_credit_limit' => $updated_tier['replacement_credit_limit'] ?? '0',
+                                'guest_limit'              => ($updated_tier['guest_limit'] ?? null) === null ? '' : (string) $updated_tier['guest_limit'],
                                 'event_quota_mode'         => $updated_tier['event_quota_mode'] ?? 'limited',
                                 'event_quota_limit'        => $updated_tier['event_quota_limit'] ?? '1',
                             ];
@@ -916,6 +924,7 @@ function pge_render_catalog_tiers_page()
                         'sort_order'               => '0',
                         'invitation_credit_limit'  => '0',
                         'replacement_credit_limit' => '0',
+                        'guest_limit'              => '',
                         'event_quota_mode'         => 'limited',
                         'event_quota_limit'        => '1',
                     ];
@@ -1005,6 +1014,7 @@ function pge_render_catalog_tiers_page()
                     'sort_order'               => $posted_tier['sort_order'],
                     'invitation_credit_limit'  => $posted_tier['invitation_credit_limit'] ?? '0',
                     'replacement_credit_limit' => $posted_tier['replacement_credit_limit'] ?? '0',
+                    'guest_limit'              => ($posted_tier['guest_limit'] ?? null) === null ? '' : (string) $posted_tier['guest_limit'],
                 ];
 
                 // Phase 6 — Extract Method: منطق الحفظ (قراءة $_POST['tier_features']
@@ -1116,6 +1126,7 @@ function pge_render_catalog_tiers_page()
                     'sort_order'               => $posted_tier['sort_order'],
                     'invitation_credit_limit'  => $posted_tier['invitation_credit_limit'] ?? '0',
                     'replacement_credit_limit' => $posted_tier['replacement_credit_limit'] ?? '0',
+                    'guest_limit'              => ($posted_tier['guest_limit'] ?? null) === null ? '' : (string) $posted_tier['guest_limit'],
                 ];
 
                 // 1) حفظ المستوى المصدر أولاً — نفس دالة الحفظ المستخدمة في
@@ -1280,6 +1291,7 @@ function pge_render_catalog_tiers_page()
                     'sort_order'               => $editing_tier['sort_order'],
                     'invitation_credit_limit'  => $editing_tier['invitation_credit_limit'] ?? '0',
                     'replacement_credit_limit' => $editing_tier['replacement_credit_limit'] ?? '0',
+                    'guest_limit'              => ($editing_tier['guest_limit'] ?? null) === null ? '' : (string) $editing_tier['guest_limit'],
                     'event_quota_mode'         => $editing_tier['event_quota_mode'] ?? 'limited',
                     'event_quota_limit'        => $editing_tier['event_quota_limit'] ?? '1',
                 ];
@@ -1464,6 +1476,15 @@ function pge_render_catalog_tiers_page()
                         </tr>
                         <tr>
                             <th scope="row">
+                                <label for="pge_tier_guest_limit"><?php esc_html_e('الحد الأقصى للمدعوين', 'pgevents'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="pge_tier_guest_limit" name="guest_limit" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_form_values['guest_limit']); ?>">
+                                <p class="description"><?php esc_html_e('اتركه فارغاً أو 0 = بلا حد.', 'pgevents'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
                                 <?php esc_html_e('حصة المناسبات', 'pgevents'); ?>
                             </th>
                             <td>
@@ -1628,6 +1649,15 @@ function pge_render_catalog_tiers_page()
                                 <td>
                                     <input type="number" id="pge_edit_tier_replacement_credit_limit" name="replacement_credit_limit" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['replacement_credit_limit']); ?>">
                                     <p class="description"><?php esc_html_e('عدد الدعوات الإضافية المسموح بها بدل المدعوين المعتذرين.', 'pgevents'); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="pge_edit_tier_guest_limit"><?php esc_html_e('الحد الأقصى للمدعوين', 'pgevents'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="number" id="pge_edit_tier_guest_limit" name="guest_limit" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['guest_limit']); ?>">
+                                    <p class="description"><?php esc_html_e('اتركه فارغاً أو 0 = بلا حد.', 'pgevents'); ?></p>
                                 </td>
                             </tr>
                             <tr>
@@ -1803,6 +1833,7 @@ function pge_render_catalog_tiers_page()
                                 <th><?php esc_html_e('ربط سلة', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('الحالة', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></th>
+                                <th><?php esc_html_e('الحد الأقصى للمدعوين', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('الإجراءات', 'pgevents'); ?></th>
                             </tr>
                         </thead>
@@ -1852,6 +1883,14 @@ function pge_render_catalog_tiers_page()
                                     <td><?php echo absint($tier['sort_order']); ?></td>
                                     <td>
                                         <?php
+                                        $tier_guest_limit_raw = $tier['guest_limit'] ?? null;
+                                        echo (empty($tier_guest_limit_raw))
+                                            ? esc_html__('بلا حد', 'pgevents')
+                                            : esc_html((string) absint($tier_guest_limit_raw));
+                                        ?>
+                                    </td>
+                                    <td>
+                                        <?php
                                         $tier_edit_url = add_query_arg(
                                             [
                                                 'page'      => 'pge-catalog-tiers',
@@ -1883,6 +1922,7 @@ function pge_render_catalog_tiers_page()
                                 <th><?php esc_html_e('ربط سلة', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('الحالة', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></th>
+                                <th><?php esc_html_e('الحد الأقصى للمدعوين', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('الإجراءات', 'pgevents'); ?></th>
                             </tr>
                         </tfoot>
