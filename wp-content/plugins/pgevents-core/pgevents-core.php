@@ -160,6 +160,19 @@ require_once PGE_PATH . 'includes/dashboard-ajax.php';
 require_once PGE_PATH . 'includes/class-pge-supervisor-management-schema.php';
 require_once PGE_PATH . 'includes/class-pge-supervisor-management-audit.php';
 
+// Manual Package Activation — "التفعيل اليدوي للباقات من لوحة الإدارة" RFC.
+// أداة إدارية (Admin-only) بديلة عن Webhook سلة لحالات الدعم الفني/التعويض/
+// VIP/الاختبار/تعافي فشل Webhook/نقل الاشتراك. لا تكتب user_meta مباشرة ولا
+// تحتوي أي منطق تفعيل جديد — تستدعي حصراً Mon_Events_Users::
+// activate_catalog_tier()/activate_user_package() (نفس Service الذي ينتهي
+// إليه Webhook سلة). جدول تدقيق مستقل تماماً عن كل جداول التدقيق الأخرى،
+// بلا أي بيانات حساسة. Mon_Events_Users مُعرَّفة أصلاً بحلول هذه النقطة
+// (class-mon-events-users.php يُحمَّل مبكراً جداً في هذا الملف).
+require_once PGE_PATH . 'includes/class-pge-manual-package-activation-schema.php';
+require_once PGE_PATH . 'includes/class-pge-manual-package-activation-audit.php';
+require_once PGE_PATH . 'includes/manual-package-activation-ajax.php';
+require_once PGE_PATH . 'includes/manual-package-activation-admin.php';
+
 // Cartat Transport (Option B — Supervisor Invitation Delivery via Cartat).
 // محمَّلة هنا صراحة (بدلاً من موقعها التاريخي عند مفتاح pge_wa_provider
 // أسفل هذا الملف) لأنها مطلوبة الآن من PGE_Supervisor_Invitation_Delivery
