@@ -167,6 +167,10 @@ class Fake_Wpdb_Fp3b
     public $touched_forbidden_tables = [];
     private $audit_next_id = 1;
     private $forbidden_fragments = ['pge_event_rsvps', 'pge_checkin_audit_log'];
+    // Guest Limit Unification RFC: محاكاة GET_LOCK/RELEASE_LOCK لقفل
+    // PGE_Invitation_Service::create() — نفس نمط Fake_Wpdb في
+    // test-invitation-credit-ledger.php.
+    private $held_locks = [];
 
     private function record_if_forbidden($sql_or_table)
     {
@@ -209,8 +213,23 @@ class Fake_Wpdb_Fp3b
         return [];
     }
 
+    public function get_var($sql)
+    {
+        if (preg_match("/SELECT\\s+GET_LOCK\\('([^']*)',\\s*(-?\\d+)\\)/i", $sql, $m)) {
+            $name = $m[1];
+            if (isset($this->held_locks[$name])) return '0';
+            $this->held_locks[$name] = true;
+            return '1';
+        }
+        return null;
+    }
+
     public function query($sql)
     {
+        if (preg_match("/SELECT\\s+RELEASE_LOCK\\('([^']*)'\\)/i", $sql, $m)) {
+            unset($this->held_locks[$m[1]]);
+            return 1;
+        }
         $this->which_table($sql);
         return 0;
     }

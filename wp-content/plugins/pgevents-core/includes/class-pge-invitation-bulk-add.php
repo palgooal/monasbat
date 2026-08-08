@@ -374,7 +374,12 @@ class PGE_Invitation_Bulk_Add_Service
         $rows = $parsed['rows'];
         self::check_duplicates($event_id, $rows);
 
-        $result_summary = ['total' => count($rows), 'created' => 0, 'duplicate' => 0, 'invalid' => 0, 'failed' => 0];
+        // Guest Limit Unification RFC — Part H: 'quota_exceeded' دِلو خامس
+        // مستقل عن 'failed' — PGE_Invitation_Service::create() تُعيد الآن
+        // هذه النتيجة تحديداً عندما تكون حصة المدعوين ممتلئة (بعد إعادة
+        // فحصها الفعلي داخل قفل ذري لحظة هذا الصف بالذات، لا حساباً مسبقاً
+        // مجمَّداً هنا) — لا خوارزمية حصة ثانية في هذا الملف إطلاقاً.
+        $result_summary = ['total' => count($rows), 'created' => 0, 'duplicate' => 0, 'invalid' => 0, 'failed' => 0, 'quota_exceeded' => 0];
 
         foreach ($rows as &$row) {
             if ($row['status'] !== self::STATUS_VALID) {
@@ -405,6 +410,13 @@ class PGE_Invitation_Bulk_Add_Service
                     // الحقيقية نفسها.
                     $row['result'] = 'duplicate';
                     $row['error'] = 'duplicate_in_event';
+                } elseif ($outcome === 'quota_exceeded') {
+                    // Best-Effort (RFC Part H): لا إيقاف للدفعة — الصفوف
+                    // المتبقية تستمر (قد تنجح لاحقاً فقط إن تحرَّرت الحصة،
+                    // أو تُصنَّف quota_exceeded هي الأخرى)، تماماً مثل أي
+                    // صف فاشل آخر لا يُلغي الصفوف الناجحة سابقاً.
+                    $row['result'] = 'quota_exceeded';
+                    $row['error'] = 'guest_limit_reached';
                 } else {
                     $row['result'] = 'failed';
                     $row['error'] = (string) ($create_result['reason'] ?? 'unknown_error');

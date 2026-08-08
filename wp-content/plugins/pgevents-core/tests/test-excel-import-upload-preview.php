@@ -218,6 +218,29 @@ class Fake_Wpdb_Excel_P3
         $this->insert_id = $id;
         return 1;
     }
+
+    // Guest Limit Unification RFC: محاكاة GET_LOCK/RELEASE_LOCK لقفل
+    // PGE_Invitation_Service::create() — نفس نمط Fake_Wpdb في
+    // test-invitation-credit-ledger.php.
+    private $held_locks = [];
+    public function get_var($sql)
+    {
+        if (preg_match("/SELECT\\s+GET_LOCK\\('([^']*)',\\s*(-?\\d+)\\)/i", $sql, $m)) {
+            $name = $m[1];
+            if (isset($this->held_locks[$name])) return '0';
+            $this->held_locks[$name] = true;
+            return '1';
+        }
+        return null;
+    }
+    public function query($sql)
+    {
+        if (preg_match("/SELECT\\s+RELEASE_LOCK\\('([^']*)'\\)/i", $sql, $m)) {
+            unset($this->held_locks[$m[1]]);
+            return 1;
+        }
+        return 0;
+    }
 }
 $GLOBALS['wpdb'] = new Fake_Wpdb_Excel_P3();
 global $wpdb;

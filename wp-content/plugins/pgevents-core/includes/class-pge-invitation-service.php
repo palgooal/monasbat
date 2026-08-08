@@ -70,15 +70,98 @@ class PGE_Invitation_Service
         return $rows;
     }
 
+    /**
+     * ============================================================================
+     * Guest Limit Unification RFC — Part C/D/E: نقطة الإنفاذ الموحَّدة الوحيدة
+     * ============================================================================
+     * هذه هي "قاعدة العمل" (Business Rule) الوحيدة الآن لإنشاء دعوة في كامل
+     * النظام — كل من الإضافة اليدوية (invitation-management-ajax.php)،
+     * Bulk Add (PGE_Invitation_Bulk_Add_Service::confirm())، واستيراد Excel
+     * (invitation-management-ajax.php) يستدعون هذه الدالة نفسها ولا شيء
+     * غيرها لإنشاء دعوة. Architecture Audit السابق (راجع docs/INVITATION-
+     * GUEST-LIMIT-ENFORCEMENT.md) أثبت أن استيراد Excel كان المسار الوحيد
+     * الذي يفرض guest_limit — بقية المسارات كانت تتجاوزه بلا أي فحص. هذا
+     * التعديل ينقل الفحص إلى هنا فقط، فتُطبَّق القاعدة تلقائياً على كل
+     * مسار حالي أو مستقبلي يمرّ عبر Service::create() بلا أي تعديل إضافي
+     * في أي طبقة AJAX.
+     *
+     * القفل (Part D/E — Concurrency Lock):
+     * قفل GET_LOCK/RELEASE_LOCK واحد لكل مناسبة (event_id) — نفس النمط
+     * المُثبَت فعلياً في PGE_Invitation_Credit_Ledger::claim_for_delivery()
+     * وevent-factory.php (Event Quota Commit 6) — يُغلّف كامل السلسلة:
+     * إعادة تحميل حالة الدعوات الحالية (عبر pge_resolve_guest_quota_status()
+     * التي تقرأ pge_event_guests_get_map() من جديد) ← فحص حصة المدعوين ←
+     * فحص التكرار + الإنشاء الفعلي (كلاهما داخل PGE_Invitation_
+     * Repository::create() الحالية بلا أي تعديل عليها) ← تحرير القفل. هذه
+     * الدالة **لا تستدعي wp_send_json_success/error إطلاقاً** (تُعيد مصفوفة
+     * فقط) — لذلك try/finally كافٍ تماماً لضمان تحرير القفل دائماً (بخلاف
+     * event-factory.php الذي يحتاج تحريراً يدوياً صريحاً لأن wp_send_json_*
+     * هناك تستدعي wp_die() التي لا تُنفِّذ finally).
+     *
+     * Part E — ملكية القفل: هذه هي الطبقة الوحيدة التي تحصل على قفل إنشاء
+     * الدعوات في كامل النظام. PGE_Invitation_Repository::create() لا تحصل
+     * على أي قفل بنفسها (ولم تُعدَّل هنا إطلاقاً) — فلا قفل متداخل (Nested
+     * Lock) ولا احتمال Deadlock ذاتي.
+     *
+     * Part F — عقد النتيجة عند بلوغ الحد: ['result' => 'quota_exceeded',
+     * 'reason' => 'guest_limit_reached'] — رمز واحد طبيعي، بلا أي تفاصيل
+     * SQL أو داخلية مُسرَّبة.
+     *
+     * Part L — الباقات غير المحدودة (guest_limit <= 0): pge_resolve_guest_
+     * quota_status() تُعيد mode='unlimited' في هذه الحالة (اصطلاح قائم من
+     * قبل، لم يتغيّر) — لا رفض حصة إطلاقاً لهذه الحالة.
+     *
+     * Part M — مناسبات تجاوزت الحد فعلاً (current > limit): remaining تُحسَب
+     * كـ max(0, limit-current) داخل pge_resolve_guest_quota_status() (لم
+     * تتغيّر) — تصبح 0، فتُرفَض أي دعوة جديدة، بلا أي لمس للسجلات الحالية.
+     */
     public static function create($event_id, $phone, $name, $note, $actor_user_id)
     {
-        $result = PGE_Invitation_Repository::create($event_id, $phone, $name, $note);
+        $event_id = (int) $event_id;
 
-        if (($result['result'] ?? '') === 'created') {
-            PGE_Invitation_Management_Audit::record($event_id, $result['phone'], $actor_user_id, 'created', '');
+        global $wpdb;
+        $lock_name = self::build_creation_lock_name($event_id);
+
+        // GET_LOCK(name, timeout_seconds) — 5 ثوانٍ مطابقة لنفس المهلة
+        // المعتمَدة فعلياً في claim_for_delivery()/event-factory.php لعملية
+        // سريعة (قراءة حصة + قراءة/كتابة خريطة ضيوف واحدة).
+        $got_lock = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $lock_name, 5));
+        if ((int) $got_lock !== 1) {
+            return ['result' => 'error', 'reason' => 'lock_not_acquired'];
         }
 
-        return $result;
+        try {
+            $quota = function_exists('pge_resolve_guest_quota_status')
+                ? pge_resolve_guest_quota_status($event_id)
+                : ['mode' => 'unlimited', 'limit' => null, 'current' => 0, 'remaining' => null];
+
+            if ($quota['mode'] === 'limited' && (int) $quota['remaining'] <= 0) {
+                return ['result' => 'quota_exceeded', 'reason' => 'guest_limit_reached'];
+            }
+
+            $result = PGE_Invitation_Repository::create($event_id, $phone, $name, $note);
+
+            if (($result['result'] ?? '') === 'created') {
+                PGE_Invitation_Management_Audit::record($event_id, $result['phone'], $actor_user_id, 'created', '');
+            }
+
+            return $result;
+        } finally {
+            $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock_name));
+        }
+    }
+
+    /**
+     * اسم قفل GET_LOCK مشتق وآمن من event_id وحده — نطاق القفل هو "إنشاء
+     * دعوة ضمن مناسبة واحدة"، فلا يُسلسِل مناسبتين مختلفتين ببعضهما، لكنه
+     * يُسلسِل أي طلبَي إنشاء متزامنَين (من أي مسار) لنفس المناسبة، وهو
+     * بالضبط النطاق المطلوب لمنع تجاوز guest_limit أو فقدان تحديث (Lost
+     * Update) على خريطة المدعوين. نفس اصطلاح البادئة النصية الواضحة +
+     * md5() المُتَّبع فعلاً في build_credit_lock_name()/event-factory.php.
+     */
+    private static function build_creation_lock_name($event_id): string
+    {
+        return 'pge_invitation_create_' . md5((string) (int) $event_id);
     }
 
     public static function edit($event_id, $old_phone, $new_phone, $name, $note, $actor_user_id)

@@ -302,85 +302,39 @@ if (!function_exists('pge_event_guests_remove_phone_refs')) {
     }
 }
 
-add_action('wp_ajax_pge_event_guest_add', function () {
-    $event_id = pge_event_guests_validate_request();
+/**
+ * ============================================================================
+ * Guest Limit Unification RFC — Part A: Legacy Creation Endpoint Retirement
+ * ============================================================================
+ * `wp_ajax_pge_event_guest_add` و`wp_ajax_pge_event_guest_bulk_add` كانتا
+ * مسجَّلتين هنا وتكتبان مباشرة عبر pge_event_guests_get_map()/save_map()،
+ * **بلا مرور إطلاقاً** عبر PGE_Invitation_Service/Repository/Audit — أي بلا
+ * أي وعي بحصة المدعوين (guest_limit)، وبلا تدقيق. هذا كان الثغرة الوحيدة
+ * التي تسمح بتجاوز حصة المدعوين حتى بعد توحيد الإنفاذ في
+ * PGE_Invitation_Service::create() (راجع docs/INVITATION-GUEST-LIMIT-
+ * ENFORCEMENT.md).
+ *
+ * دليل عدم الاستخدام قبل الإزالة (لا افتراض):
+ *   - RC1 Fix Pack 3B (docs/RC1-AUDIT.md §16.4) أزال بالفعل كل نماذج/أزرار
+ *     الواجهة القديمة (`addGuestForm`/`bulkGuestForm`) من page-event-
+ *     manage.php — لا عنصر DOM يستدعي هذين الإجرائين بعد الآن (مُتحقَّق
+ *     تنفيذياً في tests/test-rc1-fixpack2.php A4.8/A4.9 وtest-rc1-
+ *     fixpack3b.php).
+ *   - RC1 Fix Pack 3A (§15) نقل الإضافة الجماعية بالكامل إلى
+ *     PGE_Invitation_Bulk_Add_Service — لا فجوة وظيفية متبقّية تبرّر إبقاء
+ *     `pge_event_guest_bulk_add` حياً.
+ *   - بحث شامل في كامل wp-content (PHP + JS + قوالب) عن استدعاء فعلي لهذين
+ *     الإجراءين عبر admin-ajax.php لم يُظهر أي مستدعٍ حي سوى الاختبارات
+ *     والتوثيق التاريخي.
+ *
+ * القرار: إزالة تسجيل الإجراءين (`add_action`) فقط — لم تُحذف أي دالة
+ * مساعدة (pge_event_guests_get_map/save_map/validate_request/...)، ولم
+ * يُلمَس `pge_event_guest_update`/`_delete`/`_bulk_delete`/`_regen_code` أو
+ * أي كود QR/قراءة أدناه في هذا الملف إطلاقاً. لم تعد هاتان الدالتان قابلتين
+ * للاستدعاء عبر admin-ajax.php بعد الآن.
+ */
 
-    $phone = pge_event_guests_norm_phone($_POST['phone'] ?? '');
-    $name = isset($_POST['name']) ? sanitize_text_field(wp_unslash($_POST['name'])) : '';
-    $note = isset($_POST['note']) ? sanitize_textarea_field(wp_unslash($_POST['note'])) : '';
 
-    if ($phone === '') {
-        wp_send_json_error('أدخل رقم جوال صحيح');
-    }
-
-    $guests_map = pge_event_guests_get_map($event_id);
-    if (isset($guests_map[$phone])) {
-        wp_send_json_error('هذا الرقم موجود مسبقًا ضمن المدعوين');
-    }
-
-    $guests_map[$phone] = [
-        'phone' => $phone,
-        'name'  => $name,
-        'note'  => $note,
-    ];
-
-    $guests_map = pge_event_guests_save_map($event_id, $guests_map);
-
-    wp_send_json_success([
-        'message' => 'تمت إضافة المدعو',
-        'guest'   => pge_event_guests_get_row_payload($event_id, $guests_map[$phone]),
-        'stats'   => pge_event_guests_get_stats($event_id, $guests_map),
-    ]);
-});
-
-add_action('wp_ajax_pge_event_guest_bulk_add', function () {
-    $event_id = pge_event_guests_validate_request();
-    $phones_text = isset($_POST['phones_text']) ? sanitize_textarea_field(wp_unslash($_POST['phones_text'])) : '';
-
-    if ($phones_text === '') {
-        wp_send_json_error('أدخل أرقام الجوال لإضافتها');
-    }
-
-    $guests_map = pge_event_guests_get_map($event_id);
-    $raw_lines = str_replace(["\r\n", "\r"], "\n", $phones_text);
-    $lines = array_filter(array_map('trim', explode("\n", $raw_lines)));
-
-    $added = 0;
-    $skipped = 0;
-    $invalid = 0;
-
-    foreach ($lines as $line) {
-        $phone = pge_event_guests_norm_phone($line);
-        if ($phone === '') {
-            $invalid++;
-            continue;
-        }
-
-        if (isset($guests_map[$phone])) {
-            $skipped++;
-            continue;
-        }
-
-        $guests_map[$phone] = [
-            'phone' => $phone,
-            'name'  => '',
-            'note'  => '',
-        ];
-        $added++;
-    }
-
-    $guests_map = pge_event_guests_save_map($event_id, $guests_map);
-
-    $message = sprintf('تمت إضافة %d رقم. تم تجاهل %d مكرر و %d غير صالح.', $added, $skipped, $invalid);
-
-    wp_send_json_success([
-        'message' => $message,
-        'added'   => $added,
-        'skipped' => $skipped,
-        'invalid' => $invalid,
-        'stats'   => pge_event_guests_get_stats($event_id, $guests_map),
-    ]);
-});
 
 add_action('wp_ajax_pge_event_guest_update', function () {
     $event_id = pge_event_guests_validate_request();

@@ -164,6 +164,12 @@ function pge_invitation_mgmt_create_handler()
     if ($outcome === 'duplicate') {
         wp_send_json_error(['message' => 'هذا الرقم مدعو بالفعل لهذه المناسبة', 'reason' => 'duplicate']);
     }
+    // Guest Limit Unification RFC — Part G: فشل آمن بلا كتابة جزئية —
+    // PGE_Invitation_Service::create() ترفض الإنشاء بالكامل (لا Repository،
+    // لا Audit) قبل أي كتابة عندما تكون الحصة ممتلئة.
+    if ($outcome === 'quota_exceeded') {
+        wp_send_json_error(['message' => 'تم الوصول إلى الحد الأقصى للمدعوين في هذه المناسبة.', 'reason' => 'guest_limit_reached']);
+    }
 
     wp_send_json_error(['message' => 'تعذّر إنشاء الدعوة', 'reason' => (string) ($result['reason'] ?? 'unknown_error')]);
 }
@@ -878,17 +884,16 @@ function pge_invitation_mgmt_excel_confirm_handler()
     $quota_exceeded_count = 0;
     $valid_before_import = 0;
 
-    // ── حدود الباقة (Guest Limit/Package Quota) — إعادة احتساب طازجة كاملة ──
-    // "لا تعتمد على الحساب القادم من Preview" (صراحةً): يُعاد استدعاء
-    // pge_resolve_guest_quota_status($event_id) من الصفر هنا، لحظة التأكيد
-    // فعلياً، لأن ضيوفاً قد أُضيفوا/حُذفوا من تبويب آخر أو مستخدم آخر بين
-    // Preview وConfirm. لا قيمة واحدة قادمة من المتصفح أو من استجابة
-    // Preview السابقة تُستخدَم في هذا الحساب مطلقاً.
-    $quota = function_exists('pge_resolve_guest_quota_status')
-        ? pge_resolve_guest_quota_status($event_id)
-        : ['mode' => 'unlimited', 'limit' => null, 'current' => 0, 'remaining' => null];
-    $import_cap = ($quota['mode'] === 'limited') ? (int) $quota['remaining'] : null;
-
+    // ── حدود الباقة (Guest Limit/Package Quota) — Guest Limit Unification RFC، Part I ──
+    // لم يعد هذا الملف يحسب سقفاً محلياً مجمَّداً (import_cap) ولا يقرر بنفسه
+    // متى يتوقف الاستيراد — تلك كانت سلطة إنفاذ ثانية موازية لـ
+    // PGE_Invitation_Service::create()، وقد أُزيلت هنا صراحةً (RFC: "Do NOT
+    // rely on a frozen import_cap as the final authority... Excel no longer
+    // has a second authoritative quota algorithm"). كل صف valid يستدعي الآن
+    // create() دون أي بوابة سابقة — هي وحدها من تقرر (عبر قفل ذري لكل
+    // مناسبة، راجع class-pge-invitation-service.php) القبول أو الرفض
+    // بحصة_exceeded، بناءً على الحالة الحية لحظة ذلك الصف بالذات، لا لحظة
+    // بداية هذا الطلب.
     foreach ($rows as &$row) {
         $status = (string) ($row['status'] ?? '');
 
@@ -913,22 +918,11 @@ function pge_invitation_mgmt_excel_confirm_handler()
 
         $valid_before_import++;
 
-        // حدود الباقة: إن بلغ عدد الاستيرادات الفعلية الناجحة حتى الآن سقف
-        // الحصة المتبقية، يتوقف الاستيراد عند هذا الصف وما بعده — بلا أي
-        // محاولة create() لهذه الصفوف إطلاقاً ("سيتم استيراد أول N مدعواً
-        // صالحاً فقط لأن هذا هو العدد المتبقي في باقتك"). العدّاد يُقارَن
-        // بعدد الاستيرادات الناجحة الفعلية (لا بعدد الصفوف الصالحة المفحوصة)
-        // حتى لا تُهدَر حصة على صف تبيَّن أنه مكرَّر (Race condition) داخل
-        // create() نفسها.
-        if ($import_cap !== null && $imported >= $import_cap) {
-            $quota_exceeded_count++;
-            $row['result'] = 'quota_exceeded';
-            continue;
-        }
-
         // القسم 4: مسار الإنشاء الوحيد المسموح — بلا INSERT مباشر، بلا
         // كتابة مباشرة على Repository، بلا استدعاء دالة حفظ خريطة الضيوف
-        // مباشرة من هنا، بلا أي Service مواز.
+        // مباشرة من هنا، بلا أي Service مواز. Guest Limit Unification RFC،
+        // Part I: يُستدعى لكل صف valid بلا استثناء — Service::create() هي
+        // السلطة الوحيدة التي تقرر created/duplicate/quota_exceeded الآن.
         try {
             $create_result = PGE_Invitation_Service::create(
                 $event_id,
@@ -947,6 +941,13 @@ function pge_invitation_mgmt_excel_confirm_handler()
                 // (أُضيف يدوياً بين Preview وConfirm) — لا إعادة محاولة، لا إضافة مضاعفة.
                 $duplicates++;
                 $row['result'] = 'duplicate';
+            } elseif ($outcome === 'quota_exceeded') {
+                // حصة المدعوين ممتلئة فعلياً لحظة هذا الصف بالذات (فحص حي
+                // داخل قفل ذري لكل مناسبة، لا سقف مجمَّد من بداية الطلب) —
+                // الصفوف اللاحقة تستمر في المحاولة (Best-Effort، مطابق
+                // لـBulk Add) وقد تُصنَّف quota_exceeded هي الأخرى.
+                $quota_exceeded_count++;
+                $row['result'] = 'quota_exceeded';
             } else {
                 $failed++;
                 $row['result'] = 'failed';
@@ -966,15 +967,15 @@ function pge_invitation_mgmt_excel_confirm_handler()
     }
     unset($row);
 
-    // إعادة حساب حدود الباقة مرة أخيرة بعد اكتمال الاستيراد فعلياً — القيمة
-    // المحسوبة أعلاه ($quota، قبل الحلقة) استُخدمت فقط لاتخاذ قرار السقف
-    // أثناء الاستيراد؛ أما القيمة المُرجَعة في الاستجابة فيجب أن تعكس current/
-    // remaining الحقيقيين بعد أن أصبح المستوردون الجدد جزءاً من المناسبة —
-    // حتى تكون مفيدة فعلاً لأي عرض واجهة أو زر "ترقية الباقة" مستقبلي يعتمد
-    // عليها مباشرة بلا استعلام إضافي.
+    // إعادة حساب حدود الباقة مرة أخيرة بعد اكتمال الاستيراد فعلياً — Guest
+    // Limit Unification RFC، Part I: لا سقف مجمَّد يُحسَب هنا بعد الآن (كل
+    // صف قرَّر مصيره بنفسه عبر Service::create() أعلاه)؛ هذا الاستدعاء
+    // الأخير غرضه وحيد: عكس current/remaining الحقيقيين في الاستجابة بعد
+    // أن أصبح المستوردون الجدد جزءاً من المناسبة، لعرض الواجهة أو زر
+    // "ترقية الباقة" مستقبلي.
     $quota_after_import = function_exists('pge_resolve_guest_quota_status')
         ? pge_resolve_guest_quota_status($event_id)
-        : $quota;
+        : ['mode' => 'unlimited', 'limit' => null, 'current' => 0, 'remaining' => null];
 
     // "total_rows == imported + duplicates + invalid + empty + failed +
     // quota_exceeded" — هوية جامعة حقيقية عبر 6 دِلاء نهائية الآن (أُضيف
@@ -1051,6 +1052,9 @@ if (!function_exists('pge_invitation_mgmt_bulk_add_error_message')) {
             'name_required'                 => 'اسم الضيف مطلوب لإنشاء الدعوة',
             'duplicate_in_batch'            => 'مكرَّر داخل النص الملصوق نفسه',
             'duplicate_in_event'            => 'هذا الرقم مدعو بالفعل لهذه المناسبة',
+            // Guest Limit Unification RFC — Part H: نتيجة حقيقية من
+            // PGE_Invitation_Service::create() الآن، لا حالة نظرية.
+            'guest_limit_reached'           => 'تم الوصول إلى الحد الأقصى للمدعوين في هذه المناسبة',
         ];
         return $messages[$reason] ?? 'خطأ غير معروف';
     }

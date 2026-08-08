@@ -168,6 +168,29 @@ class Fake_Wpdb_Fp3a
         $this->insert_id = $id;
         return 1;
     }
+
+    // Guest Limit Unification RFC: محاكاة GET_LOCK/RELEASE_LOCK لقفل
+    // PGE_Invitation_Service::create() — نفس نمط Fake_Wpdb في
+    // test-invitation-credit-ledger.php.
+    private $held_locks = [];
+    public function get_var($sql)
+    {
+        if (preg_match("/SELECT\\s+GET_LOCK\\('([^']*)',\\s*(-?\\d+)\\)/i", $sql, $m)) {
+            $name = $m[1];
+            if (isset($this->held_locks[$name])) return '0';
+            $this->held_locks[$name] = true;
+            return '1';
+        }
+        return null;
+    }
+    public function query($sql)
+    {
+        if (preg_match("/SELECT\\s+RELEASE_LOCK\\('([^']*)'\\)/i", $sql, $m)) {
+            unset($this->held_locks[$m[1]]);
+            return 1;
+        }
+        return 0;
+    }
 }
 $GLOBALS['wpdb'] = new Fake_Wpdb_Fp3a();
 global $wpdb;
@@ -330,7 +353,12 @@ check('19. حدث تدقيق "created" الفردي الحالي سُجِّل ب
 $audit_bulk_rows = array_values(array_filter($wpdb->audit_log, function ($r) { return (int) $r['event_id'] === 2001 && $r['action'] === 'bulk_create_completed'; }));
 check('20. حدث تدقيق دفعي واحد فقط "bulk_create_completed" لكل عملية Confirm', count($audit_bulk_rows), 1);
 $bulk_audit_reason = json_decode($audit_bulk_rows[0]['reason'] ?? '{}', true);
-check('20ب. حدث التدقيق الدفعي يحمل العدّاد الصحيح (بعد Blocker Fix: total/created/duplicate/invalid/failed)', $bulk_audit_reason, ['total' => 7, 'created' => 4, 'duplicate' => 2, 'invalid' => 1, 'failed' => 0]);
+// Guest Limit Unification RFC (Part H): $result_summary في
+// PGE_Invitation_Bulk_Add_Service::confirm() اكتسب دلواً خامساً
+// 'quota_exceeded' (قيمته 0 هنا — لا حد مفعَّل لهذا المضيف في هذا
+// السيناريو) — لا تغيير في قيم total/created/duplicate/invalid/failed
+// نفسها، فقط مفتاح إضافي في نفس المصفوفة المُدقَّقة حرفياً.
+check('20ب. حدث التدقيق الدفعي يحمل العدّاد الصحيح (بعد Blocker Fix: total/created/duplicate/invalid/failed/quota_exceeded)', $bulk_audit_reason, ['total' => 7, 'created' => 4, 'duplicate' => 2, 'invalid' => 1, 'failed' => 0, 'quota_exceeded' => 0]);
 check_true('20ج. حدث التدقيق الدفعي مُسجَّل بسنتينل مستوى المناسبة (لا هاتف فردي)', $audit_bulk_rows[0]['guest_phone'] === PGE_Invitation_Management_Audit::EVENT_LEVEL_BULK_ADD_SENTINEL);
 
 check_true('21. لا اسم مدعو (مثل "أحمد محمد") داخل نص عمود reason لحدث bulk_create_completed', strpos($audit_bulk_rows[0]['reason'], 'أحمد') === false);

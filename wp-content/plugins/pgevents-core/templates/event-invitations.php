@@ -927,7 +927,7 @@ get_header();
     duplicate_in_batch: 'مكرَّر داخل النص', duplicate_in_event: 'مكرَّر بالمناسبة',
   };
   var BULK_RESULT_LABELS = {
-    created: 'أُنشئت', duplicate: 'مكرَّرة', invalid: 'غير صالحة', failed: 'فشلت',
+    created: 'أُنشئت', duplicate: 'مكرَّرة', invalid: 'غير صالحة', failed: 'فشلت', quota_exceeded: 'تجاوز حد الباقة',
   };
   var BULK_STATUS_BADGE_CLASS = {
     valid: 'bg-green-100 text-green-800', invalid: 'bg-destructive/10 text-destructive-text',
@@ -936,6 +936,7 @@ get_header();
   var BULK_RESULT_BADGE_CLASS = {
     created: 'bg-green-100 text-green-800', duplicate: 'bg-amber-100 text-amber-800',
     invalid: 'bg-destructive/10 text-destructive-text', failed: 'bg-destructive/10 text-destructive-text',
+    quota_exceeded: 'bg-amber-100 text-amber-800',
   };
 
   var bulkModal = document.getElementById('bulkAddModal');
@@ -1068,6 +1069,7 @@ get_header();
       bulkRenderSummaryBadges(bulkResultSummaryBox, json.data.summary, [
         { key: 'total', label: 'الإجمالي' }, { key: 'created', label: 'أُنشئت' },
         { key: 'duplicate', label: 'مكرَّرة' }, { key: 'invalid', label: 'غير صالحة' }, { key: 'failed', label: 'فشلت' },
+        { key: 'quota_exceeded', label: 'تجاوز حد الباقة' },
       ]);
       bulkRenderResultRows(json.data.rows);
       bulkShowState('result');

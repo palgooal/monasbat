@@ -233,11 +233,17 @@ check_true('A4.9 (RC1 Fix Pack 3B) إجراء AJAX القديم pge_event_guest_
 check_true('A4.10 (RC1 Fix Pack 3B) إجراء AJAX القديم pge_event_guest_delete لم يعد يُستدعى من أي زر في الواجهة — يبقى مُسجَّلاً فعلياً كطبقة توافق فقط (راجع A4.13)', strpos($theme_source, "postAction('pge_event_guest_delete'") === false);
 
 // إثبات تنفيذي حقيقي: معالجات AJAX الحقيقية للوحة القديمة (event-guests.php،
-// مُحمَّلة أصلاً أعلاه ضمن سلسلة helpers.php/event-guests.php) لا تزال
-// قابلة للاستدعاء ومُسجَّلة فعلياً — "Legacy code may remain" لا يعني معطَّلاً.
-check_true('A4.11 إجراء pge_event_guest_add الحقيقي لا يزال مُسجَّلاً فعلياً (Hook حقيقي)', !empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_add']));
-check_true('A4.12 إجراء pge_event_guest_bulk_add الحقيقي لا يزال مُسجَّلاً فعلياً', !empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_bulk_add']));
-check_true('A4.13 إجراء pge_event_guest_delete الحقيقي لا يزال مُسجَّلاً فعلياً', !empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_delete']));
+// مُحمَّلة أصلاً أعلاه ضمن سلسلة helpers.php/event-guests.php) — "Legacy code
+// may remain" لا يعني معطَّلاً بالضرورة، لكن هذا تغيَّر عمداً لـadd/bulk_add
+// تحديداً بموجب Guest Limit Unification RFC (Part A)، بعد أن أثبت Architecture
+// Audit أنهما آخر ثغرة تسمح بتجاوز حصة المدعوين (bypass كامل لـ
+// PGE_Invitation_Service/Repository/Audit/guest_limit). القرار: إلغاء تسجيل
+// الإجراءين فقط — لا حذف لأي دالة مساعدة، ولا لمس لـupdate/delete/bulk_delete/
+// regen_code (تصحيح تأكيدات قديمة أصبحت غير صحيحة بتصميم مقصود، بنفس منهجية
+// RC1 Fix Pack 3B §16.5 — تُعدَّل لتعكس الحالة الصحيحة الحالية بدل حذفها).
+check_true('A4.11 (Guest Limit Unification RFC) إجراء pge_event_guest_add لم يعد مُسجَّلاً إطلاقاً — أُلغي تسجيله عمداً (Part A)', empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_add']));
+check_true('A4.12 (Guest Limit Unification RFC) إجراء pge_event_guest_bulk_add لم يعد مُسجَّلاً إطلاقاً — أُلغي تسجيله عمداً (Part A)', empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_bulk_add']));
+check_true('A4.13 إجراء pge_event_guest_delete الحقيقي لا يزال مُسجَّلاً فعلياً (لم يُلمَس — خارج نطاق Guest Limit Unification RFC Part A)', !empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_delete']));
 
 // ── ملخّص ────────────────────────────────────────────────────────────────
 echo "\n============================================================\n";
