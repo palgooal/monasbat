@@ -14,6 +14,12 @@ define('PGE_PATH', plugin_dir_path(__FILE__));
 
 // 1. استدعاء المكونات الأساسية (Logic)
 require_once PGE_PATH . 'includes/helpers.php';
+
+// Messaging Architecture — Phase 1: عقد message_type الوحيد (Contract فقط،
+// بلا منطق إرسال). يُحمَّل مبكراً بجانب helpers.php لأنه بلا أي Dependency
+// وتستهلكه طبقة بناء محتوى الرسائل التي تُحمَّل لاحقاً مع class-cartat-handler.php.
+require_once PGE_PATH . 'includes/class-pge-message-type.php';
+
 require_once PGE_PATH . 'includes/cpts.php';
 require_once PGE_PATH . 'includes/metaboxes.php';
 require_once PGE_PATH . 'includes/user-profiles.php';
@@ -2447,6 +2453,13 @@ require_once PGE_PATH . 'includes/class-mon-events-users.php';
 
 // 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)
 require_once PGE_PATH . 'includes/class-salla-handler.php';
+
+// Messaging Architecture — Phase 1: طبقة بناء المحتوى المشتركة (Content
+// فقط، بلا إرسال) — تُحمَّل قبل المزوّدين لأن class-cartat-handler.php
+// تستهلكها. تعتمد على PGE_Message_Type (مُحمَّلة أعلى الملف بجانب
+// helpers.php) وعلى pge_wa_get_templates()/pge_wa_render_template()
+// (helpers.php) فقط.
+require_once PGE_PATH . 'includes/class-pge-message-content-resolver.php';
 
 // 3. تكامل واتساب — يُحمَّل المزوّد النشط فقط (Cartat أو UltraMsg). ملاحظة:
 // class-pge-cartat-transport.php (طبقة النقل المشتركة، Option B) تُحمَّل

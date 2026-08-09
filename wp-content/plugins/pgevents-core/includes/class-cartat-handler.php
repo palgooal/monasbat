@@ -368,20 +368,31 @@ class Mon_Cartat_Handler
         $event_date     = $event_date_raw
             ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
             : '';
-        $image_url = (string) get_the_post_thumbnail_url($event_id, 'full');
-
-        // بناء رسالة الدعوة التجريبية من القالب المخصص
-        $tpl_invite = function_exists('pge_wa_get_templates')
-            ? pge_wa_get_templates($event_id)['invite']
-            : pge_wa_default_invite_template();
-
-        $caption = pge_wa_render_template($tpl_invite, [
+        // بناء رسالة الدعوة التجريبية — عبر PGE_Message_Content_Resolver
+        // المشترك (Messaging Architecture Phase 1). نفس القالب، نفس
+        // المتغيرات، نفس مصدر الصورة البارزة المُستخدَمة قبل هذا الـRefactor
+        // حرفياً — لا تغيير في القيمة الناتجة.
+        $guest_context = [
             'guest_name'      => $test_name ?: 'ضيف تجريبي',
             'event_name'      => $event_name,
             'event_date'      => $event_date,
             'event_date_line' => $event_date ? "\n📅 {$event_date}" : '',
             'guest_phone'     => $norm_phone,
-        ]);
+        ];
+
+        if (class_exists('PGE_Message_Content_Resolver') && class_exists('PGE_Message_Type')) {
+            $content   = PGE_Message_Content_Resolver::resolve(PGE_Message_Type::INVITATION, $event_id, $guest_context);
+            $caption   = $content['text'];
+            $image_url = $content['image_url'];
+        } else {
+            // احتياط دفاعي فقط (لا يُتوقَّع تفعيله عملياً — الملف مُحمَّل دوماً
+            // من pgevents-core.php) بنفس المنطق القديم حرفياً.
+            $image_url = (string) get_the_post_thumbnail_url($event_id, 'full');
+            $tpl_invite = function_exists('pge_wa_get_templates')
+                ? pge_wa_get_templates($event_id)['invite']
+                : pge_wa_default_invite_template();
+            $caption = pge_wa_render_template($tpl_invite, $guest_context);
+        }
 
         $result = $image_url
             ? $this->transport->send_media($wa_number, $image_url, $caption)
@@ -477,22 +488,40 @@ class Mon_Cartat_Handler
                 ? (function_exists('pge_normalize_invite_code') ? pge_normalize_invite_code($guest_code_raw) : $guest_code_raw)
                 : $event_invite_code;
 
-            // بناء رسالة الدعوة من القالب المخصص أو الافتراضي
-            $tpl_invite = function_exists('pge_wa_get_templates')
-                ? pge_wa_get_templates($event_id)['invite']
-                : pge_wa_default_invite_template();
-
-            $caption = pge_wa_render_template($tpl_invite, [
-                'guest_name'      => $guest_name,
-                'event_name'      => $event_name,
-                'event_date'      => $event_date,
-                'event_date_line' => $event_date ? "\n📅 {$event_date}" : '',
-                'guest_phone'     => $norm_phone,
-            ]);
+            // بناء رسالة الدعوة — عبر PGE_Message_Content_Resolver المشترك
+            // (Messaging Architecture Phase 1). image_url يُمرَّر صراحةً من
+            // القيمة المحسوبة مرة واحدة خارج هذه الحلقة أعلاه (السطر أعلاه
+            // في الدالة) — بلا أي استدعاء إضافي لـget_the_post_thumbnail_url()
+            // لكل هاتف، بنفس أداء الكود القديم حرفياً.
+            if (class_exists('PGE_Message_Content_Resolver') && class_exists('PGE_Message_Type')) {
+                $content = PGE_Message_Content_Resolver::resolve(PGE_Message_Type::INVITATION, $event_id, [
+                    'guest_name'      => $guest_name,
+                    'event_name'      => $event_name,
+                    'event_date'      => $event_date,
+                    'event_date_line' => $event_date ? "\n📅 {$event_date}" : '',
+                    'guest_phone'     => $norm_phone,
+                    'image_url'       => $image_url,
+                ]);
+                $caption          = $content['text'];
+                $phone_image_url  = $content['image_url'];
+            } else {
+                // احتياط دفاعي فقط (لا يُتوقَّع تفعيله عملياً) بنفس المنطق القديم حرفياً.
+                $tpl_invite = function_exists('pge_wa_get_templates')
+                    ? pge_wa_get_templates($event_id)['invite']
+                    : pge_wa_default_invite_template();
+                $caption = pge_wa_render_template($tpl_invite, [
+                    'guest_name'      => $guest_name,
+                    'event_name'      => $event_name,
+                    'event_date'      => $event_date,
+                    'event_date_line' => $event_date ? "\n📅 {$event_date}" : '',
+                    'guest_phone'     => $norm_phone,
+                ]);
+                $phone_image_url = $image_url ?: null;
+            }
 
             // إرسال صورة أو نص حسب توفر الصورة
-            if ($image_url) {
-                $result = $this->transport->send_media($wa_number, $image_url, $caption);
+            if ($phone_image_url) {
+                $result = $this->transport->send_media($wa_number, $phone_image_url, $caption);
             } else {
                 $result = $this->transport->send_text($wa_number, $caption);
             }
@@ -1444,20 +1473,39 @@ class Mon_Cartat_Handler
                     ? (function_exists('pge_normalize_invite_code') ? pge_normalize_invite_code($guest_code_raw) : $guest_code_raw)
                     : $queue['invite_code'];
 
-                $tpl_invite = function_exists('pge_wa_get_templates')
-                    ? pge_wa_get_templates($event_id)['invite']
-                    : pge_wa_default_invite_template();
+                // بناء رسالة الدعوة — عبر PGE_Message_Content_Resolver المشترك
+                // (Messaging Architecture Phase 1). image_url يُمرَّر صراحةً
+                // من $queue['image_url'] (محسوبة مرة واحدة عند بدء الـQueue
+                // في ajax_queue_start()، ومخزَّنة/مُخبَّأة عبر تكرارات الـCron —
+                // بلا أي تغيير في هذا السلوك المُتعمَّد أصلاً).
+                if (class_exists('PGE_Message_Content_Resolver') && class_exists('PGE_Message_Type')) {
+                    $content         = PGE_Message_Content_Resolver::resolve(PGE_Message_Type::INVITATION, $event_id, [
+                        'guest_name'      => $guest_name,
+                        'event_name'      => $queue['event_name'],
+                        'event_date'      => $queue['event_date'],
+                        'event_date_line' => $queue['event_date'] ? "\n📅 {$queue['event_date']}" : '',
+                        'guest_phone'     => $norm_phone,
+                        'image_url'       => $queue['image_url'],
+                    ]);
+                    $caption         = $content['text'];
+                    $phone_image_url = $content['image_url'];
+                } else {
+                    // احتياط دفاعي فقط (لا يُتوقَّع تفعيله عملياً) بنفس المنطق القديم حرفياً.
+                    $tpl_invite = function_exists('pge_wa_get_templates')
+                        ? pge_wa_get_templates($event_id)['invite']
+                        : pge_wa_default_invite_template();
+                    $caption = pge_wa_render_template($tpl_invite, [
+                        'guest_name'      => $guest_name,
+                        'event_name'      => $queue['event_name'],
+                        'event_date'      => $queue['event_date'],
+                        'event_date_line' => $queue['event_date'] ? "\n📅 {$queue['event_date']}" : '',
+                        'guest_phone'     => $norm_phone,
+                    ]);
+                    $phone_image_url = $queue['image_url'] ?: null;
+                }
 
-                $caption = pge_wa_render_template($tpl_invite, [
-                    'guest_name'      => $guest_name,
-                    'event_name'      => $queue['event_name'],
-                    'event_date'      => $queue['event_date'],
-                    'event_date_line' => $queue['event_date'] ? "\n📅 {$queue['event_date']}" : '',
-                    'guest_phone'     => $norm_phone,
-                ]);
-
-                $result = $queue['image_url']
-                    ? $this->transport->send_media($wa_number, $queue['image_url'], $caption)
+                $result = $phone_image_url
+                    ? $this->transport->send_media($wa_number, $phone_image_url, $caption)
                     : $this->transport->send_text($wa_number, $caption);
 
                 $outcome = $this->transport->interpret_result($result);

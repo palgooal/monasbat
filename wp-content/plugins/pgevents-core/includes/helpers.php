@@ -226,22 +226,55 @@ if (!function_exists('pge_wa_default_reply_invalid_template')) {
     }
 }
 
+// ══════════════════════════════════════════════
+// Messaging Architecture — Phase 1: قوالب افتراضية لـReminder/Thank You
+// ══════════════════════════════════════════════
+// أساس معماري فقط (Phase 0 Contract) — لا Caller إنتاجي يستدعي هاتين
+// الدالتين بعد. نفس نمط pge_wa_default_invite_template() تماماً: نص ثابت،
+// Variables بصيغة {{key}}، بلا أي منطق تصيير هنا (pge_wa_render_template()
+// تبقى المسؤولة الوحيدة عن الاستبدال، بلا تغيير).
+
+if (!function_exists('pge_wa_default_reminder_template')) {
+    function pge_wa_default_reminder_template(): string
+    {
+        return "مرحباً {{guest_name}}،\nنذكّركم بموعد {{event_name}} بتاريخ {{event_date}}.";
+    }
+}
+
+if (!function_exists('pge_wa_default_thank_you_template')) {
+    function pge_wa_default_thank_you_template(): string
+    {
+        return "شكراً لحضوركم {{event_name}}، سعدنا بمشاركتكم.";
+    }
+}
+
 /**
  * جلب قوالب رسائل المناسبة (مع fallback للقيم الافتراضية)
+ *
+ * Messaging Architecture — Phase 1: مُوسَّعة إضافياً بمفتاحين جديدين
+ * (reminder, thank_you) بجانب الأربعة القائمة — تحقّق مسبق (Part 4 من
+ * تكليف Phase 1) عبر كل نقاط استهلاك هذه الدالة في المشروع أثبت أن كل
+ * مستهلِك حالي يقرأ بمفتاح جمعي محدد (['invite']/['yes']/['no']/['invalid'])
+ * حصراً، بلا أي اعتماد على count() أو ترتيب — إضافة مفتاحين جديدين للمصفوفة
+ * المُعادة آمنة بالكامل ولا تُغيّر قيمة أي مفتاح قائم.
  */
 if (!function_exists('pge_wa_get_templates')) {
     function pge_wa_get_templates(int $event_id): array
     {
-        $stored_invite  = (string) get_post_meta($event_id, '_pge_wa_tpl_invite',  true);
-        $stored_yes     = (string) get_post_meta($event_id, '_pge_wa_tpl_yes',     true);
-        $stored_no      = (string) get_post_meta($event_id, '_pge_wa_tpl_no',      true);
-        $stored_invalid = (string) get_post_meta($event_id, '_pge_wa_tpl_invalid', true);
+        $stored_invite    = (string) get_post_meta($event_id, '_pge_wa_tpl_invite',    true);
+        $stored_yes       = (string) get_post_meta($event_id, '_pge_wa_tpl_yes',       true);
+        $stored_no        = (string) get_post_meta($event_id, '_pge_wa_tpl_no',        true);
+        $stored_invalid   = (string) get_post_meta($event_id, '_pge_wa_tpl_invalid',   true);
+        $stored_reminder  = (string) get_post_meta($event_id, '_pge_wa_tpl_reminder',  true);
+        $stored_thank_you = (string) get_post_meta($event_id, '_pge_wa_tpl_thank_you', true);
 
         return [
-            'invite'  => $stored_invite  !== '' ? $stored_invite  : pge_wa_default_invite_template(),
-            'yes'     => $stored_yes     !== '' ? $stored_yes     : pge_wa_default_reply_yes_template(),
-            'no'      => $stored_no      !== '' ? $stored_no      : pge_wa_default_reply_no_template(),
-            'invalid' => $stored_invalid !== '' ? $stored_invalid : pge_wa_default_reply_invalid_template(),
+            'invite'    => $stored_invite    !== '' ? $stored_invite    : pge_wa_default_invite_template(),
+            'yes'       => $stored_yes       !== '' ? $stored_yes       : pge_wa_default_reply_yes_template(),
+            'no'        => $stored_no        !== '' ? $stored_no        : pge_wa_default_reply_no_template(),
+            'invalid'   => $stored_invalid   !== '' ? $stored_invalid   : pge_wa_default_reply_invalid_template(),
+            'reminder'  => $stored_reminder  !== '' ? $stored_reminder  : pge_wa_default_reminder_template(),
+            'thank_you' => $stored_thank_you !== '' ? $stored_thank_you : pge_wa_default_thank_you_template(),
         ];
     }
 }
