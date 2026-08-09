@@ -70,6 +70,19 @@ if (!defined('PGE_INVITATION_MGMT_BULK_ADD_ENABLED')) {
 if (!defined('PGE_INVITATION_MGMT_DELETE_ENABLED')) {
     define('PGE_INVITATION_MGMT_DELETE_ENABLED', true);
 }
+/**
+ * Messaging Architecture Phase 3 ("Manual Reminder") — بوابة نطاق خامسة، بنفس
+ * نمط الثوابت الأربعة أعلاه: true فور اعتماد هذه المرحلة. تُسجِّل wp_ajax_
+ * pge_invitation_mgmt_reminder_preview وwp_ajax_pge_invitation_mgmt_save_
+ * reminder_template وwp_ajax_pge_invitation_mgmt_send_reminder وwp_ajax_
+ * pge_invitation_mgmt_reminder_status فعلياً. هذا مفتاح "مرحلة معتمدة أم لا"
+ * بحت — لا علاقة له بأي Feature Entitlement/Tier Gate (PART 19 من تكليف
+ * Phase 3: reminder_message ميزة Baseline لكل الباقات، لا بوابة ميزة هنا ولا
+ * في أي مكان آخر من مسار الإرسال).
+ */
+if (!defined('PGE_INVITATION_MGMT_REMINDER_ENABLED')) {
+    define('PGE_INVITATION_MGMT_REMINDER_ENABLED', true);
+}
 
 if (!function_exists('pge_invitation_mgmt_validate_request')) {
     /**
@@ -1244,4 +1257,161 @@ function pge_invitation_mgmt_bulk_delete_handler()
 }
 if (PGE_INVITATION_MGMT_DELETE_ENABLED) {
     add_action('wp_ajax_pge_invitation_mgmt_bulk_delete', 'pge_invitation_mgmt_bulk_delete_handler');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Messaging Architecture Phase 3 ("Manual Reminder") — Preview/Template
+// Save/Send/Status. نفس تفويض بقية هذا الملف بالضبط
+// (pge_invitation_mgmt_validate_request(): nonce + login + ملكية المناسبة
+// عبر pge_event_guests_user_can_manage() — لا يمنح المشرف (Supervisor) أي
+// صلاحية هنا، جلسته منفصلة تماماً عن is_user_logged_in()/current WP user
+// ولا تُمرَّر عبر nonce إدارة المناسبة أصلاً — PART 18 من تكليف Phase 3).
+// لا Feature Gate على reminder_message هنا ولا في أي مكان (PART 19).
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * معاينة قبل الإرسال (PART 21/22): عدد المستلمين المتوقَّع (Estimate — العدد
+ * الملزم الفعلي يُعاد حسابه من جديد عند send فقط) + نص القالب الحالي
+ * (المحفوظ أو الافتراضي) + عيّنة تصيير بسيطة بضيف وهمي. قراءة فقط بالكامل —
+ * لا batch_id، لا صفوف تتبّع، لا إرسال.
+ */
+function pge_invitation_mgmt_reminder_preview_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+
+    $filter = isset($_POST['filter']) ? sanitize_text_field(wp_unslash($_POST['filter'])) : PGE_Message_Recipient_Resolver::FILTER_PENDING;
+    $filter = PGE_Message_Recipient_Resolver::normalize_filter($filter);
+
+    $recipient_count = PGE_Message_Recipient_Resolver::count($event_id, PGE_Message_Type::REMINDER, $filter);
+
+    $templates = function_exists('pge_wa_get_templates') ? pge_wa_get_templates($event_id) : [];
+    $template_text = (string) ($templates['reminder'] ?? '');
+
+    $event = get_post($event_id);
+    $event_name = $event ? $event->post_title : '';
+    $event_date_raw = (string) get_post_meta($event_id, '_pge_event_date', true);
+    $event_date = $event_date_raw
+        ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
+        : '';
+
+    $sample = PGE_Message_Content_Resolver::resolve(PGE_Message_Type::REMINDER, $event_id, [
+        'guest_name' => 'ضيف تجريبي',
+        'event_name' => $event_name,
+        'event_date' => $event_date,
+    ]);
+
+    wp_send_json_success([
+        'filter'           => $filter,
+        'recipient_count'  => $recipient_count,
+        'template'         => $template_text,
+        'preview_text'     => $sample['text'],
+    ]);
+}
+if (PGE_INVITATION_MGMT_REMINDER_ENABLED) {
+    add_action('wp_ajax_pge_invitation_mgmt_reminder_preview', 'pge_invitation_mgmt_reminder_preview_handler');
+}
+
+/**
+ * حفظ قالب Reminder لهذه المناسبة فقط (PART 17): لا Endpoint عام لحفظ كل
+ * القوالب موجود حالياً في المشروع لإعادة استخدامه (تحقّقنا فعلياً قبل
+ * الكتابة — راجع Preflight Audit في التقرير النهائي)، فأضفنا أقل طريقة ممكنة
+ * مقصورة على مفتاح _pge_wa_tpl_reminder وحده — لا تلمس invite/yes/no/invalid/
+ * thank_you. نفس نمط sanitize_textarea_field المُستخدَم لحقول نصية طويلة في
+ * هذا المشروع (note الضيف مثلاً).
+ */
+function pge_invitation_mgmt_save_reminder_template_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+
+    $template = isset($_POST['template']) ? sanitize_textarea_field(wp_unslash($_POST['template'])) : '';
+    if ($template === '') {
+        wp_send_json_error(['message' => 'نص القالب لا يمكن أن يكون فارغاً', 'reason' => 'empty_template']);
+    }
+    if (mb_strlen($template) > 2000) {
+        wp_send_json_error(['message' => 'نص القالب طويل جداً', 'reason' => 'template_too_long']);
+    }
+
+    update_post_meta($event_id, '_pge_wa_tpl_reminder', $template);
+
+    wp_send_json_success(['message' => 'تم حفظ نص التذكير', 'template' => $template]);
+}
+if (PGE_INVITATION_MGMT_REMINDER_ENABLED) {
+    add_action('wp_ajax_pge_invitation_mgmt_save_reminder_template', 'pge_invitation_mgmt_save_reminder_template_handler');
+}
+
+/**
+ * إرسال التذكير الفعلي (PART 16): الخادم هو Authoritative بالكامل — لا يقبل
+ * phones/rendered rows/message body النهائي/batch_id/counts من العميل. كل ما
+ * يُقبَل من $_POST هنا: nonce (عبر pge_invitation_mgmt_validate_request())،
+ * event_id (نفسه)، وfilter فقط. batch_id يُولَّد داخل PGE_Reminder_Message_
+ * Service::send_reminder_batch() نفسها، والمستلمون يُحسَبون هناك أيضاً — لا
+ * تكرار منطق هنا، هذا المعالج غلاف رقيق حول الـService فقط (PART 9: "لا تضع
+ * هذا المنطق كله داخل AJAX handler").
+ */
+function pge_invitation_mgmt_send_reminder_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+
+    $filter = isset($_POST['filter']) ? sanitize_text_field(wp_unslash($_POST['filter'])) : PGE_Message_Recipient_Resolver::FILTER_PENDING;
+    $filter = PGE_Message_Recipient_Resolver::normalize_filter($filter);
+
+    $result = PGE_Reminder_Message_Service::send_reminder_batch($event_id, $filter, get_current_user_id());
+    $outcome = (string) ($result['result'] ?? 'error');
+
+    if ($outcome === 'started') {
+        wp_send_json_success([
+            'batch_id'              => $result['batch_id'],
+            'total_targeted'        => $result['total_targeted'],
+            'skipped_invalid_phone' => $result['skipped_invalid_phone'],
+            'sent'                  => $result['sent'],
+            'failed'                => $result['failed'],
+            'ambiguous'             => $result['ambiguous'],
+            'queued_remaining'      => $result['queued_remaining'],
+            'in_progress'           => $result['queued_remaining'] > 0,
+        ]);
+    }
+
+    $reason = (string) ($result['reason'] ?? 'unknown_error');
+    $messages = [
+        'invalid_event'            => 'مناسبة غير صالحة',
+        'no_provider_credentials'  => 'لم يتم ضبط Cartat API Token في الإعدادات',
+        'operation_in_progress'    => '⏳ توجد عملية إرسال تذكير أخرى قيد البدء لهذه المناسبة الآن. حاول بعد لحظات.',
+        'no_recipients'            => 'لا يوجد مستلمون مطابقون لهذا الفلتر حالياً',
+        'tracking_creation_failed' => 'تعذّر تجهيز عملية الإرسال، حاول مرة أخرى',
+    ];
+
+    wp_send_json_error(['message' => $messages[$reason] ?? 'تعذّر بدء إرسال التذكير', 'reason' => $reason]);
+}
+if (PGE_INVITATION_MGMT_REMINDER_ENABLED) {
+    add_action('wp_ajax_pge_invitation_mgmt_send_reminder', 'pge_invitation_mgmt_send_reminder_handler');
+}
+
+/**
+ * تقرير حالة دفعة تذكير جارية (PART 24) — تُستدعى دورياً من الواجهة فقط حين
+ * queued_remaining > 0 عند send، بنفس فلسفة ajax_queue_status() الحالية —
+ * قراءة فقط عبر PGE_Reminder_Message_Service::batch_status() (لا حالة Queue
+ * مشتركة مع مسار الدعوة).
+ */
+function pge_invitation_mgmt_reminder_status_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+
+    $batch_id = isset($_POST['batch_id']) ? sanitize_text_field(wp_unslash($_POST['batch_id'])) : '';
+    if ($batch_id === '') {
+        wp_send_json_error(['message' => 'batch_id مفقود', 'reason' => 'missing_batch_id']);
+    }
+
+    $status = PGE_Reminder_Message_Service::batch_status($event_id, $batch_id);
+
+    wp_send_json_success([
+        'total'      => $status['total'],
+        'sent'       => $status['sent'],
+        'failed'     => $status['failed'],
+        'ambiguous'  => $status['ambiguous'],
+        'pending'    => $status['pending'],
+        'done'       => $status['pending'] === 0,
+    ]);
+}
+if (PGE_INVITATION_MGMT_REMINDER_ENABLED) {
+    add_action('wp_ajax_pge_invitation_mgmt_reminder_status', 'pge_invitation_mgmt_reminder_status_handler');
 }

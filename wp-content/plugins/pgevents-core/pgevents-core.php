@@ -2484,6 +2484,16 @@ if ($_pge_wa_provider === 'ultramsg') {
     require_once PGE_PATH . 'includes/class-cartat-handler.php';
 }
 
+// Messaging Architecture — Phase 3 ("Manual Reminder"، Foundation Phase 1/2
+// معتمدتان ومغلقتان): أول استخدام فعلي لإرسال حقيقي عبر البنية التحتية —
+// Recipient Resolver (pending/all) + Reminder Message Service (Batch عبر
+// PGE_Message_Batch، تتبّع عبر PGE_Message_Log، محتوى عبر PGE_Message_
+// Content_Resolver الحالية بلا تغيير، إرسال عبر PGE_Cartat_Transport الحالية
+// بلا تغيير). لا Thank You، لا Scheduling، لا لمس لـInvitation Credits/Queue
+// الحالية — راجع docs/MESSAGING-ARCHITECTURE.md §Phase 3 للتفاصيل الكاملة.
+require_once PGE_PATH . 'includes/class-pge-message-recipient-resolver.php';
+require_once PGE_PATH . 'includes/class-pge-reminder-message-service.php';
+
 // 2. استدعاء نظام التوجيه (Routing) - بديل الصفحات التقليدية
 require_once PGE_PATH . 'includes/routing.php';
 

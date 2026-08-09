@@ -95,6 +95,8 @@ get_header();
       <!-- RC1 Fix Pack 3B ("Legacy Guest Panel Retirement — Hard Delete Migration"): زر حذف الدعوات المحدَّدة — نفس تنسيق أزرار cancel-inv-btn (bg-destructive/10)، مُعطَّل حتى يُحدَّد صف واحد على الأقل (نفس فلسفة bulkDeleteBtn/refreshBulkDeleteState القديمة في page-event-manage.php). -->
       <button type="button" id="bulkDeleteInvBtn" disabled class="h-11 px-4 rounded-xl bg-destructive/10 text-destructive-text text-sm font-semibold disabled:opacity-40">حذف المحدَّد</button>
       <button type="button" id="openBulkAddBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إضافة جماعية</button>
+      <!-- Messaging Architecture Phase 3 ("Manual Reminder"): زر فتح نافذة إرسال تذكير يدوي — نفس تنسيق الأزرار المجاورة بالضبط، لا تصميم جديد. -->
+      <button type="button" id="openReminderBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">🔔 إرسال تذكير</button>
       <!-- استيراد المدعوين من Excel (docs/EXCEL-GUEST-IMPORT-SPEC.md): تنزيل النموذج الرسمي (Phase 1) + Modal رفع/معاينة/استيراد كامل (Phase 3 رفع+معاينة، Phase 4 تأكيد+استيراد فعلي). -->
       <button type="button" id="downloadExcelTemplateBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">📥 تحميل نموذج Excel</button>
       <button type="button" id="openExcelImportBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">📤 استيراد من Excel</button>
@@ -459,6 +461,67 @@ get_header();
         <div id="excelResultSummaryBox" class="flex flex-wrap gap-2 mb-3"></div>
         <div class="flex justify-end gap-2 mt-3">
           <button type="button" id="excelCloseResultBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">إغلاق</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Messaging Architecture Phase 3 ("Manual Reminder") — نافذة إرسال تذكير ══ -->
+  <div id="reminderModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="reminderHeading">
+    <div class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 id="reminderHeading" class="text-sm font-extrabold text-foreground">إرسال رسالة تذكير</h2>
+        <button type="button" id="closeReminderBtn" class="h-9 w-9 rounded-lg border border-border text-sm font-bold text-foreground/70" aria-label="إغلاق">×</button>
+      </div>
+
+      <div id="reminderErrorMsg" class="hidden mb-3 text-xs font-semibold rounded-xl px-3 py-2 bg-destructive/10 text-destructive-text" role="alert"></div>
+
+      <!-- حالة الإعداد: الفلتر + العدد + القالب + المعاينة -->
+      <div id="reminderSetupState">
+        <p class="text-xs font-bold text-foreground/70 mb-2">المستهدَفون</p>
+        <div class="flex flex-col gap-2 mb-3">
+          <label class="flex items-center gap-2 text-sm text-foreground">
+            <input type="radio" name="reminderFilter" value="pending" checked class="h-4 w-4" />
+            الذين لم يردوا
+          </label>
+          <label class="flex items-center gap-2 text-sm text-foreground">
+            <input type="radio" name="reminderFilter" value="all" class="h-4 w-4" />
+            جميع المدعوين
+          </label>
+        </div>
+
+        <p class="text-xs text-foreground/60 mb-3">عدد المستلمين المتوقَّع: <span id="reminderRecipientCount" class="font-bold text-foreground">—</span> <span class="text-[11px]">(العدد النهائي يُعاد حسابه من الخادم عند الإرسال)</span></p>
+
+        <label for="reminderTemplateInput" class="block text-xs font-bold text-foreground/70 mb-1.5">نص رسالة التذكير</label>
+        <textarea id="reminderTemplateInput" rows="4" class="w-full rounded-xl border border-border p-3 text-sm outline-none focus:border-primary" maxlength="2000"></textarea>
+        <div class="flex justify-end mt-1.5">
+          <button type="button" id="saveReminderTemplateBtn" class="h-9 px-3 rounded-lg border border-border text-xs font-semibold text-foreground/70">حفظ نص التذكير لهذه المناسبة</button>
+        </div>
+
+        <div class="mt-3 rounded-xl border border-border bg-secondary/20 p-3">
+          <p class="text-[11px] font-bold text-foreground/60 mb-1">معاينة (لضيف تجريبي)</p>
+          <p id="reminderPreviewText" class="text-xs text-foreground/80 whitespace-pre-line"></p>
+        </div>
+
+        <div class="flex justify-end gap-2 mt-4">
+          <button type="button" id="cancelReminderBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إلغاء</button>
+          <button type="button" id="sendReminderBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white disabled:opacity-40">إرسال التذكير</button>
+        </div>
+      </div>
+
+      <!-- حالة الإرسال الجاري -->
+      <div id="reminderSendingState" class="hidden py-10 text-center" aria-live="polite">
+        <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" aria-hidden="true"></div>
+        <p class="text-sm font-semibold text-foreground/70">جارٍ إرسال رسائل التذكير...</p>
+        <p id="reminderSendingProgress" class="mt-1 text-[11px] text-foreground/45"></p>
+      </div>
+
+      <!-- حالة النتيجة -->
+      <div id="reminderResultState" class="hidden py-4">
+        <p id="reminderResultMsg" class="mb-3 text-sm font-bold text-foreground" aria-live="polite"></p>
+        <div id="reminderResultSummaryBox" class="flex flex-wrap gap-2 mb-3"></div>
+        <div class="flex justify-end gap-2 mt-3">
+          <button type="button" id="closeReminderResultBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">إغلاق</button>
         </div>
       </div>
     </div>
@@ -1511,6 +1574,196 @@ get_header();
     excelFileInfo.textContent = '';
     excelCloseModal();
     fetchList(1);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Messaging Architecture Phase 3 ("Manual Reminder")
+  // ══════════════════════════════════════════════════════════════════════
+  var reminderModal = document.getElementById('reminderModal');
+  var reminderErrorMsg = document.getElementById('reminderErrorMsg');
+  var reminderSetupState = document.getElementById('reminderSetupState');
+  var reminderSendingState = document.getElementById('reminderSendingState');
+  var reminderSendingProgress = document.getElementById('reminderSendingProgress');
+  var reminderResultState = document.getElementById('reminderResultState');
+  var reminderResultMsg = document.getElementById('reminderResultMsg');
+  var reminderResultSummaryBox = document.getElementById('reminderResultSummaryBox');
+  var reminderRecipientCount = document.getElementById('reminderRecipientCount');
+  var reminderTemplateInput = document.getElementById('reminderTemplateInput');
+  var reminderPreviewText = document.getElementById('reminderPreviewText');
+  var sendReminderBtn = document.getElementById('sendReminderBtn');
+  var saveReminderTemplateBtn = document.getElementById('saveReminderTemplateBtn');
+  var reminderInFlight = false;
+  var reminderPollTimer = null;
+
+  function reminderShowState(name) {
+    reminderSetupState.classList.toggle('hidden', name !== 'setup');
+    reminderSendingState.classList.toggle('hidden', name !== 'sending');
+    reminderResultState.classList.toggle('hidden', name !== 'result');
+  }
+
+  function reminderShowError(message) {
+    reminderErrorMsg.textContent = message;
+    reminderErrorMsg.classList.remove('hidden');
+  }
+
+  function reminderClearError() {
+    reminderErrorMsg.classList.add('hidden');
+    reminderErrorMsg.textContent = '';
+  }
+
+  function reminderCurrentFilter() {
+    var checked = document.querySelector('input[name="reminderFilter"]:checked');
+    return checked ? checked.value : 'pending';
+  }
+
+  function reminderRefreshPreview() {
+    reminderRecipientCount.textContent = '…';
+    postAjax('pge_invitation_mgmt_reminder_preview', { filter: reminderCurrentFilter() }).then(function (res) {
+      if (!res || !res.success) {
+        reminderShowError((res && res.data && res.data.message) || 'تعذّر جلب المعاينة');
+        return;
+      }
+      reminderRecipientCount.textContent = res.data.recipient_count;
+      reminderTemplateInput.value = res.data.template;
+      reminderPreviewText.textContent = res.data.preview_text;
+    }).catch(function () {
+      reminderShowError('تعذّر الاتصال بالخادم');
+    });
+  }
+
+  function reminderOpenModal() {
+    reminderClearError();
+    reminderShowState('setup');
+    document.querySelector('input[name="reminderFilter"][value="pending"]').checked = true;
+    reminderModal.classList.remove('hidden');
+    reminderRefreshPreview();
+  }
+
+  function reminderCloseModal() {
+    if (reminderPollTimer) { window.clearTimeout(reminderPollTimer); reminderPollTimer = null; }
+    reminderModal.classList.add('hidden');
+  }
+
+  var REMINDER_ERROR_MESSAGES = {
+    invalid_event: 'مناسبة غير صالحة',
+    no_provider_credentials: 'لم يتم ضبط إعدادات واتساب لهذه المناسبة بعد',
+    operation_in_progress: 'توجد عملية إرسال تذكير أخرى قيد البدء الآن. حاول بعد لحظات.',
+    no_recipients: 'لا يوجد مستلمون مطابقون لهذا الفلتر حالياً',
+    tracking_creation_failed: 'تعذّر تجهيز عملية الإرسال، حاول مرة أخرى',
+  };
+
+  function reminderRenderResult(data) {
+    var total = data.total_targeted || 0;
+    var sent = data.sent || 0;
+    var failed = (data.failed || 0) + (data.ambiguous || 0);
+    var skipped = (data.skipped_invalid_phone || 0) + (data.queued_remaining_failed || 0);
+
+    reminderResultMsg.textContent = 'تم إرسال التذكير إلى ' + sent + ' مدعواً من أصل ' + total + '.'
+      + (failed > 0 ? ' تعذّر الإرسال إلى ' + failed + '.' : '')
+      + (skipped > 0 ? ' تم تخطي ' + skipped + '.' : '');
+
+    reminderResultSummaryBox.innerHTML = '';
+    [
+      { label: 'الإجمالي المستهدَف', value: total },
+      { label: 'تم الإرسال', value: sent },
+      { label: 'تعذّر الإرسال', value: failed },
+      { label: 'تم التخطي', value: data.skipped_invalid_phone || 0 },
+    ].forEach(function (item) {
+      var span = document.createElement('span');
+      span.className = 'inline-flex items-center gap-1 rounded-lg bg-secondary/40 px-2.5 py-1 text-xs font-bold text-foreground/75';
+      span.textContent = item.label + ': ' + item.value;
+      reminderResultSummaryBox.appendChild(span);
+    });
+  }
+
+  function reminderPollStatus(batchId, lastKnown) {
+    postAjax('pge_invitation_mgmt_reminder_status', { batch_id: batchId }).then(function (res) {
+      if (!res || !res.success) return;
+      var s = res.data;
+      reminderSendingProgress.textContent = 'تم حتى الآن: ' + s.sent + ' من ' + s.total;
+      if (s.done) {
+        reminderShowState('result');
+        reminderRenderResult({
+          total_targeted: s.total,
+          sent: s.sent,
+          failed: s.failed,
+          ambiguous: s.ambiguous,
+          skipped_invalid_phone: lastKnown.skipped_invalid_phone,
+        });
+        showToast('اكتمل إرسال التذكير', false);
+      } else {
+        reminderPollTimer = window.setTimeout(function () { reminderPollStatus(batchId, lastKnown); }, 4000);
+      }
+    }).catch(function () {
+      reminderPollTimer = window.setTimeout(function () { reminderPollStatus(batchId, lastKnown); }, 6000);
+    });
+  }
+
+  var openReminderBtn = document.getElementById('openReminderBtn');
+  if (openReminderBtn) openReminderBtn.addEventListener('click', reminderOpenModal);
+  document.getElementById('closeReminderBtn').addEventListener('click', reminderCloseModal);
+  document.getElementById('cancelReminderBtn').addEventListener('click', reminderCloseModal);
+
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="reminderFilter"]'), function (radio) {
+    radio.addEventListener('change', reminderRefreshPreview);
+  });
+
+  saveReminderTemplateBtn.addEventListener('click', function () {
+    reminderClearError();
+    var text = reminderTemplateInput.value.trim();
+    if (!text) { reminderShowError('نص القالب لا يمكن أن يكون فارغاً'); return; }
+    saveReminderTemplateBtn.disabled = true;
+    postAjax('pge_invitation_mgmt_save_reminder_template', { template: text }).then(function (res) {
+      saveReminderTemplateBtn.disabled = false;
+      if (res && res.success) {
+        showToast('تم حفظ نص التذكير', false);
+        reminderRefreshPreview();
+      } else {
+        reminderShowError((res && res.data && res.data.message) || 'تعذّر حفظ نص التذكير');
+      }
+    }).catch(function () {
+      saveReminderTemplateBtn.disabled = false;
+      reminderShowError('تعذّر الاتصال بالخادم');
+    });
+  });
+
+  sendReminderBtn.addEventListener('click', function () {
+    if (reminderInFlight) return;
+    reminderClearError();
+    reminderInFlight = true;
+    sendReminderBtn.disabled = true;
+    document.getElementById('closeReminderBtn').disabled = true;
+    reminderShowState('sending');
+    reminderSendingProgress.textContent = '';
+
+    var filter = reminderCurrentFilter();
+    postAjax('pge_invitation_mgmt_send_reminder', { filter: filter }).then(function (res) {
+      reminderInFlight = false;
+      document.getElementById('closeReminderBtn').disabled = false;
+      if (!res || !res.success) {
+        var reason = res && res.data && res.data.reason;
+        reminderShowState('setup');
+        reminderShowError((res && res.data && res.data.message) || REMINDER_ERROR_MESSAGES[reason] || 'تعذّر بدء إرسال التذكير');
+        return;
+      }
+      var data = res.data;
+      if (data.in_progress) {
+        reminderSendingProgress.textContent = 'تم حتى الآن: ' + data.sent + ' من ' + data.total_targeted;
+        reminderPollTimer = window.setTimeout(function () { reminderPollStatus(data.batch_id, data); }, 4000);
+      } else {
+        reminderShowState('result');
+        reminderRenderResult(data);
+      }
+    }).catch(function () {
+      reminderInFlight = false;
+      document.getElementById('closeReminderBtn').disabled = false;
+      reminderShowState('setup');
+      reminderShowError('تعذّر الاتصال بالخادم');
+    });
+  });
+
+  document.getElementById('closeReminderResultBtn').addEventListener('click', function () {
+    reminderCloseModal();
   });
 
   renderRows(INITIAL.items);
