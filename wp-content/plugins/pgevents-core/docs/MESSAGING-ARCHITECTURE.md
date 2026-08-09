@@ -1,10 +1,11 @@
-# نظام رسائل المناسبة (Messaging Architecture) — Phase 0 + Phase 1
+# نظام رسائل المناسبة (Messaging Architecture) — Phase 0 + Phase 1 + Phase 2
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
-> في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك). لا يوثّق تفاصيل مراحل
-> مستقبلية (Reminder/Thank You الفعليَّين، الجدولة، التتبّع) إلا كقائمة "غير
-> منفَّذ بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل
-> الكاملة لتلك المراحل عند بدء تنفيذها فعلياً.
+> في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
+> Foundation فقط لـReminder/Thank You، بلا إرسال فعلي). لا يوثّق تفاصيل مراحل
+> مستقبلية (Reminder/Thank You الفعليَّين، الجدولة) إلا كقائمة "غير منفَّذ بعد"
+> مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة لتلك
+> المراحل عند بدء تنفيذها فعلياً.
 
 ---
 
@@ -166,19 +167,137 @@ Replacement Credit Consumption، RSVP write-path unification) — راجع ال�
 
 ---
 
-## 4. غير منفَّذ بعد (NOT IMPLEMENTED YET)
+## 4. Phase 2 — Foundation (بنية تحتية فقط، بلا إرسال فعلي)
+
+Phase 2 لا تضيف أي إرسال حقيقي لـReminder أو Thank You — تضيف فقط البنية
+التحتية (Schema + Tracking + Idempotency Primitive) التي سيحتاجها إرسال
+حقيقي في مرحلة مستقبلية. لا Caller إنتاجي واحد يستدعي أياً من الملفات
+التالية في Phase 2.
+
+### 4.1 Schema (إضافي بحت — Additive فقط)
+
+**الملف:** `includes/class-pge-messaging-schema.php` (جديد، نفس نمط
+`PGE_Checkin_Schema`/`PGE_Invitation_Management_Schema`).
+
+- عمود جديد واحد على `{$wpdb->prefix}pge_event_rsvps`: `thank_you_sent_at
+  DATETIME NULL` — لا تعديل على أي عمود قائم.
+- جدول جديد `{$wpdb->prefix}pge_message_log`: `id, event_id, rsvp_id
+  (nullable), guest_phone, message_type, batch_id, status, provider
+  (nullable), actor_user_id, created_at, sent_at (nullable)`. فهارس:
+  `KEY event_type (event_id, message_type)`، `KEY batch_id (batch_id)`،
+  `KEY status (status)` — الحد الأدنى المبرَّر لكل استعلام مطلوب فعلياً في
+  `PGE_Message_Log`، بلا فهرس زائد على `event_id` وحده (مُغطًّى أصلاً كطرف
+  أيسر لفهرس `event_type`).
+
+### 4.2 `PGE_Message_Log` — طبقة Tracking عامة (Tracking فقط)
+
+**الملف:** `includes/class-pge-message-log.php` (جديد).
+
+`create_pending()` / `mark_sent()` / `mark_failed()` / `query_by_batch()` /
+`query_by_event_type()`. يرفض `create_pending()` أي `message_type` غير
+معروف عبر `PGE_Message_Type::normalize()` (لا قائمة موازية جديدة). Status
+Contract: `pending`, `sent`, `failed`, `ambiguous_transport_error` فقط — لا
+`duplicate_operation` (مفهوم Queue، لا رسالة)، لا `already_sent` (نتيجة
+Claim، لا حالة سجل). **لا يُخزَّن أبداً:** نص الرسالة، QR، رمز الدعوة،
+tokens، بيانات اعتماد المزوّد، أو استجابة API الخام — `guest_phone` بصيغته
+المُطبَّعة القياسية (`pge_norm_phone()`) فقط.
+
+### 4.3 `PGE_Thank_You_Claim` — مطالبة Thank You الذرية (Idempotency Primitive)
+
+**الملف:** `includes/class-pge-thank-you-claim.php` (جديد).
+
+عقد الحالة: `thank_you_sent_at = NULL` ⇒ لم يُرسَل بعد؛ `!= NULL` ⇒ أُرسل
+بنجاح نهائياً. **لا قيمة وسيطة تعني "قيد الإرسال".**
+
+**القرار المعماري (خيار B، لا خيار A):** قُورِن بين (A) كتابة
+`thank_you_sent_at` فوراً عند بدء المحاولة مع Rollback عند الفشل، و(B) حارس
+"قيد التنفيذ" منفصل تماماً بحيث لا يُكتَب `thank_you_sent_at` إلا عند النجاح
+المؤكَّد فقط. اختير **(B)**: خطر (A) البنيوي هو أن أي انقطاع غير متوقَّع بين
+بدء المحاولة وRollback يترك `thank_you_sent_at` مكتوبة رغم عدم إرسال أي
+رسالة فعلياً — يكذب العقد أعلاه بشكل دائم لا يمكن اكتشافه لاحقاً بلا تدخّل
+يدوي. الحارس المُنفَّذ: سجل `pge_message_log` بحالة `pending` لنفس
+`rsvp_id`/`thank_you` — طالما هو موجود، لا `claim()` جديد يُقبَل. `GET_LOCK`
+(نفس نمط `PGE_Checkin_Recorder`/`PGE_Invitation_Credit_Ledger`) يُستخدَم فقط
+للحظة القصيرة اللازمة لإنشاء سجل الحارس ذرياً — لا يُحمَل عبر الإرسال الخارجي
+الفعلي (الذي يحدث لاحقاً، بعد Release القفل، بين `claim()` و`finalize_*()`).
+
+**API:** `is_sent()`, `can_send()`, `claim($event_id, $rsvp_id, ...)` (يعيد
+`claimed` / `already_sent` / `already_in_progress` / `error`),
+`finalize_success($log_id, $rsvp_id)` (يكتب `thank_you_sent_at` الآن فقط),
+`finalize_failure($log_id, $status)` (يُحرِّر الحارس، يسمح بإعادة المحاولة —
+`thank_you_sent_at` لا يُلمَس إطلاقاً).
+
+**قيد معروف مقبول صراحة (Foundation فقط):** إن تعطَّلت العملية بعد `claim()`
+(سجل `pending` أُنشئ) ولم يُستدعَ `finalize_*()` إطلاقاً، يبقى الحارس عالقاً
+إلى الأبد (نفس فئة الخطر التي واجهها `PGE_Invitation_Credit_Ledger::
+claim_for_delivery()` قبل إضافة Lease لاحقاً). لا آلية Lease/Reclaim هنا
+بعد — غير مطلوبة في Phase 2 (لا إرسال فعلي بعد يجعل هذا الخطر واقعياً)، تُترَك
+صراحةً لمرحلة تفعيل الإرسال الفعلي إن ثبتت الحاجة.
+
+### 4.4 `PGE_Message_Batch` — مولّد `batch_id`
+
+**الملف:** `includes/class-pge-message-batch.php` (جديد). `generate_batch_id()`
+تعيد UUID v4 عبر `wp_generate_uuid4()` (WordPress Core منذ 4.7) — عشوائي
+بالكامل، جديد لكل استدعاء، بلا اعتماد على `time()` أو `event_id`. لا Queue
+تستهلكه بعد.
+
+### 4.5 Lifecycle / Hard Delete (توثيق سلوك حالي — بلا تغيير)
+
+Hard Delete (راجع `docs/HARD-DELETE-SEMANTICS-AUDIT.md`) **لا يلمس**
+`wp_pge_event_rsvps` ولا `wp_pge_message_log` إطلاقاً — كلاهما يبقى كسجل
+تاريخي/Audit "يتيم" (orphan) بعد حذف الدعوة، تماماً كـ`checked_in`/
+`checked_in_at` القائمَين أصلاً. لا FK، لا Cascade Delete أُضيف (يتوافق مع
+تجنّب المشروع للـFK في كل الجداول القائمة).
+
+**قيد مكتشَف، غير مُصلَح عمداً في Phase 2:** دالة "تصفير في مكانه"
+(`PGE_Invitation_Repository::current_or_null()`, تُشغَّل عند إعادة دعوة
+هاتف كان له صف RSVP يتيم سابقاً) تُصفِّر صراحةً `checked_in`/`checked_in_at`/
+`checked_in_by_assignment_id`/`checkin_method`/`actual_entered_count`/
+`reply`/`companions`/`note`/`created_at` — لكنها **لا تُصفِّر
+`thank_you_sent_at`** (العمود لم يكن موجوداً وقت كتابة تلك الدالة). هذا يعني
+نظرياً: لو أُرسل شكر لضيف، حُذفت دعوته، ثم أُعيدت دعوته لاحقاً بنفس الهاتف عبر
+مسار "تصفير في المكان"، سيرث الصف "المُصفَّر حديثاً" قيمة `thank_you_sent_at`
+القديمة خطأً. **لا خطر فعلي اليوم** (لا Caller إنتاجي يكتب `thank_you_sent_at`
+بعد — القيمة دائماً `NULL` لكل صف حالياً)، لكن هذا قيد يجب إصلاحه (إضافة
+`thank_you_sent_at => null` إلى مصفوفة التصفير في `current_or_null()`) **قبل**
+تفعيل أي إرسال Thank You حقيقي في مرحلة مستقبلية — خارج نطاق Phase 2 عمداً
+(Foundation فقط، لا تعديل على ملفات RSVP Write Path القائمة).
+
+### 4.6 الإثبات التنفيذي
+
+ملف `tests/test-messaging-phase2.php` (46 فحصاً، جميعها ناجحة، عبر نفس
+مُفسِّر PHP 8.3 الحقيقي المُستخدَم في Phase 1) يُثبت: الترقية تضيف العمود
+والجدول فعلياً، `create_pending()` يرفض الأنواع غير المعروفة ولا يخزّن نص
+رسالة/tokens، `mark_sent()`/`mark_failed()` ذريان وIdempotent،
+`query_by_batch()`/`query_by_event_type()` تعملان بشكل صحيح، `claim()`
+يمنع مطالبتين متزامنتين لنفس الضيف (سواء عبر الحارس أو عبر قفل SQL محجوز
+فعلياً)، `finalize_success()` يكتب `thank_you_sent_at` فقط عند النجاح
+المؤكَّد، `finalize_failure()` يسمح بإعادة المحاولة بلا أي أثر على العمود،
+مطالبة لضيف أُرسل له الشكر مسبقاً تُرفَض دائماً، ضيفان/مناسبتان مختلفتان
+مستقلان تماماً، ولا أثر لأي من هذا في مسارات الدعوة/RSVP/Check-in/Ledger
+القائمة (فحص ثابت على المصدر الفعلي).
+
+---
+
+## 5. غير منفَّذ بعد (NOT IMPLEMENTED YET)
 
 - إرسال Reminder فعلياً (لا AJAX، لا Queue، لا زر واجهة).
-- إرسال Thank You فعلياً (لا AJAX، لا Queue، لا زر واجهة).
+- إرسال Thank You فعلياً (لا AJAX، لا Queue، لا زر واجهة) — البنية التحتية
+  (Schema + Log + Claim) جاهزة (Phase 2) لكن بلا Caller.
 - أي جدولة تلقائية (Cron) لـReminder أو Thank You.
-- جدول/آلية تتبّع (Tracking) لحالة إرسال Reminder/Thank You لكل ضيف
-  (`thank_you_sent_at` أو ما يعادله) — غير موجود بعد.
-- Idempotency الفعلية لـThank You (منع التكرار لكل ضيف لكل مناسبة) — القرار
-  معتمد من حيث المبدأ (Phase 0) لكن غير مُنفَّذ في قاعدة البيانات.
-- منع التكرار المزدوج لـReminder (قفل عملية إرسال واحدة) — غير مُنفَّذ.
+- منع التكرار المزدوج لـReminder (قفل عملية إرسال واحدة، مفهوم مختلف عن
+  Idempotency Thank You أعلاه) — غير مُنفَّذ.
+- Lease/Reclaim لمطالبات Thank You العالقة (راجع §4.3 "قيد معروف مقبول") —
+  غير مُنفَّذ، غير مطلوب طالما لا إرسال فعلي.
+- إصلاح توريث `thank_you_sent_at` في `current_or_null()` (راجع §4.5) — يجب
+  إنجازه قبل أي إرسال Thank You حقيقي.
 - Recipient Resolver الفعلي لتحديد "غير المستجيبين" أو "كل المدعوين"
   لـReminder، أو `checked_in=1` لـThank You — غير مُنفَّذ.
 - أي واجهة مستخدم (UI) لإطلاق Reminder/Thank You من `event-invitations.php`
   أو أي مكان آخر.
-- ربط `message_type` ببنية الـQueue (`$queue['message_type']`) — مؤجَّل، راجع
-  §2.5.
+- ربط `message_type` ببنية الـQueue الحالية (`$queue['message_type']`) —
+  مؤجَّل، راجع §2.5. لا علاقة له بـ`pge_message_log` (جدول Tracking مستقل
+  تماماً عن Queue الدعوة الحالية).
+- استخدام `pge_message_log` فعلياً لتتبّع إرسال الدعوة (Invitation) — غير
+  مُنفَّذ عمداً في Phase 2 (راجع PART 9 من تكليف Phase 2: لا كتابة من مسار
+  الدعوة الحالي إلى `message_log`).

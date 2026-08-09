@@ -130,6 +130,17 @@ require_once PGE_PATH . 'includes/class-pge-guest-resolution-service.php';
 require_once PGE_PATH . 'includes/class-pge-checkin-recorder.php';
 require_once PGE_PATH . 'includes/checkin-ajax.php';
 
+// Messaging Architecture — Phase 2 (Foundation فقط، بلا إرسال فعلي): بنية
+// قاعدة البيانات (عمود thank_you_sent_at الإضافي على pge_event_rsvps + جدول
+// pge_message_log الجديد)، طبقة Tracking (PGE_Message_Log)، مطالبة Thank You
+// الذرية (PGE_Thank_You_Claim)، ومولّد batch_id (PGE_Message_Batch). تعتمد
+// على PGE_Message_Type (مُحمَّلة أعلى الملف بجانب helpers.php) — لا تعديل على
+// Provider/Credits/RSVP flow/Cron/UI. راجع docs/MESSAGING-ARCHITECTURE.md.
+require_once PGE_PATH . 'includes/class-pge-messaging-schema.php';
+require_once PGE_PATH . 'includes/class-pge-message-log.php';
+require_once PGE_PATH . 'includes/class-pge-thank-you-claim.php';
+require_once PGE_PATH . 'includes/class-pge-message-batch.php';
+
 // طبقة عرض/إعادة تشكيل رقيقة إضافية لبحث الحضور اليدوي — Entry Check-in
 // Supervisors، Phase 7 ("Supervisor Check-in User Interface" RFC). تستهلك
 // نفس PGE_Guest_Resolution_Service أعلاه (قراءة فقط، بلا تعديل) وتُسقِط
