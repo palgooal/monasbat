@@ -32,6 +32,9 @@ wp-config.php
 # Log files
 *.log
 
+# Generated WordPress upgrade stub used by standalone plugin tests.
+/wp-content/plugins/pgevents-core/tests/wp-admin/includes/upgrade.php
+
 # htaccess
 /.htaccess
 
