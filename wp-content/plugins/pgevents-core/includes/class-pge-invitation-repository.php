@@ -17,8 +17,8 @@ if (!defined('ABSPATH')) exit;
  *   2. `wp_pge_event_rsvps` (جدول، ممنوع تعديل مخططه بدون مراجعة صريحة وفق
  *      CLAUDE.md) — حالة الرد (RSVP) وحالة الحضور — تُقرَأ حصراً عبر
  *      pge_event_guests_load_rsvp_from_db() الحالية (قراءة فقط، مع cache
- *      ثابت داخلها أصلاً يمنع N+1). **لا كتابة على هذا الجدول من هذا الملف
- *      إطلاقاً** — الحضور والـRSVP تبقيان بمعزل تام عن هذه المرحلة.
+ *      ثابت داخلها أصلاً يمنع N+1). Phase C يضيف كتابة واحدة محصورة: reset
+ *      دورة الحياة داخل create() فقط؛ بقية عمليات Repository لا تكتب RSVP.
  *   3. `_pge_invitation_status` (post meta جديد، **حصري لهذه المرحلة**) —
  *      حالة الدعوة الإدارية (active/cancelled) + طوابع invited_at/updated_at/
  *      qr_regenerated_at. مفتاح post meta مستقل تماماً عن `_pge_invited_
@@ -66,6 +66,7 @@ if (!defined('ABSPATH')) exit;
  */
 
 require_once __DIR__ . '/event-guests.php';
+require_once __DIR__ . '/rsvp-canonical-lookup.php';
 
 class PGE_Invitation_Repository
 {
@@ -255,6 +256,10 @@ class PGE_Invitation_Repository
      * الموجود أصلاً داخل save_map())، ثم يُهيِّئ سجل حالة الدعوة الجديد
      * (active + invited_at/updated_at) في المفتاح المنفصل.
      *
+     * A successful call is the authoritative start of a new invitation
+     * lifecycle. If a historical canonical RSVP snapshot exists for the same
+     * identity, it is reset in place before the invitation becomes visible.
+     *
      * @return array{result:string, phone?:string, reason?:string}
      *   'created'  — نجح الإنشاء.
      *   'duplicate'— الهاتف موجود بالفعل ضمن هذه المناسبة.
@@ -278,26 +283,218 @@ class PGE_Invitation_Repository
             return ['result' => 'duplicate', 'phone' => $normalized_phone];
         }
 
+        $status_map = self::get_status_map($event_id);
+        $original_guests_map = $guests_map;
+        $original_status_map = $status_map;
+        $lifecycle_timestamp = current_time('mysql', true);
+
+        // Phase C: the canonical RSVP snapshot is reset only here, after all
+        // validation/duplicate checks (and, for every live caller, the Service
+        // quota check) but before the new invitation is exposed in post meta.
+        $rsvp_reset = self::reset_rsvp_for_new_invitation_lifecycle(
+            $event_id,
+            $normalized_phone,
+            $lifecycle_timestamp
+        );
+        if (($rsvp_reset['result'] ?? '') !== 'success') {
+            return ['result' => 'error', 'reason' => (string) ($rsvp_reset['reason'] ?? 'rsvp_lifecycle_reset_failed')];
+        }
+
         $guests_map[$normalized_phone] = [
             'phone' => $normalized_phone,
             'name'  => $normalized_name,
             'note'  => is_scalar($note) ? trim((string) $note) : '',
         ];
-        pge_event_guests_save_map($event_id, $guests_map);
+        $saved_guests_map = null;
+        $stored_status_map = [];
+        try {
+            $saved_guests_map = pge_event_guests_save_map($event_id, $guests_map);
 
-        $now = current_time('mysql', true);
-        $status_map = self::get_status_map($event_id);
-        $status_map[$normalized_phone] = [
-            'status'             => self::STATUS_ACTIVE,
-            'invited_at'         => $now,
-            'updated_at'         => $now,
-            'cancelled_at'       => null,
-            'cancel_reason'      => '',
-            'qr_regenerated_at'  => null,
-        ];
-        self::save_status_map($event_id, $status_map);
+            $status_map[$normalized_phone] = [
+                'status'             => self::STATUS_ACTIVE,
+                'invited_at'         => $lifecycle_timestamp,
+                'updated_at'         => $lifecycle_timestamp,
+                'cancelled_at'       => null,
+                'cancel_reason'      => '',
+                'qr_regenerated_at'  => null,
+            ];
+            self::save_status_map($event_id, $status_map);
+            $stored_status_map = self::get_status_map($event_id);
+        } catch (\Throwable $e) {
+            error_log("PGE invitation storage error: event_id={$event_id} reason=post_meta_write_failed");
+        }
+
+        $invitation_stored = is_array($saved_guests_map)
+            && isset($saved_guests_map[$normalized_phone])
+            && isset($stored_status_map[$normalized_phone])
+            && (string) ($stored_status_map[$normalized_phone]['invited_at'] ?? '') === $lifecycle_timestamp;
+
+        if (!$invitation_stored) {
+            // Compensation is used instead of a cross-API SQL transaction:
+            // update_post_meta() has its own cache semantics. Restore both
+            // post-meta maps and the exact historical RSVP snapshot.
+            $meta_restored = true;
+            try {
+                pge_event_guests_save_map($event_id, $original_guests_map);
+                self::save_status_map($event_id, $original_status_map);
+            } catch (\Throwable $e) {
+                $meta_restored = false;
+                error_log("PGE invitation lifecycle rollback failed: event_id={$event_id} reason=post_meta_restore_failed");
+            }
+
+            $restored_guests_map = pge_event_guests_get_map($event_id);
+            $restored_status_map = self::get_status_map($event_id);
+            $meta_restored = $meta_restored
+                && !isset($restored_guests_map[$normalized_phone])
+                && $restored_status_map === $original_status_map;
+
+            $rsvp_restored = self::restore_rsvp_after_failed_invitation_create($event_id, $normalized_phone, $rsvp_reset);
+            if (!$meta_restored || !$rsvp_restored) {
+                error_log("PGE invitation lifecycle rollback failed: event_id={$event_id} reason=compensation_failed");
+                return ['result' => 'error', 'reason' => 'rsvp_lifecycle_rollback_failed'];
+            }
+
+            return ['result' => 'error', 'reason' => 'invitation_storage_failed'];
+        }
 
         return ['result' => 'created', 'phone' => $normalized_phone];
+    }
+
+    /**
+     * Reset the current-snapshot RSVP row for a newly starting invitation
+     * lifecycle. No row is inserted when the identity has no historical RSVP.
+     *
+     * @return array{result:string,status?:string,previous_row?:?object,reason?:string}
+     */
+    private static function reset_rsvp_for_new_invitation_lifecycle($event_id, $normalized_phone, $lifecycle_timestamp): array
+    {
+        $lookup = pge_rsvp_find_canonical_by_phone($event_id, $normalized_phone);
+        if (($lookup['status'] ?? '') === 'not_found') {
+            return ['result' => 'success', 'status' => 'not_found', 'previous_row' => null];
+        }
+        if (($lookup['status'] ?? '') !== 'found' || !is_object($lookup['row'] ?? null)) {
+            return ['result' => 'error', 'reason' => (string) ($lookup['reason'] ?? 'rsvp_integrity_error')];
+        }
+
+        $previous_row = clone $lookup['row'];
+        $row_id = (int) ($previous_row->id ?? 0);
+        if ($row_id <= 0) {
+            return ['result' => 'error', 'reason' => 'invalid_rsvp_id'];
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'pge_event_rsvps';
+        $reset = self::rsvp_lifecycle_reset_values($lifecycle_timestamp);
+        $updated = $wpdb->update($table, $reset, ['id' => $row_id]);
+
+        if ($updated === false) {
+            return ['result' => 'error', 'reason' => 'rsvp_update_failed'];
+        }
+
+        $verified = pge_rsvp_find_canonical_by_phone($event_id, $normalized_phone);
+        if (($verified['status'] ?? '') !== 'found'
+            || (int) ($verified['row']->id ?? 0) !== $row_id
+            || !self::rsvp_row_matches_values($verified['row'], $reset)) {
+            $rollback = self::restore_rsvp_after_failed_invitation_create(
+                $event_id,
+                $normalized_phone,
+                ['status' => 'reset', 'previous_row' => $previous_row]
+            );
+            return [
+                'result' => 'error',
+                'reason' => $rollback ? 'rsvp_reset_postcondition_failed' : 'rsvp_reset_rollback_failed',
+            ];
+        }
+
+        return ['result' => 'success', 'status' => 'reset', 'previous_row' => $previous_row];
+    }
+
+    private static function rsvp_lifecycle_reset_values($lifecycle_timestamp): array
+    {
+        return [
+            'guest_name'                   => null,
+            'reply'                        => 'pending',
+            'companions'                   => 0,
+            'note'                         => null,
+            'checked_in'                   => 0,
+            'checked_in_at'                => null,
+            'checked_in_by_assignment_id'  => null,
+            'checkin_method'               => null,
+            'actual_entered_count'         => null,
+            'thank_you_sent_at'            => null,
+            'created_at'                   => (string) $lifecycle_timestamp,
+            'updated_at'                   => (string) $lifecycle_timestamp,
+        ];
+    }
+
+    private static function rsvp_row_matches_values($row, array $values): bool
+    {
+        if (!is_object($row)) {
+            return false;
+        }
+
+        foreach ($values as $field => $expected) {
+            $actual = $row->{$field} ?? null;
+            if ($expected === null) {
+                if ($actual !== null) {
+                    return false;
+                }
+            } elseif (in_array($field, ['companions', 'checked_in'], true)) {
+                if ((int) $actual !== (int) $expected) {
+                    return false;
+                }
+            } elseif ((string) $actual !== (string) $expected) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static function restore_rsvp_snapshot($row_id, $previous_row): bool
+    {
+        if (!is_object($previous_row) || (int) $row_id <= 0) {
+            return false;
+        }
+
+        $fields = array_keys(self::rsvp_lifecycle_reset_values(''));
+        $restore = [];
+        foreach ($fields as $field) {
+            if (property_exists($previous_row, $field)) {
+                $restore[$field] = $previous_row->{$field};
+            }
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'pge_event_rsvps';
+        $restored = $wpdb->update($table, $restore, ['id' => (int) $row_id]);
+        return $restored !== false;
+    }
+
+    private static function restore_rsvp_after_failed_invitation_create($event_id, $normalized_phone, array $reset_result): bool
+    {
+        if (($reset_result['status'] ?? '') === 'not_found') {
+            return true;
+        }
+
+        $previous_row = $reset_result['previous_row'] ?? null;
+        $row_id = is_object($previous_row) ? (int) ($previous_row->id ?? 0) : 0;
+        if (!self::restore_rsvp_snapshot($row_id, $previous_row)) {
+            return false;
+        }
+
+        $verified = pge_rsvp_find_canonical_by_phone($event_id, $normalized_phone);
+        if (($verified['status'] ?? '') !== 'found' || (int) ($verified['row']->id ?? 0) !== $row_id) {
+            return false;
+        }
+
+        $values = [];
+        foreach (array_keys(self::rsvp_lifecycle_reset_values('')) as $field) {
+            if (property_exists($previous_row, $field)) {
+                $values[$field] = $previous_row->{$field};
+            }
+        }
+        return self::rsvp_row_matches_values($verified['row'], $values);
     }
 
     /**
@@ -564,45 +761,13 @@ class PGE_Invitation_Repository
     }
 
     /**
-     * RC1 Final Release Blocker — RSVP Write Path Unification.
+     * Read-only lifecycle guard for RSVP writers.
      *
-     * الغلاف الموحَّد الوحيد فوق `is_rsvp_row_current()` لكل مسار كتابة RSVP
-     * (upsert) في المشروع بأكمله — ويب (`rsvp-handler.php`)، واتساب Cartat
-     * (`class-cartat-handler.php::record_rsvp()`)، واتساب UltraMsg
-     * (`class-ultramsg-handler.php::record_rsvp()`)، ترحيل البيانات القديمة
-     * (`rsvp-migration.php`)، وتسجيل الحضور اليدوي القديم (`ajax.php`).
-     * **لا يُعاد تنفيذ الشرط `created_at >= invited_at` في أي من هذه الملفات —
-     * كلها تستدعي هذه الدالة حصراً.**
+     * A current row is returned unchanged. A stale/orphaned row is treated as
+     * absent and is never mutated here. The only lifecycle reset authority is
+     * create(), after quota/validation/duplicate checks pass.
      *
-     * قيد معماري حقيقي واجب مراعاته: `wp_pge_event_rsvps` تفرض
-     * `UNIQUE KEY event_phone (event_id, guest_phone)` فعلياً في MySQL (راجع
-     * `pge_create_rsvp_table()` في `rsvp-handler.php`) — **لا يمكن فعلياً**
-     * إدراج صف ثانٍ لنفس (event_id, phone) بينما يبقى صف يتيم قديم بنفس
-     * الهاتف موجوداً؛ أي محاولة `INSERT` كهذه ستتصادم مع القيد وتفشل بصرف
-     * النظر عن منطق PHP. لذلك القرار الصحيح معمارياً عند اكتشاف أن الصف
-     * الموجود "يتيم" (من دورة حياة دعوة سابقة محذوفة) ليس تجاهله وإدراج صف
-     * جديد (مستحيل فعلياً) بل **تصفيره فوراً في مكانه** — بنفس id، تُصفَّر كل
-     * حقول الحالة التاريخية (`reply`→pending، `companions`→0، `note`→NULL،
-     * `checked_in`→0، `checked_in_at`→NULL، `checked_in_by_assignment_id`→NULL،
-     * `checkin_method`→NULL، `actual_entered_count`→NULL) ويُرفَع `created_at`
-     * إلى الآن — فيتحوّل الصف اليتيم فعلياً لصف "حديث الولادة" بلا أي حالة
-     * موروثة، ويُعاد للمستدعي بنفس id ليكمل مساره الطبيعي `existing → UPDATE`
-     * (الذي سيكتب رد RSVP/الحضور الجديد فوق هذا الصف المُصفَّر فوراً). **لا
-     * تُعاد قيمة null أبداً إن كان صف فعلي موجوداً في قاعدة البيانات** — فقط
-     * عند عدم وجود أي صف أصلاً (لا شيء للمستدعي ليُصفِّره، فيتابع الإدراج
-     * العادي دون أي تعارض مع القيد الفريد).
-     *
-     * هذا يمنع توريث `checked_in`/`checked_in_at`/`checked_in_by_assignment_id`/
-     * `checkin_method`/`actual_entered_count`/أي ربط تدقيق قديم عبر أي قناة،
-     * ويمنع أي قناة من "إحياء" صف RSVP قديم عبر مجرد تحديث `created_at` الخاص
-     * به (وهي بالتحديد الثغرة التي كانت موجودة في `record_rsvp()` في كلا
-     * مزوّدَي واتساب قبل هذا التوحيد: كانا يُحدِّثان `created_at = now()` على
-     * أي صف موجود بالهاتف دون أي تحقق من انتمائه لدورة الحياة الحالية).
-     *
-     * @param int                $event_id
-     * @param string             $phone         الهاتف كما وصل (يُطبَّع داخلياً عبر is_rsvp_row_current).
-     * @param object|array|null  $existing_row  الصف الخام كما أعادته $wpdb (يجب أن يحوي id وcreated_at)، أو null إن لم يوجد صف أصلاً.
-     * @return object|array|null نفس $existing_row (مُصفَّراً إن كان يتيماً)، أو null فقط إن لم يوجد صف فعلي أصلاً.
+     * @return object|array|null
      */
     public static function current_or_null($event_id, $phone, $existing_row)
     {
@@ -610,44 +775,15 @@ class PGE_Invitation_Repository
             return null;
         }
 
-        $row_id     = (int) (is_array($existing_row) ? ($existing_row['id'] ?? 0) : ($existing_row->id ?? 0));
         $created_at = is_array($existing_row) ? ($existing_row['created_at'] ?? null) : ($existing_row->created_at ?? null);
 
         if (self::is_rsvp_row_current($event_id, $phone, $created_at)) {
             return $existing_row;
         }
 
-        if ($row_id <= 0) {
-            return null;
-        }
-
-        global $wpdb;
-        $table = $wpdb->prefix . 'pge_event_rsvps';
-        $now = function_exists('current_time') ? current_time('mysql', true) : gmdate('Y-m-d H:i:s');
-
-        $reset = [
-            'reply'                       => 'pending',
-            'companions'                  => 0,
-            'note'                        => null,
-            'checked_in'                  => 0,
-            'checked_in_at'               => null,
-            'checked_in_by_assignment_id' => null,
-            'checkin_method'              => null,
-            'actual_entered_count'        => null,
-            'created_at'                  => $now,
-            'updated_at'                  => $now,
-        ];
-        $wpdb->update($table, $reset, ['id' => $row_id]);
-
-        if (is_array($existing_row)) {
-            $existing_row = array_merge($existing_row, $reset, ['id' => $row_id]);
-        } else {
-            foreach ($reset as $field => $value) {
-                $existing_row->{$field} = $value;
-            }
-        }
-
-        return $existing_row;
+        // Read-only fail-safe. Lifecycle reset is authoritative only inside
+        // create(); a lookup or reply path must never start a new lifecycle.
+        return null;
     }
 
     /**
@@ -655,8 +791,8 @@ class PGE_Invitation_Repository
      * لـBlocker 2 اكتُشِف أثناء اختبار "إعادة استخدام الهاتف بعد QR Rotation":
      * القيد الفريد الحقيقي على wp_pge_event_rsvps (UNIQUE KEY event_phone)
      * يفرض إعادة استخدام نفس rsvp_id الفعلي عند إعادة إنشاء دعوة بنفس الهاتف
-     * (current_or_null() تُصفِّر الصف بدل إدراج صف جديد — لا خيار آخر ممكن
-     * فعلياً). بما أن qr_version الافتراضي (غياب أي قيمة مخزَّنة) كان ثابتاً
+     * (create() تُصفِّر الصف بدل إدراج صف جديد — لا خيار آخر ممكن فعلياً تحت
+     * عقد Option A). بما أن qr_version الافتراضي كان ثابتاً
      * دوماً (`DEFAULT_QR_VERSION = 1`)، فإن أي QR قديم صادر بالإصدار الافتراضي
      * لدعوة محذوفة (لم تُدوَّر QR لها إطلاقاً) يتطابق تلقائياً مع الإصدار
      * الافتراضي لأي دعوة **جديدة** لاحقة بنفس الهاتف لم تُدوِّر QR لها هي

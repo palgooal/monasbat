@@ -8,6 +8,8 @@ if (!defined('PGE_RSVP_SCHEMA_VERSION_OPTION')) {
     define('PGE_RSVP_SCHEMA_VERSION_OPTION', 'pge_rsvp_schema_version');
 }
 
+require_once __DIR__ . '/rsvp-canonical-lookup.php';
+
 /**
  * RSVP Schema Owner — Option A.
  *
@@ -237,54 +239,6 @@ register_activation_hook(PGE_PATH . 'pgevents-core.php', 'pge_create_rsvp_table'
 add_action('plugins_loaded', 'pge_maybe_upgrade_rsvp_schema');
 
 /**
- * Canonical RSVP lookup by the Option A identity contract.
- *
- * The phone is always normalized here, and two rows are fetched deliberately
- * so corrupt duplicate identities can never degrade into a silent first-row
- * selection. This helper is read-only and never exposes duplicate candidates.
- *
- * @return array{status:'found'|'not_found'|'integrity_error',row:?object,reason?:string}
- */
-if (!function_exists('pge_rsvp_find_canonical_by_phone')) {
-    function pge_rsvp_find_canonical_by_phone($event_id, $guest_phone_raw): array
-    {
-        global $wpdb;
-
-        $event_id = (int) $event_id;
-        $phone = function_exists('pge_norm_phone')
-            ? pge_norm_phone($guest_phone_raw)
-            : preg_replace('/\D+/', '', (string) $guest_phone_raw);
-
-        if ($event_id <= 0 || $phone === '') {
-            return ['status' => 'not_found', 'row' => null];
-        }
-
-        $table = $wpdb->prefix . 'pge_event_rsvps';
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$table} WHERE event_id = %d AND guest_phone = %s ORDER BY id ASC LIMIT 2",
-            $event_id,
-            $phone
-        ));
-
-        if (!is_array($rows)) {
-            error_log("PGE RSVP lookup error: event_id={$event_id} reason=rsvp_lookup_failed");
-            return ['status' => 'integrity_error', 'row' => null, 'reason' => 'rsvp_lookup_failed'];
-        }
-
-        $count = count($rows);
-        if ($count === 0) {
-            return ['status' => 'not_found', 'row' => null];
-        }
-        if ($count === 1) {
-            return ['status' => 'found', 'row' => $rows[0]];
-        }
-
-        error_log("PGE RSVP integrity error: event_id={$event_id} reason=duplicate_rsvp_identity count={$count}");
-        return ['status' => 'integrity_error', 'row' => null, 'reason' => 'duplicate_rsvp_identity'];
-    }
-}
-
-/**
  * ==========================================================================
  * الدالة المركزية الوحيدة لحفظ رد RSVP (Canonical RSVP write path)
  * ==========================================================================
@@ -369,20 +323,10 @@ if (!function_exists('pge_save_rsvp_response')) {
         }
         $existing = $lookup['status'] === 'found' ? $lookup['row'] : null;
 
-        // RC1 Final Release Blocker: RSVP Write Path Unification — القرار
-        // الموحَّد الوحيد لكل مسار كتابة RSVP في المشروع الآن يعيش حصراً في
-        // PGE_Invitation_Repository::current_or_null() (تستدعيه أيضاً مسارات
-        // واتساب Cartat/UltraMsg وترحيل البيانات القديمة — لا نسخة موازية من
-        // الشرط هنا). Hard Delete لا يلمس هذا الجدول إطلاقاً (راجع
-        // docs/HARD-DELETE-SEMANTICS-AUDIT.md)، فقد يكون الصف الموجود هنا
-        // "يتيماً" من دعوة سابقة حُذفت ثم أُعيد إنشاء دعوة جديدة بنفس الهاتف؛
-        // صف كهذا يُعامَل كغير موجود فيُنشئ upsert صفاً جديداً مستقلاً تماماً
-        // بدلاً من توريث checked_in/checked_in_at/checked_in_by_assignment_id/
-        // checkin_method/actual_entered_count. يقتصر على مسار الضيف العادي
-        // (!$is_host_or_admin) عمداً — مسار المضيف/الأدمن قد يستخدم رقم هاتف
-        // المضيف نفسه (لا يخضع لمفهوم "دعوة" أصلاً)، فتطبيق هذا الحارس عليه
-        // كان سيُنشئ صفاً جديداً في كل مرة بلا داعٍ ويُغيِّر سلوك تدفّق RSVP
-        // القائم لذلك المسار تحديداً — خارج نطاق هذا الإصلاح.
+        // Phase C: current_or_null() حارس stale read-only فقط. إعادة استخدام
+        // نفس rsvp_id وتصفير الدورة السابقة تتم حصراً عند Invitation create،
+        // قبل وصول أي RSVP شرعي للدورة الجديدة. يبقى هذا الحارس هنا دفاعياً
+        // لمسار الضيف العادي؛ مسار المضيف/الأدمن لا يخضع لهوية دعوة ضيف.
         if ($existing && !$is_host_or_admin && class_exists('PGE_Invitation_Repository')) {
             $existing = PGE_Invitation_Repository::current_or_null($event_id, $phone, $existing);
         }

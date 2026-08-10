@@ -654,7 +654,7 @@ class Mon_Cartat_Handler
         if ($existing_id) {
             $wpdb->update(
                 $table,
-                ['reply' => $reply, 'created_at' => current_time('mysql')],
+                ['reply' => $reply],
                 ['id' => $existing_id]
             );
             $rsvp_id = (int) $existing_id;

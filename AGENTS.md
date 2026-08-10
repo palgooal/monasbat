@@ -102,7 +102,7 @@ Thank You المخطط:
 
 لا تبدأ Phase 4 قبل حسم هذه الشروط المعروفة؛ ليست مهاماً للتنفيذ تلقائياً:
 
-1. إعادة استخدام RSVP row يجب ألا تورّث `thank_you_sent_at` من دعوة سابقة.
+1. حُسم في Phase C: إعادة استخدام RSVP row تصفّر `thank_you_sent_at` عبر مسار إنشاء الدعوة authoritative؛ حافظ على هذا العقد.
 2. يجب اتخاذ قرار واضح لمعالجة stale pending claim / lease / reclaim في `PGE_Thank_You_Claim` إذا توقفت العملية بعد `claim()` وقبل `finalize_*()`.
 3. Recipient Resolver لـThank You يجب أن يعتمد `checked_in = 1`، لا RSVP=`yes`.
 
@@ -121,6 +121,7 @@ RSVP وCheck-in مفهومان منفصلان. أهلية Thank You المخطط
 - لا تنفذ Schema/Migration تلقائياً أثناء Audit.
 - أي Schema change يجب أن يكون ضمن Scope صريحاً، additive قدر الإمكان، متبعاً schema/versioning الحالي، ومغطى بالاختبارات.
 - أي RSVP lookup بالهاتف يجب أن يمر عبر `pge_rsvp_find_canonical_by_phone()`؛ لا تستخدم `LIMIT 1` لاختيار صف صامتاً من هوية `event_id + normalized_guest_phone`.
+- RSVP row هو Current Snapshot تحت هوية Option A. Lifecycle reset يحدث فقط عبر مسار إنشاء الدعوة authoritative بعد نجاح validation وGuest Limit وduplicate checks؛ لا تنفّذ reset في lookup أو RSVP أو Check-in أو Reminder أو resend، ولا تكرر منطقه في Bulk/Excel.
 
 ## 11. تقرير التسليم لكل مهمة
 

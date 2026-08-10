@@ -199,6 +199,7 @@ class Fake_Wpdb_Wa {
     }
 
     public function get_var($sql) {
+        if (stripos($sql, 'GET_LOCK') !== false) return 1;
         if (strpos($sql, 'COALESCE(SUM(1 + companions), 0)') !== false) {
             $event_id = $this->extract_int($sql, 'event_id');
             $sum = 0;
@@ -211,6 +212,8 @@ class Fake_Wpdb_Wa {
         }
         return null;
     }
+
+    public function query($sql) { return 1; }
 
     public function insert($table, $data, $format = null) {
         if (strpos($table, 'pge_invitation_mgmt_audit_log') !== false) {

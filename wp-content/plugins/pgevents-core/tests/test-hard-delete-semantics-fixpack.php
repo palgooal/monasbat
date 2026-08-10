@@ -211,6 +211,7 @@ class Fake_Wpdb_Hdsf
 
     public function get_var($sql)
     {
+        if (stripos($sql, 'GET_LOCK') !== false) return 1;
         if ($this->is_rsvps_table($sql) && strpos($sql, 'SUM(1 + companions)') !== false) {
             $event_id = $this->extract_int($sql, 'event_id');
             $sum = 0;

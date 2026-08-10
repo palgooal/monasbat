@@ -184,6 +184,7 @@ class Fake_Wpdb_Rwpu
 
     public function get_var($sql)
     {
+        if (stripos($sql, 'GET_LOCK') !== false) return 1;
         if ($this->is_rsvps_table($sql) && strpos($sql, 'checked_in') !== false && strpos($sql, 'SELECT') === 0) {
             $row = $this->get_row($sql);
             return $row ? (int) $row->checked_in : null;

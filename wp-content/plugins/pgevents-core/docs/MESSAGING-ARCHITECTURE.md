@@ -242,27 +242,33 @@ claim_for_delivery()` قبل إضافة Lease لاحقاً). لا آلية Lease
 بالكامل، جديد لكل استدعاء، بلا اعتماد على `time()` أو `event_id`. لا Queue
 تستهلكه بعد.
 
-### 4.5 Lifecycle / Hard Delete (توثيق سلوك حالي — بلا تغيير)
+### 4.5 Lifecycle / Hard Delete / Current Snapshot (Phase C)
 
 Hard Delete (راجع `docs/HARD-DELETE-SEMANTICS-AUDIT.md`) **لا يلمس**
-`wp_pge_event_rsvps` ولا `wp_pge_message_log` إطلاقاً — كلاهما يبقى كسجل
-تاريخي/Audit "يتيم" (orphan) بعد حذف الدعوة، تماماً كـ`checked_in`/
-`checked_in_at` القائمَين أصلاً. لا FK، لا Cascade Delete أُضيف (يتوافق مع
-تجنّب المشروع للـFK في كل الجداول القائمة).
+`wp_pge_event_rsvps` ولا `wp_pge_message_log` إطلاقاً. لا FK ولا Cascade Delete
+أُضيف. صف RSVP ليس Historical Log متعدد الصفوف؛ تحت عقد Option A هو **Current
+Snapshot** واحد للهوية `event_id + normalized_guest_phone`، ويُعاد استخدام نفس
+`rsvp_id` عبر دورة الدعوة التالية.
 
-**قيد مكتشَف، غير مُصلَح عمداً في Phase 2:** دالة "تصفير في مكانه"
-(`PGE_Invitation_Repository::current_or_null()`, تُشغَّل عند إعادة دعوة
-هاتف كان له صف RSVP يتيم سابقاً) تُصفِّر صراحةً `checked_in`/`checked_in_at`/
-`checked_in_by_assignment_id`/`checkin_method`/`actual_entered_count`/
-`reply`/`companions`/`note`/`created_at` — لكنها **لا تُصفِّر
-`thank_you_sent_at`** (العمود لم يكن موجوداً وقت كتابة تلك الدالة). هذا يعني
-نظرياً: لو أُرسل شكر لضيف، حُذفت دعوته، ثم أُعيدت دعوته لاحقاً بنفس الهاتف عبر
-مسار "تصفير في المكان"، سيرث الصف "المُصفَّر حديثاً" قيمة `thank_you_sent_at`
-القديمة خطأً. **لا خطر فعلي اليوم** (لا Caller إنتاجي يكتب `thank_you_sent_at`
-بعد — القيمة دائماً `NULL` لكل صف حالياً)، لكن هذا قيد يجب إصلاحه (إضافة
-`thank_you_sent_at => null` إلى مصفوفة التصفير في `current_or_null()`) **قبل**
-تفعيل أي إرسال Thank You حقيقي في مرحلة مستقبلية — خارج نطاق Phase 2 عمداً
-(Foundation فقط، لا تعديل على ملفات RSVP Write Path القائمة).
+تبدأ New Invitation Lifecycle فقط عند نجاح إنشاء دعوة جديدة (أول إنشاء أو
+Re-create بعد Hard Delete) عبر `PGE_Invitation_Service::create()` ثم
+`PGE_Invitation_Repository::create()`. بعد validation وGuest Limit وduplicate
+checks، ينفّذ Repository reset مركزياً للصف canonical الموجود قبل إظهار الدعوة
+الجديدة. `not_found` نجاح بلا INSERT؛ `integrity_error` أو فشل update يمنع
+الإنشاء والتدقيق. Bulk Add وExcel Confirm يرثان السلوك عبر Service ولا يملكان
+reset مكرراً.
+
+الـreset يحافظ على `id/event_id/guest_phone` ويصفّر `guest_name`، `reply`،
+`companions`، `note`، جميع حقول Check-in، و`thank_you_sent_at`، ثم يضبط
+`created_at/updated_at` إلى طابع بداية الدورة UTC نفسه. لذلك `created_at` يمثل
+بداية الـRSVP lifecycle الحالية، لا عمر `rsvp_id` الفيزيائي. أما
+`current_or_null()` فأصبح حارس stale read-only: يعيد الصف الحالي كما هو أو
+`null` للصف القديم، ولا يغيّر lifecycle عند lookup/RSVP/Check-in/Reminder.
+
+لا تُستخدم transaction سطحية تجمع WordPress meta cache مع SQL. التنفيذ يفحص
+postconditions ويستخدم compensation لإعادة خرائط الدعوة ولقطة RSVP السابقة عند
+فشل تخزين الدعوة بعد reset. لا يُسجَّل Audit `created` إلا بعد نجاح التخزين
+والـreset معاً.
 
 ### 4.6 الإثبات التنفيذي
 
@@ -462,8 +468,8 @@ Ledger/Replacement Entitlements غير محمَّلتين إطلاقاً في ه
   الوحيد المسموح هو Cron استكمال دفعة Reminder بدأها المستخدم يدوياً (§5.4).
 - Lease/Reclaim لمطالبات Thank You العالقة (راجع §4.3 "قيد معروف مقبول") —
   غير مُنفَّذ، غير مطلوب طالما لا إرسال Thank You فعلي.
-- إصلاح توريث `thank_you_sent_at` في `current_or_null()` (راجع §4.5) — يجب
-  إنجازه قبل أي إرسال Thank You حقيقي.
+- شرط عدم توريث `thank_you_sent_at` حُسم في Phase C عبر reset دورة الدعوة
+  authoritative (راجع §4.5). لا يعني ذلك أن إرسال Thank You بدأ.
 - Recipient Resolver لـ`checked_in=1` (مستهدف Thank You) — `PGE_Message_
   Recipient_Resolver` الحالي (§5.2) يدعم `reminder` فقط في Phase 3؛ توسيعه
   لـ`thank_you` يحتاج فلتراً جديداً غير مُنفَّذ بعد.
