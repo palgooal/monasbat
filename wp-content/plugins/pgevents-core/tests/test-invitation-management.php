@@ -289,13 +289,21 @@ class Fake_Wpdb_Invitation_Mgmt
                 return [];
             }
             $event_id = (int) $m[1];
+            $phone = preg_match('/guest_phone\s*=\s*\'([^\']*)\'/i', $sql, $phone_match)
+                ? $phone_match[1]
+                : null;
             $out = [];
             foreach ($this->rsvp_rows as $row) {
-                if ((int) $row['event_id'] === $event_id) {
+                if ((int) $row['event_id'] === $event_id
+                    && ($phone === null || $row['guest_phone'] === $phone)) {
                     $out[] = ['id' => $row['id'], 'guest_phone' => $row['guest_phone'], 'reply' => $row['reply'], 'checked_in' => $row['checked_in']];
                 }
             }
-            return $out;
+            usort($out, function ($a, $b) { return $a['id'] <=> $b['id']; });
+            if (stripos($sql, 'LIMIT 2') !== false) {
+                $out = array_slice($out, 0, 2);
+            }
+            return $output === ARRAY_A ? $out : array_map(function ($row) { return (object) $row; }, $out);
         }
 
         if ($which === 'audit') {
@@ -316,9 +324,8 @@ class Fake_Wpdb_Invitation_Mgmt
 
     public function get_row($sql, $output = null)
     {
-        // Phase 9B: مطلوبة لـPGE_Guest_Resolution_Service::find_rsvp_row_by_phone()
-        // (تُستدعى داخلياً من search() لكل هاتف مطابق) — نفس منطق get_results()
-        // أعلاه لجدول rsvps لكن بصف واحد فقط (LIMIT 1 حقيقي في الاستعلام).
+        // مسارات id الموثوقة تبقى get_row()؛ lookup الهاتف انتقل إلى canonical
+        // helper ويستخدم get_results() أعلاه بـLIMIT 2.
         if ($this->which_table($sql) !== 'rsvps') {
             return null;
         }
@@ -406,6 +413,7 @@ if (!defined('ARRAY_A')) {
 
 // ── تحميل الملفات الحقيقية (بلا أي تعديل عليها) ─────────────────────────────
 require_once __DIR__ . '/../includes/helpers.php'; // RC1 Fix Pack 2 (A9): pge_mgmt_validate_request() المشتركة
+require_once __DIR__ . '/../includes/rsvp-handler.php'; // Phase B: canonical RSVP lookup dependency
 require_once __DIR__ . '/../includes/event-guests.php'; // pge_event_guests_* الحقيقية
 require_once __DIR__ . '/../includes/class-pge-invitation-repository.php';
 require_once __DIR__ . '/../includes/class-pge-invitation-management-audit.php';

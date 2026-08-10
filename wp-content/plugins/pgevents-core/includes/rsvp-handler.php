@@ -237,6 +237,54 @@ register_activation_hook(PGE_PATH . 'pgevents-core.php', 'pge_create_rsvp_table'
 add_action('plugins_loaded', 'pge_maybe_upgrade_rsvp_schema');
 
 /**
+ * Canonical RSVP lookup by the Option A identity contract.
+ *
+ * The phone is always normalized here, and two rows are fetched deliberately
+ * so corrupt duplicate identities can never degrade into a silent first-row
+ * selection. This helper is read-only and never exposes duplicate candidates.
+ *
+ * @return array{status:'found'|'not_found'|'integrity_error',row:?object,reason?:string}
+ */
+if (!function_exists('pge_rsvp_find_canonical_by_phone')) {
+    function pge_rsvp_find_canonical_by_phone($event_id, $guest_phone_raw): array
+    {
+        global $wpdb;
+
+        $event_id = (int) $event_id;
+        $phone = function_exists('pge_norm_phone')
+            ? pge_norm_phone($guest_phone_raw)
+            : preg_replace('/\D+/', '', (string) $guest_phone_raw);
+
+        if ($event_id <= 0 || $phone === '') {
+            return ['status' => 'not_found', 'row' => null];
+        }
+
+        $table = $wpdb->prefix . 'pge_event_rsvps';
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$table} WHERE event_id = %d AND guest_phone = %s ORDER BY id ASC LIMIT 2",
+            $event_id,
+            $phone
+        ));
+
+        if (!is_array($rows)) {
+            error_log("PGE RSVP lookup error: event_id={$event_id} reason=rsvp_lookup_failed");
+            return ['status' => 'integrity_error', 'row' => null, 'reason' => 'rsvp_lookup_failed'];
+        }
+
+        $count = count($rows);
+        if ($count === 0) {
+            return ['status' => 'not_found', 'row' => null];
+        }
+        if ($count === 1) {
+            return ['status' => 'found', 'row' => $rows[0]];
+        }
+
+        error_log("PGE RSVP integrity error: event_id={$event_id} reason=duplicate_rsvp_identity count={$count}");
+        return ['status' => 'integrity_error', 'row' => null, 'reason' => 'duplicate_rsvp_identity'];
+    }
+}
+
+/**
  * ==========================================================================
  * الدالة المركزية الوحيدة لحفظ رد RSVP (Canonical RSVP write path)
  * ==========================================================================
@@ -315,11 +363,11 @@ if (!function_exists('pge_save_rsvp_response')) {
             : ['guest_limit' => 0];
         $guest_limit = (int) ($plan_limits['guest_limit'] ?? 0);
 
-        $existing = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, companions, reply, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
-            $event_id,
-            $phone
-        ));
+        $lookup = pge_rsvp_find_canonical_by_phone($event_id, $phone);
+        if ($lookup['status'] === 'integrity_error') {
+            return ['success' => false, 'message' => 'تعذر حفظ الرد بسبب تعارض في بيانات الدعوة.'];
+        }
+        $existing = $lookup['status'] === 'found' ? $lookup['row'] : null;
 
         // RC1 Final Release Blocker: RSVP Write Path Unification — القرار
         // الموحَّد الوحيد لكل مسار كتابة RSVP في المشروع الآن يعيش حصراً في

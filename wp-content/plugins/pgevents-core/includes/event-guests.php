@@ -145,7 +145,8 @@ if (!function_exists('pge_event_guests_get_status_label')) {
 
 /**
  * جلب بيانات RSVP من الجدول الحقيقي لمناسبة معينة
- * يُعيد: map (phone=>reply) + checkin_map (phone=>true)
+ * يُعيد: map (phone=>reply) + checkin_map (phone=>true) +
+ * integrity_errors (phone=>true). الهوية المكررة لا تختار أول/آخر صف.
  * يُخزَّن في static cache لتجنب الاستعلام المتكرر في نفس الطلب
  */
 if (!function_exists('pge_event_guests_load_rsvp_from_db')) {
@@ -163,14 +164,31 @@ if (!function_exists('pge_event_guests_load_rsvp_from_db')) {
 
         $map = [];
         $checkin_map = [];
+        $integrity_errors = [];
+        $seen_phones = [];
         foreach ((array) $rows as $r) {
-            $map[$r['guest_phone']]        = $r['reply'];
+            $phone = function_exists('pge_norm_phone')
+                ? pge_norm_phone($r['guest_phone'] ?? '')
+                : preg_replace('/\D+/', '', (string) ($r['guest_phone'] ?? ''));
+            if ($phone === '') {
+                continue;
+            }
+            if (isset($seen_phones[$phone])) {
+                $integrity_errors[$phone] = true;
+                unset($map[$phone], $checkin_map[$phone]);
+                continue;
+            }
+            $seen_phones[$phone] = true;
+            if (isset($integrity_errors[$phone])) {
+                continue;
+            }
+            $map[$phone] = $r['reply'];
             if ((int) $r['checked_in'] === 1) {
-                $checkin_map[$r['guest_phone']] = true;
+                $checkin_map[$phone] = true;
             }
         }
 
-        $cache[$event_id] = compact('map', 'checkin_map');
+        $cache[$event_id] = compact('map', 'checkin_map', 'integrity_errors');
         return $cache[$event_id];
     }
 }

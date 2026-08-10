@@ -145,11 +145,19 @@ if (!function_exists('pge_migrate_legacy_rsvp_meta')) {
                 $note       = ($note === '') ? null : $note; // لا تُخزّن سلسلة فارغة — استخدم NULL لتفادي تلويث العمود
                 $legacy_ts  = !empty($rec['updated_at']) ? strtotime((string) $rec['updated_at']) : 0;
 
-                $existing = $wpdb->get_row($wpdb->prepare(
-                    "SELECT id, reply, companions, note, updated_at, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
-                    $event_id,
-                    $phone
-                ));
+                $lookup = pge_rsvp_find_canonical_by_phone($event_id, $phone);
+                if ($lookup['status'] === 'integrity_error') {
+                    $report['conflicts']++;
+                    $event_detail['conflicts']++;
+                    if (count($report['invalid_samples']) < 10) {
+                        $report['invalid_samples'][] = [
+                            'event_id' => $event_id,
+                            'reason'   => (string) ($lookup['reason'] ?? 'rsvp_lookup_failed'),
+                        ];
+                    }
+                    continue;
+                }
+                $existing = $lookup['status'] === 'found' ? $lookup['row'] : null;
 
                 // RC1 Final Release Blocker: RSVP Write Path Unification — نفس
                 // القرار الموحَّد المُستخدَم في rsvp-handler.php/Cartat/UltraMsg

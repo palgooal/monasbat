@@ -219,6 +219,9 @@ class Mon_UltraMsg_Handler
         // ══════════════════════════════════════════════════════════════
         $rsvp_phone = $pending['original_phone'] ?? pge_norm_phone($from_bare);
         $rsvp_id = $this->record_rsvp($event_id, $rsvp_phone, $reply);
+        if ($rsvp_id < 0) {
+            return new WP_REST_Response(['status' => 'integrity_error'], 200);
+        }
 
         // مسح الدعوة المعلّقة
         if (!empty($pending['wa_number'])) {
@@ -537,6 +540,7 @@ class Mon_UltraMsg_Handler
      * المستدعي يحتاجه لبناء حمولة QR الكنسية الموقَّعة عبر
      * PGE_Guest_Resolution_Service::build_scanner_qr_payload() بدل invite_code
      * الخام. لا تغيير على منطق التخزين نفسه.
+     * يعيد -1 عند integrity_error كي يتوقف الـWebhook قبل مسح pending أو الإرسال.
      *
      * WhatsApp RSVP Reply Parsing Verification — إصلاح خلل تكافؤ حقيقي بين
      * المزوّدَين: هذه الدالة كانت تفتقر لاستدعاء pge_maybe_grant_replacement_
@@ -555,11 +559,11 @@ class Mon_UltraMsg_Handler
         $table = $wpdb->prefix . 'pge_event_rsvps';
         $phone = pge_norm_phone($phone);
 
-        $existing_row = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, reply, created_at FROM {$table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
-            $event_id,
-            $phone
-        ));
+        $lookup = pge_rsvp_find_canonical_by_phone($event_id, $phone);
+        if ($lookup['status'] === 'integrity_error') {
+            return -1;
+        }
+        $existing_row = $lookup['status'] === 'found' ? $lookup['row'] : null;
 
         // RC1 Final Release Blocker: RSVP Write Path Unification — نفس القرار
         // الموحَّد المُستخدَم في rsvp-handler.php/Cartat/rsvp-migration.php،

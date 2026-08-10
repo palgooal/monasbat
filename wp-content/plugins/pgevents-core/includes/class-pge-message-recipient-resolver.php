@@ -53,7 +53,7 @@ class PGE_Message_Recipient_Resolver
     /**
      * حل قائمة المستلمين لمناسبة + نوع رسالة + فلتر.
      *
-     * @return array{recipients:array<int,array{phone:string,name:string,code:string}>,skipped_invalid_phone:int,filter:string,message_type:?string}
+     * @return array{recipients:array<int,array{phone:string,name:string,code:string}>,skipped_invalid_phone:int,skipped_integrity_error:int,filter:string,message_type:?string}
      */
     public static function resolve(int $event_id, string $message_type, string $filter): array
     {
@@ -64,6 +64,7 @@ class PGE_Message_Recipient_Resolver
             return [
                 'recipients'            => [],
                 'skipped_invalid_phone' => 0,
+                'skipped_integrity_error' => 0,
                 'filter'                => $normalized_filter,
                 'message_type'          => $normalized_type,
             ];
@@ -78,6 +79,7 @@ class PGE_Message_Recipient_Resolver
         $seen = [];
         $recipients = [];
         $skipped_invalid_phone = 0;
+        $skipped_integrity_error = 0;
 
         foreach ((array) $all_phones as $raw_phone) {
             $norm_phone = function_exists('pge_norm_phone')
@@ -93,6 +95,12 @@ class PGE_Message_Recipient_Resolver
             // حتى لو كانت بنية المدعوين نفسها لا تحوي تكراراً أصلاً (لا نفترض
             // ذلك — الـResolver آمن بذاته).
             if (isset($seen[$norm_phone])) {
+                continue;
+            }
+
+            if (!empty($rsvp['integrity_errors'][$norm_phone])) {
+                $seen[$norm_phone] = true;
+                $skipped_integrity_error++;
                 continue;
             }
 
@@ -115,6 +123,7 @@ class PGE_Message_Recipient_Resolver
         return [
             'recipients'            => $recipients,
             'skipped_invalid_phone' => $skipped_invalid_phone,
+            'skipped_integrity_error' => $skipped_integrity_error,
             'filter'                => $normalized_filter,
             'message_type'          => $normalized_type,
         ];

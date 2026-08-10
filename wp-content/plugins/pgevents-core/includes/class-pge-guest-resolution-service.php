@@ -48,27 +48,15 @@ if (!defined('ABSPATH')) exit;
  * السلوك محظور الآن بشكل قاطع). البديل الوحيد الآن هو resolve_by_phone()
  * أدناه — **قراءة فقط**، ولا تكتب أي شيء على wp_pge_event_rsvps إطلاقاً.
  *
- * بعد إزالة UNIQUE KEY (event_id, guest_phone) من الجدول الإنتاجي (راجع
- * PGE_Checkin_Schema::ensure_phone_index_not_unique()، SCHEMA_VERSION
- * 1.1.0)، قد يتطابق أكثر من صف RSVP واحد مع نفس رقم الهاتف ضمن المناسبة
- * نفسها. resolve_by_phone() تتعامل مع الحالات الثلاث صراحة:
+ * بعد اعتماد Option A أصبح UNIQUE(event_id, guest_phone) عقد الهوية الرسمي.
+ * مع ذلك قد تكشف القراءة فساداً تاريخياً سابقاً للعقد. resolve_by_phone()
+ * تتعامل مع الحالات الثلاث صراحة:
  *   - 0 نتائج → ['result' => 'not_found', ...]
  *   - نتيجة واحدة فقط → ['result' => 'found', 'guest' => <Guest Object>]
  *     (rsvp_id حقيقي غير فارغ لأن صفاً فعلياً موجود بالفعل — لا حاجة لإنشائه).
- *   - أكثر من نتيجة → ['result' => 'ambiguous', 'candidates' => [...]]
- *     **لا اختيار صامت لأي صف إطلاقاً** — كل مرشَّح يحمل حصراً بيانات عرض
- *     آمنة (اسم، العدد المتوقَّع، هاتف مقنَّع) بالإضافة إلى `reference`: مرجع
- *     **مُوقَّع** (نفس آلية PGE_Checkin_QR_Service::build_payload() تماماً —
- *     `event_id|rsvp_id|hmac` — لا اختراع آلية توقيع جديدة). **لا rsvp_id خام
- *     يصل للمتصفح كمرساة تفويض إطلاقاً** — الحماية نفسها المُطبَّقة أصلاً على
- *     مسار QR. حين يختار المشرف لاحقاً أحد هذين المرشَّحين (واجهة مستقبلية،
- *     غير مُنفَّذة في هذه المرحلة)، طلب التأكيد يجب أن يُعيد هذا الـ`reference`
- *     نفسه كـ`identifier_type=qr` — يُعاد التحقق منه بالكامل عبر
- *     resolve_from_qr()/PGE_Checkin_QR_Service::validate() الموجودتين فعلاً
- *     (لا مسار حلّ جديد يُضاف لهذا الغرض؛ إعادة استخدام كاملة للآلية المُوقَّعة
- *     القائمة). هذا يُوثِّق ويُلبّي صراحة اشتراط: "A later confirmation request
- *     must still resolve the selected invitation through a trusted or signed
- *     reference before passing the Guest Object to the Recorder."
+ *   - أكثر من نتيجة → نتيجة `ambiguous` المؤقتة للتوافق، لكن بقائمة candidates
+ *     فارغة وreason=`duplicate_rsvp_identity`. لا اختيار ولا كتابة ولا مسار
+ *     يصل إلى Recorder. سيُوحَّد اسم النتيجة إلى `integrity_error` في Phase E.
  *
  * ملاحظة نطاق: search() العامة (بحث بجزء من الاسم/رمز الدعوة/جزء من الهاتف،
  * القسم أدناه) لم تُعدَّل ولا علاقة لها بهذا التصحيح — تبقى قائمة على خريطة
@@ -137,20 +125,6 @@ class PGE_Guest_Resolution_Service
         $table = self::rsvps_table_name();
         $row = $wpdb->get_row(
             $wpdb->prepare("SELECT * FROM $table WHERE id = %d AND event_id = %d LIMIT 1", $rsvp_id, $event_id),
-            ARRAY_A
-        );
-        return $row ?: null;
-    }
-
-    /**
-     * قراءة صف RSVP بالهاتف (قد لا يوجد صف بعد — ضيف لم يردّ على الدعوة قط).
-     */
-    private static function find_rsvp_row_by_phone(int $event_id, string $phone): ?array
-    {
-        global $wpdb;
-        $table = self::rsvps_table_name();
-        $row = $wpdb->get_row(
-            $wpdb->prepare("SELECT * FROM $table WHERE event_id = %d AND guest_phone = %s LIMIT 1", $event_id, $phone),
             ARRAY_A
         );
         return $row ?: null;
@@ -368,24 +342,6 @@ class PGE_Guest_Resolution_Service
         return ['result' => 'found', 'guest' => self::build_guest_object($event_id, $phone, $row, $meta)];
     }
 
-    /**
-     * قراءة **كل** صفوف RSVP المطابقة لهاتف مُحدَّد ضمن مناسبة (بلا LIMIT) —
-     * بعد إزالة UNIQUE KEY (event_id, guest_phone) قد يكون العدد أكثر من صف
-     * واحد؛ resolve_by_phone() أدناه هو المستهلك الوحيد المخوَّل لهذا التمييز
-     * الصريح (0/1/أكثر) — find_rsvp_row_by_phone() أعلاه (المفرد، بـLIMIT 1)
-     * يبقى للاستخدامات القائمة التي لا علاقة لها بهذا التصحيح (search()).
-     */
-    private static function find_rsvp_rows_by_phone(int $event_id, string $phone): array
-    {
-        global $wpdb;
-        $table = self::rsvps_table_name();
-        $rows = $wpdb->get_results(
-            $wpdb->prepare("SELECT * FROM $table WHERE event_id = %d AND guest_phone = %s ORDER BY id ASC", $event_id, $phone),
-            ARRAY_A
-        );
-        return is_array($rows) ? $rows : [];
-    }
-
     private static function normalize_phone_value($value): string
     {
         if (function_exists('pge_norm_phone')) {
@@ -430,7 +386,19 @@ class PGE_Guest_Resolution_Service
             return ['result' => 'not_found', 'reason' => 'invalid_arguments'];
         }
 
-        $rows = self::find_rsvp_rows_by_phone($event_id, $phone);
+        $lookup = pge_rsvp_find_canonical_by_phone($event_id, $phone);
+
+        if ($lookup['status'] === 'integrity_error') {
+            // نبقي اسم النتيجة المؤقت القديم حتى Phase E، لكن بلا candidates:
+            // لا اختيار ولا مرجع موقّع يمكن أن يصل لاحقاً إلى Recorder.
+            return [
+                'result' => 'ambiguous',
+                'reason' => (string) ($lookup['reason'] ?? 'rsvp_lookup_failed'),
+                'candidates' => [],
+            ];
+        }
+
+        $rows = $lookup['status'] === 'found' ? [(array) $lookup['row']] : [];
 
         // RC1 Hard Delete Semantics Fix Pack (Blocker 1 + Blocker 2 + Blocker 3)
         // — تُستبعَد هنا أي صفوف لا تنتمي لدورة حياة الدعوة الحالية لهذا الهاتف
@@ -527,7 +495,11 @@ class PGE_Guest_Resolution_Service
 
         $guests = [];
         foreach ($matched_phones as $phone) {
-            $row = self::find_rsvp_row_by_phone($event_id, $phone);
+            $lookup = pge_rsvp_find_canonical_by_phone($event_id, $phone);
+            if ($lookup['status'] === 'integrity_error') {
+                continue;
+            }
+            $row = $lookup['status'] === 'found' ? (array) $lookup['row'] : null;
             $meta = $map[$phone] ?? ['name' => '', 'code' => ''];
             $guests[] = self::build_guest_object($event_id, $phone, $row, $meta);
         }

@@ -120,6 +120,7 @@ RSVP وCheck-in مفهومان منفصلان. أهلية Thank You المخطط
 - إذا ظهر Secret أثناء الفحص، لا تعِده في الرد.
 - لا تنفذ Schema/Migration تلقائياً أثناء Audit.
 - أي Schema change يجب أن يكون ضمن Scope صريحاً، additive قدر الإمكان، متبعاً schema/versioning الحالي، ومغطى بالاختبارات.
+- أي RSVP lookup بالهاتف يجب أن يمر عبر `pge_rsvp_find_canonical_by_phone()`؛ لا تستخدم `LIMIT 1` لاختيار صف صامتاً من هوية `event_id + normalized_guest_phone`.
 
 ## 11. تقرير التسليم لكل مهمة
 

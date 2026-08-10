@@ -705,6 +705,7 @@ if (!defined('ARRAY_A')) {
 // ── تحميل الملفات الحقيقية (بلا أي تعديل عليها) ─────────────────────────────
 
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/rsvp-handler.php';
 require_once __DIR__ . '/../includes/event-guests.php';
 require_once __DIR__ . '/../includes/class-pge-catalog.php';
 require_once __DIR__ . '/../includes/class-pge-feature-registry.php';

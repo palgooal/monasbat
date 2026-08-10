@@ -320,6 +320,12 @@ Resolver يُطبِّع كل رقم بـ`pge_norm_phone()` (لا Normalizer جد
 التكرار (`$seen[$norm_phone]`) بحيث لا يمكن لنفس الرقم أن يظهر مرتين في نفس
 نتيجة `resolve()` بصرف النظر عن شكل التخزين المصدر.
 
+بعد Phase B، خريطة RSVP تكشف أيضاً أي خرق تاريخي لعقد Option A (أكثر من صف
+لنفس `event_id + normalized_guest_phone`) عبر `integrity_errors`. الـResolver
+لا يختار أول/آخر صف ولا يرسل Reminder لذلك الهاتف؛ يستبعده من `pending` و`all`
+ويحسبه في `skipped_integrity_error`. لا تتغير بقية فلاتر Reminder، ولا علاقة
+لهذا الحارس بـCheck-in أو Credits أو Invitation queue.
+
 ### 5.3 `PGE_Reminder_Message_Service` — تنسيق العملية الكاملة
 
 **الملف:** `includes/class-pge-reminder-message-service.php` (جديد).

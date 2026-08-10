@@ -56,11 +56,11 @@ add_action('wp_ajax_pge_checkin_guest', function () {
     global $wpdb;
     $rsvp_table = $wpdb->prefix . 'pge_event_rsvps';
 
-    $existing_row = $wpdb->get_row($wpdb->prepare(
-        "SELECT id, checked_in, created_at FROM {$rsvp_table} WHERE event_id = %d AND guest_phone = %s LIMIT 1",
-        $event_id,
-        $phone_n
-    ));
+    $lookup = pge_rsvp_find_canonical_by_phone($event_id, $phone_n);
+    if ($lookup['status'] === 'integrity_error') {
+        wp_send_json_error(__('تعذر التحقق من سجل الدعوة حالياً', 'pgevents'));
+    }
+    $existing_row = $lookup['status'] === 'found' ? $lookup['row'] : null;
 
     // RC1 Final Release Blocker: RSVP Write Path Unification — نفس القرار
     // الموحَّد المُستخدَم في كل مسارات كتابة RSVP الأخرى (راجع
