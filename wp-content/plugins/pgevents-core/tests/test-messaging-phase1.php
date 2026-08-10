@@ -253,6 +253,10 @@ $expected_reminder_text = pge_wa_render_template(pge_wa_default_reminder_templat
 
 check("19. Resolver reminder نص صحيح", $reminder_result['text'], $expected_reminder_text);
 check("19b. Resolver reminder image_url === null", $reminder_result['image_url'], null);
+$reminder_with_image = PGE_Message_Content_Resolver::resolve(PGE_Message_Type::REMINDER, $event_d, $reminder_context + [
+    'image_url' => 'https://example.com/reminder-cover.jpg',
+]);
+check("19c. Resolver reminder يعيد image_url الصريح دون قراءة WordPress", $reminder_with_image['image_url'], 'https://example.com/reminder-cover.jpg');
 
 // ══════════════════════════════════════════════════════════════════════
 // 20: Resolver thank_you — text صحيح وimage_url=null

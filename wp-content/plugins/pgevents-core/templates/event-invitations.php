@@ -498,8 +498,17 @@ get_header();
           <button type="button" id="saveReminderTemplateBtn" class="h-9 px-3 rounded-lg border border-border text-xs font-semibold text-foreground/70">حفظ نص التذكير لهذه المناسبة</button>
         </div>
 
+        <div class="mt-3">
+          <label class="flex items-center gap-2 text-sm text-foreground">
+            <input type="checkbox" id="reminderIncludeImage" class="h-4 w-4" disabled />
+            إرفاق صورة الدعوة مع التذكير
+          </label>
+          <p id="reminderImageUnavailableNote" class="hidden mt-1 text-[11px] text-foreground/60">لا توجد صورة دعوة متاحة لهذه المناسبة.</p>
+        </div>
+
         <div class="mt-3 rounded-xl border border-border bg-secondary/20 p-3">
           <p class="text-[11px] font-bold text-foreground/60 mb-1">معاينة (لضيف تجريبي)</p>
+          <img id="reminderPreviewImage" alt="صورة الدعوة" class="hidden mb-2 h-20 w-20 rounded-lg object-cover" />
           <p id="reminderPreviewText" class="text-xs text-foreground/80 whitespace-pre-line"></p>
         </div>
 
@@ -1590,10 +1599,14 @@ get_header();
   var reminderRecipientCount = document.getElementById('reminderRecipientCount');
   var reminderTemplateInput = document.getElementById('reminderTemplateInput');
   var reminderPreviewText = document.getElementById('reminderPreviewText');
+  var reminderIncludeImage = document.getElementById('reminderIncludeImage');
+  var reminderImageUnavailableNote = document.getElementById('reminderImageUnavailableNote');
+  var reminderPreviewImage = document.getElementById('reminderPreviewImage');
   var sendReminderBtn = document.getElementById('sendReminderBtn');
   var saveReminderTemplateBtn = document.getElementById('saveReminderTemplateBtn');
   var reminderInFlight = false;
   var reminderPollTimer = null;
+  var reminderImageAvailable = false;
 
   function reminderShowState(name) {
     reminderSetupState.classList.toggle('hidden', name !== 'setup');
@@ -1616,6 +1629,11 @@ get_header();
     return checked ? checked.value : 'pending';
   }
 
+  function reminderUpdateImagePreview() {
+    var showImage = reminderImageAvailable && reminderIncludeImage.checked && reminderPreviewImage.getAttribute('src');
+    reminderPreviewImage.classList.toggle('hidden', !showImage);
+  }
+
   function reminderRefreshPreview() {
     reminderRecipientCount.textContent = '…';
     postAjax('pge_invitation_mgmt_reminder_preview', { filter: reminderCurrentFilter() }).then(function (res) {
@@ -1626,6 +1644,15 @@ get_header();
       reminderRecipientCount.textContent = res.data.recipient_count;
       reminderTemplateInput.value = res.data.template;
       reminderPreviewText.textContent = res.data.preview_text;
+      reminderImageAvailable = !!res.data.image_available;
+      reminderIncludeImage.disabled = !reminderImageAvailable;
+      reminderImageUnavailableNote.classList.toggle('hidden', reminderImageAvailable);
+      if (reminderImageAvailable && res.data.preview_image_url) {
+        reminderPreviewImage.src = res.data.preview_image_url;
+      } else {
+        reminderPreviewImage.removeAttribute('src');
+      }
+      reminderUpdateImagePreview();
     }).catch(function () {
       reminderShowError('تعذّر الاتصال بالخادم');
     });
@@ -1635,6 +1662,12 @@ get_header();
     reminderClearError();
     reminderShowState('setup');
     document.querySelector('input[name="reminderFilter"][value="pending"]').checked = true;
+    reminderIncludeImage.checked = false;
+    reminderImageAvailable = false;
+    reminderIncludeImage.disabled = true;
+    reminderImageUnavailableNote.classList.add('hidden');
+    reminderPreviewImage.removeAttribute('src');
+    reminderUpdateImagePreview();
     reminderModal.classList.remove('hidden');
     reminderRefreshPreview();
   }
@@ -1707,6 +1740,7 @@ get_header();
   Array.prototype.forEach.call(document.querySelectorAll('input[name="reminderFilter"]'), function (radio) {
     radio.addEventListener('change', reminderRefreshPreview);
   });
+  reminderIncludeImage.addEventListener('change', reminderUpdateImagePreview);
 
   saveReminderTemplateBtn.addEventListener('click', function () {
     reminderClearError();
@@ -1737,7 +1771,10 @@ get_header();
     reminderSendingProgress.textContent = '';
 
     var filter = reminderCurrentFilter();
-    postAjax('pge_invitation_mgmt_send_reminder', { filter: filter }).then(function (res) {
+    postAjax('pge_invitation_mgmt_send_reminder', {
+      filter: filter,
+      include_image: reminderIncludeImage.checked ? 1 : 0,
+    }).then(function (res) {
       reminderInFlight = false;
       document.getElementById('closeReminderBtn').disabled = false;
       if (!res || !res.success) {

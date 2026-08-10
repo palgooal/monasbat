@@ -1299,12 +1299,15 @@ function pge_invitation_mgmt_reminder_preview_handler()
         'event_name' => $event_name,
         'event_date' => $event_date,
     ]);
+    $preview_image_url = PGE_Reminder_Message_Service::resolve_event_featured_image_url($event_id);
 
     wp_send_json_success([
         'filter'           => $filter,
         'recipient_count'  => $recipient_count,
         'template'         => $template_text,
         'preview_text'     => $sample['text'],
+        'image_available'   => $preview_image_url !== null,
+        'preview_image_url' => $preview_image_url,
     ]);
 }
 if (PGE_INVITATION_MGMT_REMINDER_ENABLED) {
@@ -1343,7 +1346,8 @@ if (PGE_INVITATION_MGMT_REMINDER_ENABLED) {
  * إرسال التذكير الفعلي (PART 16): الخادم هو Authoritative بالكامل — لا يقبل
  * phones/rendered rows/message body النهائي/batch_id/counts من العميل. كل ما
  * يُقبَل من $_POST هنا: nonce (عبر pge_invitation_mgmt_validate_request())،
- * event_id (نفسه)، وfilter فقط. batch_id يُولَّد داخل PGE_Reminder_Message_
+ * event_id (نفسه)، وfilter وinclude_image كنية 0/1 فقط. batch_id يُولَّد داخل
+ * PGE_Reminder_Message_
  * Service::send_reminder_batch() نفسها، والمستلمون يُحسَبون هناك أيضاً — لا
  * تكرار منطق هنا، هذا المعالج غلاف رقيق حول الـService فقط (PART 9: "لا تضع
  * هذا المنطق كله داخل AJAX handler").
@@ -1354,8 +1358,10 @@ function pge_invitation_mgmt_send_reminder_handler()
 
     $filter = isset($_POST['filter']) ? sanitize_text_field(wp_unslash($_POST['filter'])) : PGE_Message_Recipient_Resolver::FILTER_PENDING;
     $filter = PGE_Message_Recipient_Resolver::normalize_filter($filter);
+    // Intent فقط؛ أي image_url/media_url/file_path من العميل يُتجاهَل تماماً.
+    $include_image = isset($_POST['include_image']) && (string) wp_unslash($_POST['include_image']) === '1';
 
-    $result = PGE_Reminder_Message_Service::send_reminder_batch($event_id, $filter, get_current_user_id());
+    $result = PGE_Reminder_Message_Service::send_reminder_batch($event_id, $filter, get_current_user_id(), $include_image);
     $outcome = (string) ($result['result'] ?? 'error');
 
     if ($outcome === 'started') {

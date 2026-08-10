@@ -103,9 +103,9 @@ PGE_Message_Content_Resolver::resolve(
   المفتاح في `$context` (حتى لو فارغاً) يُستخدَم كما هو؛ إن غاب كلياً يُحسَب
   حديثاً عبر `get_the_post_thumbnail_url()` — يحافظ على أداء الكود القديم
   (حساب الصورة مرة واحدة لكل دفعة، لا لكل هاتف).
-- **`reminder`/`thank_you`**: تُبنى المحتوى (نص من القالب المناسب،
-  `image_url = null` دوماً — نص فقط، قرار Phase 0 صريح) لكن **لا Caller
-  إنتاجي واحد يستدعيهما بعد** — لا إرسال، لا Queue، لا AJAX.
+- **`reminder`**: نص من القالب المناسب، و`image_url = null` افتراضياً. يقبل
+  رابطاً صريحاً فقط من Reminder Service بعد حل Featured Image خادمياً؛ لا يقرأ
+  WordPress image بنفسه. **`thank_you`** يبقى `image_url = null` دوماً.
 
 ### 2.4 المواضع المُعاد بناؤها (Refactor) في `class-cartat-handler.php`
 
@@ -289,8 +289,9 @@ Templates) وPhase 2 (Message Log/Batch) بلا أي بنية موازية.
 ### 5.1 نطاق v1 (بالضبط كما اعتُمد في Contract)
 
 المستهدف الافتراضي = المدعوون الذين لم يردوا بعد (`pending`)، مع خيار "كل
-المدعوين" (`all`). المزوّد = Cartat فقط. المحتوى = نص فقط (`image_url` دائماً
-`null`). Reminder لا يستهلك أي Invitation Credit. يمكن إرساله مرة أخرى لاحقاً
+المدعوين" (`all`). المزوّد = Cartat فقط. المحتوى الافتراضي نص فقط، مع خيار
+إرفاق Featured Image الخاصة بالمناسبة (`Text + Media`) لكل عملية إرسال مقصودة.
+Reminder لا يستهلك أي Invitation Credit. يمكن إرساله مرة أخرى لاحقاً
 عبر عملية جديدة مقصودة (**ليس** Once-per-event). لا جدولة تلقائية.
 
 ### 5.2 `PGE_Message_Recipient_Resolver` — تحديد المستلمين
@@ -323,12 +324,14 @@ Resolver يُطبِّع كل رقم بـ`pge_norm_phone()` (لا Normalizer جد
 
 **الملف:** `includes/class-pge-reminder-message-service.php` (جديد).
 
-نقطة دخول وحيدة: `send_reminder_batch(event_id, filter, actor_user_id)`.
+نقطة دخول وحيدة: `send_reminder_batch(event_id, filter, actor_user_id,
+include_image=false)`.
 مسؤولة عن: التحقق من المناسبة، حل المستلمين عبر الـResolver، توليد `batch_id`
 عبر `PGE_Message_Batch` (خادمياً بالكامل)، إنشاء صفوف `pending` في
 `PGE_Message_Log` (`message_type=reminder`)، بناء المحتوى لكل ضيف عبر
 `PGE_Message_Content_Resolver::resolve(PGE_Message_Type::REMINDER, ...)`
-(بلا Template Engine جديد)، الإرسال عبر `PGE_Cartat_Transport::send_text()`
+(بلا Template Engine جديد)، الإرسال عبر `PGE_Cartat_Transport::send_text()` أو
+`send_media()` عند طلب Featured Image صالحة
 (الطبقة المشتركة نفسها، بلا نسخ HTTP/auth/payload)، تفسير النتيجة عبر
 `interpret_result()` الحالية، تحديث `PGE_Message_Log`، وإعادة ملخّص.
 
@@ -366,6 +369,8 @@ hook مختلف (`pge_wa_process_reminder_queue`). هذا يحقق "لا تعا�
 (`wp_schedule_single_event()` + `spawn_cron()`) حتى تفرغ صفوف `pending` لهذا
 الـ`batch_id` — لا Loop ضخمة عمياء داخل طلب واحد أبداً. Cron الوحيد المُضاف
 هو استكمال دفعة بدأها المستخدم يدوياً — لا مسح تلقائي مجدول بالتاريخ.
+ينتقل `include_image` إلى Cron كـBoolean فقط (والغياب القديم = `false`)؛ ويُعاد
+حل Featured Image خادمياً في كل tick، لذلك حذفها يجعل المتبقي Text Only.
 
 ### 5.5 نقطة الـAJAX والصلاحيات
 
@@ -376,13 +381,15 @@ hook مختلف (`pge_wa_process_reminder_queue`). هذا يحقق "لا تعا�
 
 | Action | الوصف |
 |--------|-------|
-| `pge_invitation_mgmt_reminder_preview` | معاينة: عدد المستلمين المتوقَّع + نص القالب الحالي + عيّنة مُصيَّرة — قراءة فقط |
+| `pge_invitation_mgmt_reminder_preview` | معاينة: عدد المستلمين المتوقَّع + النص + توفر Featured Image ورابط عرضها — قراءة فقط |
 | `pge_invitation_mgmt_save_reminder_template` | حفظ `_pge_wa_tpl_reminder` (Sanitize + طول أقصى 2000 حرف) |
-| `pge_invitation_mgmt_send_reminder` | نقطة الإرسال الفعلي — تستقبل **فقط** `nonce`/`event_id`/`filter` |
+| `pge_invitation_mgmt_send_reminder` | نقطة الإرسال الفعلي — تستقبل **فقط** `nonce`/`event_id`/`filter` و`include_image=0/1` |
 | `pge_invitation_mgmt_reminder_status` | تقرير تقدّم دفعة (`batch_id`) — Sent/Failed/Ambiguous/Pending، للـPolling |
 
 **الخادم authoritative بالكامل**: لا الهاتف ولا `batch_id` ولا عدد المستلمين
-يُقبَل من العميل في `pge_invitation_mgmt_send_reminder` — `batch_id` يُولَّد
+يُقبَل من العميل في `pge_invitation_mgmt_send_reminder`، ولا يُقبل أي
+`image_url`/`media_url`/file path؛ العميل يرسل intent فقط والصورة تُحل من
+Featured Image على الخادم — `batch_id` يُولَّد
 خادمياً عبر `PGE_Message_Batch`، المستلمون يُحسَبون خادمياً عبر الـResolver،
 القالب يُقرَأ خادمياً من Post Meta. **الصلاحيات**: نفس
 `pge_mgmt_validate_request()` الحالي بالضبط (`is_user_logged_in()` → nonce
@@ -423,7 +430,8 @@ pending/all، عدد المستلمين المتوقَّع Estimate، نص ال�
 يُثبت: تعريف `pending`/`all` مطابق للنظام الفعلي (لا RSVP/reply≠yes/no
 →pending، yes/no مستبعدان، أرقام غير صالحة/مكرَّرة/من مناسبة أخرى مستبعدة)،
 `message_type=reminder` فعلياً، القالب المخصَّص يُستخدَم مع fallback للافتراضي،
-المتغيّرات تُصيَّر، `image_url=null` دائماً، الإرسال عبر `PGE_Cartat_Transport`
+المتغيّرات تُصيَّر، وReminder يبقى Text افتراضياً أو يستخدم Featured Image
+اختيارياً، والإرسال عبر `PGE_Cartat_Transport`
 فعلياً (لا UltraMsg)، `batch_id` يُولَّد خادمياً ومختلف بين عمليتين، لا تكرار
 داخل نفس الدفعة، `sent`/`failed`/`ambiguous_transport_error` تُسجَّل بدقة حسب
 نتيجة Transport الحقيقية، لا تخزين لنص الرسالة في `message_log`، طلب متزامن

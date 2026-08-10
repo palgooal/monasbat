@@ -82,7 +82,9 @@ function current_user_can($cap, $object_id = null) { return $GLOBALS['__test_is_
 function pge_norm_phone($v) { return preg_replace('/\D+/', '', trim((string) $v)); }
 function pge_event_guests_norm_phone($v) { return pge_norm_phone($v); }
 function date_i18n($format, $timestamp = null) { return 'DATE'; }
-function get_the_post_thumbnail_url($post_id, $size = 'full') { return ''; }
+function get_post_thumbnail_id($post_id) { return $GLOBALS['__test_thumbnail_ids'][$post_id] ?? 0; }
+function get_the_post_thumbnail_url($post_id, $size = 'full') { return $GLOBALS['__test_thumbnail_urls'][$post_id] ?? ''; }
+function wp_attachment_is_image($attachment_id) { return $GLOBALS['__test_attachment_images'][$attachment_id] ?? false; }
 function get_permalink($post_id) { return 'https://example.test/event/' . $post_id . '/'; }
 function pge_get_event_short_url($event_id) { return 'https://example.test/e/' . $event_id . '/'; }
 function pge_normalize_invite_code($code) { return strtoupper((string) $code); }
@@ -99,6 +101,9 @@ function spawn_cron() { return true; }
 // ── مخزن Post/Post Meta ──────────────────────────────────────────────────
 $GLOBALS['__test_posts'] = [];
 $GLOBALS['__test_post_meta'] = [];
+$GLOBALS['__test_thumbnail_ids'] = [];
+$GLOBALS['__test_thumbnail_urls'] = [];
+$GLOBALS['__test_attachment_images'] = [];
 
 function get_post_field($field, $post_id) { return $GLOBALS['__test_posts'][$post_id][$field] ?? ''; }
 function get_post($post_id) { return isset($GLOBALS['__test_posts'][$post_id]) ? (object) $GLOBALS['__test_posts'][$post_id] : null; }
@@ -351,6 +356,9 @@ function reset_test_state()
     $GLOBALS['wpdb']->held_locks = [];
     $GLOBALS['__test_posts'] = [];
     $GLOBALS['__test_post_meta'] = [];
+    $GLOBALS['__test_thumbnail_ids'] = [];
+    $GLOBALS['__test_thumbnail_urls'] = [];
+    $GLOBALS['__test_attachment_images'] = [];
     $GLOBALS['__test_options'] = [];
     $GLOBALS['__test_scheduled_events'] = [];
     $GLOBALS['__test_remote_post_queue'] = [];
@@ -377,6 +385,16 @@ function seed_guests($event_id, array $phones_names)
         $stored[$phone] = ['phone' => $phone, 'name' => $name, 'note' => '', 'code' => ''];
     }
     update_post_meta($event_id, '_pge_invited_guests', $stored);
+}
+
+function seed_featured_image($event_id, $attachment_id, $url, $is_image = true, $create_attachment = true)
+{
+    $GLOBALS['__test_thumbnail_ids'][$event_id] = $attachment_id;
+    $GLOBALS['__test_thumbnail_urls'][$event_id] = $url;
+    $GLOBALS['__test_attachment_images'][$attachment_id] = $is_image;
+    if ($create_attachment) {
+        $GLOBALS['__test_posts'][$attachment_id] = ['post_type' => 'attachment', 'post_title' => 'صورة'];
+    }
 }
 
 function reminder_recipients($event_id, $filter)
@@ -604,6 +622,158 @@ $finalPhones = array_column($finalRows, 'guest_phone');
 check('34e. Realistic Batch: 120 سجل تتبّع بلا تكرار', count($finalPhones), count(array_unique($finalPhones)));
 check('34f. Realistic Batch: الكل انتهى إلى sent (transport افتراضي ناجح)', count(array_filter($finalRows, function ($r) { return $r['status'] === PGE_Message_Log::STATUS_SENT; })), 120);
 check_true('34g. Realistic Batch: لا استهلاك رصيد (Ledger غير محمَّلة)', !class_exists('PGE_Invitation_Credit_Ledger'));
+
+// ══════════════════════════════════════════════════════════════════════════
+// Optional Featured Image for Manual Reminder
+// ══════════════════════════════════════════════════════════════════════════
+PGE_Reminder_Message_Service::set_send_delay_enabled_for_tests(false);
+
+// Backward compatibility: غياب intent وfalse الصريح يبقيان Text Only.
+reset_test_state();
+seed_event(700);
+seed_guests(700, ['966570000001' => 'ضيف نصي']);
+seed_featured_image(700, 9700, 'https://example.test/uploads/event-700.jpg');
+$legacyText = PGE_Reminder_Message_Service::send_reminder_batch(700, 'all', 501);
+check_true('35a. غياب include_image يستخدم /message/text', strpos($GLOBALS['__test_remote_post_calls'][0]['url'], '/message/text') !== false);
+check('35b. Reminder Text ينتهي sent', PGE_Message_Log::query_by_batch($legacyText['batch_id'])[0]['status'], PGE_Message_Log::STATUS_SENT);
+
+reset_test_state();
+seed_event(701);
+seed_guests(701, ['966570000002' => 'ضيف نصي']);
+seed_featured_image(701, 9701, 'https://example.test/uploads/event-701.jpg');
+$_POST = ['nonce' => 'ok', 'event_id' => 701, 'filter' => 'all', 'include_image' => '0'];
+$includeFalse = call_ajax('pge_invitation_mgmt_send_reminder_handler');
+check('35c. include_image=0 مقبول عبر Endpoint', $includeFalse['success'], true);
+check_true('35d. include_image=0 يستخدم /message/text', strpos($GLOBALS['__test_remote_post_calls'][0]['url'], '/message/text') !== false);
+
+// Media: URL الخادم نفسه + Caption النص المصيّر.
+reset_test_state();
+seed_event(702);
+seed_guests(702, ['966570000003' => 'ضيف صورة']);
+seed_featured_image(702, 9702, 'https://example.test/uploads/event-702.jpg');
+update_post_meta(702, '_pge_wa_tpl_reminder', 'تذكير إلى {{guest_name}}');
+$mediaAccepted = PGE_Reminder_Message_Service::send_reminder_batch(702, 'all', 501, true);
+$mediaCall = $GLOBALS['__test_remote_post_calls'][0];
+check_true('36a. include_image=true يستخدم /message/media', strpos($mediaCall['url'], '/message/media') !== false);
+check('36b. media_url هو Featured Image الموثوقة', $mediaCall['body']['media_url'] ?? '', 'https://example.test/uploads/event-702.jpg');
+check('36c. caption يساوي Reminder text المصيّر', $mediaCall['body']['caption'] ?? '', 'تذكير إلى ضيف صورة');
+check('36d. Media accepted → sent', PGE_Message_Log::query_by_batch($mediaAccepted['batch_id'])[0]['status'], PGE_Message_Log::STATUS_SENT);
+
+// Missing/invalid image: fallback قبل Transport إلى Text.
+$missingCases = [
+    703 => function () {},
+    704 => function () { seed_featured_image(704, 9704, 'https://example.test/uploads/missing.jpg', true, false); },
+    705 => function () { seed_featured_image(705, 9705, 'https://example.test/uploads/not-image.pdf', false, true); },
+    706 => function () { seed_featured_image(706, 9706, 'ftp://example.test/uploads/event.jpg', true, true); },
+];
+foreach ($missingCases as $eventId => $seedImage) {
+    reset_test_state();
+    seed_event($eventId);
+    seed_guests($eventId, ['9665700000' . $eventId => 'ضيف fallback']);
+    $seedImage();
+    PGE_Reminder_Message_Service::send_reminder_batch($eventId, 'all', 501, true);
+    check_true("37.$eventId صورة غائبة/غير صالحة → /message/text", strpos($GLOBALS['__test_remote_post_calls'][0]['url'], '/message/text') !== false);
+}
+
+// Client يرسل intent فقط؛ جميع مصادر URL من العميل تُتجاهَل.
+reset_test_state();
+seed_event(707);
+seed_guests(707, ['966570000007' => 'ضيف آمن']);
+seed_featured_image(707, 9707, 'https://trusted.example.test/event-707.jpg');
+$_POST = [
+    'nonce' => 'ok', 'event_id' => 707, 'filter' => 'all', 'include_image' => '1',
+    'image_url' => 'https://evil.example/image.jpg',
+    'media_url' => 'https://evil.example/media.jpg',
+    'file_path' => 'C:\\secret.jpg',
+];
+$secureMedia = call_ajax('pge_invitation_mgmt_send_reminder_handler');
+$secureCall = $GLOBALS['__test_remote_post_calls'][0];
+check('38a. Endpoint Media نجح بنفس nonce/capability', $secureMedia['success'], true);
+check('38b. Client URLs لا تصبح مصدر الإرسال', $secureCall['body']['media_url'] ?? '', 'https://trusted.example.test/event-707.jpg');
+
+$_POST = ['nonce' => 'ok', 'event_id' => 707, 'filter' => 'all'];
+$preview = call_ajax('pge_invitation_mgmt_reminder_preview_handler');
+check('38c. Preview يعلن توفر الصورة', $preview['payload']['image_available'] ?? null, true);
+check('38d. Preview URL من Featured Image', $preview['payload']['preview_image_url'] ?? '', 'https://trusted.example.test/event-707.jpg');
+
+reset_test_state();
+seed_event(713);
+seed_guests(713, ['966570000013' => 'ضيف بلا صورة']);
+$_POST = ['nonce' => 'ok', 'event_id' => 713, 'filter' => 'all'];
+$previewWithoutImage = call_ajax('pge_invitation_mgmt_reminder_preview_handler');
+check('38e. Preview بلا صورة يعلن image_available=false', $previewWithoutImage['payload']['image_available'] ?? null, false);
+check('38f. Preview بلا صورة لا يعيد URL', $previewWithoutImage['payload']['preview_image_url'] ?? null, null);
+
+// بعد محاولة Media لا يوجد Text fallback: رفض صريح أو Transport غامض.
+reset_test_state();
+seed_event(708);
+seed_guests(708, ['966570000008' => 'ضيف رفض']);
+seed_featured_image(708, 9708, 'https://example.test/uploads/event-708.jpg');
+$GLOBALS['__test_remote_post_queue'][] = ['body' => json_encode(['status' => 'error'])];
+$mediaRejected = PGE_Reminder_Message_Service::send_reminder_batch(708, 'all', 501, true);
+check('39a. Media rejected → failed', PGE_Message_Log::query_by_batch($mediaRejected['batch_id'])[0]['status'], PGE_Message_Log::STATUS_FAILED);
+check('39b. Media rejected لا يرسل Text fallback', count($GLOBALS['__test_remote_post_calls']), 1);
+
+reset_test_state();
+seed_event(709);
+seed_guests(709, ['966570000009' => 'ضيف غامض']);
+seed_featured_image(709, 9709, 'https://example.test/uploads/event-709.jpg');
+$GLOBALS['__test_remote_post_queue'][] = new WP_Error('http_request_failed', 'timeout');
+$mediaAmbiguous = PGE_Reminder_Message_Service::send_reminder_batch(709, 'all', 501, true);
+check('39c. Media transport error → ambiguous_transport_error', PGE_Message_Log::query_by_batch($mediaAmbiguous['batch_id'])[0]['status'], PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR);
+check('39d. Media transport error لا يرسل Text fallback', count($GLOBALS['__test_remote_post_calls']), 1);
+
+// Large batch: intent يبقى Media عبر Sync وCron، بلا تكرار.
+reset_test_state();
+seed_event(710);
+seed_featured_image(710, 9710, 'https://example.test/uploads/event-710.jpg');
+$mediaGuests = [];
+for ($i = 1; $i <= 40; $i++) $mediaGuests[sprintf('96658%07d', $i)] = 'ضيف ' . $i;
+seed_guests(710, $mediaGuests);
+$largeMedia = PGE_Reminder_Message_Service::send_reminder_batch(710, 'all', 501, true);
+check('40a. Sync Media يعالج 25 طلباً', count($GLOBALS['__test_remote_post_calls']), PGE_Reminder_Message_Service::SYNC_CHUNK_SIZE);
+check('40b. Cron event يحتفظ بـinclude_image=true', $GLOBALS['__test_scheduled_events'][0]['args'][2] ?? null, true);
+PGE_Reminder_Message_Service::cron_process_reminder_queue(710, $largeMedia['batch_id'], true);
+$mediaOnlyCalls = array_filter($GLOBALS['__test_remote_post_calls'], function ($call) { return strpos($call['url'], '/message/media') !== false; });
+check('40c. Sync + Cron كلها Media', count($mediaOnlyCalls), 40);
+$largeMediaRows = PGE_Message_Log::query_by_batch($largeMedia['batch_id']);
+check('40d. Large Media بلا duplicate recipients', count(array_column($largeMediaRows, 'guest_phone')), count(array_unique(array_column($largeMediaRows, 'guest_phone'))));
+
+// Cron قديم بلا argument يعود Text Only حتى لو كانت الصورة موجودة.
+reset_test_state();
+seed_event(711);
+seed_featured_image(711, 9711, 'https://example.test/uploads/event-711.jpg');
+$oldCronGuests = [];
+for ($i = 1; $i <= 26; $i++) $oldCronGuests[sprintf('96659%07d', $i)] = 'ضيف ' . $i;
+seed_guests(711, $oldCronGuests);
+$oldCronBatch = PGE_Reminder_Message_Service::send_reminder_batch(711, 'all', 501, true);
+$GLOBALS['__test_remote_post_calls'] = [];
+PGE_Reminder_Message_Service::cron_process_reminder_queue(711, $oldCronBatch['batch_id']);
+check_true('41. Cron قديم بلا include_image يستخدم Text', strpos($GLOBALS['__test_remote_post_calls'][0]['url'], '/message/text') !== false);
+
+// حذف الصورة بين ticks يجعل المتبقي Text قبل أي محاولة Media.
+reset_test_state();
+seed_event(712);
+seed_featured_image(712, 9712, 'https://example.test/uploads/event-712.jpg');
+$deletedImageGuests = [];
+for ($i = 1; $i <= 26; $i++) $deletedImageGuests[sprintf('96660%07d', $i)] = 'ضيف ' . $i;
+seed_guests(712, $deletedImageGuests);
+$deletedImageBatch = PGE_Reminder_Message_Service::send_reminder_batch(712, 'all', 501, true);
+unset($GLOBALS['__test_thumbnail_ids'][712], $GLOBALS['__test_thumbnail_urls'][712]);
+$GLOBALS['__test_remote_post_calls'] = [];
+PGE_Reminder_Message_Service::cron_process_reminder_queue(712, $deletedImageBatch['batch_id'], true);
+check_true('42. حذف الصورة بين ticks → المتبقي Text Only', strpos($GLOBALS['__test_remote_post_calls'][0]['url'], '/message/text') !== false);
+
+check_true('43a. Media Reminder لا يحمّل Invitation Credit Ledger', !class_exists('PGE_Invitation_Credit_Ledger'));
+check_true('43b. Media Reminder لا يحمّل Replacement Credits', !class_exists('PGE_Replacement_Entitlements'));
+
+// عقد الواجهة: Checkbox غير محدد افتراضياً + حالة disabled + Thumbnail.
+$reminderTemplateSrc = file_get_contents(__DIR__ . '/../templates/event-invitations.php');
+check_true('44a. Reminder Modal يحتوي Checkbox الصورة', strpos($reminderTemplateSrc, 'id="reminderIncludeImage"') !== false);
+check_true('44b. Checkbox يبدأ unchecked وdisabled', preg_match('/id="reminderIncludeImage"[^>]*disabled[^>]*\/>/', $reminderTemplateSrc) === 1 && preg_match('/id="reminderIncludeImage"[^>]*checked/', $reminderTemplateSrc) !== 1);
+check_true('44c. رسالة عدم توفر الصورة موجودة حرفياً', strpos($reminderTemplateSrc, 'لا توجد صورة دعوة متاحة لهذه المناسبة.') !== false);
+check_true('44d. Preview يحتوي Thumbnail مستقل', strpos($reminderTemplateSrc, 'id="reminderPreviewImage"') !== false);
+check_true('44e. Client يرسل include_image intent فقط عند Send', strpos($reminderTemplateSrc, 'include_image: reminderIncludeImage.checked ? 1 : 0') !== false);
 
 // ══════════════════════════════════════════════════════════════════════════
 // الملخّص النهائي

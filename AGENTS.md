@@ -83,7 +83,7 @@ git diff --cached
 
 Reminder الحالي:
 
-- Cartat فقط، ونص فقط.
+- Cartat فقط، ويدعم نصاً أو نصاً مع Featured Image اختيارية للمناسبة.
 - قابل للتكرار عبر intentional batches جديدة.
 - يستخدم queue/tracking مستقلين عن Invitation؛ `message_log` هو tracking foundation.
 - الفلاتر: `pending` و`all`. حالة `pending` لا تعتمد على `checked_in`.

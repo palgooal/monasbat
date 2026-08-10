@@ -78,7 +78,7 @@ class PGE_Reminder_Message_Service
      * يغيّر أي سلوك يخص التتبّع/الرصيد/الحالة، فقط سرعة التنفيذ. هذا لا يمس
      * حدود Transport (PART 34 "Mock فقط عند حدود Transport") لأنه لا يُبدِّل
      * أي استدعاء لـPGE_Cartat_Transport — لا يزال كل مستلم يمر فعلياً عبر
-     * send_text()/interpret_result() الحقيقيَّين.
+     * send_text()/send_media()/interpret_result() الحقيقيَّة.
      */
     private static $send_delay_enabled = true;
 
@@ -112,7 +112,7 @@ class PGE_Reminder_Message_Service
      *
      * @return array{result:string,reason?:string,batch_id?:string,total_targeted?:int,skipped_invalid_phone?:int,sent?:int,failed?:int,ambiguous?:int,queued_remaining?:int}
      */
-    public static function send_reminder_batch(int $event_id, string $filter, int $actor_user_id): array
+    public static function send_reminder_batch(int $event_id, string $filter, int $actor_user_id, bool $include_image = false): array
     {
         if ($event_id <= 0 || get_post_type($event_id) !== 'pge_event') {
             return ['result' => 'error', 'reason' => 'invalid_event'];
@@ -171,11 +171,11 @@ class PGE_Reminder_Message_Service
         self::log("🚀 event=$event_id: batch=$batch_id بدأ — targeted=$created_count | filter={$resolved['filter']} | skipped_invalid_phone=$skipped_invalid_phone");
 
         @set_time_limit(120);
-        $tick_summary = self::process_batch_tick($event_id, $batch_id, self::SYNC_CHUNK_SIZE);
+        $tick_summary = self::process_batch_tick($event_id, $batch_id, self::SYNC_CHUNK_SIZE, $include_image);
 
         $remaining = self::count_pending_in_batch($event_id, $batch_id);
         if ($remaining > 0) {
-            wp_schedule_single_event(time() + self::CRON_RECHECK_DELAY_SECONDS, self::CRON_HOOK, [$event_id, $batch_id]);
+            wp_schedule_single_event(time() + self::CRON_RECHECK_DELAY_SECONDS, self::CRON_HOOK, [$event_id, $batch_id, $include_image]);
             if (function_exists('spawn_cron')) {
                 spawn_cron();
             }
@@ -200,14 +200,14 @@ class PGE_Reminder_Message_Service
      * WP-Cron — معالجة دفعة متبقية من batch سابق (يُسجَّل في pgevents-core.php).
      * Public لأن add_action() يستدعيها مباشرة (نفس نمط cron_process_queue()).
      */
-    public static function cron_process_reminder_queue(int $event_id, string $batch_id): void
+    public static function cron_process_reminder_queue(int $event_id, string $batch_id, bool $include_image = false): void
     {
         @set_time_limit(60);
-        self::process_batch_tick($event_id, $batch_id, self::CRON_CHUNK_SIZE);
+        self::process_batch_tick($event_id, $batch_id, self::CRON_CHUNK_SIZE, $include_image);
 
         $remaining = self::count_pending_in_batch($event_id, $batch_id);
         if ($remaining > 0) {
-            wp_schedule_single_event(time() + self::CRON_RECHECK_DELAY_SECONDS, self::CRON_HOOK, [$event_id, $batch_id]);
+            wp_schedule_single_event(time() + self::CRON_RECHECK_DELAY_SECONDS, self::CRON_HOOK, [$event_id, $batch_id, $include_image]);
             self::log("⏳ event=$event_id: batch=$batch_id — متبقٍّ $remaining مستلماً بعد تشغيلة Cron، جُدولت متابعة أخرى");
         } else {
             self::log("✅ event=$event_id: batch=$batch_id اكتمل عبر Cron");
@@ -223,7 +223,7 @@ class PGE_Reminder_Message_Service
      *
      * @return array{sent:int,failed:int,ambiguous:int}
      */
-    private static function process_batch_tick(int $event_id, string $batch_id, int $chunk_size): array
+    private static function process_batch_tick(int $event_id, string $batch_id, int $chunk_size, bool $include_image = false): array
     {
         $summary = ['sent' => 0, 'failed' => 0, 'ambiguous' => 0];
 
@@ -261,6 +261,9 @@ class PGE_Reminder_Message_Service
             }
             $guests_map = function_exists('pge_event_guests_get_map') ? pge_event_guests_get_map($event_id) : [];
             $transport = new PGE_Cartat_Transport();
+            // Intent الدفعة فقط ينتقل عبر Cron. رابط الصورة يُحل خادمياً من
+            // المناسبة في كل tick حتى لا نعتمد على Preview أو URL قديم.
+            $image_url = $include_image ? self::resolve_event_featured_image_url($event_id) : null;
 
             foreach ($chunk as $row) {
                 $log_id = (int) $row['id'];
@@ -276,13 +279,13 @@ class PGE_Reminder_Message_Service
                     'event_url'     => $event_url,
                     'invite_code'   => $guest_code !== '' ? $guest_code : $invite_code,
                     'location_line' => '',
+                    'image_url'     => $image_url,
                 ]);
 
-                // PART 7 — Text only: image_url دائماً null من الـResolver لنوع
-                // reminder — لا حاجة لأي فحص هنا، لكن نتحقق دفاعياً ألا نُرسل
-                // وسائط أبداً بصرف النظر عن قيمة image_url المُعادة.
                 $wa_number = $transport->format_number($phone);
-                $result = $transport->send_text($wa_number, $content['text']);
+                $result = $content['image_url']
+                    ? $transport->send_media($wa_number, $content['image_url'], $content['text'])
+                    : $transport->send_text($wa_number, $content['text']);
                 $outcome = $transport->interpret_result($result);
 
                 if ($outcome === 'accepted') {
@@ -305,6 +308,35 @@ class PGE_Reminder_Message_Service
         }
 
         return $summary;
+    }
+
+    /**
+     * مصدر Reminder Media الوحيد: Featured Image صالحة مرتبطة بالمناسبة.
+     * لا تقبل هذه الدالة أي URL خارجي ولا تقرأ أي قيمة من العميل.
+     */
+    public static function resolve_event_featured_image_url(int $event_id): ?string
+    {
+        $attachment_id = (int) get_post_thumbnail_id($event_id);
+        if ($attachment_id <= 0) {
+            return null;
+        }
+
+        $attachment = get_post($attachment_id);
+        if (!$attachment || (string) ($attachment->post_type ?? '') !== 'attachment') {
+            return null;
+        }
+
+        if (!wp_attachment_is_image($attachment_id)) {
+            return null;
+        }
+
+        $url = trim((string) get_the_post_thumbnail_url($event_id, 'full'));
+        if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        return in_array($scheme, ['http', 'https'], true) ? $url : null;
     }
 
     /** عدد صفوف pending المتبقية فعلياً لدفعة معيَّنة — تُستخدَم لتقرير التقدّم. */
@@ -349,4 +381,4 @@ class PGE_Reminder_Message_Service
     }
 }
 
-add_action(PGE_Reminder_Message_Service::CRON_HOOK, ['PGE_Reminder_Message_Service', 'cron_process_reminder_queue'], 10, 2);
+add_action(PGE_Reminder_Message_Service::CRON_HOOK, ['PGE_Reminder_Message_Service', 'cron_process_reminder_queue'], 10, 3);

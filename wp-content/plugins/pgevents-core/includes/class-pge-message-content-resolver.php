@@ -45,6 +45,8 @@ class PGE_Message_Content_Resolver
      *   المواضع الثلاثة المُعاد بناؤها (Part 9) تمرّر image_url دائماً
      *   صراحةً (محسوبة مرة واحدة خارج حلقة المستلمين، تماماً كسلوكها الحالي
      *   — لا استدعاء إضافي لـget_the_post_thumbnail_url() لكل هاتف).
+     *   image_url لـreminder: يبقى null عند غيابه، ويُعاد كما هو فقط عندما
+     *   يمرّره Reminder Service صراحةً بعد حل Featured Image خادمياً.
      *
      * @return array{text:string,image_url:?string}
      */
@@ -69,7 +71,11 @@ class PGE_Message_Content_Resolver
 
             return [
                 'text'      => function_exists('pge_wa_render_template') ? pge_wa_render_template($tpl, $vars) : $tpl,
-                'image_url' => null, // Text only — قرار Phase 0 الصريح
+                // يبقى Text Only افتراضياً. يقبل فقط رابطاً صريحاً سبق أن
+                // حلّه الـService خادمياً؛ لا يقرأ Featured Image بنفسه.
+                'image_url' => isset($context['image_url']) && trim((string) $context['image_url']) !== ''
+                    ? (string) $context['image_url']
+                    : null,
             ];
         }
 
