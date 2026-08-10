@@ -244,9 +244,9 @@ class Fake_Wpdb_Checkin_Engine
     private $rsvps_next_id = 1;
     private $audit_log_next_id = 1;
 
-    // ── Blocker Fix #2: حالة Schema حقيقية لجدول RSVP — تُقرَأ/تُعدَّل حصراً عبر
-    // SHOW COLUMNS/SHOW INDEX/ALTER TABLE الحقيقية الصادرة من PGE_Checkin_Schema
-    // نفسها (لا Bypass) — تطابق الحالة الفعلية للجدول الإنتاجي قبل الترقية
+    // ── حالة Schema حقيقية لجدول RSVP — Check-in يقرأ/يضيف أعمدته فقط، ولا
+    // يغيّر فهرس الهوية بعد اعتماد Option A. الحالة الابتدائية تطابق الجدول
+    // الإنتاجي تحت ملكية rsvp-handler.php
     // (UNIQUE KEY event_phone (event_id, guest_phone) + KEY event_id (event_id))
     // تماماً كما في includes/rsvp-handler.php::pge_create_rsvp_table(). ───────
     public $rsvps_columns = [
@@ -521,9 +521,8 @@ class Fake_Wpdb_Checkin_Engine
             return 1;
         }
 
-        // Blocker Fix #2: ALTER TABLE الحقيقية الصادرة عن PGE_Checkin_Schema
-        // (ensure_rsvp_columns()/ensure_phone_index_not_unique()) — تُطبَّق
-        // فعلياً على حالة Schema المُتتبَّعة، لا Bypass.
+        // ALTER TABLE الحقيقية الصادرة عن PGE_Checkin_Schema::ensure_rsvp_columns()
+        // تُطبَّق فعلياً على حالة Schema المُتتبَّعة، لا Bypass.
         if (preg_match('/ALTER TABLE\s+(\S+)\s+ADD COLUMN\s+(\w+)/i', $sql, $m)) {
             if ($this->which_table($m[1]) === 'rsvps' && !in_array($m[2], $this->rsvps_columns, true)) {
                 $this->rsvps_columns[] = $m[2];
@@ -599,11 +598,9 @@ class Fake_Wpdb_Checkin_Engine
             $id = $this->sessions_next_id++;
             $this->sessions[$id] = array_merge(['id' => $id], $data);
         } elseif ($which === 'rsvps') {
-            // Blocker Fix #2: الإنفاذ الآن مشروط بحالة الفهرس الفعلية (لا قاعدة
-            // ثابتة) — يُقرَأ من $this->rsvps_indexes التي لا تتغيّر إلا عبر
-            // ALTER TABLE الحقيقية الصادرة عن PGE_Checkin_Schema::maybe_upgrade().
-            // قبل الترقية: UNIQUE قائم → إنفاذ كالسابق تماماً. بعد الترقية: لا
-            // إنفاذ → صفان بنفس الهاتف مسموحان (Blocking Issue #1).
+            // الإنفاذ مشروط بحالة الفهرس الفعلية. وفق Option A يبقى UNIQUE
+            // قائماً قبل وبعد PGE_Checkin_Schema::maybe_upgrade()؛ سيناريو
+            // Shared Phone القديم أدناه يبقى تعارض عقد مؤجلاً إلى Phase E.
             if ($this->phone_unique_index_active()) {
                 foreach ($this->rsvps as $row) {
                     if ((int) $row['event_id'] === (int) $data['event_id'] && $row['guest_phone'] === $data['guest_phone']) {
@@ -1154,10 +1151,10 @@ check_true(
 unset($_COOKIE[PGE_Supervisor_Session::SESSION_COOKIE_NAME]);
 
 // ============================================================================
-// السيناريو 13 (Blocker Fix #2): ترقية Schema الإنتاجية الحقيقية — إزالة
-// UNIQUE (event_id, guest_phone) عبر PGE_Checkin_Schema::maybe_upgrade()
+// السيناريو 13 (Option A، Phase A): ترقية Check-in لا تغيّر ملكية/فهرس RSVP؛
+// UNIQUE (event_id, guest_phone) يبقى تحت ملكية rsvp-handler.php.
 // ============================================================================
-echo "\n=== السيناريو 13: ترقية Schema الحقيقية (إزالة UNIQUE على الهاتف) ===\n";
+echo "\n=== السيناريو 13: ترقية Check-in لا تغيّر UNIQUE على الهاتف ===\n";
 // يُشغَّل هنا PGE_Checkin_Schema::maybe_upgrade() **الحقيقي بلا أي تعديل** —
 // لا محاكاة منطقية موازية. $wpdb الوهمي يُطبِّق فعلياً كل ALTER TABLE/SHOW
 // INDEX/SHOW COLUMNS الصادرة عنه (راجع Fake_Wpdb_Checkin_Engine أعلاه) — هذا
@@ -1204,13 +1201,12 @@ foreach ($phone_pair_indexes as $name => $meta) {
         }
     }
 }
-check_true('13. يوجد فهرس على (event_id, guest_phone) بالترتيب الصحيح', $found_non_unique_pair);
-check_true('13. Non_unique = 1 لذلك الفهرس', $found_non_unique_pair);
-check_true('13. لا يوجد أي فهرس UNIQUE متبقٍّ على نفس الزوج', !$found_unique_pair);
+check_true('13. يوجد UNIQUE على (event_id, guest_phone) بالترتيب الصحيح', $found_unique_pair);
+check_true('13. Check-in Schema لم ينشئ فهرساً non-unique بديلاً', !$found_non_unique_pair);
 
-// بعد الترقية: نفس عملية الإدراج المرفوضة سابقاً تنجح الآن حقيقةً.
+// بعد ترقية Check-in: نفس عملية الإدراج تبقى مرفوضة لأن UNIQUE لم يتغير.
 $insert_after_b = $wpdb->insert($table_name_13, ['event_id' => $event_id_13, 'guest_phone' => $phone_before_migration, 'reply' => 'pending', 'companions' => 0, 'checked_in' => 0]);
-check_true('13. بعد الترقية: نفس الإدراج الذي رُفِض سابقاً ينجح الآن', $insert_after_b !== false);
+check_true('13. بعد ترقية Check-in: الإدراج المكرر يبقى مرفوضاً', $insert_after_b === false);
 
 // Idempotency — استدعاء ثانٍ متكرر لا يفشل ولا يُنشئ فهارس مكرَّرة.
 PGE_Checkin_Schema::maybe_upgrade();

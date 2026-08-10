@@ -1,12 +1,128 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-function pge_create_rsvp_table()
+if (!defined('PGE_RSVP_SCHEMA_VERSION')) {
+    define('PGE_RSVP_SCHEMA_VERSION', '1.0.0');
+}
+if (!defined('PGE_RSVP_SCHEMA_VERSION_OPTION')) {
+    define('PGE_RSVP_SCHEMA_VERSION_OPTION', 'pge_rsvp_schema_version');
+}
+
+/**
+ * RSVP Schema Owner — Option A.
+ *
+ * الهوية التجارية والوحيدة لصف RSVP هي (event_id, guest_phone) بعد تطبيع
+ * الهاتف في مسارات الإدخال. هذا الملف هو المالك authoritative للجدول الأساسي
+ * وللقيد UNIQUE المقابل. مخططات Check-in/Messaging تضيف أعمدتها وجداولها فقط.
+ */
+function pge_rsvp_schema_table_name()
 {
     global $wpdb;
-    $table_name = $wpdb->prefix . 'pge_event_rsvps';
+    return $wpdb->prefix . 'pge_event_rsvps';
+}
+
+function pge_rsvp_schema_read_index_map($table)
+{
+    global $wpdb;
+
+    $rows = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
+    if ($rows === null) {
+        return null;
+    }
+
+    $indexes = [];
+    foreach ($rows as $row) {
+        $name = (string) ($row['Key_name'] ?? '');
+        if ($name === '') {
+            continue;
+        }
+        if (!isset($indexes[$name])) {
+            $indexes[$name] = [
+                'non_unique' => (int) ($row['Non_unique'] ?? 1),
+                'columns'    => [],
+            ];
+        }
+        $indexes[$name]['columns'][(int) ($row['Seq_in_index'] ?? 0)] = (string) ($row['Column_name'] ?? '');
+    }
+
+    foreach ($indexes as $name => $meta) {
+        ksort($indexes[$name]['columns']);
+        $indexes[$name]['columns'] = array_values($indexes[$name]['columns']);
+    }
+
+    return $indexes;
+}
+
+function pge_rsvp_schema_has_unique_identity(array $indexes)
+{
+    $identity_columns = ['event_id', 'guest_phone'];
+    foreach ($indexes as $meta) {
+        if ($meta['columns'] === $identity_columns && (int) $meta['non_unique'] === 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function pge_rsvp_schema_has_redundant_phone_index(array $indexes)
+{
+    return isset($indexes['event_guest_phone'])
+        && $indexes['event_guest_phone']['columns'] === ['event_id', 'guest_phone']
+        && (int) $indexes['event_guest_phone']['non_unique'] === 1;
+}
+
+/**
+ * فحص سلامة البيانات قبل إنشاء UNIQUE. لا يعرض أو يسجل أرقام هواتف.
+ */
+function pge_rsvp_schema_identity_data_is_safe($table)
+{
+    global $wpdb;
+
+    $duplicate_groups = $wpdb->get_var(
+        "SELECT COUNT(*) FROM (
+            SELECT event_id, guest_phone
+            FROM $table
+            GROUP BY event_id, guest_phone
+            HAVING COUNT(*) > 1
+        ) pge_rsvp_duplicates"
+    );
+    if ($duplicate_groups === null || (int) $duplicate_groups > 0) {
+        error_log('PGE RSVP schema migration blocked: duplicate_rsvp_identity.');
+        return false;
+    }
+
+    // UNIQUE على القيمة الخام لا يكفي إذا كانت قيمتان مختلفتان تتطبعان إلى
+    // الهاتف نفسه. الفحص في PHP يعيد استخدام نفس التطبيع الفعلي بلا طباعة PII.
+    $rows = $wpdb->get_results("SELECT event_id, guest_phone FROM $table ORDER BY id ASC", ARRAY_A);
+    if ($rows === null) {
+        error_log('PGE RSVP schema migration blocked: identity_scan_failed.');
+        return false;
+    }
+
+    $seen = [];
+    foreach ($rows as $row) {
+        $raw_phone = (string) ($row['guest_phone'] ?? '');
+        $normalized_phone = function_exists('pge_norm_phone')
+            ? pge_norm_phone($raw_phone)
+            : preg_replace('/\D+/', '', $raw_phone);
+        $identity_key = (int) ($row['event_id'] ?? 0) . '|' . $normalized_phone;
+
+        if (isset($seen[$identity_key]) && $seen[$identity_key] !== $raw_phone) {
+            error_log('PGE RSVP schema migration blocked: normalized_rsvp_identity_collision.');
+            return false;
+        }
+        $seen[$identity_key] = $raw_phone;
+    }
+
+    return true;
+}
+
+function pge_rsvp_schema_create_base_table($table)
+{
+    global $wpdb;
+
     $charset_collate = $wpdb->get_charset_collate();
-    $sql = "CREATE TABLE $table_name (
+    $sql = "CREATE TABLE $table (
         id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         event_id BIGINT(20) UNSIGNED NOT NULL,
         guest_phone VARCHAR(32) NOT NULL,
@@ -23,10 +139,102 @@ function pge_create_rsvp_table()
         KEY event_id (event_id)
     ) $charset_collate;";
 
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta($sql);
 }
+
+/**
+ * يضمن عقد Option A فعلياً، حتى إذا كان رقم الإصدار الحالي مخزناً لكن الفهرس
+ * منحرفاً. كل ALTER يتبعه SHOW INDEX؛ لا يُحدّث الإصدار قبل اكتمال postconditions.
+ */
+function pge_maybe_upgrade_rsvp_schema()
+{
+    global $wpdb;
+
+    $table = pge_rsvp_schema_table_name();
+    $table_exists = (string) $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table;
+
+    if (!$table_exists) {
+        pge_rsvp_schema_create_base_table($table);
+        $table_exists = (string) $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table;
+        if (!$table_exists) {
+            error_log('PGE RSVP schema migration failed: base_table_missing_after_create.');
+            return false;
+        }
+    }
+
+    $indexes = pge_rsvp_schema_read_index_map($table);
+    if ($indexes === null) {
+        error_log('PGE RSVP schema migration failed: index_read_failed.');
+        return false;
+    }
+
+    if (!pge_rsvp_schema_has_unique_identity($indexes)) {
+        if (!pge_rsvp_schema_identity_data_is_safe($table)) {
+            return false;
+        }
+
+        // استبدال فهرس event_phone غير الفريد على الزوج نفسه يتم في ALTER
+        // واحد؛ عند فشله لا يُحذف الفهرس الاحتياطي event_guest_phone أدناه.
+        if (isset($indexes['event_phone'])) {
+            if ($indexes['event_phone']['columns'] === ['event_id', 'guest_phone']
+                && (int) $indexes['event_phone']['non_unique'] === 1) {
+                $altered = $wpdb->query(
+                    "ALTER TABLE $table DROP INDEX event_phone, ADD UNIQUE KEY event_phone (event_id, guest_phone)"
+                );
+            } else {
+                $altered = $wpdb->query(
+                    "ALTER TABLE $table ADD UNIQUE KEY event_phone_unique (event_id, guest_phone)"
+                );
+            }
+        } else {
+            $altered = $wpdb->query(
+                "ALTER TABLE $table ADD UNIQUE KEY event_phone (event_id, guest_phone)"
+            );
+        }
+
+        if ($altered === false) {
+            error_log('PGE RSVP schema migration failed: unique_identity_add_failed.');
+            return false;
+        }
+
+        $indexes = pge_rsvp_schema_read_index_map($table);
+        if ($indexes === null || !pge_rsvp_schema_has_unique_identity($indexes)) {
+            error_log('PGE RSVP schema migration failed: unique_identity_not_verified.');
+            return false;
+        }
+    }
+
+    // الفهرس غير الفريد لا يُحذف إلا بعد إثبات UNIQUE من الحالة الفعلية.
+    if (pge_rsvp_schema_has_redundant_phone_index($indexes)) {
+        $dropped = $wpdb->query("ALTER TABLE $table DROP INDEX event_guest_phone");
+        if ($dropped === false) {
+            error_log('PGE RSVP schema migration failed: redundant_index_drop_failed.');
+            return false;
+        }
+    }
+
+    $final_indexes = pge_rsvp_schema_read_index_map($table);
+    if ($final_indexes === null
+        || !pge_rsvp_schema_has_unique_identity($final_indexes)
+        || pge_rsvp_schema_has_redundant_phone_index($final_indexes)) {
+        error_log('PGE RSVP schema migration failed: identity_postconditions_failed.');
+        return false;
+    }
+
+    if ((string) get_option(PGE_RSVP_SCHEMA_VERSION_OPTION, '') !== PGE_RSVP_SCHEMA_VERSION) {
+        update_option(PGE_RSVP_SCHEMA_VERSION_OPTION, PGE_RSVP_SCHEMA_VERSION);
+    }
+
+    return true;
+}
+
+function pge_create_rsvp_table()
+{
+    return pge_maybe_upgrade_rsvp_schema();
+}
 register_activation_hook(PGE_PATH . 'pgevents-core.php', 'pge_create_rsvp_table');
+add_action('plugins_loaded', 'pge_maybe_upgrade_rsvp_schema');
 
 /**
  * ==========================================================================

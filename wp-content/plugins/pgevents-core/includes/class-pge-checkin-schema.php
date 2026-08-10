@@ -44,35 +44,16 @@ if (!defined('ABSPATH')) exit;
  * به لتعديل جدول موجود مسبقاً — نفس القرار المُتَّخذ سابقاً في
  * upgrade_to_1_2_0() لتلك الفئة).
  *
- * ============================================================================
- * SCHEMA_VERSION 1.1.0 (Blocking Issue #1) — إزالة UNIQUE عن (event_id, guest_phone)
- * ============================================================================
- * "The protected entity is the RSVP / invitation record, NOT the phone
- * number... Two different RSVP / invitation records within the same event
- * may share the same phone number." — الجدول الإنتاجي الفعلي
- * wp_pge_event_rsvps (المُعرَّف أصلاً في includes/rsvp-handler.php منذ ما قبل
- * هذه المرحلة) يحمل `UNIQUE KEY event_phone (event_id, guest_phone)` منذ
- * إنشائه الأول — هذا يتعارض مباشرة مع القرار المعماري أعلاه. هذا الإصدار
- * (1.1.0) يضيف خطوة ترقية ثالثة (ensure_phone_index_not_unique()) تكتشف أي
- * فهرس UNIQUE قائم فعلياً على بالضبط (event_id, guest_phone) — بصرف النظر عن
- * اسمه في أي بيئة منشورة (لا نفترض أنه 'event_phone' حصراً) — وتحذفه، ثم
- * تُنشئ بدلاً منه فهرساً عادياً (غير فريد) بنفس الأعمدة `event_guest_phone
- * (event_id, guest_phone)` إن لم يكن موجوداً أصلاً، ثم تتحقق فعلياً (SHOW
- * INDEX) أن لا فهرس UNIQUE تبقّى على نفس الزوج. لا تعديل على أي عمود أو صف
- * قائم — فهرس فقط. راجع includes/class-pge-guest-resolution-service.php
- * للتغييرات المصاحبة على طبقة القراءة (البحث بالهاتف يجب أن يدعم أكثر من
- * نتيجة صراحة بعد إزالة هذا القيد).
+ * SCHEMA_VERSION 1.1.0 يبقى رقم Check-in التاريخي الحالي، لكن هوية RSVP لم
+ * تعد من مسؤولية هذا المخطط. includes/rsvp-handler.php هو المالك authoritative
+ * للجدول الأساسي ولـUNIQUE(event_id, guest_phone) وترقيته المستقلة. هذا الملف
+ * ينشئ سجل Check-in ويضيف أعمدة Check-in الثلاثة فقط، ولا يضيف أو يحذف أو
+ * يغيّر أي فهرس لهوية RSVP.
  */
 class PGE_Checkin_Schema
 {
     const SCHEMA_VERSION = '1.1.0';
     const VERSION_OPTION = 'pge_checkin_schema_version';
-
-    /** الأعمدة المستهدَفة بترتيبها الصحيح — لا تغييره (Blocking Issue #1). */
-    const PHONE_INDEX_COLUMNS = ['event_id', 'guest_phone'];
-
-    /** اسم الفهرس غير الفريد الجديد المُراد ضمانه. */
-    const PHONE_INDEX_NAME = 'event_guest_phone';
 
     private static function audit_table_name()
     {
@@ -100,9 +81,8 @@ class PGE_Checkin_Schema
 
         $audit_ok = self::ensure_audit_table();
         $columns_ok = self::ensure_rsvp_columns();
-        $phone_index_ok = self::ensure_phone_index_not_unique();
 
-        if ($audit_ok && $columns_ok && $phone_index_ok) {
+        if ($audit_ok && $columns_ok) {
             update_option(self::VERSION_OPTION, self::SCHEMA_VERSION);
         }
         // فشل جزئي: لا يُحدَّث الإصدار المخزَّن، فيُعاد المحاولة كاملةً في
@@ -219,119 +199,6 @@ class PGE_Checkin_Schema
         return true;
     }
 
-    /**
-     * تجميع مساعد: يقرأ SHOW INDEX FROM $table ويُعيد خريطة
-     * [key_name => ['non_unique' => 0|1, 'columns' => [عمود بترتيب Seq_in_index]]]
-     * بعد استبعاد PRIMARY (لا علاقة له بهذا الفحص). يُعيد null عند فشل القراءة.
-     */
-    private static function read_index_map($table): ?array
-    {
-        global $wpdb;
-
-        $rows = $wpdb->get_results("SHOW INDEX FROM $table", ARRAY_A);
-        if ($rows === null) {
-            return null;
-        }
-
-        $keys = [];
-        foreach ($rows as $row) {
-            $name = (string) ($row['Key_name'] ?? '');
-            if ($name === '' || $name === 'PRIMARY') {
-                continue;
-            }
-            $seq = (int) ($row['Seq_in_index'] ?? 0);
-            if (!isset($keys[$name])) {
-                $keys[$name] = ['non_unique' => (int) ($row['Non_unique'] ?? 1), 'columns' => []];
-            }
-            $keys[$name]['columns'][$seq] = (string) ($row['Column_name'] ?? '');
-        }
-
-        foreach ($keys as $name => $meta) {
-            ksort($keys[$name]['columns']);
-            $keys[$name]['columns'] = array_values($keys[$name]['columns']);
-        }
-
-        return $keys;
-    }
-
-    /**
-     * ========================================================================
-     * Blocking Issue #1 — إزالة أي فهرس UNIQUE على (event_id, guest_phone)
-     * ========================================================================
-     * "Remove the unique constraint... Replace it with a normal non-unique
-     * index... The migration must safely detect and remove the existing
-     * unique index before creating the normal index." — منطق حذف ثم إنشاء،
-     * Idempotent بالكامل (استدعاء متكرر لا يفشل ولا يُنشئ فهارس مكرَّرة)، مع
-     * تحقّق نهائي فعلي عبر SHOW INDEX (لا افتراض نجاح ALTER TABLE أعمى، بنفس
-     * فلسفة ensure_rsvp_columns() أعلاه).
-     */
-    private static function ensure_phone_index_not_unique(): bool
-    {
-        global $wpdb;
-        $table = self::rsvps_table_name();
-        $target = self::PHONE_INDEX_COLUMNS;
-
-        $keys = self::read_index_map($table);
-        if ($keys === null) {
-            return false;
-        }
-
-        // 1) حذف أي فهرس UNIQUE قائم فعلياً على بالضبط (event_id, guest_phone)
-        //    — بصرف النظر عن اسمه (لا نفترض 'event_phone' حصراً في كل بيئة).
-        foreach ($keys as $name => $meta) {
-            if ($meta['columns'] === $target && (int) $meta['non_unique'] === 0) {
-                $dropped = $wpdb->query("ALTER TABLE $table DROP INDEX $name");
-                if ($dropped === false) {
-                    return false;
-                }
-            }
-        }
-
-        // 2) إعادة قراءة الحالة بعد الحذف — التأكد من عدم وجود فهرس غير فريد
-        //    مسبقاً بنفس الأعمدة قبل إنشاء واحد جديد (تجنّب فهارس مكرَّرة).
-        $keys_after_drop = self::read_index_map($table);
-        if ($keys_after_drop === null) {
-            return false;
-        }
-
-        $has_non_unique_pair = false;
-        foreach ($keys_after_drop as $meta) {
-            if ($meta['columns'] === $target && (int) $meta['non_unique'] === 1) {
-                $has_non_unique_pair = true;
-                break;
-            }
-        }
-
-        if (!$has_non_unique_pair) {
-            $created = $wpdb->query(
-                'ALTER TABLE ' . $table . ' ADD INDEX ' . self::PHONE_INDEX_NAME . ' (' . implode(', ', $target) . ')'
-            );
-            if ($created === false) {
-                return false;
-            }
-        }
-
-        // 3) التحقّق النهائي الفعلي (Verification المطلوب صراحةً):
-        //    - يوجد فهرس على (event_id, guest_phone) بنفس ترتيب الأعمدة.
-        //    - Non_unique = 1 لذلك الفهرس.
-        //    - لا يوجد أي فهرس UNIQUE متبقٍّ على نفس الزوج.
-        $final_keys = self::read_index_map($table);
-        if ($final_keys === null) {
-            return false;
-        }
-
-        $found_non_unique_pair = false;
-        foreach ($final_keys as $meta) {
-            if ($meta['columns'] === $target) {
-                if ((int) $meta['non_unique'] === 0) {
-                    return false;
-                }
-                $found_non_unique_pair = true;
-            }
-        }
-
-        return $found_non_unique_pair;
-    }
 }
 
 register_activation_hook(PGE_PATH . 'pgevents-core.php', ['PGE_Checkin_Schema', 'maybe_upgrade']);
