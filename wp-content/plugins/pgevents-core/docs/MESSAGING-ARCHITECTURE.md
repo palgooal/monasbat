@@ -1,10 +1,11 @@
-# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
 > Foundation فقط لـReminder/Thank You، بلا إرسال فعلي؛ Phase 3 — إرسال Reminder
 > اليدوي الفعلي، أول مسار إرسال حقيقي يستخدم بنية Phase 1/2؛ Phase 4A-2 — Claim
-> lease/reclaim؛ Phase 4A-3 — Schema drift hardening، وكلاهما بلا إرسال Thank You).
+> lease/reclaim؛ Phase 4A-3 — Schema drift hardening؛ Phase 4B-1 — Recipient
+> eligibility read-only لـThank You، وكلها بلا إرسال Thank You).
 > لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
@@ -354,6 +355,36 @@ Resolver يُطبِّع كل رقم بـ`pge_norm_phone()` (لا Normalizer جد
 ويحسبه في `skipped_integrity_error`. لا تتغير بقية فلاتر Reminder، ولا علاقة
 لهذا الحارس بـCheck-in أو Credits أو Invitation queue.
 
+#### Phase 4B-1 — أهلية مستلمي Thank You (IMPLEMENTED، قراءة فقط)
+
+عند `message_type=thank_you` يبدأ الـResolver حصراً من خريطة الدعوات الحالية
+`pge_event_guests_get_map()`؛ لذلك لا تتسرب صفوف RSVP اليتيمة بعد Hard Delete أو
+Phone Change. تُستبعد الدعوة ذات `invitation_status=cancelled` لأن الإلغاء إبطال
+إداري للدعوة الحالية، حتى لو بقي صف RSVP تاريخي بقيمة `checked_in=1`.
+
+لكل هاتف حالي نشط يُستدعى `pge_rsvp_find_canonical_by_phone()`:
+
+- `not_found` أو `rsvp_id` غير صالح: غير مؤهل ويُحسب في `skipped_no_rsvp`.
+- `integrity_error`: Fail closed بلا اختيار صف اعتباطي، ويُحسب في
+  `skipped_integrity_error`.
+- `found`: يجب أن يجتاز الصف عقد الدورة المركزية
+  `PGE_Invitation_Repository::is_rsvp_row_current()`، وإلا يُحسب في
+  `skipped_stale_lifecycle`.
+- بعد ذلك فقط تكون الأهلية عند `checked_in=1`. قيمة `reply` (`yes`/`no`/pending)
+  لا تدخل في القرار إطلاقاً، ولا يجوز استعمال RSVP=yes بديلاً عن Check-in.
+
+حمولة كل مستلم المؤهل هي `phone` + الـ`rsvp_id` canonical + `name`. لا يفحص
+الـResolver قيمة `thank_you_sent_at` عمداً: هذه طبقة eligibility فقط، بينما
+`PGE_Thank_You_Claim` تبقى السلطة الوحيدة لقرار once-per-guest/event ضمن دورة
+الدعوة الحالية. لا Claim ولا Log ولا إرسال ولا كتابة قاعدة بيانات ولا Lifecycle
+reset في هذه الطبقة. الملخص يعيد `total_current_invitations` و`eligible` وعدادات
+الاستبعاد: invalid phone، cancelled، not checked in، no RSVP، integrity error،
+stale lifecycle.
+
+الاختبار المركزي `tests/test-thank-you-recipient-resolver-phase4b1.php` يحمّل
+الـResolver الإنتاجي ويثبت الأهلية وعزل المناسبات وHard Delete/Reinvite وPhone
+Change وFail-closed عند النزاهة والدورة القديمة، مع إثبات عدم تنفيذ أي كتابة.
+
 ### 5.3 `PGE_Reminder_Message_Service` — تنسيق العملية الكاملة
 
 **الملف:** `includes/class-pge-reminder-message-service.php` (جديد).
@@ -492,9 +523,8 @@ Ledger/Replacement Entitlements غير محمَّلتين إطلاقاً في ه
   يوجد إرسال Thank You فعلي أو Caller إنتاجي بعد.
 - شرط عدم توريث `thank_you_sent_at` حُسم في Phase C عبر reset دورة الدعوة
   authoritative (راجع §4.5). لا يعني ذلك أن إرسال Thank You بدأ.
-- Recipient Resolver لـ`checked_in=1` (مستهدف Thank You) — `PGE_Message_
-  Recipient_Resolver` الحالي (§5.2) يدعم `reminder` فقط في Phase 3؛ توسيعه
-  لـ`thank_you` يحتاج فلتراً جديداً غير مُنفَّذ بعد.
+- Recipient Resolver لـ`checked_in=1` نُفّذ قراءة فقط في Phase 4B-1 (§5.2)،
+  لكنه لا يرسل ولا ينفّذ Claim ولا يملك Caller إنتاجياً بعد.
 - أي واجهة مستخدم لإطلاق Thank You.
 - إرسال Reminder عبر UltraMsg — Cartat فقط في Phase 3.
 - ربط `message_type` ببنية الـQueue الحالية للدعوة (`$queue['message_type']`)

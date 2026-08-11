@@ -77,9 +77,12 @@ git diff --cached
 - Phase 1 — COMPLETE: Message abstraction.
 - Phase 2 — COMPLETE: Tracking/schema foundation.
 - Phase 3 — COMPLETE: Manual Reminder.
-- Phase 4 — NOT STARTED: Manual Thank You.
+- Phase 4 — IN PROGRESS: Manual Thank You foundations فقط؛ لا إرسال أو AJAX/UI بعد.
 - Phase 4A-2 — COMPLETE: lifecycle-aware Thank You Claim lease/reclaim
   foundation فقط؛ لا إرسال Thank You أو AJAX/UI بعد.
+- Phase 4A-3 — COMPLETE: Messaging schema drift hardening.
+- Phase 4B-1 — COMPLETE: read-only Thank You recipient eligibility عبر الدعوة
+  الحالية وcanonical RSVP و`checked_in=1`؛ لا Claim execution أو إرسال أو AJAX/UI.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 
