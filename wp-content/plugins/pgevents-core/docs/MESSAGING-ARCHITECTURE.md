@@ -1,9 +1,10 @@
-# نظام رسائل المناسبة (Messaging Architecture) — Phase 0 + Phase 1 + Phase 2 + Phase 3
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
 > Foundation فقط لـReminder/Thank You، بلا إرسال فعلي؛ Phase 3 — إرسال Reminder
 > اليدوي الفعلي، أول مسار إرسال حقيقي يستخدم بنية Phase 1/2). لا يوثّق تفاصيل
+> وPhase 4A-2 — Claim lease/reclaim فقط بلا إرسال Thank You. لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
 > لتلك المراحل عند بدء تنفيذها فعلياً.
@@ -183,7 +184,7 @@ Phase 2 لا تضيف أي إرسال حقيقي لـReminder أو Thank You —
 - عمود جديد واحد على `{$wpdb->prefix}pge_event_rsvps`: `thank_you_sent_at
   DATETIME NULL` — لا تعديل على أي عمود قائم.
 - جدول جديد `{$wpdb->prefix}pge_message_log`: `id, event_id, rsvp_id
-  (nullable), guest_phone, message_type, batch_id, status, provider
+  (nullable), lifecycle_started_at (nullable), guest_phone, message_type, batch_id, status, provider
   (nullable), actor_user_id, created_at, sent_at (nullable)`. فهارس:
   `KEY event_type (event_id, message_type)`، `KEY batch_id (batch_id)`،
   `KEY status (status)` — الحد الأدنى المبرَّر لكل استعلام مطلوب فعلياً في
@@ -216,8 +217,11 @@ tokens، بيانات اعتماد المزوّد، أو استجابة API ال
 المؤكَّد فقط. اختير **(B)**: خطر (A) البنيوي هو أن أي انقطاع غير متوقَّع بين
 بدء المحاولة وRollback يترك `thank_you_sent_at` مكتوبة رغم عدم إرسال أي
 رسالة فعلياً — يكذب العقد أعلاه بشكل دائم لا يمكن اكتشافه لاحقاً بلا تدخّل
-يدوي. الحارس المُنفَّذ: سجل `pge_message_log` بحالة `pending` لنفس
-`rsvp_id`/`thank_you` — طالما هو موجود، لا `claim()` جديد يُقبَل. `GET_LOCK`
+يدوي. الحارس المُنفَّذ: سجل `pge_message_log` بحالة `pending` لهوية
+`event_id + rsvp_id + lifecycle_started_at + thank_you`. قيمة
+`lifecycle_started_at` هي snapshot من `RSVP.created_at`، التي تمثل بداية
+Current Lifecycle وفق Phase C/D. السجلات القديمة بلا marker لا تحجب دورة
+جديدة. `GET_LOCK`
 (نفس نمط `PGE_Checkin_Recorder`/`PGE_Invitation_Credit_Ledger`) يُستخدَم فقط
 للحظة القصيرة اللازمة لإنشاء سجل الحارس ذرياً — لا يُحمَل عبر الإرسال الخارجي
 الفعلي (الذي يحدث لاحقاً، بعد Release القفل، بين `claim()` و`finalize_*()`).
@@ -228,12 +232,17 @@ tokens، بيانات اعتماد المزوّد، أو استجابة API ال
 `finalize_failure($log_id, $status)` (يُحرِّر الحارس، يسمح بإعادة المحاولة —
 `thank_you_sent_at` لا يُلمَس إطلاقاً).
 
-**قيد معروف مقبول صراحة (Foundation فقط):** إن تعطَّلت العملية بعد `claim()`
-(سجل `pending` أُنشئ) ولم يُستدعَ `finalize_*()` إطلاقاً، يبقى الحارس عالقاً
-إلى الأبد (نفس فئة الخطر التي واجهها `PGE_Invitation_Credit_Ledger::
-claim_for_delivery()` قبل إضافة Lease لاحقاً). لا آلية Lease/Reclaim هنا
-بعد — غير مطلوبة في Phase 2 (لا إرسال فعلي بعد يجعل هذا الخطر واقعياً)، تُترَك
-صراحةً لمرحلة تفعيل الإرسال الفعلي إن ثبتت الحاجة.
+**Phase 4A-2 — Lease/Reclaim:** `CLAIM_LEASE_SECONDS = 120` هو المصدر المركزي
+للمهلة؛ يطابق Invitation Credit Ledger، ويتجاوز Cartat timeout البالغ 20 ثانية
+بهامش واضح. `pending` أحدث من المهلة تمنع مطالبة متوازية، أما `pending` المتقادمة
+فتتحول إلى `failed` ثم تُنشأ مطالبة جديدة. `ambiguous_transport_error` الحديثة
+تمنع retry فورياً حتى نهاية نفس المهلة، ثم يمكن retry دون status جديد. مطالبة
+Lifecycle قديمة لا تحجب الجديدة حتى لو كانت حديثة زمنياً.
+
+`finalize_success()` و`finalize_failure()` تعيدان قراءة الـLog والـRSVP داخل
+قفل قصير وتتحققان من تطابق marker. نجاح متأخر من دورة قديمة لا يستطيع كتابة
+`thank_you_sent_at` على الدورة الحالية؛ والفشل المتأخر لا يغير حالتها. لا يُحمَل
+أي DB lock أثناء HTTP مستقبلي.
 
 ### 4.4 `PGE_Message_Batch` — مولّد `batch_id`
 
@@ -272,15 +281,16 @@ postconditions ويستخدم compensation لإعادة خرائط الدعوة 
 
 ### 4.6 الإثبات التنفيذي
 
-ملف `tests/test-messaging-phase2.php` (46 فحصاً، جميعها ناجحة، عبر نفس
+ملف `tests/test-messaging-phase2.php` (74 فحصاً، جميعها ناجحة، عبر نفس
 مُفسِّر PHP 8.3 الحقيقي المُستخدَم في Phase 1) يُثبت: الترقية تضيف العمود
 والجدول فعلياً، `create_pending()` يرفض الأنواع غير المعروفة ولا يخزّن نص
 رسالة/tokens، `mark_sent()`/`mark_failed()` ذريان وIdempotent،
 `query_by_batch()`/`query_by_event_type()` تعملان بشكل صحيح، `claim()`
-يمنع مطالبتين متزامنتين لنفس الضيف (سواء عبر الحارس أو عبر قفل SQL محجوز
-فعلياً)، `finalize_success()` يكتب `thank_you_sent_at` فقط عند النجاح
+يمنع مطالبتين متزامنتين لنفس الضيف في Harness متسلسل يحاكي advisory lock
+(لم يُشغَّل اتصالا MySQL متوازيان فعلياً)، `finalize_success()` يكتب `thank_you_sent_at` فقط عند النجاح
 المؤكَّد، `finalize_failure()` يسمح بإعادة المحاولة بلا أي أثر على العمود،
-مطالبة لضيف أُرسل له الشكر مسبقاً تُرفَض دائماً، ضيفان/مناسبتان مختلفتان
+مطالبة لضيف أُرسل له الشكر مسبقاً تُرفَض دائماً، وLease/Reclaim وLifecycle
+reuse وlate finalize وambiguous retry window مغطاة، ضيفان/مناسبتان مختلفتان
 مستقلان تماماً، ولا أثر لأي من هذا في مسارات الدعوة/RSVP/Check-in/Ledger
 القائمة (فحص ثابت على المصدر الفعلي).
 
@@ -466,8 +476,8 @@ Ledger/Replacement Entitlements غير محمَّلتين إطلاقاً في ه
   (Schema + Log + Claim) جاهزة (Phase 2) لكن بلا Caller.
 - أي جدولة تلقائية (Automatic Reminder/Cron يومي بحسب تاريخ المناسبة) —
   الوحيد المسموح هو Cron استكمال دفعة Reminder بدأها المستخدم يدوياً (§5.4).
-- Lease/Reclaim لمطالبات Thank You العالقة (راجع §4.3 "قيد معروف مقبول") —
-  غير مُنفَّذ، غير مطلوب طالما لا إرسال Thank You فعلي.
+- Lease/Reclaim لمطالبات Thank You العالقة نُفّذ في Phase 4A-2 (§4.3)، لكن لا
+  يوجد إرسال Thank You فعلي أو Caller إنتاجي بعد.
 - شرط عدم توريث `thank_you_sent_at` حُسم في Phase C عبر reset دورة الدعوة
   authoritative (راجع §4.5). لا يعني ذلك أن إرسال Thank You بدأ.
 - Recipient Resolver لـ`checked_in=1` (مستهدف Thank You) — `PGE_Message_

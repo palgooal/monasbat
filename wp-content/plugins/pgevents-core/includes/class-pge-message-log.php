@@ -64,7 +64,7 @@ class PGE_Message_Log
      * معروف (PART 6 — لا قائمة موازية جديدة، PGE_Message_Type هو مصدر الحقيقة
      * الوحيد). يرفض أيضاً event_id/batch_id غير صالحين.
      *
-     * @param array{event_id:int,rsvp_id?:int|null,guest_phone?:string,message_type:string,batch_id:string,provider?:string|null,actor_user_id?:int} $data
+     * @param array{event_id:int,rsvp_id?:int|null,lifecycle_started_at?:string|null,guest_phone?:string,message_type:string,batch_id:string,provider?:string|null,actor_user_id?:int} $data
      * @return int|false معرّف السجل الجديد، أو false عند رفض/فشل.
      */
     public static function create_pending(array $data)
@@ -92,6 +92,14 @@ class PGE_Message_Log
             }
         }
 
+        $lifecycle_started_at = null;
+        if (array_key_exists('lifecycle_started_at', $data) && is_scalar($data['lifecycle_started_at'])) {
+            $candidate = trim((string) $data['lifecycle_started_at']);
+            if ($candidate !== '') {
+                $lifecycle_started_at = $candidate;
+            }
+        }
+
         $guest_phone_raw = $data['guest_phone'] ?? '';
         $guest_phone = function_exists('pge_norm_phone')
             ? pge_norm_phone($guest_phone_raw)
@@ -111,6 +119,7 @@ class PGE_Message_Log
             [
                 'event_id'      => $event_id,
                 'rsvp_id'       => $rsvp_id,
+                'lifecycle_started_at' => $lifecycle_started_at,
                 'guest_phone'   => $guest_phone,
                 'message_type'  => $normalized_type,
                 'batch_id'      => $batch_id,
@@ -120,7 +129,7 @@ class PGE_Message_Log
                 'created_at'    => current_time('mysql', true),
                 'sent_at'       => null,
             ],
-            ['%d', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']
+            ['%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s']
         );
 
         if (!$inserted) {
@@ -128,6 +137,50 @@ class PGE_Message_Log
         }
 
         return (int) $wpdb->insert_id;
+    }
+
+    /** جلب سجل واحد بمعرّفه؛ قراءة فقط للاستخدام في fencing الخاص بالـClaim. */
+    public static function find_by_id($log_id): ?array
+    {
+        $log_id = (int) $log_id;
+        if ($log_id <= 0) {
+            return null;
+        }
+
+        global $wpdb;
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM " . self::table_name() . " WHERE id = %d",
+            $log_id
+        ), ARRAY_A);
+
+        return is_array($row) ? $row : null;
+    }
+
+    /**
+     * سجلات Thank You لهوية Claim واحدة داخل lifecycle واحدة. لا قرار Lease
+     * هنا؛ الطبقة تحفظ/تقرأ فقط، وPGE_Thank_You_Claim يملك Business Logic.
+     *
+     * @return array<int,array>
+     */
+    public static function query_claims_for_lifecycle($event_id, $rsvp_id, $lifecycle_started_at): array
+    {
+        $event_id = (int) $event_id;
+        $rsvp_id = (int) $rsvp_id;
+        $lifecycle_started_at = is_scalar($lifecycle_started_at) ? trim((string) $lifecycle_started_at) : '';
+        if ($event_id <= 0 || $rsvp_id <= 0 || $lifecycle_started_at === '') {
+            return [];
+        }
+
+        global $wpdb;
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM " . self::table_name() . " WHERE event_id = %d AND rsvp_id = %d AND message_type = %s AND lifecycle_started_at = %s ORDER BY id ASC",
+            $event_id,
+            $rsvp_id,
+            PGE_Message_Type::THANK_YOU,
+            $lifecycle_started_at
+        ), ARRAY_A);
+
+        return is_array($rows) ? $rows : [];
     }
 
     /**

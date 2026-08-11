@@ -78,6 +78,8 @@ git diff --cached
 - Phase 2 — COMPLETE: Tracking/schema foundation.
 - Phase 3 — COMPLETE: Manual Reminder.
 - Phase 4 — NOT STARTED: Manual Thank You.
+- Phase 4A-2 — COMPLETE: lifecycle-aware Thank You Claim lease/reclaim
+  foundation فقط؛ لا إرسال Thank You أو AJAX/UI بعد.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 
@@ -95,6 +97,9 @@ Thank You المخطط:
 - للحاضرين فعلياً (`checked_in = 1`) فقط.
 - مرة واحدة لكل ضيف/مناسبة.
 - لا يستهلك Credits.
+- مطالبات Thank You يجب أن تكون lifecycle-aware؛ `rsvp_id` وحده غير كافٍ لأن
+  الصف نفسه قد يُعاد استخدامه، وأي finalize متأخر يجب أن يُرفَض عند اختلاف
+  marker دورة RSVP الحالية.
 
 لا تغيّر Invitation send path أثناء تطوير Reminder/Thank You إلا إذا طلبت المهمة ذلك صراحة. Invitation queue/credits/provider semantics مستقرة وحساسة.
 
@@ -103,7 +108,9 @@ Thank You المخطط:
 لا تبدأ Phase 4 قبل حسم هذه الشروط المعروفة؛ ليست مهاماً للتنفيذ تلقائياً:
 
 1. حُسم في Phase C: إعادة استخدام RSVP row تصفّر `thank_you_sent_at` عبر مسار إنشاء الدعوة authoritative؛ حافظ على هذا العقد.
-2. يجب اتخاذ قرار واضح لمعالجة stale pending claim / lease / reclaim في `PGE_Thank_You_Claim` إذا توقفت العملية بعد `claim()` وقبل `finalize_*()`.
+2. حُسم في Phase 4A-2: Claim مربوطة بـCurrent RSVP lifecycle، وLease مدتها
+   120 ثانية تسمح باسترداد `pending` العالقة وتحمي من late finalize؛ حافظ على
+   هذا العقد قبل إضافة أي إرسال فعلي.
 3. Recipient Resolver لـThank You يجب أن يعتمد `checked_in = 1`، لا RSVP=`yes`.
 
 RSVP وCheck-in مفهومان منفصلان. أهلية Thank You المخططة تعتمد Check-in الفعلي، ولا يجوز استخدام RSVP=`yes` بديلاً عنه.

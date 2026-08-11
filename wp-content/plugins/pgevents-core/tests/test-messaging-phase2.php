@@ -32,7 +32,8 @@ function add_filter(...$args) { /* no-op */ }
 function register_activation_hook(...$args) { /* no-op */ }
 
 if (!function_exists('current_time')) {
-    function current_time($type = 'mysql', $gmt = 0) { return '2026-08-10 12:00:00'; }
+    $GLOBALS['__test_now'] = '2026-08-10 12:00:00';
+    function current_time($type = 'mysql', $gmt = 0) { return $GLOBALS['__test_now']; }
 }
 
 if (!function_exists('pge_norm_phone')) {
@@ -96,6 +97,8 @@ class Fake_Wpdb_Messaging_Phase2
     public $lock_acquire_log = [];
     public $lock_release_log = [];
     public $force_lock_unavailable = false;
+    public $force_message_log_insert_failure = false;
+    public $throw_message_log_insert_exception = false;
 
     public function get_charset_collate() { return ''; }
 
@@ -197,8 +200,12 @@ class Fake_Wpdb_Messaging_Phase2
         }
 
         if (preg_match('/ALTER TABLE\s+(\S+)\s+ADD COLUMN\s+(\w+)/i', $sql, $m)) {
-            if ($this->which_table($m[1]) === 'rsvps' && !in_array($m[2], $this->rsvps_columns, true)) {
+            $which = $this->which_table($m[1]);
+            if ($which === 'rsvps' && !in_array($m[2], $this->rsvps_columns, true)) {
                 $this->rsvps_columns[] = $m[2];
+            }
+            if ($which === 'message_log' && !in_array($m[2], $this->message_log_columns, true)) {
+                $this->message_log_columns[] = $m[2];
             }
             return 1;
         }
@@ -271,13 +278,19 @@ class Fake_Wpdb_Messaging_Phase2
 
         if ($which === 'rsvps') {
             $id = $this->rsvps_next_id++;
-            $defaults = ['thank_you_sent_at' => null];
+            $defaults = ['thank_you_sent_at' => null, 'created_at' => current_time('mysql', true)];
             $this->rsvps[$id] = array_merge(['id' => $id], $defaults, $data);
             $this->insert_id = $id;
             return 1;
         }
 
         // message_log
+        if ($this->throw_message_log_insert_exception) {
+            throw new RuntimeException('simulated_message_log_insert_exception');
+        }
+        if ($this->force_message_log_insert_failure) {
+            return false;
+        }
         $id = $this->message_log_next_id++;
         $this->message_log[$id] = array_merge(['id' => $id], $data);
         $this->insert_id = $id;
@@ -329,7 +342,7 @@ class Fake_Wpdb_Messaging_Phase2
     public function ensure_message_log_table_created()
     {
         if (empty($this->message_log_columns)) {
-            $this->message_log_columns = ['id', 'event_id', 'rsvp_id', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
+            $this->message_log_columns = ['id', 'event_id', 'rsvp_id', 'lifecycle_started_at', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
         }
     }
 
@@ -342,6 +355,7 @@ class Fake_Wpdb_Messaging_Phase2
             'event_id' => $event_id,
             'guest_phone' => $guest_phone,
             'thank_you_sent_at' => $thank_you_sent_at,
+            'created_at' => current_time('mysql', true),
         ];
         return $id;
     }
@@ -407,9 +421,17 @@ check("2. thank_you_sent_at nullable — صف جديد بلا قيمة يُقر�
 
 check_true("3. جدول pge_message_log موجود بعد الترقية", !empty($wpdb->message_log_columns));
 
-$required_log_columns = ['id', 'event_id', 'rsvp_id', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
+$required_log_columns = ['id', 'event_id', 'rsvp_id', 'lifecycle_started_at', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
 $missing_columns = array_diff($required_log_columns, $wpdb->message_log_columns);
 check_true("4. الأعمدة الأساسية لـmessage_log كلها موجودة", empty($missing_columns));
+
+// Upgrade path من Schema 1.0.0: dbDelta لا يضيف العمود في هذا الـFake، لذلك
+// يثبت الفحص أن ALTER additive الصريح يعمل على جدول قائم قبل اعتماد الإصدار.
+$wpdb->message_log_columns = array_values(array_diff($wpdb->message_log_columns, ['lifecycle_started_at']));
+$GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION] = '1.0.0';
+PGE_Messaging_Schema::maybe_upgrade();
+check_true('4b. upgrade من 1.0.0 يضيف lifecycle_started_at إلى الجدول القائم', in_array('lifecycle_started_at', $wpdb->message_log_columns, true));
+check('4c. schema version لا تُعتمد إلا بعد postcondition', $GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION] ?? null, PGE_Messaging_Schema::SCHEMA_VERSION);
 
 // 5. indexes الأساسية — في هذا الـFake لا محرّك SQL عام يفهرس فعلياً، لكن
 // الدليل العملي المتاح هو أن الـSchema الحقيقي (class-pge-messaging-schema.php)
@@ -562,6 +584,109 @@ check("21b. سجل message_log لـrid_e لا يظهر ضمن سجلات rid_f",
 // أعلاه أن كليهما نجح رغم قرب توقيت الاستدعاءات) — تحقّق إضافي أن حالتيهما
 // النهائيتين مستقلتان تماماً (واحد sent، الآخر claimed مجدداً بلا sent).
 check_true("22. مناسبة 9201 (rid_e، sent) ومناسبة 9202 (rid_f، غير sent بعد) مستقلتان تماماً", !empty($wpdb->rsvps[$rid_e]['thank_you_sent_at']) && empty($wpdb->rsvps[$rid_f]['thank_you_sent_at']));
+
+// ══════════════════════════════════════════════════════════════════════
+// Phase 4A-2 — Lifecycle-aware Lease/Reclaim central claim suite
+// التزامن هنا simulated/serialized عبر Fake $wpdb؛ لا اتصالا MySQL حقيقيان.
+// ══════════════════════════════════════════════════════════════════════
+
+$GLOBALS['__test_now'] = '2026-08-10 13:00:00';
+$rid_lease = $wpdb->seed_rsvp(9301, '966500000101');
+$lease_first = PGE_Thank_You_Claim::claim(9301, $rid_lease, '966500000101', 'lease-first', 77);
+check('27. first lifecycle-aware claim succeeds', $lease_first['result'] ?? null, 'claimed');
+check('28. claim stores the RSVP lifecycle marker', $wpdb->message_log[$lease_first['log_id']]['lifecycle_started_at'] ?? null, $wpdb->rsvps[$rid_lease]['created_at']);
+check_true('29. active pending makes can_send false', PGE_Thank_You_Claim::can_send($rid_lease) === false);
+
+$GLOBALS['__test_now'] = '2026-08-10 13:01:59';
+$lease_active = PGE_Thank_You_Claim::claim(9301, $rid_lease, '966500000101', 'lease-active', 77);
+check('30. pending younger than 120 seconds blocks', $lease_active['result'] ?? null, 'already_in_progress');
+
+$GLOBALS['__test_now'] = '2026-08-10 13:02:00';
+$lease_reclaimed = PGE_Thank_You_Claim::claim(9301, $rid_lease, '966500000101', 'lease-reclaimed', 77);
+check('31. pending at lease boundary can be reclaimed', $lease_reclaimed['result'] ?? null, 'claimed');
+check('32. reclaimed stale pending is closed with existing failed status', $wpdb->message_log[$lease_first['log_id']]['status'] ?? null, PGE_Message_Log::STATUS_FAILED);
+check('33. reclaim creates a distinct fenced log', ($lease_reclaimed['log_id'] ?? 0) !== ($lease_first['log_id'] ?? 0), true);
+
+// Lifecycle A remains time-active, but lifecycle B reuses the same rsvp_id.
+$GLOBALS['__test_now'] = '2026-08-10 14:00:00';
+$rid_lifecycle = $wpdb->seed_rsvp(9302, '966500000102');
+$claim_lifecycle_a = PGE_Thank_You_Claim::claim(9302, $rid_lifecycle, '966500000102', 'lifecycle-a', 77);
+$marker_a = $wpdb->rsvps[$rid_lifecycle]['created_at'];
+$wpdb->rsvps[$rid_lifecycle]['created_at'] = '2026-08-10 14:00:30';
+$wpdb->rsvps[$rid_lifecycle]['thank_you_sent_at'] = null;
+$GLOBALS['__test_now'] = '2026-08-10 14:00:31';
+$claim_lifecycle_b = PGE_Thank_You_Claim::claim(9302, $rid_lifecycle, '966500000102', 'lifecycle-b', 77);
+check('34. old lifecycle pending does not block reused rsvp_id', $claim_lifecycle_b['result'] ?? null, 'claimed');
+check_true('35. new lifecycle claims immediately although old lease is fresh', ($claim_lifecycle_b['lifecycle_started_at'] ?? '') !== $marker_a);
+check('36. old lifecycle pending is retained as historical and ignored', $wpdb->message_log[$claim_lifecycle_a['log_id']]['status'] ?? null, PGE_Message_Log::STATUS_PENDING);
+
+$late_success = PGE_Thank_You_Claim::finalize_success($claim_lifecycle_a['log_id'], $rid_lifecycle);
+check_true('37. late success from lifecycle A is rejected', $late_success === false);
+check('38. late success cannot set thank_you_sent_at on lifecycle B', $wpdb->rsvps[$rid_lifecycle]['thank_you_sent_at'], null);
+$late_failure = PGE_Thank_You_Claim::finalize_failure($claim_lifecycle_a['log_id'], PGE_Message_Log::STATUS_FAILED);
+check_true('39. late failure from lifecycle A is rejected', $late_failure === false);
+check('40. late failure cannot mutate the old fenced log after lifecycle mismatch', $wpdb->message_log[$claim_lifecycle_a['log_id']]['status'] ?? null, PGE_Message_Log::STATUS_PENDING);
+check_true('41. lifecycle marker mismatch is rejected during finalize', PGE_Thank_You_Claim::finalize_success($claim_lifecycle_a['log_id'], $rid_lifecycle) === false);
+
+// Sequential simulation of two contenders under the same DB advisory lock.
+$GLOBALS['__test_now'] = '2026-08-10 15:00:00';
+$rid_race = $wpdb->seed_rsvp(9303, '966500000103');
+$race_a = PGE_Thank_You_Claim::claim(9303, $rid_race, '966500000103', 'race-a', 77);
+$race_b = PGE_Thank_You_Claim::claim(9303, $rid_race, '966500000103', 'race-b', 77);
+check_true('42. two serialized same-lifecycle contenders yield exactly one claim', ($race_a['result'] ?? '') === 'claimed' && ($race_b['result'] ?? '') === 'already_in_progress');
+
+// Lock release on every in-lock exit.
+$acquire_before_sent = count($wpdb->lock_acquire_log);
+$release_before_sent = count($wpdb->lock_release_log);
+$GLOBALS['__test_now'] = '2026-08-10 16:00:00';
+$rid_sent_lock = $wpdb->seed_rsvp(9304, '966500000104', '2026-08-10 15:59:00');
+$sent_lock_result = PGE_Thank_You_Claim::claim(9304, $rid_sent_lock, '966500000104', 'already-sent-lock', 77);
+check_true('43. already_sent path releases its acquired lock', ($sent_lock_result['result'] ?? '') === 'already_sent' && count($wpdb->lock_acquire_log) === $acquire_before_sent + 1 && count($wpdb->lock_release_log) === $release_before_sent + 1);
+
+$acquire_before_invalid = count($wpdb->lock_acquire_log);
+$release_before_invalid = count($wpdb->lock_release_log);
+$invalid_inside_lock = PGE_Thank_You_Claim::claim(9999, $rid_race, '966500000103', 'invalid-event', 77);
+check_true('44. validation failure discovered inside critical section releases lock', ($invalid_inside_lock['reason'] ?? '') === 'rsvp_not_found' && count($wpdb->lock_acquire_log) === $acquire_before_invalid + 1 && count($wpdb->lock_release_log) === $release_before_invalid + 1);
+
+$rid_insert_failure = $wpdb->seed_rsvp(9305, '966500000105');
+$acquire_before_failure = count($wpdb->lock_acquire_log);
+$release_before_failure = count($wpdb->lock_release_log);
+$wpdb->force_message_log_insert_failure = true;
+$insert_failure = PGE_Thank_You_Claim::claim(9305, $rid_insert_failure, '966500000105', 'insert-failure', 77);
+$wpdb->force_message_log_insert_failure = false;
+check_true('45. log creation failure releases lock', ($insert_failure['reason'] ?? '') === 'log_create_failed' && count($wpdb->lock_acquire_log) === $acquire_before_failure + 1 && count($wpdb->lock_release_log) === $release_before_failure + 1);
+
+$rid_insert_exception = $wpdb->seed_rsvp(9307, '966500000107');
+$wpdb->throw_message_log_insert_exception = true;
+$exception_released = false;
+try {
+    PGE_Thank_You_Claim::claim(9307, $rid_insert_exception, '966500000107', 'insert-exception', 77);
+} catch (RuntimeException $e) {
+    $exception_released = empty($wpdb->held_locks);
+}
+$wpdb->throw_message_log_insert_exception = false;
+check_true('45b. exception inside critical section still releases lock', $exception_released);
+
+// Ambiguous transport is terminal in the log but fenced against immediate retry.
+$GLOBALS['__test_now'] = '2026-08-10 17:00:00';
+$rid_ambiguous = $wpdb->seed_rsvp(9306, '966500000106');
+$ambiguous_first = PGE_Thank_You_Claim::claim(9306, $rid_ambiguous, '966500000106', 'ambiguous-first', 77);
+$ambiguous_finalized = PGE_Thank_You_Claim::finalize_failure($ambiguous_first['log_id'], PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR);
+check_true('46. ambiguous transport is recorded with existing terminal status', $ambiguous_finalized && ($wpdb->message_log[$ambiguous_first['log_id']]['status'] ?? '') === PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR);
+$GLOBALS['__test_now'] = '2026-08-10 17:00:30';
+$ambiguous_blocked = PGE_Thank_You_Claim::claim(9306, $rid_ambiguous, '966500000106', 'ambiguous-too-soon', 77);
+check_true('47. ambiguous transport blocks unsafe immediate retry', ($ambiguous_blocked['result'] ?? '') === 'already_in_progress' && ($ambiguous_blocked['reason'] ?? '') === 'ambiguous_transport_lease_active');
+$GLOBALS['__test_now'] = '2026-08-10 17:02:00';
+$ambiguous_retry = PGE_Thank_You_Claim::claim(9306, $rid_ambiguous, '966500000106', 'ambiguous-after-lease', 77);
+check('48. ambiguous retry is allowed only after lease expiry', $ambiguous_retry['result'] ?? null, 'claimed');
+
+// already_sent remains final regardless of elapsed lease time.
+$GLOBALS['__test_now'] = '2026-08-11 17:00:00';
+$sent_never_reclaimed = PGE_Thank_You_Claim::claim(9304, $rid_sent_lock, '966500000104', 'sent-never-reclaimed', 77);
+check('49. already_sent is never reclaimable after arbitrary time', $sent_never_reclaimed['result'] ?? null, 'already_sent');
+
+check('50. central lease constant is the reviewed 120 seconds', PGE_Thank_You_Claim::CLAIM_LEASE_SECONDS, 120);
+check_true('51. no successfully acquired advisory lock remains held after the suite', empty($wpdb->held_locks));
 
 // ══════════════════════════════════════════════════════════════════════
 // Regression — إثبات ثابت (Static) أن المسارات القائمة لم تُمَس (23-26)

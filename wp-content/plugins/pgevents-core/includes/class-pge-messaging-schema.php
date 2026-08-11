@@ -14,7 +14,8 @@ if (!defined('ABSPATH')) exit;
  *          للعقد الكامل (NULL = لم يُرسَل، غير NULL = أُرسل بنجاح نهائياً).
  *   2. جدول جديد {$wpdb->prefix}pge_message_log — سجل تتبّع عام (Tracking
  *      فقط، لا Business Logic) لكل محاولة إرسال رسالة من أي نوع
- *      (PGE_Message_Type::ALL) — راجع class-pge-message-log.php للـRepository.
+ *      (PGE_Message_Type::ALL)، مع lifecycle_started_at nullable لربط Claim
+ *      الشكر بدورة RSVP الحالية دون التأثير على أنواع الرسائل الأخرى.
  *
  * نمط الترقية يطابق حرفياً PGE_Checkin_Schema (Phase 4)/PGE_Invitation_
  * Management_Schema (Phase 9) — رقم إصدار مخزَّن في wp_options، dbDelta()
@@ -23,12 +24,11 @@ if (!defined('ABSPATH')) exit;
  * مسبقاً)، وتحقّق فعلي نهائي عبر SHOW COLUMNS قبل اعتماد نجاح كل خطوة — لا
  * افتراض نجاح أعمى لأي استعلام.
  *
- * لا تعديل على أي عمود قائم في pge_event_rsvps (Additive فقط)، ولا على أي
- * جدول آخر — هذا الملف مسؤول حصراً عن هاتين الإضافتين الاثنتين.
+ * لا تعديل على أي عمود قائم (Additive فقط)، ولا على أي جدول آخر.
  */
 class PGE_Messaging_Schema
 {
-    const SCHEMA_VERSION = '1.0.0';
+    const SCHEMA_VERSION = '1.1.0';
     const VERSION_OPTION = 'pge_messaging_schema_version';
 
     private static function rsvps_table_name()
@@ -88,6 +88,7 @@ class PGE_Messaging_Schema
             id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             event_id BIGINT(20) UNSIGNED NOT NULL,
             rsvp_id BIGINT(20) UNSIGNED NULL,
+            lifecycle_started_at DATETIME NULL,
             guest_phone VARCHAR(32) NOT NULL DEFAULT '',
             message_type VARCHAR(20) NOT NULL,
             batch_id VARCHAR(36) NOT NULL,
@@ -109,11 +110,30 @@ class PGE_Messaging_Schema
             return false;
         }
 
-        $required = ['id', 'event_id', 'rsvp_id', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
         $found = [];
         foreach ($columns as $column) {
             $found[] = (string) ($column['Field'] ?? '');
         }
+
+        // Phase 4A-2: dbDelta() creates the column on fresh installs. Existing
+        // tables get the same additive column explicitly and idempotently.
+        if (!in_array('lifecycle_started_at', $found, true)) {
+            $added = $wpdb->query("ALTER TABLE $table ADD COLUMN lifecycle_started_at DATETIME NULL AFTER rsvp_id");
+            if ($added === false) {
+                return false;
+            }
+
+            $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+            if ($columns === null) {
+                return false;
+            }
+            $found = [];
+            foreach ($columns as $column) {
+                $found[] = (string) ($column['Field'] ?? '');
+            }
+        }
+
+        $required = ['id', 'event_id', 'rsvp_id', 'lifecycle_started_at', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
 
         foreach ($required as $r) {
             if (!in_array($r, $found, true)) {
