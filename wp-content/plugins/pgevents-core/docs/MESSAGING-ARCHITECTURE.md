@@ -1,11 +1,12 @@
-# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
 > Foundation فقط لـReminder/Thank You، بلا إرسال فعلي؛ Phase 3 — إرسال Reminder
 > اليدوي الفعلي، أول مسار إرسال حقيقي يستخدم بنية Phase 1/2؛ Phase 4A-2 — Claim
 > lease/reclaim؛ Phase 4A-3 — Schema drift hardening؛ Phase 4B-1 — Recipient
-> eligibility read-only لـThank You، وكلها بلا إرسال Thank You).
+> eligibility read-only لـThank You؛ Phase 4B-2 — Service إرسال داخلية فقط،
+> بلا AJAX/UI/Queue/Cron).
 > لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
@@ -78,9 +79,9 @@ pge_wa_default_thank_you_template()
 بمفتاح جمعي محدد فقط (`['invite']`/`['yes']`/…) بلا أي اعتماد على `count()`
 أو ترتيب — التوسيع آمن ولا يُغيّر أي قيمة قائمة.
 
-لا Caller إنتاجي يستدعي `pge_wa_default_reminder_template()` أو
-`pge_wa_default_thank_you_template()` أو مفتاحي `reminder`/`thank_you` من
-`pge_wa_get_templates()` بعد — أساس معماري فقط بانتظار Phase مستقبلية.
+أصبح مفتاح `reminder` مستهلكاً عبر Phase 3، ومفتاح `thank_you` عبر Service
+Phase 4B-2 الداخلية. كلاهما ما زال يستخدم نفس fallback الافتراضي، ولا يوجد
+endpoint لحفظ قالب Thank You حتى الآن.
 
 ### 2.3 `PGE_Message_Content_Resolver` — نقطة بناء المحتوى الموحَّدة
 
@@ -513,18 +514,76 @@ Ledger/Replacement Entitlements غير محمَّلتين إطلاقاً في ه
 
 ---
 
-## 6. غير منفَّذ بعد (NOT IMPLEMENTED YET)
+## 6. Phase 4B-2 — Manual Thank You Service (IMPLEMENTED داخلياً)
 
-- إرسال Thank You فعلياً (لا AJAX، لا Queue، لا زر واجهة) — البنية التحتية
-  (Schema + Log + Claim) جاهزة (Phase 2) لكن بلا Caller.
+**الملف:** `includes/class-pge-thank-you-message-service.php`.
+
+نقطة الدخول الداخلية:
+
+```php
+PGE_Thank_You_Message_Service::send_thank_you_batch(
+    int $event_id,
+    int $actor_user_id
+): array
+```
+
+المسار ثابت: `Thank You Resolver` → `PGE_Thank_You_Claim::claim()` →
+`PGE_Message_Content_Resolver` → `PGE_Cartat_Transport::send_text()` →
+`finalize_success()` أو `finalize_failure()`. الخدمة لا تعيد تطبيق canonical
+lookup أو Check-in/Cancel/Lifecycle eligibility؛ الـResolver هي السلطة الوحيدة
+لذلك. كما لا تفحص `thank_you_sent_at`؛ الـClaim تبقى سلطة once-only الوحيدة
+وتستمد `lifecycle_started_at` من Current RSVP داخل القفل.
+
+الإرسال **Cartat Text Only**: لا `send_media()`، ولا UltraMsg/fallback، ولا HTTP
+أو Auth داخل الخدمة. المحتوى يأتي من فرع `thank_you` الموجود في Content
+Resolver باستخدام `_pge_wa_tpl_thank_you` مع fallback إلى
+`pge_wa_default_thank_you_template()`، والمتغيرات المعتمدة فقط:
+`guest_name`, `event_name`, `event_date`. لا endpoint لحفظ القالب في هذه المرحلة.
+
+دلالات النتائج:
+
+- `accepted`: `finalize_success(log_id, rsvp_id)`؛ وهي وحدها تثبت
+  `thank_you_sent_at`. إذا تعذر تثبيت النتيجة محلياً بعد قبول النقل، تُحاط
+  المحاولة بحالة ambiguous بدلاً من الادعاء بنجاح غير مثبت أو retry فوري.
+- `rejected`: `finalize_failure(..., failed)`؛ لا تُكتب علامة الإرسال ويمكن
+  لمحاولة يدوية لاحقة المطالبة من جديد.
+- `transport_error` أو Exception بعد بدء استدعاء النقل:
+  `finalize_failure(..., ambiguous_transport_error)`؛ لا يُعد نجاحاً ولا يعاد
+  الإرسال داخل نفس الخدمة، وتمنع Lease الحالية retry الفوري حتى انقضاء 120 ثانية.
+- `already_sent` و`already_in_progress` يتخطيان النقل ولا يُصنفان كفشل Provider.
+  خطأ Claim مستقل في `skipped_claim_error` ولا يوقف معالجة بقية المستلمين.
+
+الملخص الثابت يعيد: `result`, `batch_id`, `eligible`, `claimed`, `sent`,
+`failed`, `ambiguous`, `skipped_already_sent`, `skipped_active_claim`,
+`skipped_claim_error`، ومعه Resolver summary بلا قائمة الهواتف. كل مستلم يعالج
+بشكل مستقل؛ rejection أو Claim skip لا يوقف بقية المجموعة. التنفيذ متزامن
+عمداً ولا ينشئ Queue/Cron أو continuation architecture؛ قرار orchestration
+للأحجام الكبيرة مؤجل لمرحلة مستقلة.
+
+لا Invitation/Replacement Credits ولا `credit_type`، ولا كتابة مباشرة في
+RSVP أو Message Log من الخدمة؛ كل كتابة تمر عبر Claim. لا logging لأرقام
+الهواتف أو نص الرسالة أو بيانات Cartat. لا AJAX أو UI أو صلاحيات مستخدم هنا؛
+هذه Service داخلية بلا Caller HTTP حتى الآن.
+
+`tests/test-thank-you-message-service-phase4b2.php` يحمّل Service وContent
+Resolver الإنتاجيين ويثبت accepted/rejected/ambiguous/exception، once-only،
+Lease، lifecycle reuse، Phone Change، حالات الاستبعاد القادمة من Resolver،
+partial failure، Text-only/Cartat-only، وعدم استخدام Credits أو DB/HTTP مباشر.
+
+---
+
+## 7. غير منفَّذ بعد (NOT IMPLEMENTED YET)
+
+- Caller إنتاجي لـManual Thank You (لا AJAX، لا Queue، لا زر واجهة) — Service
+  الداخلية موجودة في Phase 4B-2 لكنها غير موصولة بأي HTTP/UI entry point.
 - أي جدولة تلقائية (Automatic Reminder/Cron يومي بحسب تاريخ المناسبة) —
   الوحيد المسموح هو Cron استكمال دفعة Reminder بدأها المستخدم يدوياً (§5.4).
-- Lease/Reclaim لمطالبات Thank You العالقة نُفّذ في Phase 4A-2 (§4.3)، لكن لا
-  يوجد إرسال Thank You فعلي أو Caller إنتاجي بعد.
+- Lease/Reclaim لمطالبات Thank You العالقة نُفّذ في Phase 4A-2 (§4.3)
+  وتستهلكه Service Phase 4B-2، لكن لا Caller إنتاجي بعد.
 - شرط عدم توريث `thank_you_sent_at` حُسم في Phase C عبر reset دورة الدعوة
   authoritative (راجع §4.5). لا يعني ذلك أن إرسال Thank You بدأ.
-- Recipient Resolver لـ`checked_in=1` نُفّذ قراءة فقط في Phase 4B-1 (§5.2)،
-  لكنه لا يرسل ولا ينفّذ Claim ولا يملك Caller إنتاجياً بعد.
+- Recipient Resolver لـ`checked_in=1` نُفّذ قراءة فقط في Phase 4B-1 (§5.2)
+  وتستهلكه Service Phase 4B-2 دون إعادة تطبيق الأهلية.
 - أي واجهة مستخدم لإطلاق Thank You.
 - إرسال Reminder عبر UltraMsg — Cartat فقط في Phase 3.
 - ربط `message_type` ببنية الـQueue الحالية للدعوة (`$queue['message_type']`)

@@ -83,6 +83,8 @@ git diff --cached
 - Phase 4A-3 — COMPLETE: Messaging schema drift hardening.
 - Phase 4B-1 — COMPLETE: read-only Thank You recipient eligibility عبر الدعوة
   الحالية وcanonical RSVP و`checked_in=1`؛ لا Claim execution أو إرسال أو AJAX/UI.
+- Phase 4B-2 — COMPLETE: internal Manual Thank You Service تنسّق Resolver →
+  lifecycle-aware Claim → Cartat Text → Finalize؛ لا AJAX/UI/Queue/Cron بعد.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 

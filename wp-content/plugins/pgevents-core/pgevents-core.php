@@ -2490,9 +2490,12 @@ if ($_pge_wa_provider === 'ultramsg') {
 // PGE_Message_Batch، تتبّع عبر PGE_Message_Log، محتوى عبر PGE_Message_
 // Content_Resolver الحالية بلا تغيير، إرسال عبر PGE_Cartat_Transport الحالية
 // بلا تغيير). لا Thank You، لا Scheduling، لا لمس لـInvitation Credits/Queue
-// الحالية — راجع docs/MESSAGING-ARCHITECTURE.md §Phase 3 للتفاصيل الكاملة.
+// الحالية. Phase 4B-1/4B-2 تضيفان Thank You eligibility ثم Service داخلية
+// متزامنة (Resolver → Claim → Cartat Text → Finalize) بلا AJAX/UI/Queue/Cron.
+// راجع docs/MESSAGING-ARCHITECTURE.md للتفاصيل الكاملة.
 require_once PGE_PATH . 'includes/class-pge-message-recipient-resolver.php';
 require_once PGE_PATH . 'includes/class-pge-reminder-message-service.php';
+require_once PGE_PATH . 'includes/class-pge-thank-you-message-service.php';
 
 // 2. استدعاء نظام التوجيه (Routing) - بديل الصفحات التقليدية
 require_once PGE_PATH . 'includes/routing.php';
