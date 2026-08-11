@@ -366,30 +366,32 @@ add_action('wp_ajax_pge_event_guest_update', function () {
         wp_send_json_error('بيانات المدعو غير مكتملة');
     }
 
-    $guests_map = pge_event_guests_get_map($event_id);
-    if (!isset($guests_map[$old_phone])) {
-        wp_send_json_error('المدعو غير موجود');
+    // Phase D2: keep this registered legacy compatibility endpoint, but route
+    // all writes through the authoritative Service so phone changes cannot
+    // bypass target RSVP reset, QR rotation, compensation, or audit.
+    if (!class_exists('PGE_Invitation_Service')) {
+        require_once __DIR__ . '/class-pge-invitation-service.php';
     }
+    $result = PGE_Invitation_Service::edit(
+        $event_id,
+        $old_phone,
+        $new_phone,
+        $name,
+        $note,
+        get_current_user_id()
+    );
 
-    if ($old_phone !== $new_phone && isset($guests_map[$new_phone])) {
+    if (($result['result'] ?? '') === 'duplicate') {
         wp_send_json_error('رقم الجوال الجديد مستخدم بالفعل');
     }
+    if (($result['result'] ?? '') === 'error' && ($result['reason'] ?? '') === 'not_found') {
+        wp_send_json_error('المدعو غير موجود');
+    }
+    if (($result['result'] ?? '') !== 'updated') {
+        wp_send_json_error('تعذّر تحديث بيانات المدعو');
+    }
 
-    // نحفظ سجل المدعو القديم قبل حذفه — تحديداً رمز الدعوة الشخصي (code)،
-    // حتى لا يُفقَد ويُولَّد رمز جديد بالخطأ داخل save_map() لمجرد تعديل
-    // الاسم/الملاحظة. تجديد الرمز يجب أن يحدث فقط عبر pge_event_guest_regen_code.
-    $existing_guest = $guests_map[$old_phone] ?? [];
-
-    unset($guests_map[$old_phone]);
-    $guests_map[$new_phone] = [
-        'phone' => $new_phone,
-        'name'  => $name,
-        'note'  => $note,
-        'code'  => (string) ($existing_guest['code'] ?? ''),
-    ];
-
-    pge_event_guests_migrate_phone_refs($event_id, $old_phone, $new_phone);
-    $guests_map = pge_event_guests_save_map($event_id, $guests_map);
+    $guests_map = pge_event_guests_get_map($event_id);
 
     wp_send_json_success([
         'message' => 'تم تحديث بيانات المدعو',

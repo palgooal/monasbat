@@ -100,8 +100,9 @@ class PGE_Invitation_Service
      *
      * Part E — ملكية القفل: هذه هي الطبقة الوحيدة التي تحصل على قفل دورة
      * الدعوة في كامل النظام. Phase D1 أعاد استخدام نفس القفل والاسم لمسارات
-     * create/delete/regenerate_qr كي لا تتسابق كتابة guest map مع QR
-     * tombstone؛ Repository لا تحصل على قفل بنفسها — فلا قفل متداخل.
+     * create/delete/regenerate_qr، وأضاف Phase D2 مسار edit عند تغيير الهاتف،
+     * كي لا تتسابق كتابة guest map مع QR tombstone؛ Repository لا تحصل على
+     * قفل بنفسها — فلا قفل متداخل.
      *
      * Part F — عقد النتيجة عند بلوغ الحد: ['result' => 'quota_exceeded',
      * 'reason' => 'guest_limit_reached'] — رمز واحد طبيعي، بلا أي تفاصيل
@@ -140,7 +141,7 @@ class PGE_Invitation_Service
     /**
      * اسم قفل GET_LOCK مشتق وآمن من event_id وحده. الاسم القديم يبقى كما هو
      * للتوافق مع أي طلب create جارٍ أثناء النشر، لكن نطاقه منذ Phase D1 يشمل
-     * كل كتابة create/delete/regenerate_qr لدورة الدعوة ضمن المناسبة نفسها.
+     * كل كتابة create/edit/delete/regenerate_qr لدورة الدعوة ضمن المناسبة نفسها.
      */
     private static function build_creation_lock_name($event_id): string
     {
@@ -149,7 +150,7 @@ class PGE_Invitation_Service
 
     /**
      * Phase D1 reuses the existing per-event creation lock for every write
-     * that changes QR lifecycle state. This serializes create/delete/QR
+     * that changes QR lifecycle state. This serializes create/edit/delete/QR
      * regeneration without introducing a second lock namespace or nesting.
      */
     private static function with_invitation_lifecycle_lock($event_id, callable $operation): array
@@ -170,13 +171,16 @@ class PGE_Invitation_Service
 
     public static function edit($event_id, $old_phone, $new_phone, $name, $note, $actor_user_id)
     {
-        $result = PGE_Invitation_Repository::edit($event_id, $old_phone, $new_phone, $name, $note);
+        $event_id = (int) $event_id;
+        return self::with_invitation_lifecycle_lock($event_id, function () use ($event_id, $old_phone, $new_phone, $name, $note, $actor_user_id) {
+            $result = PGE_Invitation_Repository::edit($event_id, $old_phone, $new_phone, $name, $note);
 
-        if (($result['result'] ?? '') === 'updated') {
-            PGE_Invitation_Management_Audit::record($event_id, $result['phone'], $actor_user_id, 'edited', '');
-        }
+            if (($result['result'] ?? '') === 'updated') {
+                PGE_Invitation_Management_Audit::record($event_id, $result['phone'], $actor_user_id, 'edited', '');
+            }
 
-        return $result;
+            return $result;
+        });
     }
 
     public static function cancel($event_id, $phone, $reason, $actor_user_id)

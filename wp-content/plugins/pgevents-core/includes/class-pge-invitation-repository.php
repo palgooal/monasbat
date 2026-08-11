@@ -17,8 +17,9 @@ if (!defined('ABSPATH')) exit;
  *   2. `wp_pge_event_rsvps` (جدول، ممنوع تعديل مخططه بدون مراجعة صريحة وفق
  *      CLAUDE.md) — حالة الرد (RSVP) وحالة الحضور — تُقرَأ حصراً عبر
  *      pge_event_guests_load_rsvp_from_db() الحالية (قراءة فقط، مع cache
- *      ثابت داخلها أصلاً يمنع N+1). Phase C يضيف كتابة واحدة محصورة: reset
- *      دورة الحياة داخل create() فقط؛ بقية عمليات Repository لا تكتب RSVP.
+ *      ثابت داخلها أصلاً يمنع N+1). Phase C يضيف reset دورة الحياة داخل
+ *      create()، وPhase D2 يعيد استخدام العقد نفسه لهاتف الهدف عند تغييره؛
+ *      بقية عمليات Repository لا تكتب RSVP.
  *   3. `_pge_invitation_status` (post meta جديد، **حصري لهذه المرحلة**) —
  *      حالة الدعوة الإدارية (active/cancelled) + طوابع invited_at/updated_at/
  *      qr_regenerated_at. مفتاح post meta مستقل تماماً عن `_pge_invited_
@@ -407,7 +408,7 @@ class PGE_Invitation_Repository
                 && !isset($restored_guests_map[$normalized_phone])
                 && $restored_status_map === $original_status_map;
 
-            $rsvp_restored = self::restore_rsvp_after_failed_invitation_create($event_id, $normalized_phone, $rsvp_reset);
+            $rsvp_restored = self::restore_rsvp_after_failed_lifecycle_start($event_id, $normalized_phone, $rsvp_reset);
             if (!$meta_restored || !$rsvp_restored) {
                 error_log("PGE invitation lifecycle rollback failed: event_id={$event_id} reason=compensation_failed");
                 return ['result' => 'error', 'reason' => 'rsvp_lifecycle_rollback_failed'];
@@ -454,7 +455,7 @@ class PGE_Invitation_Repository
         if (($verified['status'] ?? '') !== 'found'
             || (int) ($verified['row']->id ?? 0) !== $row_id
             || !self::rsvp_row_matches_values($verified['row'], $reset)) {
-            $rollback = self::restore_rsvp_after_failed_invitation_create(
+            $rollback = self::restore_rsvp_after_failed_lifecycle_start(
                 $event_id,
                 $normalized_phone,
                 ['status' => 'reset', 'previous_row' => $previous_row]
@@ -530,7 +531,7 @@ class PGE_Invitation_Repository
         return $restored !== false;
     }
 
-    private static function restore_rsvp_after_failed_invitation_create($event_id, $normalized_phone, array $reset_result): bool
+    private static function restore_rsvp_after_failed_lifecycle_start($event_id, $normalized_phone, array $reset_result): bool
     {
         if (($reset_result['status'] ?? '') === 'not_found') {
             return true;
@@ -557,12 +558,15 @@ class PGE_Invitation_Repository
     }
 
     /**
-     * تعديل حقول الدعوة القابلة للتغيير فقط (الاسم/الهاتف/الملاحظة) — يُعيد
-     * استخدام نفس منطق pge_event_guest_update (الحفاظ على invite_code
-     * القائم، الحفاظ على مراجع RSVP/الحضور عبر pge_event_guests_migrate_
-     * phone_refs() الحالية عند تغيير الهاتف) — **لا تعديل على أي حقل حضور/
-     * إحصاء إطلاقاً**، ولا على أي صف في wp_pge_event_rsvps مباشرة (فقط
-     * الترحيل الحالي المُعتمَد أصلاً في event-guests.php).
+     * Edit invitation metadata, or start a new lifecycle when the normalized
+     * phone changes. The source RSVP snapshot is historical and is never
+     * renamed/reset/deleted. A canonical historical target snapshot is reset
+     * in place using the Phase C matrix; no target row is inserted here.
+     *
+     * The manual invite_code is preserved because it identifies the edited
+     * invitation in human/manual lookup flows. Scanner credentials remain
+     * separate: the source becomes a non-live QR tombstone and the target gets
+     * a fresh persistent qr_version based on its own prior status/tombstone.
      *
      * @return array{result:string, phone?:string, reason?:string}
      */
@@ -586,38 +590,120 @@ class PGE_Invitation_Repository
         }
 
         $existing_guest = $guests_map[$old_normalized];
-        unset($guests_map[$old_normalized]);
-        $guests_map[$new_normalized] = [
+        $updated_guest = [
             'phone' => $new_normalized,
             'name'  => $normalized_name,
             'note'  => is_scalar($note) ? trim((string) $note) : '',
             'code'  => (string) ($existing_guest['code'] ?? ''),
         ];
 
-        if (function_exists('pge_event_guests_migrate_phone_refs')) {
-            pge_event_guests_migrate_phone_refs($event_id, $old_normalized, $new_normalized);
-        }
-        pge_event_guests_save_map($event_id, $guests_map);
+        // Same-phone edits are metadata-only and must not start a lifecycle.
+        if ($old_normalized === $new_normalized) {
+            $guests_map[$old_normalized] = $updated_guest;
+            pge_event_guests_save_map($event_id, $guests_map);
 
-        // ترحيل سجل حالة الدعوة الإدارية لنفس المفتاح الجديد إن تغيَّر الهاتف.
-        $status_map = self::get_status_map($event_id);
-        $entry = $status_map[$old_normalized] ?? ['status' => self::STATUS_ACTIVE, 'invited_at' => '', 'cancelled_at' => null, 'cancel_reason' => '', 'qr_regenerated_at' => null];
-        $entry['updated_at'] = current_time('mysql', true);
-        if ($old_normalized !== $new_normalized) {
-            unset($status_map[$old_normalized]);
-            // RC1 Final Release Blocker: الهاتف الجديد قد يكون هاتفاً استُخدم
-            // سابقاً لدعوة محذوفة (Hard Delete لا يمنع إعادة استخدام الهاتف)،
-            // وقد يترك وراءه صف RSVP يتيماً بذلك الهاتف. بلا تحديث invited_at
-            // هنا، يبقى يحمل قيمة الدعوة القديمة عند الهاتف السابق (old_phone)،
-            // وقد تكون أقدم من created_at الصف اليتيم عند الهاتف الجديد، فيُعامَل
-            // خطأً كـ"حالي" عبر current_or_null()/is_rsvp_row_current(). تغيير
-            // الهاتف = دورة حياة جديدة فعلياً عند ذلك الهاتف تحديداً، فتُضبَط
-            // invited_at من جديد هنا تماماً كما في create() — نفس المبدأ، بلا
-            // عمود جديد.
-            $entry['invited_at'] = $entry['updated_at'];
+            $status_map = self::get_status_map($event_id);
+            $entry = $status_map[$old_normalized] ?? [
+                'status' => self::STATUS_ACTIVE,
+                'invited_at' => '',
+                'cancelled_at' => null,
+                'cancel_reason' => '',
+                'qr_regenerated_at' => null,
+            ];
+            $entry['updated_at'] = current_time('mysql', true);
+            $status_map[$old_normalized] = $entry;
+            self::save_status_map($event_id, $status_map);
+
+            return ['result' => 'updated', 'phone' => $old_normalized];
         }
-        $status_map[$new_normalized] = $entry;
-        self::save_status_map($event_id, $status_map);
+
+        $status_map = self::get_status_map($event_id);
+        $original_guests_map = $guests_map;
+        $original_status_map = $status_map;
+        $lifecycle_timestamp = current_time('mysql', true);
+
+        $source_entry = $status_map[$old_normalized] ?? [];
+        $source_qr_version = self::effective_qr_version_from_entry($source_entry);
+        $target_qr_version = self::next_qr_version_for_lifecycle($status_map[$new_normalized] ?? []);
+        if ($target_qr_version <= 0) {
+            return ['result' => 'error', 'reason' => 'qr_version_exhausted'];
+        }
+
+        // Duplicate/identity checks are complete before this first write. The
+        // target reset is compensated if either post-meta map fails later.
+        $rsvp_reset = self::reset_rsvp_for_new_invitation_lifecycle(
+            $event_id,
+            $new_normalized,
+            $lifecycle_timestamp
+        );
+        if (($rsvp_reset['result'] ?? '') !== 'success') {
+            return ['result' => 'error', 'reason' => (string) ($rsvp_reset['reason'] ?? 'rsvp_lifecycle_reset_failed')];
+        }
+
+        unset($guests_map[$old_normalized]);
+        $guests_map[$new_normalized] = $updated_guest;
+
+        $source_entry['status'] = self::STATUS_DELETED;
+        $source_entry['qr_version'] = $source_qr_version;
+        $source_entry['deleted_at'] = $lifecycle_timestamp;
+        $source_entry['updated_at'] = $lifecycle_timestamp;
+        $status_map[$old_normalized] = $source_entry;
+        $status_map[$new_normalized] = [
+            'status'             => self::STATUS_ACTIVE,
+            'invited_at'         => $lifecycle_timestamp,
+            'updated_at'         => $lifecycle_timestamp,
+            'cancelled_at'       => null,
+            'cancel_reason'      => '',
+            'qr_version'         => $target_qr_version,
+            'qr_regenerated_at'  => null,
+        ];
+
+        $saved_guests_map = null;
+        try {
+            $saved_guests_map = pge_event_guests_save_map($event_id, $guests_map);
+            self::save_status_map($event_id, $status_map);
+        } catch (\Throwable $e) {
+            error_log("PGE phone change storage error: event_id={$event_id} reason=post_meta_write_failed");
+        }
+
+        $stored_guests_map = pge_event_guests_get_map($event_id);
+        $stored_status_map = self::get_status_map($event_id);
+        $phone_change_stored = is_array($saved_guests_map)
+            && !isset($stored_guests_map[$old_normalized])
+            && isset($stored_guests_map[$new_normalized])
+            && (string) ($stored_guests_map[$new_normalized]['code'] ?? '') === (string) ($saved_guests_map[$new_normalized]['code'] ?? '')
+            && (string) ($stored_status_map[$old_normalized]['status'] ?? '') === self::STATUS_DELETED
+            && (int) ($stored_status_map[$old_normalized]['qr_version'] ?? 0) === $source_qr_version
+            && (string) ($stored_status_map[$new_normalized]['status'] ?? '') === self::STATUS_ACTIVE
+            && (string) ($stored_status_map[$new_normalized]['invited_at'] ?? '') === $lifecycle_timestamp
+            && (int) ($stored_status_map[$new_normalized]['qr_version'] ?? 0) === $target_qr_version;
+
+        if (!$phone_change_stored) {
+            $meta_restored = true;
+            try {
+                pge_event_guests_save_map($event_id, $original_guests_map);
+                self::save_status_map($event_id, $original_status_map);
+            } catch (\Throwable $e) {
+                $meta_restored = false;
+                error_log("PGE phone change rollback failed: event_id={$event_id} reason=post_meta_restore_failed");
+            }
+
+            $meta_restored = $meta_restored
+                && pge_event_guests_get_map($event_id) === $original_guests_map
+                && self::get_status_map($event_id) === $original_status_map;
+            $rsvp_restored = self::restore_rsvp_after_failed_lifecycle_start(
+                $event_id,
+                $new_normalized,
+                $rsvp_reset
+            );
+
+            if (!$meta_restored || !$rsvp_restored) {
+                error_log("PGE phone change rollback failed: event_id={$event_id} reason=compensation_failed");
+                return ['result' => 'error', 'reason' => 'phone_change_rollback_failed'];
+            }
+
+            return ['result' => 'error', 'reason' => 'phone_change_storage_failed'];
+        }
 
         return ['result' => 'updated', 'phone' => $new_normalized];
     }
@@ -830,7 +916,8 @@ class PGE_Invitation_Repository
      *
      * A current row is returned unchanged. A stale/orphaned row is treated as
      * absent and is never mutated here. The only lifecycle reset authority is
-     * create(), after quota/validation/duplicate checks pass.
+     * an authoritative lifecycle start: create(), or the target identity of a
+     * successful phone change after duplicate/integrity checks pass.
      *
      * @return object|array|null
      */

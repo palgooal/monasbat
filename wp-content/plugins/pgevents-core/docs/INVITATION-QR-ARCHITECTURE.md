@@ -190,15 +190,31 @@ regeneration متزامنان لا يقرآن baseline واحداً ولا يك�
 - Re-invite لنفس الهاتف تستبدل Tombstone بحالة `active` وتكتب
   `previous_qr_version + 1`. يبقى `rsvp_id` نفسه وفق Option A/Phase C، لكن
   `(rsvp_id, qr_version)` يختلف حتماً، فيفشل QR القديم بـ`qr_superseded`.
-- create/delete/regenerate_qr تستخدم قفل المناسبة الموجود نفسه. لا Lock
+- create/edit/delete/regenerate_qr تستخدم قفل المناسبة الموجود نفسه. لا Lock
   namespace جديد ولا اعتماد على فروق الوقت؛ delete ثم re-invite في اللحظة
   نفسها آمن.
 
-**مؤجل إلى Phase D2:** `edit()` عند تغيير الهاتف ما زال يرحّل status entry من
-الهاتف المصدر إلى الهدف وفق السلوك القائم. تقرير D1 لا يقرر بعد كيفية تدوير
-نسخة المصدر/الهدف أو حماية Tombstone سابقة للهاتف الهدف؛ لم يتغير هذا المسار.
+## 9. تغيير الهاتف = دورة هدف جديدة (Phase D2)
 
-## 9. سياسة التوافق مع الدعوات القديمة (Legacy Compatibility Policy)
+- تعديل الاسم/الملاحظة مع بقاء الهاتف نفسه لا يبدأ lifecycle ولا يلمس RSVP.
+- عند `old_phone → new_phone` يبقى `invite_code` نفسه لأنه مرجع يدوي للدعوة
+  المعدلة، بينما تنتهي قابلية المصدر كدعوة حية بإزالته من guest map وإبقاء
+  status tombstone بآخر `qr_version` له.
+- الهدف يبدأ lifecycle جديدة بطابع `invited_at` موحد. إن كان له canonical
+  RSVP تاريخي يعاد استخدام `id` نفسه وتطبق عليه Phase C reset matrix كاملة؛
+  RSVP المصدر لا تُنقل ولا تُصفّر ولا تُحذف. إن لم يوجد RSVP للهدف فلا ينشئ
+  `edit()` صفاً.
+- نسخة QR الهدف تُحسب من status/tombstone الهدف نفسه عبر namespace Phase D1؛
+  لا ترث نسخة المصدر ولا تعتمد على الوقت. لذلك QR المصدر وأي QR تاريخي للهدف
+  لا يصبحان صالحين للدورة الجديدة، بينما QR جديد مبني من target RSVP/version
+  الحالية صالح.
+- duplicate target الحي يُرفض قبل reset أو rotation. وتعمل العملية تحت قفل
+  المناسبة نفسه؛ عند فشل reset أو تخزين guest/status تُستعاد خرائط post meta
+  وtarget RSVP snapshot ولا يسجل Audit نجاح.
+- Legacy `wp_ajax_pge_event_guest_update` يبقى للتوافق لكنه يفوض إلى
+  `PGE_Invitation_Service::edit()`؛ لا يوجد مسار كتابة هاتف موازٍ.
+
+## 10. سياسة التوافق مع الدعوات القديمة (Legacy Compatibility Policy)
 
 - دعوة legacy نشطة بلا `qr_version` صريحة تستمر بالقراءة السابقة: قيمة
   `invited_at` المحوَّلة إلى Unix seconds، أو `DEFAULT_QR_VERSION = 1` عند
@@ -213,12 +229,12 @@ regeneration متزامنان لا يقرآن baseline واحداً ولا يك�
 
 ---
 
-## 10. الأمان — ملخص التحقق
+## 11. الأمان — ملخص التحقق
 
 - **لا سقوط احتياطي غير موقَّع في الماسح:** `resolve_from_qr()` لا يحتوي أي
   فرع يقبل `invite_code` أو أي صيغة غير موقَّعة. أُزيلت
   `resolve_by_invite_code_payload()` بالكامل (كانت أُضيفت مؤقتاً في إصلاح
-  سابق، ورُفضت لاحقاً صراحة — راجع القسم 10).
+  سابق، ورُفضت لاحقاً صراحة — راجع تاريخ القرار أدناه).
 - **لا كشف لأي سرّ في التدقيق:** حدث `qr_regenerated` لا يحمل أي حمولة QR
   كاملة (موقَّعة أو غير موقَّعة) — فقط `event_id`/`phone`/`actor`/الوقت (نفس
   عقد `PGE_Invitation_Management_Audit` الحالي).
@@ -238,7 +254,7 @@ regeneration متزامنان لا يقرآن baseline واحداً ولا يك�
 
 ---
 
-## 11. تاريخ القرار (لماذا أُلغي نهج invite_code fallback)
+## 12. تاريخ القرار (لماذا أُلغي نهج invite_code fallback)
 
 إصلاح سابق ("Phase 9B Final Fix") واجه حقيقة معمارية سابقة للمشروع: صورة
 QR الحقيقية المُرسَلة للضيف عبر واتساب كانت تُشفِّر نص `invite_code` الخام

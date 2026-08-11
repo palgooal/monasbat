@@ -310,7 +310,7 @@ check(
 echo "\n--- D. المسارات القديمة ---\n";
 check_true('D14. wp_ajax_pge_event_guest_add لم يعد مُسجَّلاً إطلاقاً', empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_add']));
 check_true('D15. wp_ajax_pge_event_guest_bulk_add لم يعد مُسجَّلاً إطلاقاً', empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_bulk_add']));
-check_true('D16. wp_ajax_pge_event_guest_update لا يزال مُسجَّلاً (لم يُلمَس — خارج نطاق Part A)', !empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_update']));
+check_true('D16. wp_ajax_pge_event_guest_update لا يزال مُسجَّلاً كطبقة توافق (ويفوّض للـService منذ Phase D2)', !empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_update']));
 check_true('D16ب. wp_ajax_pge_event_guest_bulk_delete لا يزال مُسجَّلاً (لم يُلمَس)', !empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_bulk_delete']));
 check_true('D16ج. wp_ajax_pge_event_guest_regen_code لا يزال مُسجَّلاً (لم يُلمَس)', !empty($GLOBALS['__test_registered_hooks']['wp_ajax_pge_event_guest_regen_code']));
 check_true('D16د. الدالة المساعدة pge_event_guests_get_map ما زالت موجودة (لم تُحذَف أي دالة مساعدة)', function_exists('pge_event_guests_get_map'));
@@ -385,7 +385,7 @@ set_test_event(4001, 909);
 set_test_user_guest_limit(909, 10);
 PGE_Invitation_Service::create(4001, '0588000001', 'ضيف قبل التعديل', '', 909);
 
-// F24. edit() لا تزال تعمل (لا قفل جديد عليها، لم تُلمَس إطلاقاً).
+// F24. edit() لا تزال تعمل تحت قفل lifecycle الموحّد منذ Phase D2.
 $edit_result = PGE_Invitation_Service::edit(4001, '0588000001', '0588000002', 'اسم مُعدَّل', 'ملاحظة', 909);
 check('F24. PGE_Invitation_Service::edit() لا تزال تعمل بلا تغيير', $edit_result['result'] ?? null, 'updated');
 
