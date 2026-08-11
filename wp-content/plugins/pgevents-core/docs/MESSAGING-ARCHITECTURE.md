@@ -1,4 +1,4 @@
-# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6/4B-3A
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
@@ -6,7 +6,8 @@
 > اليدوي الفعلي، أول مسار إرسال حقيقي يستخدم بنية Phase 1/2؛ Phase 4A-2 — Claim
 > lease/reclaim؛ Phase 4A-3 — Schema drift hardening؛ Phase 4B-1 — Recipient
 > eligibility read-only لـThank You؛ Phase 4B-2 — Service إرسال داخلية؛
-> Phase 4B-2.6 — Durable async-only Batch/Worker، بلا AJAX/UI).
+> Phase 4B-2.6 — Durable async-only Batch/Worker؛ Phase 4B-3A — authenticated
+> Preview/Start/Status AJAX بلا UI).
 > لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
@@ -631,10 +632,59 @@ exactly-once غير قابلة للحسم دون idempotency من المزود؛
 
 ---
 
+## 6.2 Phase 4B-3A — Manual Thank You AJAX (IMPLEMENTED، بلا UI)
+
+**الملف:** `includes/invitation-management-ajax.php`. أضيفت ثلاثة authenticated
+WordPress AJAX actions فقط:
+
+- `pge_invitation_mgmt_thank_you_preview`
+- `pge_invitation_mgmt_thank_you_start`
+- `pge_invitation_mgmt_thank_you_status`
+
+لا توجد `nopriv` actions. تمر العمليات الثلاث حرفياً عبر
+`pge_invitation_mgmt_validate_request()`، وبالتالي تستخدم نفس login وnonce
+`pge_event_manage_nonce` وملكية/صلاحية إدارة المناسبة المعتمدة لبقية صفحة إدارة
+الدعوات. صلاحية المناسبة تكفي؛ لا يوجد actor restriction موازٍ، لكن Status
+تتحقق قطعاً أن Manifest تنتمي إلى `event_id` المصرح بها قبل إعادة الملخص.
+
+Preview تقبل `nonce + event_id` فقط منطقياً، وتعيد عدادات Thank You Resolver
+المسموح بها مع sample text عام من Content Resolver باستخدام event context وضيف
+عام. لا تعيد recipients أو phones أو RSVP/lifecycle identities، ولا تنشئ Batch
+أو Claim ولا ترسل.
+
+Start تقبل `nonce + event_id` فقط وتستدعي
+`PGE_Thank_You_Batch_Worker::create_batch()` مع current user. `batch_id` مولدة
+خادمياً، ولا synchronous Send أو Claim. تعيد `batch_id + status + existing`؛
+إذا كانت هناك دفعة نشطة تعيد نفس الدفعة بنجاح مع `existing=true` لتسهيل
+idempotency، ولا تنشئ دفعة ثانية. أي recipient list أو phone أو rsvp/lifecycle
+identity أو batch_id أو message/image/provider/credit field من العميل مهمل ولا
+يصل إلى authority.
+
+Status تقبل `nonce + event_id + batch_id`، تقرأ Manifest للتحقق من الانتماء ثم
+تعيد Summary whitelist فقط: `batch_id`, `total`, `queued`, `processing`,
+`waiting`, `sent`, `failed`, `ambiguous`, `skipped`, skipped breakdown،
+`complete`, `started_at`, `updated_at`. لا تعيد Raw Manifest أو PII أو نصوصاً
+أو أسراراً. هي read-only تماماً: لا Worker tick، لا Claim/Send، لا Cron أو
+watchdog reinforcement؛ استمرار الدفعة يبقى مستقلاً عبر Worker/Watchdog حتى لو
+أُغلقت الصفحة.
+
+أسباب الخطأ الخاصة بالسطح الجديد: `invalid_nonce`, `not_logged_in`,
+`invalid_event`, `forbidden`, `no_eligible`, `batch_in_progress`,
+`missing_batch_id`, `batch_not_found`, `batch_event_mismatch`,
+`no_provider_credentials`, `batch_persistence_failed`, و`internal_error` بلا
+تسريب تفاصيل الاستثناء. لا endpoint لحفظ قالب Thank You، ولا Retry أو UI أو
+polling JavaScript في هذه المرحلة.
+
+`tests/test-thank-you-ajax-phase4b3a.php` يستدعي المعالجات الإنتاجية ويغطي
+التفويض، المدخلات المزورة، async-only start، summaries، العزل، الخصوصية، وحالة
+القراءة فقط باستخدام fakes بلا Transport أو DB.
+
+---
+
 ## 7. غير منفَّذ بعد (NOT IMPLEMENTED YET)
 
-- Caller HTTP/UI لإطلاق Manual Thank You غير منفذ. Batch/Worker الداخلية موجودة
-  في Phase 4B-2.6 لكنها غير موصولة بأي AJAX أو زر واجهة.
+- واجهة Manual Thank You وModal وJavaScript/Status polling وRetry UI غير منفذة؛
+  الـAJAX server API موجودة في Phase 4B-3A بلا أي زر أو Caller UI بعد.
 - أي جدولة تلقائية (Automatic Reminder/Cron يومي بحسب تاريخ المناسبة) —
   الوحيد المسموح هو Cron استكمال دفعة Reminder بدأها المستخدم يدوياً (§5.4).
 - Lease/Reclaim لمطالبات Thank You العالقة نُفّذ في Phase 4A-2 (§4.3)
@@ -644,7 +694,7 @@ exactly-once غير قابلة للحسم دون idempotency من المزود؛
   authoritative (راجع §4.5). لا يعني ذلك أن إرسال Thank You بدأ.
 - Recipient Resolver لـ`checked_in=1` نُفّذ قراءة فقط في Phase 4B-1 (§5.2)
   وتستهلكه Service Phase 4B-2 دون إعادة تطبيق الأهلية.
-- أي واجهة مستخدم لإطلاق Thank You.
+- أي واجهة مستخدم لإطلاق Thank You أو polling/retry من المتصفح.
 - إرسال Reminder عبر UltraMsg — Cartat فقط في Phase 3.
 - ربط `message_type` ببنية الـQueue الحالية للدعوة (`$queue['message_type']`)
   — مؤجَّل، راجع §2.5. لا علاقة له بـ`pge_message_log` (مستقل تماماً، ومستقل

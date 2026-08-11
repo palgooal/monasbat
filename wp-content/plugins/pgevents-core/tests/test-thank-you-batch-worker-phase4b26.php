@@ -395,7 +395,7 @@ PGE_Thank_You_Message_Service::$plans[$rsvp12] = [
 $batch12 = PGE_Thank_You_Batch_Worker::create_batch(12, 7)['batch_id'];
 run_tick(12, $batch12);
 $waiting12 = PGE_Thank_You_Batch_Worker::get_status(12, $batch12);
-check('active claim is recoverable processing state', $waiting12['processing'], 1);
+check('active claim is recoverable waiting state', $waiting12['waiting'], 1);
 check('active claim does not complete batch', $waiting12['complete'], false);
 $manifest12 = PGE_Thank_You_Batch_Store::get($batch12);
 $manifest12['items'][0]['next_attempt_at'] = gmdate('Y-m-d H:i:s', time() - 1);

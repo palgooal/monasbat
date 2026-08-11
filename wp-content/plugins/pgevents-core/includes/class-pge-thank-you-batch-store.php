@@ -162,6 +162,7 @@ class PGE_Thank_You_Batch_Store
         $counts = [
             'queued' => 0,
             'processing' => 0,
+            'waiting' => 0,
             'sent' => 0,
             'failed' => 0,
             'ambiguous' => 0,
@@ -172,7 +173,7 @@ class PGE_Thank_You_Batch_Store
         foreach ((array) ($manifest['items'] ?? []) as $item) {
             $status = (string) ($item['status'] ?? '');
             if ($status === self::ITEM_WAITING) {
-                $counts['processing']++;
+                $counts['waiting']++;
             } elseif (isset($counts[$status])) {
                 $counts[$status]++;
             }
@@ -188,6 +189,7 @@ class PGE_Thank_You_Batch_Store
             'total'           => count((array) ($manifest['items'] ?? [])),
             'queued'          => $counts['queued'],
             'processing'      => $counts['processing'],
+            'waiting'         => $counts['waiting'],
             'sent'            => $counts['sent'],
             'failed'          => $counts['failed'],
             'ambiguous'       => $counts['ambiguous'],

@@ -77,7 +77,7 @@ git diff --cached
 - Phase 1 — COMPLETE: Message abstraction.
 - Phase 2 — COMPLETE: Tracking/schema foundation.
 - Phase 3 — COMPLETE: Manual Reminder.
-- Phase 4 — IN PROGRESS: Manual Thank You foundations فقط؛ لا AJAX/UI بعد.
+- Phase 4 — IN PROGRESS: Manual Thank You foundations وAJAX server API؛ لا UI بعد.
 - Phase 4A-2 — COMPLETE: lifecycle-aware Thank You Claim lease/reclaim
   foundation فقط؛ لا إرسال Thank You أو AJAX/UI بعد.
 - Phase 4A-3 — COMPLETE: Messaging schema drift hardening.
@@ -89,7 +89,11 @@ git diff --cached
   `sync threshold=0` و`chunk=4`، Manifest غير autoloaded ومنفصلة عن Message Log،
   Claim عند التنفيذ فقط، وإعادة تحقق من الأهلية وRSVP lifecycle قبل كل إرسال.
   يوجد operation lock لكل مناسبة وtick lock لكل مناسبة/دفعة، processing recovery
-  وwatchdog، ولا يوجد AJAX/UI أو Automatic Thank You.
+  وwatchdog، ولا يوجد Automatic Thank You.
+- Phase 4B-3A — COMPLETE: authenticated Manual Thank You AJAX لثلاث عمليات فقط:
+  Preview وStart وStatus. كلها تمر عبر `pge_mgmt_validate_request()`، ولا تقبل
+  recipient/phone/RSVP/lifecycle/message/provider/credit authority من العميل.
+  Start async-only، وStatus قراءة فقط بلا recovery side effects؛ لا UI/Retry بعد.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 

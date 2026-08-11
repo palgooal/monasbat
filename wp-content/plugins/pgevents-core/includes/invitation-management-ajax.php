@@ -83,6 +83,9 @@ if (!defined('PGE_INVITATION_MGMT_DELETE_ENABLED')) {
 if (!defined('PGE_INVITATION_MGMT_REMINDER_ENABLED')) {
     define('PGE_INVITATION_MGMT_REMINDER_ENABLED', true);
 }
+if (!defined('PGE_INVITATION_MGMT_THANK_YOU_ENABLED')) {
+    define('PGE_INVITATION_MGMT_THANK_YOU_ENABLED', true);
+}
 
 if (!function_exists('pge_invitation_mgmt_validate_request')) {
     /**
@@ -1420,4 +1423,173 @@ function pge_invitation_mgmt_reminder_status_handler()
 }
 if (PGE_INVITATION_MGMT_REMINDER_ENABLED) {
     add_action('wp_ajax_pge_invitation_mgmt_reminder_status', 'pge_invitation_mgmt_reminder_status_handler');
+}
+
+// ============================================================================
+// Messaging Architecture Phase 4B-3A — Manual Thank You AJAX only.
+// These handlers are thin, server-authoritative adapters. No UI, template save,
+// recipient input, synchronous Claim/Send, retry, or polling side effect.
+// ============================================================================
+
+/** Preview current Thank You eligibility and a PII-free sample. */
+function pge_invitation_mgmt_thank_you_preview_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+
+    try {
+        $resolved = PGE_Message_Recipient_Resolver::resolve(
+            $event_id,
+            PGE_Message_Type::THANK_YOU,
+            'checked_in'
+        );
+
+        $event = get_post($event_id);
+        $event_date_raw = (string) get_post_meta($event_id, '_pge_event_date', true);
+        $preview = PGE_Message_Content_Resolver::resolve(
+            PGE_Message_Type::THANK_YOU,
+            $event_id,
+            [
+                'guest_name' => 'ضيفنا الكريم',
+                'event_name' => $event ? (string) $event->post_title : '',
+                'event_date' => $event_date_raw !== ''
+                    ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
+                    : '',
+            ]
+        );
+    } catch (\Throwable $e) {
+        wp_send_json_error([
+            'message' => 'تعذّرت معاينة رسالة الشكر',
+            'reason' => 'internal_error',
+        ]);
+    }
+
+    wp_send_json_success([
+        'eligible'                  => (int) ($resolved['eligible'] ?? 0),
+        'total_current_invitations' => (int) ($resolved['total_current_invitations'] ?? 0),
+        'skipped_invalid_phone'     => (int) ($resolved['skipped_invalid_phone'] ?? 0),
+        'skipped_cancelled'         => (int) ($resolved['skipped_cancelled'] ?? 0),
+        'skipped_not_checked_in'    => (int) ($resolved['skipped_not_checked_in'] ?? 0),
+        'skipped_no_rsvp'           => (int) ($resolved['skipped_no_rsvp'] ?? 0),
+        'skipped_integrity_error'   => (int) ($resolved['skipped_integrity_error'] ?? 0),
+        'skipped_stale_lifecycle'   => (int) ($resolved['skipped_stale_lifecycle'] ?? 0),
+        'preview_text'              => (string) ($preview['text'] ?? ''),
+    ]);
+}
+
+/** Start an async-only durable batch, or return the current active batch. */
+function pge_invitation_mgmt_thank_you_start_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+
+    try {
+        $result = PGE_Thank_You_Batch_Worker::create_batch($event_id, get_current_user_id());
+    } catch (\Throwable $e) {
+        wp_send_json_error([
+            'message' => 'تعذّر بدء إرسال رسائل الشكر',
+            'reason' => 'internal_error',
+        ]);
+    }
+
+    $outcome = (string) ($result['result'] ?? 'error');
+    if ($outcome === 'started' || $outcome === 'active_batch_exists') {
+        wp_send_json_success([
+            'batch_id' => (string) ($result['batch_id'] ?? ''),
+            'status' => is_array($result['status'] ?? null) ? $result['status'] : [],
+            'existing' => $outcome === 'active_batch_exists',
+        ]);
+    }
+
+    $reason = (string) ($result['reason'] ?? 'internal_error');
+    if ($outcome === 'no_eligible') {
+        $reason = 'no_eligible';
+    }
+    if ($outcome === 'busy' || $reason === 'operation_locked') {
+        $reason = 'batch_in_progress';
+    }
+    $messages = [
+        'invalid_event' => 'مناسبة غير صالحة',
+        'no_eligible' => 'لا يوجد حاضرون مؤهلون لإرسال رسالة الشكر حالياً',
+        'batch_in_progress' => 'توجد عملية بدء دفعة شكر أخرى قيد التنفيذ',
+        'no_provider_credentials' => 'لم يتم ضبط Cartat API Token في الإعدادات',
+        'batch_persistence_failed' => 'تعذّر تجهيز دفعة رسائل الشكر',
+        'batch_id_generation_failed' => 'تعذّر تجهيز دفعة رسائل الشكر',
+        'internal_error' => 'تعذّر بدء إرسال رسائل الشكر',
+    ];
+    if (!array_key_exists($reason, $messages)) {
+        $reason = 'internal_error';
+    }
+
+    wp_send_json_error(['message' => $messages[$reason], 'reason' => $reason]);
+}
+
+/** Read a PII-free batch summary. This endpoint has no recovery side effects. */
+function pge_invitation_mgmt_thank_you_status_handler()
+{
+    $event_id = pge_invitation_mgmt_validate_request();
+    $batch_id = isset($_POST['batch_id'])
+        ? sanitize_text_field(wp_unslash($_POST['batch_id']))
+        : '';
+    if ($batch_id === '') {
+        wp_send_json_error(['message' => 'batch_id مفقود', 'reason' => 'missing_batch_id']);
+    }
+
+    try {
+        $manifest = PGE_Thank_You_Batch_Store::get($batch_id);
+    } catch (\Throwable $e) {
+        wp_send_json_error([
+            'message' => 'تعذّر قراءة حالة دفعة رسائل الشكر',
+            'reason' => 'internal_error',
+        ]);
+    }
+    if (!is_array($manifest)) {
+        wp_send_json_error(['message' => 'دفعة رسائل الشكر غير موجودة', 'reason' => 'batch_not_found']);
+    }
+    if ((int) ($manifest['event_id'] ?? 0) !== $event_id) {
+        wp_send_json_error(['message' => 'الدفعة لا تنتمي إلى هذه المناسبة', 'reason' => 'batch_event_mismatch']);
+    }
+
+    try {
+        $status = PGE_Thank_You_Batch_Worker::get_status($event_id, $batch_id);
+    } catch (\Throwable $e) {
+        wp_send_json_error([
+            'message' => 'تعذّر قراءة حالة دفعة رسائل الشكر',
+            'reason' => 'internal_error',
+        ]);
+    }
+    if (!is_array($status)) {
+        wp_send_json_error(['message' => 'دفعة رسائل الشكر غير موجودة', 'reason' => 'batch_not_found']);
+    }
+
+    wp_send_json_success([
+        'batch_id'        => (string) ($status['batch_id'] ?? ''),
+        'total'           => (int) ($status['total'] ?? 0),
+        'queued'          => (int) ($status['queued'] ?? 0),
+        'processing'      => (int) ($status['processing'] ?? 0),
+        'waiting'         => (int) ($status['waiting'] ?? 0),
+        'sent'            => (int) ($status['sent'] ?? 0),
+        'failed'          => (int) ($status['failed'] ?? 0),
+        'ambiguous'       => (int) ($status['ambiguous'] ?? 0),
+        'skipped'         => (int) ($status['skipped'] ?? 0),
+        'skipped_reasons' => is_array($status['skipped_reasons'] ?? null)
+            ? $status['skipped_reasons']
+            : [],
+        'complete'        => !empty($status['complete']),
+        'started_at'      => (string) ($status['started_at'] ?? ''),
+        'updated_at'      => (string) ($status['updated_at'] ?? ''),
+    ]);
+}
+
+if (PGE_INVITATION_MGMT_THANK_YOU_ENABLED) {
+    add_action(
+        'wp_ajax_pge_invitation_mgmt_thank_you_preview',
+        'pge_invitation_mgmt_thank_you_preview_handler'
+    );
+    add_action(
+        'wp_ajax_pge_invitation_mgmt_thank_you_start',
+        'pge_invitation_mgmt_thank_you_start_handler'
+    );
+    add_action(
+        'wp_ajax_pge_invitation_mgmt_thank_you_status',
+        'pge_invitation_mgmt_thank_you_status_handler'
+    );
 }
