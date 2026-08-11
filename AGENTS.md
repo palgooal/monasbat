@@ -77,7 +77,8 @@ git diff --cached
 - Phase 1 — COMPLETE: Message abstraction.
 - Phase 2 — COMPLETE: Tracking/schema foundation.
 - Phase 3 — COMPLETE: Manual Reminder.
-- Phase 4 — IN PROGRESS: Manual Thank You foundations وAJAX server API؛ لا UI بعد.
+- Phase 4 — IN PROGRESS: Manual Thank You foundations وAJAX server API وواجهة
+  الإطلاق اليدوي؛ لا Retry UI أو Automatic Thank You بعد.
 - Phase 4A-2 — COMPLETE: lifecycle-aware Thank You Claim lease/reclaim
   foundation فقط؛ لا إرسال Thank You أو AJAX/UI بعد.
 - Phase 4A-3 — COMPLETE: Messaging schema drift hardening.
@@ -93,7 +94,10 @@ git diff --cached
 - Phase 4B-3A — COMPLETE: authenticated Manual Thank You AJAX لثلاث عمليات فقط:
   Preview وStart وStatus. كلها تمر عبر `pge_mgmt_validate_request()`، ولا تقبل
   recipient/phone/RSVP/lifecycle/message/provider/credit authority من العميل.
-  Start async-only، وStatus قراءة فقط بلا recovery side effects؛ لا UI/Retry بعد.
+  Start async-only، وStatus قراءة فقط بلا recovery side effects؛ لا Retry.
+- Phase 4B-3B — COMPLETE: Manual Thank You UI داخل صفحة إدارة الدعوات تستخدم
+  Preview → Start → Status polling كل 4 ثوانٍ. لا تختار مستلمين أو نصاً أو
+  Provider من العميل، وتوقف polling عند الاكتمال/الإغلاق دون إيقاف Worker؛ لا Retry UI.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 

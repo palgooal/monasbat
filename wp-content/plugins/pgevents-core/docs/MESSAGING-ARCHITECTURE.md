@@ -1,4 +1,4 @@
-# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6/4B-3A
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6/4B-3A/4B-3B
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
@@ -7,7 +7,7 @@
 > lease/reclaim؛ Phase 4A-3 — Schema drift hardening؛ Phase 4B-1 — Recipient
 > eligibility read-only لـThank You؛ Phase 4B-2 — Service إرسال داخلية؛
 > Phase 4B-2.6 — Durable async-only Batch/Worker؛ Phase 4B-3A — authenticated
-> Preview/Start/Status AJAX بلا UI).
+> Preview/Start/Status AJAX؛ Phase 4B-3B — Manual Thank You UI وStatus polling).
 > لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
@@ -580,7 +580,8 @@ partial failure، Text-only/Cartat-only، وعدم استخدام Credits أو D
 واجهة الإنشاء الداخلية هي
 `PGE_Thank_You_Batch_Worker::create_batch(event_id, actor_user_id)`، ولا تقبل
 قائمة مستلمين من العميل ولا ترسل أثناء الإنشاء. إذا لم يوجد مستلم مؤهل تعيد
-`no_eligible` بلا Manifest أو Cron chain. لا يوجد AJAX/UI حتى الآن.
+`no_eligible` بلا Manifest أو Cron chain. بقيت هذه المرحلة الداخلية بلا Caller؛
+أضيف AJAX في Phase 4B-3A والواجهة المستهلكة له في Phase 4B-3B دون تغيير العامل.
 
 `PGE_Thank_You_Batch_Store` تحفظ Manifest دائمة في WordPress options منفصلة
 غير autoloaded، مع Active Batch index مستقل لكل مناسبة بلا مسح شامل للخيارات.
@@ -632,7 +633,7 @@ exactly-once غير قابلة للحسم دون idempotency من المزود؛
 
 ---
 
-## 6.2 Phase 4B-3A — Manual Thank You AJAX (IMPLEMENTED، بلا UI)
+## 6.2 Phase 4B-3A — Manual Thank You AJAX (IMPLEMENTED، Server API)
 
 **الملف:** `includes/invitation-management-ajax.php`. أضيفت ثلاثة authenticated
 WordPress AJAX actions فقط:
@@ -672,8 +673,8 @@ watchdog reinforcement؛ استمرار الدفعة يبقى مستقلاً ع�
 `invalid_event`, `forbidden`, `no_eligible`, `batch_in_progress`,
 `missing_batch_id`, `batch_not_found`, `batch_event_mismatch`,
 `no_provider_credentials`, `batch_persistence_failed`, و`internal_error` بلا
-تسريب تفاصيل الاستثناء. لا endpoint لحفظ قالب Thank You، ولا Retry أو UI أو
-polling JavaScript في هذه المرحلة.
+تسريب تفاصيل الاستثناء. لا endpoint لحفظ قالب Thank You ولا Retry. كانت هذه
+المرحلة خادمية فقط؛ الواجهة وpolling أضيفتا لاحقاً في Phase 4B-3B (§6.3).
 
 `tests/test-thank-you-ajax-phase4b3a.php` يستدعي المعالجات الإنتاجية ويغطي
 التفويض، المدخلات المزورة، async-only start، summaries، العزل، الخصوصية، وحالة
@@ -681,20 +682,53 @@ polling JavaScript في هذه المرحلة.
 
 ---
 
+## 6.3 Phase 4B-3B — Manual Thank You UI (IMPLEMENTED)
+
+**الملف:** `templates/event-invitations.php`. أضيف زر «إرسال شكر للحاضرين» قرب
+أداة Reminder الحالية، وModal مستقلة بست حالات: تحميل المعاينة، جاهزة، بدء
+الدفعة، المعالجة، الاكتمال، والخطأ. التدفق الوحيد هو:
+
+```text
+Preview → Start → Async Processing → Poll Status → Result
+```
+
+فتح النافذة يستدعي Preview بـ`nonce + event_id` عبر helper الصفحة الحالي،
+ويعرض عدد المؤهلين ونص المعاينة العام read-only. لا توجد فلاتر أو اختيار
+مستلمين، و`eligible=0` حالة فارغة واضحة تعطّل زر البدء وليست خطأ تقنياً.
+
+Start يرسل `nonce + event_id` فقط، يعطّل الزر فوراً ويحمي من double-click، ثم
+يتعامل مع الدفعة الجديدة والنشطة المعادة بـ`existing=true` بالعقد نفسه: يستخدم
+`batch_id` الخادمية وينتقل إلى المعالجة بلا خطأ. لا ترسل الواجهة recipient أو
+phone أو RSVP/lifecycle identity أو message text أو provider أو credit values.
+
+Status polling يحدث كل 4 ثوانٍ بـ`nonce + event_id + batch_id`. يعرض للمستخدم
+`total/sent/failed/ambiguous/skipped` بنصوص مبسطة، ويفصل الفشل المؤكد عن حالة
+تعذر التأكيد. يتوقف polling عند `complete=true`، أو إغلاق النافذة، أو خطأ خادمي
+نهائي، أو مغادرة الصفحة، مع منع duplicate timers. إغلاق النافذة لا يوقف Worker؛
+عند إعادة الفتح تبدأ Preview جديدة، وإذا كانت دفعة نشطة يعيدها Start وتُستأنف
+متابعتها.
+
+الردود تُعرض عبر حقول whitelist و`textContent` فقط بلا PII أو Raw Manifest أو
+أسباب skip التقنية. لا Credits UX، لا قالب قابل للتعديل، لا Media، لا Retry،
+ولا endpoint رابع. `tests/test-thank-you-ui-phase4b3b.php` يثبت بنية الواجهة
+وعقود JavaScript والخصوصية واستقلال state عن Reminder دون HTTP أو Transport.
+
+---
+
 ## 7. غير منفَّذ بعد (NOT IMPLEMENTED YET)
 
-- واجهة Manual Thank You وModal وJavaScript/Status polling وRetry UI غير منفذة؛
-  الـAJAX server API موجودة في Phase 4B-3A بلا أي زر أو Caller UI بعد.
+- Retry UI لـManual Thank You غير منفذة؛ لا retry endpoint أو إعادة محاولة
+  تلقائية من المتصفح.
 - أي جدولة تلقائية (Automatic Reminder/Cron يومي بحسب تاريخ المناسبة) —
   الوحيد المسموح هو Cron استكمال دفعة Reminder بدأها المستخدم يدوياً (§5.4).
 - Lease/Reclaim لمطالبات Thank You العالقة نُفّذ في Phase 4A-2 (§4.3)
-  وتستهلكه Service Phase 4B-2 والـWorker الداخلية في Phase 4B-2.6، لكن لا
-  Caller HTTP/UI بعد.
+  وتستهلكه Service Phase 4B-2 والـWorker الداخلية في Phase 4B-2.6 عند إطلاق
+  الدفعة يدوياً من واجهة Phase 4B-3B.
 - شرط عدم توريث `thank_you_sent_at` حُسم في Phase C عبر reset دورة الدعوة
   authoritative (راجع §4.5). لا يعني ذلك أن إرسال Thank You بدأ.
 - Recipient Resolver لـ`checked_in=1` نُفّذ قراءة فقط في Phase 4B-1 (§5.2)
   وتستهلكه Service Phase 4B-2 دون إعادة تطبيق الأهلية.
-- أي واجهة مستخدم لإطلاق Thank You أو polling/retry من المتصفح.
+- أي Retry UI أو إدارة يدوية لإعادة محاولة نتائج Thank You.
 - إرسال Reminder عبر UltraMsg — Cartat فقط في Phase 3.
 - ربط `message_type` ببنية الـQueue الحالية للدعوة (`$queue['message_type']`)
   — مؤجَّل، راجع §2.5. لا علاقة له بـ`pge_message_log` (مستقل تماماً، ومستقل

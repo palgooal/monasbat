@@ -97,6 +97,9 @@ get_header();
       <button type="button" id="openBulkAddBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إضافة جماعية</button>
       <!-- Messaging Architecture Phase 3 ("Manual Reminder"): زر فتح نافذة إرسال تذكير يدوي — نفس تنسيق الأزرار المجاورة بالضبط، لا تصميم جديد. -->
       <button type="button" id="openReminderBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">🔔 إرسال تذكير</button>
+      <!-- Messaging Architecture Phase 4B-3B: Manual Thank You واجهة فقط فوق AJAX المنشورة، بلا فلتر مستلمين أو صلاحية Client موازية. -->
+      <button type="button" id="openThankYouBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70"
+              aria-controls="thankYouModal" aria-expanded="false">🎉 إرسال شكر للحاضرين</button>
       <!-- استيراد المدعوين من Excel (docs/EXCEL-GUEST-IMPORT-SPEC.md): تنزيل النموذج الرسمي (Phase 1) + Modal رفع/معاينة/استيراد كامل (Phase 3 رفع+معاينة، Phase 4 تأكيد+استيراد فعلي). -->
       <button type="button" id="downloadExcelTemplateBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">📥 تحميل نموذج Excel</button>
       <button type="button" id="openExcelImportBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">📤 استيراد من Excel</button>
@@ -531,6 +534,82 @@ get_header();
         <div id="reminderResultSummaryBox" class="flex flex-wrap gap-2 mb-3"></div>
         <div class="flex justify-end gap-2 mt-3">
           <button type="button" id="closeReminderResultBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">إغلاق</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Messaging Architecture Phase 4B-3B — Manual Thank You UI ══ -->
+  <div id="thankYouModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+       role="dialog" aria-modal="true" aria-labelledby="thankYouHeading" aria-describedby="thankYouDialogDescription" aria-hidden="true">
+    <div class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 id="thankYouHeading" class="text-sm font-extrabold text-foreground">إرسال شكر للحاضرين</h2>
+          <p id="thankYouDialogDescription" class="mt-1 text-xs text-foreground/60">يُرسل الشكر للحاضرين المسجّل حضورهم فعلياً فقط.</p>
+        </div>
+        <button type="button" id="closeThankYouBtn" class="h-9 w-9 rounded-lg border border-border text-sm font-bold text-foreground/70" aria-label="إغلاق نافذة إرسال الشكر">×</button>
+      </div>
+
+      <!-- A. Loading Preview -->
+      <div id="thankYouLoadingState" class="py-10 text-center" aria-live="polite">
+        <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" aria-hidden="true"></div>
+        <p class="text-sm font-semibold text-foreground/70">جارٍ تجهيز معاينة رسالة الشكر...</p>
+      </div>
+
+      <!-- B. Ready -->
+      <div id="thankYouReadyState" class="hidden">
+        <div class="rounded-xl bg-secondary/20 p-3">
+          <p class="text-xs font-bold text-foreground/60">الحاضرون المؤهلون للشكر</p>
+          <p id="thankYouEligibleCount" class="mt-1 text-xl font-extrabold text-foreground" aria-live="polite">0</p>
+          <p id="thankYouEligibilitySummary" class="mt-1 text-xs text-foreground/70"></p>
+          <p id="thankYouSkippedPreviewNote" class="hidden mt-1 text-xs text-foreground/60">بعض المدعوين غير مؤهلين للإرسال حالياً.</p>
+        </div>
+
+        <div class="mt-3 rounded-xl border border-border bg-secondary/20 p-3">
+          <p class="text-[11px] font-bold text-foreground/60 mb-1">معاينة رسالة الشكر</p>
+          <p id="thankYouPreviewText" class="text-xs text-foreground/80 whitespace-pre-line"></p>
+        </div>
+
+        <p id="thankYouNoEligibleMsg" class="hidden mt-3 text-sm font-semibold text-foreground/70" role="status">لا يوجد حضور مؤهل لإرسال رسالة شكر حالياً.</p>
+
+        <div class="flex justify-end gap-2 mt-4">
+          <button type="button" id="cancelThankYouBtn" class="h-11 px-4 rounded-xl border border-border text-sm font-semibold text-foreground/70">إلغاء</button>
+          <button type="button" id="startThankYouBtn" disabled class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white disabled:opacity-40">بدء إرسال الشكر</button>
+        </div>
+      </div>
+
+      <!-- C. Starting Batch -->
+      <div id="thankYouStartingState" class="hidden py-10 text-center" aria-live="polite">
+        <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" aria-hidden="true"></div>
+        <p class="text-sm font-semibold text-foreground/70">جارٍ بدء إرسال رسائل الشكر...</p>
+        <p class="mt-1 text-[11px] text-foreground/45">يمكنك إغلاق النافذة؛ ستستمر الدفعة على الخادم.</p>
+      </div>
+
+      <!-- D. Processing -->
+      <div id="thankYouProcessingState" class="hidden py-10 text-center" aria-live="polite">
+        <div class="mx-auto mb-3 h-8 w-8 rounded-full border-4 border-border border-t-primary animate-spin" aria-hidden="true"></div>
+        <p class="text-sm font-semibold text-foreground/70">جارٍ إرسال رسائل الشكر...</p>
+        <p id="thankYouProcessingProgress" class="mt-2 text-sm font-bold text-foreground"></p>
+        <p id="thankYouProcessingSummary" class="mt-1 text-xs text-foreground/60"></p>
+        <p class="mt-3 text-[11px] text-foreground/45">يمكنك إغلاق النافذة؛ سيستمر الإرسال على الخادم.</p>
+      </div>
+
+      <!-- E. Complete -->
+      <div id="thankYouCompleteState" class="hidden py-4">
+        <p id="thankYouCompleteMsg" class="mb-3 text-sm font-bold text-foreground" aria-live="polite"></p>
+        <div id="thankYouCompleteSummary" class="flex flex-wrap gap-2 mb-3"></div>
+        <div id="thankYouCompleteDetails" class="text-xs text-foreground/70"></div>
+        <div class="flex justify-end gap-2 mt-4">
+          <button type="button" id="closeThankYouResultBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">إغلاق</button>
+        </div>
+      </div>
+
+      <!-- F. Error -->
+      <div id="thankYouErrorState" class="hidden py-4" role="alert">
+        <p id="thankYouErrorMsg" class="rounded-xl px-3 py-2 bg-destructive/10 text-sm font-semibold text-destructive-text"></p>
+        <div class="flex justify-end gap-2 mt-4">
+          <button type="button" id="closeThankYouErrorBtn" class="h-11 px-5 rounded-xl bg-primary text-sm font-bold text-white">إغلاق</button>
         </div>
       </div>
     </div>
@@ -1802,6 +1881,268 @@ get_header();
   document.getElementById('closeReminderResultBtn').addEventListener('click', function () {
     reminderCloseModal();
   });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Messaging Architecture Phase 4B-3B — Manual Thank You UI
+  // واجهة مستقلة فوق Preview/Start/Status الحالية؛ لا تختار مستلمين ولا ترسل
+  // نص الرسالة أو بيانات مزوّد، ولا تنفّذ Claim/Send داخل طلب Start.
+  // ══════════════════════════════════════════════════════════════════════
+  var thankYouModal = document.getElementById('thankYouModal');
+  var thankYouLoadingState = document.getElementById('thankYouLoadingState');
+  var thankYouReadyState = document.getElementById('thankYouReadyState');
+  var thankYouStartingState = document.getElementById('thankYouStartingState');
+  var thankYouProcessingState = document.getElementById('thankYouProcessingState');
+  var thankYouCompleteState = document.getElementById('thankYouCompleteState');
+  var thankYouErrorState = document.getElementById('thankYouErrorState');
+  var thankYouEligibleCount = document.getElementById('thankYouEligibleCount');
+  var thankYouEligibilitySummary = document.getElementById('thankYouEligibilitySummary');
+  var thankYouSkippedPreviewNote = document.getElementById('thankYouSkippedPreviewNote');
+  var thankYouPreviewText = document.getElementById('thankYouPreviewText');
+  var thankYouNoEligibleMsg = document.getElementById('thankYouNoEligibleMsg');
+  var thankYouProcessingProgress = document.getElementById('thankYouProcessingProgress');
+  var thankYouProcessingSummary = document.getElementById('thankYouProcessingSummary');
+  var thankYouCompleteMsg = document.getElementById('thankYouCompleteMsg');
+  var thankYouCompleteSummary = document.getElementById('thankYouCompleteSummary');
+  var thankYouCompleteDetails = document.getElementById('thankYouCompleteDetails');
+  var thankYouErrorMsg = document.getElementById('thankYouErrorMsg');
+  var openThankYouBtn = document.getElementById('openThankYouBtn');
+  var closeThankYouBtn = document.getElementById('closeThankYouBtn');
+  var startThankYouBtn = document.getElementById('startThankYouBtn');
+  var thankYouPollTimer = null;
+  var thankYouStartInFlight = false;
+  var thankYouSession = 0;
+  var thankYouBatchId = '';
+  var thankYouLastFocusedElement = null;
+
+  var THANK_YOU_ERROR_MESSAGES = {
+    invalid_nonce: 'انتهت صلاحية الجلسة. حدّث الصفحة وحاول مرة أخرى.',
+    not_logged_in: 'يجب تسجيل الدخول لتنفيذ هذه العملية.',
+    unauthorized: 'لا تملك صلاحية تنفيذ هذه العملية.',
+    forbidden: 'لا تملك صلاحية تنفيذ هذه العملية.',
+    invalid_event: 'تعذّر التحقق من المناسبة المطلوبة.',
+    no_eligible: 'لم يعد هناك حضور مؤهل لإرسال رسالة شكر حالياً.',
+    batch_in_progress: 'توجد دفعة شكر قيد البدء حالياً. حاول بعد لحظات.',
+    missing_batch_id: 'تعذّر متابعة دفعة رسائل الشكر.',
+    batch_not_found: 'تعذّر العثور على دفعة رسائل الشكر.',
+    batch_event_mismatch: 'تعذّر التحقق من دفعة رسائل الشكر.',
+    no_provider_credentials: 'خدمة إرسال الرسائل غير مهيأة حالياً.',
+    batch_persistence_failed: 'تعذّر تجهيز دفعة رسائل الشكر. حاول مرة أخرى.',
+    batch_id_generation_failed: 'تعذّر تجهيز دفعة رسائل الشكر. حاول مرة أخرى.',
+    internal_error: 'تعذّر تنفيذ العملية. حاول مرة أخرى.',
+  };
+
+  function thankYouShowState(name) {
+    thankYouLoadingState.classList.toggle('hidden', name !== 'loading');
+    thankYouReadyState.classList.toggle('hidden', name !== 'ready');
+    thankYouStartingState.classList.toggle('hidden', name !== 'starting');
+    thankYouProcessingState.classList.toggle('hidden', name !== 'processing');
+    thankYouCompleteState.classList.toggle('hidden', name !== 'complete');
+    thankYouErrorState.classList.toggle('hidden', name !== 'error');
+    thankYouModal.setAttribute('aria-busy', (name === 'loading' || name === 'starting') ? 'true' : 'false');
+  }
+
+  function thankYouStopPolling() {
+    if (thankYouPollTimer) {
+      window.clearTimeout(thankYouPollTimer);
+      thankYouPollTimer = null;
+    }
+  }
+
+  function thankYouErrorMessage(response, fallback) {
+    var reason = response && response.data && response.data.reason;
+    return THANK_YOU_ERROR_MESSAGES[reason] || fallback;
+  }
+
+  function thankYouShowError(message) {
+    thankYouStopPolling();
+    thankYouErrorMsg.textContent = message;
+    thankYouShowState('error');
+    document.getElementById('closeThankYouErrorBtn').focus();
+  }
+
+  function thankYouLoadPreview(sessionId) {
+    postAjax('pge_invitation_mgmt_thank_you_preview', {}).then(function (res) {
+      if (sessionId !== thankYouSession || thankYouModal.classList.contains('hidden')) return;
+      if (!res || !res.success) {
+        thankYouShowError(thankYouErrorMessage(res, 'تعذّر تجهيز معاينة رسالة الشكر.'));
+        return;
+      }
+
+      var data = res.data || {};
+      var eligible = Math.max(0, Number(data.eligible) || 0);
+      var total = Math.max(0, Number(data.total_current_invitations) || 0);
+      var excluded = Math.max(0, total - eligible);
+      thankYouEligibleCount.textContent = eligible;
+      thankYouEligibilitySummary.textContent = eligible > 0
+        ? 'سيتم إرسال رسالة الشكر إلى ' + eligible + ' من الحاضرين المؤهلين.'
+        : 'لن تبدأ أي عملية إرسال.';
+      thankYouSkippedPreviewNote.classList.toggle('hidden', excluded === 0);
+      thankYouPreviewText.textContent = data.preview_text || '';
+      thankYouNoEligibleMsg.classList.toggle('hidden', eligible > 0);
+      startThankYouBtn.disabled = eligible === 0;
+      thankYouShowState('ready');
+      (eligible > 0 ? startThankYouBtn : document.getElementById('cancelThankYouBtn')).focus();
+    }).catch(function () {
+      if (sessionId !== thankYouSession || thankYouModal.classList.contains('hidden')) return;
+      thankYouShowError('تعذّر الاتصال بالخادم. حاول مرة أخرى لاحقاً.');
+    });
+  }
+
+  function thankYouOpenModal() {
+    thankYouSession += 1;
+    thankYouStopPolling();
+    thankYouStartInFlight = false;
+    thankYouBatchId = '';
+    startThankYouBtn.disabled = true;
+    thankYouEligibleCount.textContent = '0';
+    thankYouEligibilitySummary.textContent = '';
+    thankYouSkippedPreviewNote.classList.add('hidden');
+    thankYouPreviewText.textContent = '';
+    thankYouNoEligibleMsg.classList.add('hidden');
+    thankYouLastFocusedElement = document.activeElement;
+    thankYouShowState('loading');
+    thankYouModal.classList.remove('hidden');
+    thankYouModal.setAttribute('aria-hidden', 'false');
+    openThankYouBtn.setAttribute('aria-expanded', 'true');
+    closeThankYouBtn.focus();
+    thankYouLoadPreview(thankYouSession);
+  }
+
+  function thankYouCloseModal() {
+    thankYouSession += 1;
+    thankYouStopPolling();
+    thankYouStartInFlight = false;
+    thankYouModal.classList.add('hidden');
+    thankYouModal.setAttribute('aria-hidden', 'true');
+    openThankYouBtn.setAttribute('aria-expanded', 'false');
+    if (thankYouLastFocusedElement && typeof thankYouLastFocusedElement.focus === 'function') {
+      thankYouLastFocusedElement.focus();
+    }
+  }
+
+  function thankYouRenderStatus(status) {
+    var total = Math.max(0, Number(status.total) || 0);
+    var sent = Math.max(0, Number(status.sent) || 0);
+    var failed = Math.max(0, Number(status.failed) || 0);
+    var ambiguous = Math.max(0, Number(status.ambiguous) || 0);
+    var skipped = Math.max(0, Number(status.skipped) || 0);
+    var processed = Math.min(total, sent + failed + ambiguous + skipped);
+    thankYouProcessingProgress.textContent = 'تمت معالجة: ' + processed + ' من ' + total;
+    thankYouProcessingSummary.textContent = 'تم الإرسال: ' + sent
+      + ' · تعذر الإرسال: ' + failed
+      + ' · تعذر تأكيد الحالة: ' + ambiguous
+      + ' · تم التخطي: ' + skipped;
+  }
+
+  function thankYouRenderComplete(status) {
+    var total = Math.max(0, Number(status.total) || 0);
+    var sent = Math.max(0, Number(status.sent) || 0);
+    var failed = Math.max(0, Number(status.failed) || 0);
+    var ambiguous = Math.max(0, Number(status.ambiguous) || 0);
+    var skipped = Math.max(0, Number(status.skipped) || 0);
+    var hasPartialResult = failed > 0 || ambiguous > 0 || skipped > 0;
+
+    thankYouCompleteMsg.textContent = hasPartialResult
+      ? 'اكتملت معالجة رسائل الشكر مع نتائج تحتاج إلى المراجعة.'
+      : 'اكتمل إرسال رسائل الشكر.';
+    thankYouCompleteSummary.innerHTML = '';
+    [
+      { label: 'الإجمالي', value: total },
+      { label: 'تم الإرسال', value: sent },
+      { label: 'تعذر الإرسال', value: failed },
+      { label: 'تعذر تأكيد الحالة', value: ambiguous },
+      { label: 'تم التخطي', value: skipped },
+    ].forEach(function (item) {
+      var span = document.createElement('span');
+      span.className = 'inline-flex items-center gap-1 rounded-lg bg-secondary/40 px-2.5 py-1 text-xs font-bold text-foreground/75';
+      span.textContent = item.label + ': ' + item.value;
+      thankYouCompleteSummary.appendChild(span);
+    });
+
+    var details = [];
+    if (failed > 0) details.push('تعذر إرسال ' + failed + ' رسالة.');
+    if (ambiguous > 0) details.push('تعذر تأكيد حالة ' + ambiguous + ' من الرسائل.');
+    if (skipped > 0) details.push('تم تخطي ' + skipped + ' لأنها لم تعد مؤهلة أو سبق إرسال الشكر لها.');
+    thankYouCompleteDetails.textContent = details.join(' ');
+    thankYouShowState('complete');
+    document.getElementById('closeThankYouResultBtn').focus();
+  }
+
+  function thankYouSchedulePoll(batchId) {
+    thankYouStopPolling();
+    thankYouPollTimer = window.setTimeout(function () {
+      thankYouPollStatus(batchId);
+    }, 4000);
+  }
+
+  function thankYouPollStatus(batchId) {
+    var sessionId = thankYouSession;
+    postAjax('pge_invitation_mgmt_thank_you_status', { batch_id: batchId }).then(function (res) {
+      if (sessionId !== thankYouSession || thankYouModal.classList.contains('hidden')) return;
+      if (!res || !res.success) {
+        thankYouShowError(thankYouErrorMessage(res, 'تعذّر متابعة حالة إرسال رسائل الشكر.'));
+        return;
+      }
+
+      thankYouRenderStatus(res.data || {});
+      if (res.data && res.data.complete) {
+        thankYouStopPolling();
+        thankYouRenderComplete(res.data);
+        return;
+      }
+      thankYouSchedulePoll(batchId);
+    }).catch(function () {
+      if (sessionId !== thankYouSession || thankYouModal.classList.contains('hidden')) return;
+      thankYouProcessingSummary.textContent = 'تعذر تحديث الحالة مؤقتاً. ستتم المحاولة مجدداً.';
+      thankYouSchedulePoll(batchId);
+    });
+  }
+
+  function thankYouStartBatch() {
+    if (thankYouStartInFlight || startThankYouBtn.disabled) return;
+    thankYouStartInFlight = true;
+    startThankYouBtn.disabled = true;
+    thankYouShowState('starting');
+    var sessionId = thankYouSession;
+
+    postAjax('pge_invitation_mgmt_thank_you_start', {}).then(function (res) {
+      if (sessionId !== thankYouSession || thankYouModal.classList.contains('hidden')) return;
+      thankYouStartInFlight = false;
+      if (!res || !res.success) {
+        thankYouShowError(thankYouErrorMessage(res, 'تعذّر بدء إرسال رسائل الشكر. حاول مرة أخرى.'));
+        return;
+      }
+
+      thankYouBatchId = String((res.data && res.data.batch_id) || '');
+      if (!thankYouBatchId) {
+        thankYouShowError('تعذّر متابعة دفعة رسائل الشكر.');
+        return;
+      }
+
+      thankYouShowState('processing');
+      thankYouRenderStatus((res.data && res.data.status) || {});
+      if (res.data && res.data.status && res.data.status.complete) {
+        thankYouRenderComplete(res.data.status);
+        return;
+      }
+      thankYouSchedulePoll(thankYouBatchId);
+    }).catch(function () {
+      if (sessionId !== thankYouSession || thankYouModal.classList.contains('hidden')) return;
+      thankYouStartInFlight = false;
+      thankYouShowError('تعذّر الاتصال بالخادم. حاول مرة أخرى لاحقاً.');
+    });
+  }
+
+  if (openThankYouBtn) openThankYouBtn.addEventListener('click', thankYouOpenModal);
+  closeThankYouBtn.addEventListener('click', thankYouCloseModal);
+  document.getElementById('cancelThankYouBtn').addEventListener('click', thankYouCloseModal);
+  document.getElementById('closeThankYouResultBtn').addEventListener('click', thankYouCloseModal);
+  document.getElementById('closeThankYouErrorBtn').addEventListener('click', thankYouCloseModal);
+  startThankYouBtn.addEventListener('click', thankYouStartBatch);
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && !thankYouModal.classList.contains('hidden')) thankYouCloseModal();
+  });
+  window.addEventListener('beforeunload', thankYouStopPolling);
 
   renderRows(INITIAL.items);
   renderPagination(INITIAL.page, INITIAL.total_pages);
