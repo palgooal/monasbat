@@ -176,6 +176,14 @@ class PGE_Cartat_Transport
     public function has_credentials(): bool { return self::$credentials; }
 }
 
+class PGE_Thank_You_Transport_Factory
+{
+    public static function resolve(): PGE_Cartat_Transport
+    {
+        return new PGE_Cartat_Transport();
+    }
+}
+
 class PGE_Message_Recipient_Resolver
 {
     public static $recipients = [];

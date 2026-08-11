@@ -17,7 +17,7 @@ class PGE_Thank_You_Batch_Worker
             return ['result' => 'error', 'reason' => 'invalid_event'];
         }
 
-        $transport = new PGE_Cartat_Transport();
+        $transport = PGE_Thank_You_Transport_Factory::resolve();
         if (!$transport->has_credentials()) {
             return ['result' => 'error', 'reason' => 'no_provider_credentials'];
         }
@@ -120,7 +120,7 @@ class PGE_Thank_You_Batch_Worker
             return;
         }
 
-        $transport = new PGE_Cartat_Transport();
+        $transport = PGE_Thank_You_Transport_Factory::resolve();
         if (!$transport->has_credentials()) {
             foreach ($reservation['items'] as $item) {
                 self::record_outcome($event_id, $batch_id, $item, [

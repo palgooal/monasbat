@@ -161,7 +161,7 @@ class PGE_Thank_You_Message_Service
             return $summary;
         }
 
-        $transport = new PGE_Cartat_Transport();
+        $transport = PGE_Thank_You_Transport_Factory::resolve();
         if (!$transport->has_credentials()) {
             $summary['result'] = 'error';
             $summary['reason'] = 'no_provider_credentials';

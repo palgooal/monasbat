@@ -270,6 +270,14 @@ class PGE_Cartat_Transport
     }
 }
 
+class PGE_Thank_You_Transport_Factory
+{
+    public static function resolve(): PGE_Cartat_Transport
+    {
+        return new PGE_Cartat_Transport();
+    }
+}
+
 require_once dirname(__DIR__) . '/includes/class-pge-thank-you-message-service.php';
 
 function add_event(int $event_id, string $name, array $recipients): void

@@ -199,6 +199,7 @@ require_once PGE_PATH . 'includes/manual-package-activation-admin.php';
 // (المُحمَّل لاحقاً عند مفتاح pge_wa_provider) يعتمد عليها بدوره الآن —
 // require_once يمنع أي تحميل مزدوج بين الموقعين.
 require_once PGE_PATH . 'includes/class-pge-cartat-transport.php';
+require_once PGE_PATH . 'includes/class-pge-thank-you-transport-factory.php';
 
 // Supervisor Invitation Delivery (Supervisor Invitation Delivery via Cartat،
 // تنفيذ). النقطة المركزية الوحيدة لطلب تسليم دعوة مشرف فعلي عبر Cartat —

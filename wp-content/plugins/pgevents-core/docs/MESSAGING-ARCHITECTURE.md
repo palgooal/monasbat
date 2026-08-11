@@ -1,4 +1,4 @@
-# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6/4B-3A/4B-3B
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6/4B-3A/4B-3B/4B-3C
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
@@ -7,7 +7,8 @@
 > lease/reclaim؛ Phase 4A-3 — Schema drift hardening؛ Phase 4B-1 — Recipient
 > eligibility read-only لـThank You؛ Phase 4B-2 — Service إرسال داخلية؛
 > Phase 4B-2.6 — Durable async-only Batch/Worker؛ Phase 4B-3A — authenticated
-> Preview/Start/Status AJAX؛ Phase 4B-3B — Manual Thank You UI وStatus polling).
+> Preview/Start/Status AJAX؛ Phase 4B-3B — Manual Thank You UI وStatus polling؛
+> Phase 4B-3C — Local/test-only runtime transport seam).
 > لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
@@ -712,6 +713,37 @@ Status polling يحدث كل 4 ثوانٍ بـ`nonce + event_id + batch_id`. ي�
 أسباب skip التقنية. لا Credits UX، لا قالب قابل للتعديل، لا Media، لا Retry،
 ولا endpoint رابع. `tests/test-thank-you-ui-phase4b3b.php` يثبت بنية الواجهة
 وعقود JavaScript والخصوصية واستقلال state عن Reminder دون HTTP أو Transport.
+
+---
+
+## 6.4 Phase 4B-3C — Safe Runtime Test Transport Seam (IMPLEMENTED)
+
+`PGE_Thank_You_Transport_Factory` هي نقطة إنشاء Transport الخاصة بـThank You فقط. السلوك
+الافتراضي، ومع أي بيئة غير `local/test`، هو إنشاء `PGE_Cartat_Transport` الحقيقي بنفس
+العقد الحالي. لا يشمل ذلك Reminder ولا يغيّر `format_number()` أو `send_text()` أو
+`interpret_result()` أو HTTP payload/auth في Transport الإنتاجية.
+
+البديل `PGE_Thank_You_Test_Transport` معطّل افتراضياً، ولا يُسمح به إلا إذا كان الثابت
+الخادمي `PGE_ENABLE_TEST_TRANSPORT === true` **وكانت** البيئة التي يعيدها
+`wp_get_environment_type()` هي `local` أو `test`. في Production يُتجاهل الثابت ويُستخدم
+Cartat الحقيقي؛ هذا هو قرار fail-closed المعتمد للحفاظ على سلوك الإنتاج. لا تقرأ الـFactory
+أي Query/POST/Cookie/AJAX field أو `wp_option`، ولا يستطيع العميل اختيار Transport أو نتيجة
+المحاكاة.
+
+لجلسة E2E محلية لاحقة فقط، يمكن تعريف الآتي يدوياً في `wp-config.php` المحلي غير المتتبع:
+
+```php
+define('WP_ENVIRONMENT_TYPE', 'local'); // إذا لم تكن البيئة المحلية تعيده بالفعل
+define('PGE_ENABLE_TEST_TRANSPORT', true);
+define('PGE_TEST_TRANSPORT_OUTCOME', 'accepted'); // accepted|rejected|ambiguous
+```
+
+ثابت النتيجة اختياري و`accepted` هي الافتراضية. في بيئة Laragon الحالية يعيد WordPress
+`production` افتراضياً، لذلك يبقى الـFake مرفوضاً ما لم يُعلن `WP_ENVIRONMENT_TYPE` محلياً
+بصورة صريحة. الـFake لا تنفذ HTTP إطلاقاً، ولا تحفظ
+الهاتف أو نص الرسالة أو credentials أو تسجلها؛ العداد الوحيد داخل الذاكرة هو عدد استدعاءات
+الإرسال في العملية الحالية. هذه Test seam وليست Product feature، ولا يوجد لها UI أو AJAX
+debug endpoint أو إعداد في قاعدة البيانات.
 
 ---
 

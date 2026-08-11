@@ -98,6 +98,8 @@ git diff --cached
 - Phase 4B-3B — COMPLETE: Manual Thank You UI داخل صفحة إدارة الدعوات تستخدم
   Preview → Start → Status polling كل 4 ثوانٍ. لا تختار مستلمين أو نصاً أو
   Provider من العميل، وتوقف polling عند الاكتمال/الإغلاق دون إيقاف Worker؛ لا Retry UI.
+- Phase 4B-3C — COMPLETE: Safe Runtime Test Transport seam خاصة بـThank You؛ معطلة
+  افتراضياً، خادمية فقط، ومقصورة على local/test دون أي اختيار من العميل أو تأثير على Reminder.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 
@@ -141,6 +143,7 @@ RSVP وCheck-in مفهومان منفصلان. أهلية Thank You المخطط
 
 - لا تنسخ HTTP/Auth/Payload logic؛ استخدم Transport الموجود.
 - Cartat هو Provider للرسائل الجديدة الحالية. لا توسّع Reminder/Thank You إلى UltraMsg دون مهمة مستقلة.
+- Test transports must never be client-selectable and must remain disabled by default outside local/test environments.
 - Salla/Webhook activation/deactivation/idempotency حساس. لا تغيّر Webhook semantics أو order identity أو Catalog activation أو Snapshot refresh أو credit accumulation ضمن مهمة Messaging غير مرتبطة.
 
 ## 10. الأسرار وSchema
