@@ -276,6 +276,7 @@ class Fake_Wpdb_Hdsa
 
     public function get_var($sql)
     {
+        if (stripos($sql, 'GET_LOCK') !== false) return 1;
         if ($this->is_rsvps_table($sql) && strpos($sql, 'SUM(1 + companions)') !== false) {
             $event_id = $this->extract_int($sql, 'event_id');
             $sum = 0;
@@ -433,12 +434,9 @@ check('B6. [مُصلَح — Blocker 1] resolve_by_rsvp_id() بعد الحذف �
 $qr_validate_b_after = PGE_Checkin_QR_Service::validate(5001, $qr_b);
 check('B7. (طبقة التحقق البنيوي وحدها لم تُعدَّل عمداً) PGE_Checkin_QR_Service::validate() الخام لا يزال valid بمعزل — الحارس الجديد في طبقة الحلّ (B8) هو ما يمنع الوصول الفعلي، لا هذه الطبقة', $qr_validate_b_after['result'], 'valid');
 $resolve_qr_b_after = PGE_Guest_Resolution_Service::resolve_from_qr(5001, $qr_b);
-// [مُحدَّث RWPU] بعد إصلاح اشتقاق qr_version الافتراضي (يُشتَق الآن من
-// invited_at بدل ثابت 1 عند غياب تدوير سابق)، is_qr_version_current() يرفض
-// الـQR القديم بالفعل *قبل* الوصول لمسار resolve_by_rsvp_id() (النتيجة تصبح
-// invalid/qr_superseded بدل not_found) — رفض حقيقي أقوى، لا انحدار: لا وصول
-// لـPGE_Checkin_Recorder بأي الحالتين.
-check('B8. [مُصلَح — Blocker 1+2، مُحدَّث RWPU] resolve_from_qr() الكامل (المسار الفعلي لمسح المشرف) بعد الحذف يُرفَض الآن (invalid/qr_superseded) — لا وصول لـPGE_Checkin_Recorder', [$resolve_qr_b_after['result'], $resolve_qr_b_after['reason'] ?? null], ['invalid', 'qr_superseded']);
+// Phase D1 يحتفظ بالإصدار نفسه في Tombstone؛ لذا ينجح فحص الإصدار ثم يرفض
+// resolve_by_rsvp_id() الدعوة لأن guest map (مصدر الوجود) لا يحتوي الهاتف.
+check('B8. [Phase D1] resolve_from_qr() بعد الحذف يُرفَض لأن الدعوة غير موجودة رغم تطابق Tombstone — لا وصول لـRecorder', [$resolve_qr_b_after['result'], $resolve_qr_b_after['reason'] ?? null], ['not_found', 'invitation_not_found']);
 
 // ============================================================================
 // السيناريو C: حذف بعد تسجيل الحضور — الحالة الأخطر (راجع ملاحظة النطاق أعلى الملف)
@@ -519,15 +517,10 @@ check('E2. تمهيد: أثناء الدعوة نشطة، الـQR القديم 
 
 PGE_Invitation_Service::delete(5001, '0540000005', $HOST_ID);
 
-check('E3. (سلوك delete() لم يتغيَّر عمداً) بعد الحذف، get_qr_version() لا يزال يعود للقيمة الافتراضية 1 — لم نلمس delete()/qr_version إطلاقاً، الإصلاح في طبقة الحلّ فقط (E4)', PGE_Invitation_Repository::get_qr_version(5001, '0540000005'), 1);
+check('E3. [Phase D1] بعد الحذف، Tombstone تحتفظ بآخر qr_version المُدوَّرة', PGE_Invitation_Repository::get_qr_version(5001, '0540000005'), (int) $regen['qr_version']);
 $resolve_qr_v1_after_delete = PGE_Guest_Resolution_Service::resolve_from_qr(5001, $qr_v1_e);
-// [مُحدَّث RWPU] بما أن qr_version الافتراضي أصبح مُشتَقاً من invited_at (رقم
-// كبير مميَّز)، والقيمة الافتراضية بعد الحذف تعود لـDEFAULT_QR_VERSION=1
-// الثابتة (E3، بلا invited_at بعد unset الحالة) — يستحيل تطابقهما أصلاً، فيُرفَض
-// الـQR القديم عند فحص is_qr_version_current() نفسه (invalid/qr_superseded)
-// قبل الوصول لـresolve_by_rsvp_id() (not_found) — رفض أقوى بطبقة أبكر، لا
-// انحدار.
-check('E4. [مُصلَح — Blocker 2، مُحدَّث RWPU] الـQR القديم (v1) الذي كان "مُدوَّراً/مُبطَلاً" فعلياً قبل الحذف يُرفَض الآن (invalid/qr_superseded) بعد الحذف', [$resolve_qr_v1_after_delete['result'], $resolve_qr_v1_after_delete['reason'] ?? null], ['invalid', 'qr_superseded']);
+// QR السابق للتجديد لا يطابق نسخة Tombstone الأخيرة، فيبقى superseded.
+check('E4. [Phase D1] الـQR الأقدم من regeneration يبقى superseded بعد الحذف', [$resolve_qr_v1_after_delete['result'], $resolve_qr_v1_after_delete['reason'] ?? null], ['invalid', 'qr_superseded']);
 
 // ============================================================================
 // السيناريو F: حذف جماعي لخليط (معلَّق/مُجاب/مُسجَّل حضوره) عبر مسار AJAX الحقيقي

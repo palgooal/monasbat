@@ -72,6 +72,7 @@ class PGE_Invitation_Repository
 {
     const STATUS_ACTIVE = 'active';
     const STATUS_CANCELLED = 'cancelled';
+    const STATUS_DELETED = 'deleted';
     const VALID_STATUSES = [self::STATUS_ACTIVE, self::STATUS_CANCELLED];
 
     /**
@@ -85,9 +86,22 @@ class PGE_Invitation_Repository
     const DEFAULT_QR_VERSION = 1;
 
     /**
+     * Phase D1 persistent-version namespace. Legacy versions are either 1 or
+     * Unix-second values derived from invited_at (plus explicit regeneration
+     * increments). New lifecycle versions enter this 13-digit namespace so a
+     * tombstone missing from a pre-D1 hard delete cannot collide with a legacy
+     * credential. The value remains exactly representable by JavaScript and
+     * well within the signed 64-bit integer used by supported PHP runtimes.
+     */
+    const PERSISTENT_QR_VERSION_FLOOR = 1000000000000;
+
+    /**
      * قراءة خريطة حالة الدعوات الإدارية (مفتاح post meta مستقل تماماً).
      *
-     * @return array<string,array{status:string,invited_at:string,updated_at:string,cancelled_at:?string,cancel_reason:string,qr_regenerated_at:?string}>
+     * Guest-map keys describe live invitations; extra status-map-only keys may
+     * be Phase D1 deleted tombstones and are never returned by list readers.
+     *
+     * @return array<string,array>
      */
     private static function get_status_map($event_id): array
     {
@@ -98,6 +112,45 @@ class PGE_Invitation_Repository
     private static function save_status_map($event_id, array $map): void
     {
         update_post_meta((int) $event_id, '_pge_invitation_status', $map);
+    }
+
+    /**
+     * Resolve the effective version of legacy or persistent status data
+     * without writing during reads.
+     */
+    private static function effective_qr_version_from_entry(array $entry): int
+    {
+        if (isset($entry['qr_version'])) {
+            $version = (int) $entry['qr_version'];
+            if ($version > 0) {
+                return $version;
+            }
+        }
+
+        $invited_at = (string) ($entry['invited_at'] ?? '');
+        if ($invited_at !== '') {
+            $timestamp = strtotime($invited_at);
+            if ($timestamp !== false && $timestamp > 0) {
+                return $timestamp;
+            }
+        }
+
+        return self::DEFAULT_QR_VERSION;
+    }
+
+    /**
+     * Allocate the explicit version for a new invitation lifecycle. Existing
+     * persistent versions increase monotonically; legacy/missing history is
+     * promoted into the non-colliding Phase D1 namespace.
+     */
+    private static function next_qr_version_for_lifecycle(array $previous_entry): int
+    {
+        $baseline = max(
+            self::PERSISTENT_QR_VERSION_FLOOR - 1,
+            self::effective_qr_version_from_entry($previous_entry)
+        );
+
+        return $baseline < PHP_INT_MAX ? $baseline + 1 : 0;
     }
 
     private static function normalize_phone($value)
@@ -287,6 +340,10 @@ class PGE_Invitation_Repository
         $original_guests_map = $guests_map;
         $original_status_map = $status_map;
         $lifecycle_timestamp = current_time('mysql', true);
+        $qr_version = self::next_qr_version_for_lifecycle($status_map[$normalized_phone] ?? []);
+        if ($qr_version <= 0) {
+            return ['result' => 'error', 'reason' => 'qr_version_exhausted'];
+        }
 
         // Phase C: the canonical RSVP snapshot is reset only here, after all
         // validation/duplicate checks (and, for every live caller, the Service
@@ -316,6 +373,7 @@ class PGE_Invitation_Repository
                 'updated_at'         => $lifecycle_timestamp,
                 'cancelled_at'       => null,
                 'cancel_reason'      => '',
+                'qr_version'         => $qr_version,
                 'qr_regenerated_at'  => null,
             ];
             self::save_status_map($event_id, $status_map);
@@ -327,7 +385,8 @@ class PGE_Invitation_Repository
         $invitation_stored = is_array($saved_guests_map)
             && isset($saved_guests_map[$normalized_phone])
             && isset($stored_status_map[$normalized_phone])
-            && (string) ($stored_status_map[$normalized_phone]['invited_at'] ?? '') === $lifecycle_timestamp;
+            && (string) ($stored_status_map[$normalized_phone]['invited_at'] ?? '') === $lifecycle_timestamp
+            && (int) ($stored_status_map[$normalized_phone]['qr_version'] ?? 0) === $qr_version;
 
         if (!$invitation_stored) {
             // Compensation is used instead of a cross-API SQL transaction:
@@ -654,13 +713,11 @@ class PGE_Invitation_Repository
      * القديم بالضبط (لم يكن يفعل ذلك من قبل، فلا يُضاف الآن — "If it does
      * not [cleanup], do not add new cleanup. Preserve behavior.").
      *
-     * الإضافة الوحيدة غير الموجودة في المعالج القديم: تنظيف مفتاح post meta
-     * `_pge_invitation_status[$phone]` — هذا المفتاح **من اختراع هذه
-     * المرحلة (Phase 9) نفسها**، لم يكن موجوداً وقت كتابة المعالج القديم،
-     * فتنظيفه هنا ليس "cascade rule" جديدة على بيانات RSVP/حضور قائمة، بل
-     * تناسق داخلي لبيانات Repository نفسها (بالضبط كما تفعل `edit()` أعلاه
-     * عند تغيّر الهاتف) — يمنع تسرّب حالة إدارية قديمة (مثلاً "مُلغاة") إلى
-     * دعوة مستقبلية لو أُعيد إدخال نفس الهاتف لاحقاً.
+     * Phase D1: guest map remains the sole existence source, but the status
+     * entry is retained as a technical tombstone containing the last explicit
+     * qr_version. It is never listed/countable because every reader starts
+     * from `_pge_invited_guests`. A later create overwrites the tombstone with
+     * an active entry and a strictly newer version.
      *
      * @return array{result:string, reason?:string}
      *   'deleted' — نجح الحذف الفعلي والنهائي.
@@ -679,17 +736,25 @@ class PGE_Invitation_Repository
             return ['result' => 'error', 'reason' => 'not_found'];
         }
 
+        // Capture the effective legacy/persistent version while the current
+        // invitation status still exists, before removing the guest.
+        $last_qr_version = self::get_qr_version($event_id, $normalized_phone);
+        $status_map = self::get_status_map($event_id);
+        $entry = $status_map[$normalized_phone] ?? [];
+
         unset($guests_map[$normalized_phone]);
         if (function_exists('pge_event_guests_remove_phone_refs')) {
             pge_event_guests_remove_phone_refs($event_id, $normalized_phone);
         }
         pge_event_guests_save_map($event_id, $guests_map);
 
-        $status_map = self::get_status_map($event_id);
-        if (isset($status_map[$normalized_phone])) {
-            unset($status_map[$normalized_phone]);
-            self::save_status_map($event_id, $status_map);
-        }
+        $now = current_time('mysql', true);
+        $entry['status'] = self::STATUS_DELETED;
+        $entry['qr_version'] = $last_qr_version;
+        $entry['deleted_at'] = $now;
+        $entry['updated_at'] = $now;
+        $status_map[$normalized_phone] = $entry;
+        self::save_status_map($event_id, $status_map);
 
         return ['result' => 'deleted'];
     }
@@ -798,14 +863,11 @@ class PGE_Invitation_Repository
      * الافتراضي لأي دعوة **جديدة** لاحقة بنفس الهاتف لم تُدوِّر QR لها هي
      * الأخرى بعد — تصادُم قيمة افتراضية ثابتة يُعيد إحياء QR قديم فعلياً.
      *
-     * الإصلاح: القيمة الافتراضية (غياب qr_version مخزَّن) لم تعد ثابتة —
-     * تُشتَق من `invited_at` لدورة الحياة الحالية (طابع وقت موجود أصلاً، لا
-     * قيمة جديدة) عبر `strtotime()`، فتكون فريدة عملياً لكل دورة حياة دعوة
-     * (كل `create()` يضبط `invited_at` جديداً دوماً)، ولا يمكن لدورتي حياة
-     * مختلفتين لنفس الهاتف أن تتشاركا نفس القيمة الافتراضية أبداً. توافق قديم
-     * صريح (نفس فلسفة بقية هذا الملف): غياب `invited_at` نفسه (بيانات دفاعية/
-     * قديمة بلا سياق كافٍ) يُعامَل بالسلوك القديم تماماً (`DEFAULT_QR_VERSION`)
-     * — لا تغيير على أي دعوة حالية مبنية عبر مسارات لا تضبط invited_at.
+     * Phase D1 replaces invited_at-only lifecycle identity with an explicit
+     * persistent integer. Existing active legacy invitations still resolve to
+     * their historical derived value without a read-side write. Every new
+     * lifecycle stores a value in the persistent namespace, and Hard Delete
+     * keeps it in a tombstone for the next monotonic rotation.
      *
      * قراءة فقط، لا كتابة عند القراءة. هذه هي "القيمة الحالية النشطة" التي
      * يجب أن يطابقها أي QR مُوقَّع كي يُقبَل (راجع class-pge-guest-resolution-
@@ -824,20 +886,7 @@ class PGE_Invitation_Repository
         $status_map = self::get_status_map($event_id);
         $entry = $status_map[$normalized_phone] ?? [];
 
-        if (isset($entry['qr_version'])) {
-            $version = (int) $entry['qr_version'];
-            return $version > 0 ? $version : self::DEFAULT_QR_VERSION;
-        }
-
-        $invited_at = (string) ($entry['invited_at'] ?? '');
-        if ($invited_at !== '') {
-            $ts = strtotime($invited_at);
-            if ($ts !== false && $ts > 0) {
-                return $ts;
-            }
-        }
-
-        return self::DEFAULT_QR_VERSION;
+        return self::effective_qr_version_from_entry($entry);
     }
 
     /**
@@ -885,6 +934,9 @@ class PGE_Invitation_Repository
         // الافتراضية) — يضمن اتساقاً تاماً بين "الإصدار الحالي المقروء" هنا
         // و"الإصدار الحالي" الذي يتحقق منه resolve_from_qr() لاحقاً.
         $current_version = self::get_qr_version($event_id, $normalized_phone);
+        if ($current_version >= PHP_INT_MAX) {
+            return ['result' => 'error', 'reason' => 'qr_version_exhausted'];
+        }
         $new_version = $current_version + 1;
 
         $now = current_time('mysql', true);

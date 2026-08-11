@@ -122,6 +122,7 @@ RSVP وCheck-in مفهومان منفصلان. أهلية Thank You المخطط
 - أي Schema change يجب أن يكون ضمن Scope صريحاً، additive قدر الإمكان، متبعاً schema/versioning الحالي، ومغطى بالاختبارات.
 - أي RSVP lookup بالهاتف يجب أن يمر عبر `pge_rsvp_find_canonical_by_phone()`؛ لا تستخدم `LIMIT 1` لاختيار صف صامتاً من هوية `event_id + normalized_guest_phone`.
 - RSVP row هو Current Snapshot تحت هوية Option A. Lifecycle reset يحدث فقط عبر مسار إنشاء الدعوة authoritative بعد نجاح validation وGuest Limit وduplicate checks؛ لا تنفّذ reset في lookup أو RSVP أو Check-in أو Reminder أو resend، ولا تكرر منطقه في Bulk/Excel.
+- لا تشتق `qr_version` لدورة دعوة جديدة من `invited_at` أو الوقت وحده. Hard Delete يجب أن يحافظ على QR tombstone غير مرئية، وRe-invite يجب أن تدوّر النسخة persistent مع بقاء `_pge_invited_guests` مصدر وجود الدعوة الوحيد.
 
 ## 11. تقرير التسليم لكل مهمة
 

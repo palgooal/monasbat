@@ -834,6 +834,7 @@ require_once __DIR__ . '/../includes/class-pge-supervisor-session.php';
 require_once __DIR__ . '/../includes/class-pge-supervisor-authenticator.php';
 require_once __DIR__ . '/../includes/class-pge-supervisor-portal-middleware.php';
 require_once __DIR__ . '/../includes/class-pge-checkin-qr-service.php';
+require_once __DIR__ . '/../includes/rsvp-canonical-lookup.php';
 require_once __DIR__ . '/../includes/class-pge-guest-resolution-service.php';
 require_once __DIR__ . '/../includes/class-pge-checkin-recorder.php';
 require_once __DIR__ . '/../includes/checkin-ajax.php';

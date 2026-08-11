@@ -1,5 +1,12 @@
 # تدقيق دلالات الحذف الفعلي (Hard Delete Semantics Audit)
 
+> **تحديث Phase D1:** هذا المستند يحتفظ بوصف الاكتشاف التاريخي. كل موضع أدناه
+> يقول إن Hard Delete يمسح `_pge_invitation_status[phone]` أو يفقد
+> `qr_version` أصبح متجاوزاً: التنفيذ الحالي يبقي Tombstone غير مرئية بآخر
+> نسخة، وتدوّر Re-invite النسخة persistent. راجع
+> `INVITATION-QR-ARCHITECTURE.md` و`HARD-DELETE-SEMANTICS-FIXPACK.md` للعقد
+> الحالي.
+
 > **حالة هذا المستند: تدقيق فقط (Audit-Only). لا تعديل على أي كود إنتاجي، لا
 > Migration، لا تغيير في سلوك الحذف.** RC1 Fix Pack 3B **معتمَد ومُغلَق** —
 > A4 (بمعنى "نقل قدرة الحذف من اللوحة القديمة إلى صفحة إدارة الدعوات

@@ -98,10 +98,10 @@ class PGE_Invitation_Service
      * event-factory.php الذي يحتاج تحريراً يدوياً صريحاً لأن wp_send_json_*
      * هناك تستدعي wp_die() التي لا تُنفِّذ finally).
      *
-     * Part E — ملكية القفل: هذه هي الطبقة الوحيدة التي تحصل على قفل إنشاء
-     * الدعوات في كامل النظام. PGE_Invitation_Repository::create() لا تحصل
-     * على أي قفل بنفسها (ولم تُعدَّل هنا إطلاقاً) — فلا قفل متداخل (Nested
-     * Lock) ولا احتمال Deadlock ذاتي.
+     * Part E — ملكية القفل: هذه هي الطبقة الوحيدة التي تحصل على قفل دورة
+     * الدعوة في كامل النظام. Phase D1 أعاد استخدام نفس القفل والاسم لمسارات
+     * create/delete/regenerate_qr كي لا تتسابق كتابة guest map مع QR
+     * tombstone؛ Repository لا تحصل على قفل بنفسها — فلا قفل متداخل.
      *
      * Part F — عقد النتيجة عند بلوغ الحد: ['result' => 'quota_exceeded',
      * 'reason' => 'guest_limit_reached'] — رمز واحد طبيعي، بلا أي تفاصيل
@@ -118,19 +118,7 @@ class PGE_Invitation_Service
     public static function create($event_id, $phone, $name, $note, $actor_user_id)
     {
         $event_id = (int) $event_id;
-
-        global $wpdb;
-        $lock_name = self::build_creation_lock_name($event_id);
-
-        // GET_LOCK(name, timeout_seconds) — 5 ثوانٍ مطابقة لنفس المهلة
-        // المعتمَدة فعلياً في claim_for_delivery()/event-factory.php لعملية
-        // سريعة (قراءة حصة + قراءة/كتابة خريطة ضيوف واحدة).
-        $got_lock = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $lock_name, 5));
-        if ((int) $got_lock !== 1) {
-            return ['result' => 'error', 'reason' => 'lock_not_acquired'];
-        }
-
-        try {
+        return self::with_invitation_lifecycle_lock($event_id, function () use ($event_id, $phone, $name, $note, $actor_user_id) {
             $quota = function_exists('pge_resolve_guest_quota_status')
                 ? pge_resolve_guest_quota_status($event_id)
                 : ['mode' => 'unlimited', 'limit' => null, 'current' => 0, 'remaining' => null];
@@ -146,22 +134,38 @@ class PGE_Invitation_Service
             }
 
             return $result;
-        } finally {
-            $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock_name));
-        }
+        });
     }
 
     /**
-     * اسم قفل GET_LOCK مشتق وآمن من event_id وحده — نطاق القفل هو "إنشاء
-     * دعوة ضمن مناسبة واحدة"، فلا يُسلسِل مناسبتين مختلفتين ببعضهما، لكنه
-     * يُسلسِل أي طلبَي إنشاء متزامنَين (من أي مسار) لنفس المناسبة، وهو
-     * بالضبط النطاق المطلوب لمنع تجاوز guest_limit أو فقدان تحديث (Lost
-     * Update) على خريطة المدعوين. نفس اصطلاح البادئة النصية الواضحة +
-     * md5() المُتَّبع فعلاً في build_credit_lock_name()/event-factory.php.
+     * اسم قفل GET_LOCK مشتق وآمن من event_id وحده. الاسم القديم يبقى كما هو
+     * للتوافق مع أي طلب create جارٍ أثناء النشر، لكن نطاقه منذ Phase D1 يشمل
+     * كل كتابة create/delete/regenerate_qr لدورة الدعوة ضمن المناسبة نفسها.
      */
     private static function build_creation_lock_name($event_id): string
     {
         return 'pge_invitation_create_' . md5((string) (int) $event_id);
+    }
+
+    /**
+     * Phase D1 reuses the existing per-event creation lock for every write
+     * that changes QR lifecycle state. This serializes create/delete/QR
+     * regeneration without introducing a second lock namespace or nesting.
+     */
+    private static function with_invitation_lifecycle_lock($event_id, callable $operation): array
+    {
+        global $wpdb;
+        $lock_name = self::build_creation_lock_name($event_id);
+        $got_lock = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $lock_name, 5));
+        if ((int) $got_lock !== 1) {
+            return ['result' => 'error', 'reason' => 'lock_not_acquired'];
+        }
+
+        try {
+            return $operation();
+        } finally {
+            $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock_name));
+        }
     }
 
     public static function edit($event_id, $old_phone, $new_phone, $name, $note, $actor_user_id)
@@ -205,14 +209,17 @@ class PGE_Invitation_Service
      */
     public static function delete($event_id, $phone, $actor_user_id)
     {
-        $result = PGE_Invitation_Repository::delete($event_id, $phone);
+        $event_id = (int) $event_id;
+        return self::with_invitation_lifecycle_lock($event_id, function () use ($event_id, $phone, $actor_user_id) {
+            $result = PGE_Invitation_Repository::delete($event_id, $phone);
 
-        if (($result['result'] ?? '') === 'deleted') {
-            $normalized_phone = function_exists('pge_event_guests_norm_phone') ? pge_event_guests_norm_phone($phone) : $phone;
-            PGE_Invitation_Management_Audit::record($event_id, $normalized_phone, $actor_user_id, 'deleted', '');
-        }
+            if (($result['result'] ?? '') === 'deleted') {
+                $normalized_phone = function_exists('pge_event_guests_norm_phone') ? pge_event_guests_norm_phone($phone) : $phone;
+                PGE_Invitation_Management_Audit::record($event_id, $normalized_phone, $actor_user_id, 'deleted', '');
+            }
 
-        return $result;
+            return $result;
+        });
     }
 
     /**
@@ -259,13 +266,16 @@ class PGE_Invitation_Service
      */
     public static function regenerate_qr($event_id, $phone, $actor_user_id)
     {
-        $result = PGE_Invitation_Repository::regenerate_qr($event_id, $phone);
+        $event_id = (int) $event_id;
+        return self::with_invitation_lifecycle_lock($event_id, function () use ($event_id, $phone, $actor_user_id) {
+            $result = PGE_Invitation_Repository::regenerate_qr($event_id, $phone);
 
-        if (($result['result'] ?? '') === 'regenerated') {
-            $normalized_phone = function_exists('pge_event_guests_norm_phone') ? pge_event_guests_norm_phone($phone) : $phone;
-            PGE_Invitation_Management_Audit::record($event_id, $normalized_phone, $actor_user_id, 'qr_regenerated', '');
-        }
+            if (($result['result'] ?? '') === 'regenerated') {
+                $normalized_phone = function_exists('pge_event_guests_norm_phone') ? pge_event_guests_norm_phone($phone) : $phone;
+                PGE_Invitation_Management_Audit::record($event_id, $normalized_phone, $actor_user_id, 'qr_regenerated', '');
+            }
 
-        return $result;
+            return $result;
+        });
     }
 }

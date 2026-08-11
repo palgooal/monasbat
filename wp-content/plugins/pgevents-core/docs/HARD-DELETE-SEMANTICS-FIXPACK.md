@@ -5,6 +5,19 @@
 > لا واجهة مستخدم تغيَّرت، لا جدول/عمود/مفتاح خارجي جديد. أصغر تعديل معماري
 > ممكن، في الطبقة الصحيحة لكل سبب جذري.
 
+## تحديث Phase D1 — QR Lifecycle Tombstone
+
+Hard Delete ما زال يحذف الدعوة من `_pge_invited_guests` ولا يحذف RSVP أو
+سجلات الحضور. التغيير التقني الوحيد: لا تُحذف
+`_pge_invitation_status[phone]` بالكامل؛ تبقى Tombstone غير مرئية تحمل آخر
+`qr_version`. كل readers والقوائم والإحصاءات تبدأ من guest map، لذلك لا تصبح
+Tombstone دعوة ولا تُحتسب ضمن Guest Limit أو exports.
+
+عند Re-invite لنفس الهاتف، يعاد استخدام `rsvp_id` نفسه وفق Phase C، وتتحول
+Tombstone إلى entry نشطة بإصدار `qr_version` أكبر رتيباً. هذا يفصل QR القديم
+عن الجديد حتى لو تم الحذف وإعادة الإنشاء في الثانية نفسها. التفاصيل الكاملة
+في `docs/INVITATION-QR-ARCHITECTURE.md`.
+
 ## المشكلة الجذرية الموحَّدة
 
 Hard Delete (Fix Pack 3B) يحذف الضيف من خريطة الضيوف (`_pge_invited_guests`)

@@ -1,4 +1,4 @@
-# Invitation QR Architecture — Phase 9B QR Architecture Final Fix
+# Invitation QR Architecture — Phase 9B + Phase D1 Lifecycle Continuity
 
 > "QR is an access credential. QR is NOT invitation identity."
 
@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | **Invitation Identity** | سجل الدعوة/الضيف نفسه: اسم، هاتف، ملاحظة، حالة (نشط/مُلغى) | `_pge_invited_guests` (post meta) + `wp_pge_event_rsvps` | كل النظام (RSVP، الحضور، الإحصائيات، الإدارة) | عند تعديل/إلغاء/حذف الدعوة فقط |
 | **Manual Invitation Code** (`invite_code`) | رمز مرجعي بشري — للبحث اليدوي والعرض فقط | `_pge_invited_guests[phone]['code']` | البحث اليدوي (`PGE_Guest_Resolution_Service::search()`)، نص التسمية التوضيحية في رسائل واتساب | نادراً، عبر `event-guests.php` (خارج نطاق هذا المستند) |
-| **Scanner QR Credential** | بيانات اعتماد وصول موقَّعة لماسح تسجيل الحضور فقط | لا شيء يُخزَّن كنص — يُشتَق حسابياً من `(event_id, rsvp_id, qr_version)`؛ **فقط** `qr_version` يُخزَّن، في `_pge_invitation_status[phone]['qr_version']` | `PGE_Guest_Resolution_Service::resolve_from_qr()` حصراً | عند كل `regenerate_qr()` (يُدوِّر `qr_version` فقط) |
+| **Scanner QR Credential** | بيانات اعتماد وصول موقَّعة لماسح تسجيل الحضور فقط | لا شيء يُخزَّن كنص — يُشتَق حسابياً من `(event_id, rsvp_id, qr_version)`؛ **فقط** `qr_version` يُخزَّن، في `_pge_invitation_status[phone]['qr_version']` | `PGE_Guest_Resolution_Service::resolve_from_qr()` حصراً | عند كل lifecycle جديدة وعند `regenerate_qr()` |
 
 **القاعدة الحاكمة:** `resolve_from_qr()` لا يقبل أبداً `invite_code` الخام —
 لا كسقوط احتياطي، لا كصيغة بديلة. البحث اليدوي بـ`invite_code` يستمر حصراً
@@ -38,7 +38,7 @@ event_id|rsvp_id|qr_version|signature
   كمعامل `$authorized_event_id` في `validate()`.
 - **`rsvp_id`** (int موجب) — معرّف صف الضيف في `wp_pge_event_rsvps`. لا
   بيانات ضيف خام (لا اسم، لا جوال) — نفس مبدأ Phase 4 الأصلي.
-- **`qr_version`** (int موجب) — بدائيّ التدوير (rotation primitive). ليس
+- **`qr_version`** (int موجب persistent) — بدائيّ التدوير (rotation primitive). ليس
   سرّاً؛ آمن للكشف/التسجيل. يُقارَن مع الإصدار الإداري النشط الحالي لتلك
   الدعوة (خطوة تحقّق منفصلة، راجع القسم 4).
 - **`signature`** — `wp_hash(event_id.'|'.rsvp_id.'|'.qr_version.'|'.CONTEXT)`
@@ -122,12 +122,14 @@ PGE_Guest_Resolution_Service::build_scanner_qr_payload(
 1. تحميل خريطة الحالة الحالية (`_pge_invitation_status`) وخريطة الضيوف
    (`_pge_invited_guests`) — تحقّق الوجود (`not_found` إن غاب الضيف).
 2. تحقّق الحالة النشطة — رفض إن كانت الدعوة `cancelled` (`error: cancelled`).
-3. قراءة `qr_version` الحالي (افتراضي `DEFAULT_QR_VERSION = 1` إن لم يُخزَّن
-   شيء من قبل).
+3. قراءة `qr_version` الحالي (مع fallback legacy فقط إن لم يُخزَّن شيء).
 4. **تدوير**: `$new_version = $current_version + 1`.
 5. تخزين `qr_version` الجديد + `qr_regenerated_at` + `updated_at` في
    `_pge_invitation_status[phone]` — **لا كتابة على أي مكان آخر إطلاقاً**.
 6. إرجاع `['result' => 'regenerated', 'qr_version' => $new_version]`.
+
+المسار يعمل تحت قفل المناسبة نفسه المستخدم في create/delete، لذلك طلبا
+regeneration متزامنان لا يقرآن baseline واحداً ولا يكتبان النسخة نفسها.
 
 `PGE_Invitation_Service::regenerate_qr()` يُضيف تدقيقاً: حدث `qr_regenerated`
 واحد بالضبط عند النجاح (لا حدث عند الفشل/الإلغاء).
@@ -177,31 +179,41 @@ PGE_Guest_Resolution_Service::build_scanner_qr_payload(
 
 ---
 
-## 8. سياسة التوافق مع الدعوات القديمة (Legacy Compatibility Policy)
+## 8. استمرارية دورة الحياة وHard Delete (Phase D1)
 
-**السياسة المُعتمَدة:** قراءة افتراضية كسولة، كتابة صريحة فقط عند التجديد.
+- كل `create()` ناجح يكتب `qr_version` صريحة. أول دعوة تدخل namespace رقمي
+  persistent يبدأ من `1000000000000`، ولا تعتمد على الساعة أو `invited_at`.
+- Hard Delete يحذف الهاتف من `_pge_invited_guests` كما كان، ويبقي status entry
+  تقنية بحالة `deleted` تحمل آخر `qr_version` و`deleted_at`. هذه Tombstone لا
+  تظهر في القوائم أو counts أو exports أو Guest Limit لأن guest map يبقى مصدر
+  وجود الدعوة الوحيد.
+- Re-invite لنفس الهاتف تستبدل Tombstone بحالة `active` وتكتب
+  `previous_qr_version + 1`. يبقى `rsvp_id` نفسه وفق Option A/Phase C، لكن
+  `(rsvp_id, qr_version)` يختلف حتماً، فيفشل QR القديم بـ`qr_superseded`.
+- create/delete/regenerate_qr تستخدم قفل المناسبة الموجود نفسه. لا Lock
+  namespace جديد ولا اعتماد على فروق الوقت؛ delete ثم re-invite في اللحظة
+  نفسها آمن.
 
-- `PGE_Invitation_Repository::get_qr_version()` تُعيد `DEFAULT_QR_VERSION`
-  (`= 1`) لأي دعوة **لا تملك** قيمة `qr_version` مُخزَّنة صراحةً — قراءة
-  بحتة، **بلا أي أثر جانبي (لا كتابة عند القراءة)**.
-- بالتالي: أي QR يُولَّد لدعوة لم تُجدَّد بعد يحمل دائماً `qr_version = 1`
-  (بشكل ثابت ومتّسق، دون أي "كتابة كسولة" مطلوبة).
-- **فقط** `regenerate_qr()` يكتب قيمة صريحة جديدة (`current + 1`، أو
-  `DEFAULT_QR_VERSION + 1` إن لم تُخزَّن قيمة من قبل).
-- **النتيجة العملية:** أي QR قديم صادر قبل أول تجديد يبقى صالحاً حتى أول
-  استدعاء لـ`regenerate_qr()` على تلك الدعوة تحديداً؛ بعدها، فقط الاعتماد
-  المُدوَّر الحالي صالح — أي QR سابق يفشل بـ`qr_superseded`.
-- **لا صيغتَي حمولة موازيتين إلى ما لا نهاية:** لا يوجد "قبول صيغة v1 القديمة
-  بجانب v2 الجديدة" — `CONTEXT` رُقِّم `v2` فتفشل أي حمولة v1 نظرية
-  كـ`malformed_payload` مباشرة، دون الحاجة لمحلِّل ثنائي الصيغة.
+**مؤجل إلى Phase D2:** `edit()` عند تغيير الهاتف ما زال يرحّل status entry من
+الهاتف المصدر إلى الهدف وفق السلوك القائم. تقرير D1 لا يقرر بعد كيفية تدوير
+نسخة المصدر/الهدف أو حماية Tombstone سابقة للهاتف الهدف؛ لم يتغير هذا المسار.
 
-هذه السياسة أبسط من "كتابة كسولة عند أول توليد" (كانت الخيار الموصى به
-بديلاً في الـRFC) لأنها تحقق نفس الأثر الملحوظ (استمرارية الصلاحية حتى أول
-تجديد فعلي) دون حاجة لأي كتابة إضافية على مسار القراءة.
+## 9. سياسة التوافق مع الدعوات القديمة (Legacy Compatibility Policy)
+
+- دعوة legacy نشطة بلا `qr_version` صريحة تستمر بالقراءة السابقة: قيمة
+  `invited_at` المحوَّلة إلى Unix seconds، أو `DEFAULT_QR_VERSION = 1` عند
+  غيابها. القراءة بلا كتابة، ولذلك لا ينكسر QR النشط الحالي بلا داعٍ.
+- أول Hard Delete بعد Phase D1 يثبّت القيمة الفعلية legacy داخل Tombstone.
+  أول lifecycle لاحقة ترفعها إلى namespace الـ13 رقماً، ثم تستمر الزيادة
+  الرتيبة من القيمة المخزنة.
+- lifecycle تُنشأ بعد حذف قديم سبق Phase D1 (ولا Tombstone له) تبدأ أيضاً من
+  namespace الجديد؛ فلا تتصادم مع `1` أو Unix-second versions التاريخية.
+- صيغة الحمولة لم تتغير: تبقى v2 ذات أربعة أجزاء، ولا يوجد parser أو fallback
+  قديم موازٍ.
 
 ---
 
-## 9. الأمان — ملخص التحقق
+## 10. الأمان — ملخص التحقق
 
 - **لا سقوط احتياطي غير موقَّع في الماسح:** `resolve_from_qr()` لا يحتوي أي
   فرع يقبل `invite_code` أو أي صيغة غير موقَّعة. أُزيلت
@@ -213,6 +225,9 @@ PGE_Guest_Resolution_Service::build_scanner_qr_payload(
 - **لا إعادة للاعتماد القديم:** استجابة AJAX التجديد تُعيد `qr_version`
   الرقمي الجديد فقط، لا أي حمولة موقَّعة (لا القديمة ولا الجديدة) — توليد
   الحمولة الفعلية يحدث فقط عند إرسال QR التالي للضيف عبر واتساب.
+- **التوقيع ليس إبطالاً وحده:** التوقيع الصحيح يبقى صالحاً تشفيرياً، لذلك
+  الإبطال يعتمد إلزامياً على مطابقة `qr_version` مع النسخة النشطة persistent
+  ووجود الهاتف في guest map الحالي.
 - **آلية مقارنة التوقيع:** `hash_equals()` — نفس الآلية الآمنة المستخدَمة
   فعلياً في `access-gate.php` وكامل `PGE_Checkin_QR_Service` الأصلي، لا
   مقارنة `===` مباشرة.
@@ -223,7 +238,7 @@ PGE_Guest_Resolution_Service::build_scanner_qr_payload(
 
 ---
 
-## 10. تاريخ القرار (لماذا أُلغي نهج invite_code fallback)
+## 11. تاريخ القرار (لماذا أُلغي نهج invite_code fallback)
 
 إصلاح سابق ("Phase 9B Final Fix") واجه حقيقة معمارية سابقة للمشروع: صورة
 QR الحقيقية المُرسَلة للضيف عبر واتساب كانت تُشفِّر نص `invite_code` الخام
