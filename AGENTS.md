@@ -77,14 +77,19 @@ git diff --cached
 - Phase 1 — COMPLETE: Message abstraction.
 - Phase 2 — COMPLETE: Tracking/schema foundation.
 - Phase 3 — COMPLETE: Manual Reminder.
-- Phase 4 — IN PROGRESS: Manual Thank You foundations فقط؛ لا إرسال أو AJAX/UI بعد.
+- Phase 4 — IN PROGRESS: Manual Thank You foundations فقط؛ لا AJAX/UI بعد.
 - Phase 4A-2 — COMPLETE: lifecycle-aware Thank You Claim lease/reclaim
   foundation فقط؛ لا إرسال Thank You أو AJAX/UI بعد.
 - Phase 4A-3 — COMPLETE: Messaging schema drift hardening.
 - Phase 4B-1 — COMPLETE: read-only Thank You recipient eligibility عبر الدعوة
   الحالية وcanonical RSVP و`checked_in=1`؛ لا Claim execution أو إرسال أو AJAX/UI.
 - Phase 4B-2 — COMPLETE: internal Manual Thank You Service تنسّق Resolver →
-  lifecycle-aware Claim → Cartat Text → Finalize؛ لا AJAX/UI/Queue/Cron بعد.
+  lifecycle-aware Claim → Cartat Text → Finalize؛ الخدمة نفسها لا تملك Queue/Cron.
+- Phase 4B-2.6 — COMPLETE: Durable async-only Thank You Batch/Worker foundation؛
+  `sync threshold=0` و`chunk=4`، Manifest غير autoloaded ومنفصلة عن Message Log،
+  Claim عند التنفيذ فقط، وإعادة تحقق من الأهلية وRSVP lifecycle قبل كل إرسال.
+  يوجد operation lock لكل مناسبة وtick lock لكل مناسبة/دفعة، processing recovery
+  وwatchdog، ولا يوجد AJAX/UI أو Automatic Thank You.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 
@@ -105,6 +110,10 @@ Thank You المخطط:
 - مطالبات Thank You يجب أن تكون lifecycle-aware؛ `rsvp_id` وحده غير كافٍ لأن
   الصف نفسه قد يُعاد استخدامه، وأي finalize متأخر يجب أن يُرفَض عند اختلاف
   marker دورة RSVP الحالية.
+- Batch القديمة تحفظ `rsvp_id + lifecycle_started_at` فقط لهوية المستلم، ولا تحفظ
+  الهاتف أو نص الرسالة أو الأسرار. Queue state منفصلة عن Message Log، ولا تُنشأ
+  Claim عند إنشاء Batch. `ambiguous` و`failed` نهائيتان داخل الدفعة الحالية؛
+  `active_claim` تبقى قابلة للاستئناف بعد lease الحالية (120 ثانية).
 
 لا تغيّر Invitation send path أثناء تطوير Reminder/Thank You إلا إذا طلبت المهمة ذلك صراحة. Invitation queue/credits/provider semantics مستقرة وحساسة.
 

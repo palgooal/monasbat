@@ -1,12 +1,12 @@
-# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
 > Foundation فقط لـReminder/Thank You، بلا إرسال فعلي؛ Phase 3 — إرسال Reminder
 > اليدوي الفعلي، أول مسار إرسال حقيقي يستخدم بنية Phase 1/2؛ Phase 4A-2 — Claim
 > lease/reclaim؛ Phase 4A-3 — Schema drift hardening؛ Phase 4B-1 — Recipient
-> eligibility read-only لـThank You؛ Phase 4B-2 — Service إرسال داخلية فقط،
-> بلا AJAX/UI/Queue/Cron).
+> eligibility read-only لـThank You؛ Phase 4B-2 — Service إرسال داخلية؛
+> Phase 4B-2.6 — Durable async-only Batch/Worker، بلا AJAX/UI).
 > لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
@@ -556,9 +556,10 @@ Resolver باستخدام `_pge_wa_tpl_thank_you` مع fallback إلى
 الملخص الثابت يعيد: `result`, `batch_id`, `eligible`, `claimed`, `sent`,
 `failed`, `ambiguous`, `skipped_already_sent`, `skipped_active_claim`,
 `skipped_claim_error`، ومعه Resolver summary بلا قائمة الهواتف. كل مستلم يعالج
-بشكل مستقل؛ rejection أو Claim skip لا يوقف بقية المجموعة. التنفيذ متزامن
-عمداً ولا ينشئ Queue/Cron أو continuation architecture؛ قرار orchestration
-للأحجام الكبيرة مؤجل لمرحلة مستقلة.
+بشكل مستقل؛ rejection أو Claim skip لا يوقف بقية المجموعة. عقد
+`send_thank_you_batch()` المتزامن محفوظ للتوافق والاختبارات، بينما orchestration
+الجديدة للأحجام الفعلية async-only في Phase 4B-2.6 وتعيد استخدام مسار المستلم
+الواحد دون نسخ منطق الإرسال.
 
 لا Invitation/Replacement Credits ولا `credit_type`، ولا كتابة مباشرة في
 RSVP أو Message Log من الخدمة؛ كل كتابة تمر عبر Claim. لا logging لأرقام
@@ -572,14 +573,73 @@ partial failure، Text-only/Cartat-only، وعدم استخدام Credits أو D
 
 ---
 
+## 6.1 Phase 4B-2.6 — Durable Thank You Batch/Worker (IMPLEMENTED داخلياً)
+
+هذه المرحلة تجعل تشغيل Manual Thank You **async-only** بحد مزامنة يساوي صفراً.
+واجهة الإنشاء الداخلية هي
+`PGE_Thank_You_Batch_Worker::create_batch(event_id, actor_user_id)`، ولا تقبل
+قائمة مستلمين من العميل ولا ترسل أثناء الإنشاء. إذا لم يوجد مستلم مؤهل تعيد
+`no_eligible` بلا Manifest أو Cron chain. لا يوجد AJAX/UI حتى الآن.
+
+`PGE_Thank_You_Batch_Store` تحفظ Manifest دائمة في WordPress options منفصلة
+غير autoloaded، مع Active Batch index مستقل لكل مناسبة بلا مسح شامل للخيارات.
+هوية الدفعة UUID v4 مولدة خادمياً. تحفظ الدفعة `event_id` و`actor_user_id`
+والحالة والأوقات، وتحفظ لكل عنصر فقط `rsvp_id + lifecycle_started_at` وحالة
+الصف؛ لا هاتف، ولا اسم، ولا نص رسالة، ولا بيانات Cartat أو أسرار. Queue state
+ليست Message Log: `queued` لا تنشئ Claim أو سجل pending.
+
+حالات العناصر هي `queued`, `processing`, `waiting`, `sent`, `failed`,
+`ambiguous`, `skipped`، وحالات الدفعة `active` و`complete`. الملخص الداخلي
+يعيد العدادات والأوقات وسبب skip بلا PII، وتبقى `waiting` قابلة للمعالجة ولا
+تُكمل الدفعة. `failed` و`ambiguous` نهائيتان داخل الدفعة الحالية ولا يعاد
+إرسالهما تلقائياً.
+
+الـWorker مسجل على `pge_process_thank_you_batch` ويعالج بحد أقصى **4** عناصر
+في كل tick؛ لا توجد initial synchronous chunk ولا `sleep`. التأخير بين ticks
+25 ثانية، وهو continuation/recovery داخلي لدفعة بدأها المستخدم وليس ميزة
+Automatic Thank You. Watchdog مستقل على `pge_watchdog_thank_you_batch` كل 120
+ثانية يعيد إنشاء tick المفقودة، كما أن tick التي تجد القفل مشغولاً تعيد جدولة
+نفسها.
+
+قبل كل Claim يعيد العامل استخدام targeted helper في Recipient Resolver للتحقق
+من الدعوة الحالية غير الملغاة، canonical RSVP، تطابق `rsvp_id`، تطابق lifecycle
+marker، و`checked_in=1`. لذلك Hard Delete أو Phone Change أو Cancel أو lifecycle
+reset أو check-in reset بعد إنشاء الدفعة ينتج `skipped` بلا Claim ولا Send، ولا
+يمكن لدفعة قديمة إرسال lifecycle جديدة.
+
+المطالبة Just-in-Time فقط. العامل يعيد استخدام
+`PGE_Thank_You_Message_Service::process_recipient()`، وهي المسار الوحيد لـClaim
+ثم Content Resolver ثم Cartat `send_text()` ثم finalize؛ لا Transport logic
+منسوخة في العامل. `already_sent` يصبح `skipped`، وactive Claim تصبح `waiting`
+حتى إعادة التقييم بعد lease الحالية (120 ثانية)، وreclaim يبقى من مسؤولية
+`PGE_Thank_You_Claim` الحالية.
+
+Operation lock لكل event يمنع إنشاء دفعتين نشطتين، وtick lock لكل
+`event_id + batch_id` يحمي كل read-modify-write للـManifest. العامل يحجز أربعة
+عناصر ويحرر tick lock قبل أي اتصال HTTP. Processing lease تساوي 120 ثانية؛
+انهيار العامل قبل Claim يعيد العنصر إلى queued بعد انتهائها، والانهيار بعد Claim
+يحترم lease/reclaim الحالية. إذا ضاعت كتابة النتيجة بعد النقل، تبقى حدود
+exactly-once غير قابلة للحسم دون idempotency من المزود؛ لذلك تُحترم
+`ambiguous_transport_error` ولا يوجد retry تلقائي داخل الدفعة.
+
+لا Credits أو `credit_type`، لا Media/UltraMsg، لا Schema/DB queue table، ولا
+تغيير في Reminder أو Invitation Queue أو RSVP/QR/Check-in أو Salla/Catalog.
+
+اختبار `tests/test-thank-you-batch-worker-phase4b26.php` يغطي الإنشاء، الخصوصية،
+الأقفال، الاسترداد، lifecycle fencing، نتائج النقل، والدفعات 25/100/400 مع حد
+أربعة عناصر لكل tick باستخدام fakes بلا HTTP حقيقي.
+
+---
+
 ## 7. غير منفَّذ بعد (NOT IMPLEMENTED YET)
 
-- Caller إنتاجي لـManual Thank You (لا AJAX، لا Queue، لا زر واجهة) — Service
-  الداخلية موجودة في Phase 4B-2 لكنها غير موصولة بأي HTTP/UI entry point.
+- Caller HTTP/UI لإطلاق Manual Thank You غير منفذ. Batch/Worker الداخلية موجودة
+  في Phase 4B-2.6 لكنها غير موصولة بأي AJAX أو زر واجهة.
 - أي جدولة تلقائية (Automatic Reminder/Cron يومي بحسب تاريخ المناسبة) —
   الوحيد المسموح هو Cron استكمال دفعة Reminder بدأها المستخدم يدوياً (§5.4).
 - Lease/Reclaim لمطالبات Thank You العالقة نُفّذ في Phase 4A-2 (§4.3)
-  وتستهلكه Service Phase 4B-2، لكن لا Caller إنتاجي بعد.
+  وتستهلكه Service Phase 4B-2 والـWorker الداخلية في Phase 4B-2.6، لكن لا
+  Caller HTTP/UI بعد.
 - شرط عدم توريث `thank_you_sent_at` حُسم في Phase C عبر reset دورة الدعوة
   authoritative (راجع §4.5). لا يعني ذلك أن إرسال Thank You بدأ.
 - Recipient Resolver لـ`checked_in=1` نُفّذ قراءة فقط في Phase 4B-1 (§5.2)

@@ -143,7 +143,7 @@ class PGE_Message_Recipient_Resolver
      * thank_you_sent_at لا يُفحَص هنا؛ PGE_Thank_You_Claim هي once-only
      * authority الوحيدة في المرحلة اللاحقة.
      *
-     * @return array{recipients:array<int,array{phone:string,rsvp_id:int,name:string}>,total_current_invitations:int,eligible:int,skipped_invalid_phone:int,skipped_cancelled:int,skipped_not_checked_in:int,skipped_no_rsvp:int,skipped_integrity_error:int,skipped_stale_lifecycle:int,filter:string,message_type:string}
+     * @return array{recipients:array<int,array{phone:string,rsvp_id:int,name:string,lifecycle_started_at:string}>,total_current_invitations:int,eligible:int,skipped_invalid_phone:int,skipped_cancelled:int,skipped_not_checked_in:int,skipped_no_rsvp:int,skipped_integrity_error:int,skipped_stale_lifecycle:int,filter:string,message_type:string}
      */
     private static function resolve_thank_you(int $event_id): array
     {
@@ -182,63 +182,141 @@ class PGE_Message_Recipient_Resolver
             $seen[$phone] = true;
             $summary['total_current_invitations']++;
 
-            if (!class_exists('PGE_Invitation_Repository')) {
-                $summary['skipped_stale_lifecycle']++;
+            $candidate = self::resolve_thank_you_candidate($event_id, $phone, $guest);
+            if (empty($candidate['eligible'])) {
+                $metric = 'skipped_' . (string) ($candidate['reason'] ?? 'integrity_error');
+                if (!array_key_exists($metric, $summary)) {
+                    $metric = 'skipped_integrity_error';
+                }
+                $summary[$metric]++;
                 continue;
             }
 
-            $invitation = PGE_Invitation_Repository::get_invitation($event_id, $phone);
-            if (!is_array($invitation)) {
-                $summary['skipped_stale_lifecycle']++;
-                continue;
-            }
-            if ((string) ($invitation['invitation_status'] ?? 'active') === 'cancelled') {
-                $summary['skipped_cancelled']++;
-                continue;
-            }
-
-            if (!function_exists('pge_rsvp_find_canonical_by_phone')) {
-                $summary['skipped_no_rsvp']++;
-                continue;
-            }
-
-            $lookup = pge_rsvp_find_canonical_by_phone($event_id, $phone);
-            $lookup_status = (string) ($lookup['status'] ?? 'integrity_error');
-            if ($lookup_status === 'integrity_error') {
-                $summary['skipped_integrity_error']++;
-                continue;
-            }
-            if ($lookup_status !== 'found' || !is_object($lookup['row'] ?? null)) {
-                $summary['skipped_no_rsvp']++;
-                continue;
-            }
-
-            $row = $lookup['row'];
-            $rsvp_id = (int) ($row->id ?? 0);
-            if ($rsvp_id <= 0) {
-                $summary['skipped_no_rsvp']++;
-                continue;
-            }
-
-            if (!PGE_Invitation_Repository::is_rsvp_row_current($event_id, $phone, $row->created_at ?? null)) {
-                $summary['skipped_stale_lifecycle']++;
-                continue;
-            }
-
-            if ((int) ($row->checked_in ?? 0) !== 1) {
-                $summary['skipped_not_checked_in']++;
-                continue;
-            }
-
-            $summary['recipients'][] = [
-                'phone'   => $phone,
-                'rsvp_id' => $rsvp_id,
-                'name'    => is_array($guest) ? (string) ($guest['name'] ?? '') : '',
-            ];
+            $summary['recipients'][] = $candidate['recipient'];
             $summary['eligible']++;
         }
 
         return $summary;
+    }
+
+    /**
+     * Re-resolve one queued Thank You recipient against current authoritative
+     * eligibility and the lifecycle snapshot captured when the batch started.
+     *
+     * @return array{eligible:bool,reason:string,recipient?:array<string,mixed>}
+     */
+    public static function resolve_thank_you_recipient(
+        int $event_id,
+        int $rsvp_id,
+        string $lifecycle_started_at
+    ): array {
+        if ($event_id <= 0 || $rsvp_id <= 0 || trim($lifecycle_started_at) === '') {
+            return ['eligible' => false, 'reason' => 'invalid_snapshot'];
+        }
+
+        global $wpdb;
+        if (!is_object($wpdb) || !method_exists($wpdb, 'get_row')) {
+            return ['eligible' => false, 'reason' => 'lookup_unavailable'];
+        }
+
+        $table = $wpdb->prefix . 'pge_event_rsvps';
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT guest_phone FROM {$table} WHERE id = %d AND event_id = %d LIMIT 1",
+            $rsvp_id,
+            $event_id
+        ));
+        if (!is_object($row)) {
+            return ['eligible' => false, 'reason' => 'no_longer_eligible'];
+        }
+
+        $phone = function_exists('pge_norm_phone')
+            ? pge_norm_phone($row->guest_phone ?? '')
+            : preg_replace('/\D+/', '', (string) ($row->guest_phone ?? ''));
+        $guests_map = function_exists('pge_event_guests_get_map')
+            ? (array) pge_event_guests_get_map($event_id)
+            : [];
+        $guest = $guests_map[$phone] ?? null;
+        if ($phone === '' || !is_array($guest)) {
+            return ['eligible' => false, 'reason' => 'no_longer_eligible'];
+        }
+
+        $candidate = self::resolve_thank_you_candidate($event_id, $phone, $guest);
+        if (empty($candidate['eligible']) || !is_array($candidate['recipient'] ?? null)) {
+            return [
+                'eligible' => false,
+                'reason' => (string) ($candidate['reason'] ?? 'no_longer_eligible'),
+            ];
+        }
+
+        $recipient = $candidate['recipient'];
+        if ((int) ($recipient['rsvp_id'] ?? 0) !== $rsvp_id
+            || (string) ($recipient['lifecycle_started_at'] ?? '') !== $lifecycle_started_at) {
+            return ['eligible' => false, 'reason' => 'lifecycle_changed'];
+        }
+
+        return ['eligible' => true, 'reason' => 'eligible', 'recipient' => $recipient];
+    }
+
+    /**
+     * Single authority for Thank You eligibility shared by full batch resolve
+     * and targeted worker revalidation.
+     *
+     * @param mixed $guest
+     * @return array{eligible:bool,reason:string,recipient?:array<string,mixed>}
+     */
+    private static function resolve_thank_you_candidate(int $event_id, string $phone, $guest): array
+    {
+        if (!class_exists('PGE_Invitation_Repository')) {
+            return ['eligible' => false, 'reason' => 'stale_lifecycle'];
+        }
+
+        $invitation = PGE_Invitation_Repository::get_invitation($event_id, $phone);
+        if (!is_array($invitation)) {
+            return ['eligible' => false, 'reason' => 'stale_lifecycle'];
+        }
+        if ((string) ($invitation['invitation_status'] ?? 'active') === 'cancelled') {
+            return ['eligible' => false, 'reason' => 'cancelled'];
+        }
+
+        if (!function_exists('pge_rsvp_find_canonical_by_phone')) {
+            return ['eligible' => false, 'reason' => 'no_rsvp'];
+        }
+
+        $lookup = pge_rsvp_find_canonical_by_phone($event_id, $phone);
+        $lookup_status = (string) ($lookup['status'] ?? 'integrity_error');
+        if ($lookup_status === 'integrity_error') {
+            return ['eligible' => false, 'reason' => 'integrity_error'];
+        }
+        if ($lookup_status !== 'found' || !is_object($lookup['row'] ?? null)) {
+            return ['eligible' => false, 'reason' => 'no_rsvp'];
+        }
+
+        $row = $lookup['row'];
+        $rsvp_id = (int) ($row->id ?? 0);
+        if ($rsvp_id <= 0) {
+            return ['eligible' => false, 'reason' => 'no_rsvp'];
+        }
+        if (!PGE_Invitation_Repository::is_rsvp_row_current(
+            $event_id,
+            $phone,
+            $row->created_at ?? null
+        )) {
+            return ['eligible' => false, 'reason' => 'stale_lifecycle'];
+        }
+        if ((int) ($row->checked_in ?? 0) !== 1) {
+            return ['eligible' => false, 'reason' => 'not_checked_in'];
+        }
+
+        return [
+            'eligible' => true,
+            'reason' => 'eligible',
+            'recipient' => [
+                'phone'                => $phone,
+                'rsvp_id'              => $rsvp_id,
+                'name'                 => is_array($guest) ? (string) ($guest['name'] ?? '') : '',
+                'lifecycle_started_at' => (string) ($row->created_at ?? ''),
+            ],
+        ];
     }
 
     /** عدد المستلمين فقط — تُستخدَم لمعاينة "عدد المستلمين المتوقَّع" (PART 22). */

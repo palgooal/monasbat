@@ -13,8 +13,113 @@ if (!defined('ABSPATH')) exit;
 class PGE_Thank_You_Message_Service
 {
     /**
-     * Process the current eligible recipients synchronously as one intentional
-     * manual operation. External orchestration for large batches is deferred.
+     * Execute the existing Claim -> content -> Cartat text -> finalize path for
+     * one recipient. Eligibility must be revalidated by the caller immediately
+     * before calling this method.
+     *
+     * @return array{status:string,reason:string,claimed:bool}
+     */
+    public static function process_recipient(
+        int $event_id,
+        int $actor_user_id,
+        string $batch_id,
+        array $recipient,
+        PGE_Cartat_Transport $transport,
+        array $event_context = [],
+        ?string $expected_lifecycle_started_at = null
+    ): array {
+        $phone = is_scalar($recipient['phone'] ?? null)
+            ? trim((string) $recipient['phone'])
+            : '';
+        $rsvp_id = (int) ($recipient['rsvp_id'] ?? 0);
+
+        $claim = PGE_Thank_You_Claim::claim(
+            $event_id,
+            $rsvp_id,
+            $phone,
+            $batch_id,
+            $actor_user_id,
+            'cartat'
+        );
+        $claim_result = (string) ($claim['result'] ?? 'error');
+
+        if ($claim_result === 'already_sent') {
+            return ['status' => 'skipped', 'reason' => 'already_sent', 'claimed' => false];
+        }
+        if ($claim_result === 'already_in_progress') {
+            return ['status' => 'waiting', 'reason' => 'active_claim', 'claimed' => false];
+        }
+        if ($claim_result !== 'claimed') {
+            return ['status' => 'skipped', 'reason' => 'claim_error', 'claimed' => false];
+        }
+
+        $log_id = (int) ($claim['log_id'] ?? 0);
+        if ($log_id <= 0) {
+            return ['status' => 'skipped', 'reason' => 'claim_error', 'claimed' => false];
+        }
+
+        if ($expected_lifecycle_started_at !== null
+            && (string) ($claim['lifecycle_started_at'] ?? '') !== $expected_lifecycle_started_at) {
+            PGE_Thank_You_Claim::finalize_failure($log_id, PGE_Message_Log::STATUS_FAILED);
+            return ['status' => 'skipped', 'reason' => 'lifecycle_changed', 'claimed' => true];
+        }
+
+        try {
+            $content = PGE_Message_Content_Resolver::resolve(
+                PGE_Message_Type::THANK_YOU,
+                $event_id,
+                [
+                    'guest_name' => (string) ($recipient['name'] ?? ''),
+                    'event_name' => (string) ($event_context['event_name'] ?? ''),
+                    'event_date' => (string) ($event_context['event_date'] ?? ''),
+                ]
+            );
+            $text = (string) ($content['text'] ?? '');
+            $wa_number = $transport->format_number($phone);
+        } catch (\Throwable $e) {
+            $status = PGE_Thank_You_Claim::finalize_failure($log_id, PGE_Message_Log::STATUS_FAILED)
+                ? 'failed'
+                : 'ambiguous';
+            return ['status' => $status, 'reason' => 'content_error', 'claimed' => true];
+        }
+
+        try {
+            $transport_result = $transport->send_text($wa_number, $text);
+            $outcome = $transport->interpret_result($transport_result);
+        } catch (\Throwable $e) {
+            $outcome = 'transport_error';
+        }
+
+        if ($outcome === 'accepted') {
+            if (PGE_Thank_You_Claim::finalize_success($log_id, $rsvp_id)
+                || PGE_Thank_You_Claim::is_sent($rsvp_id)) {
+                return ['status' => 'sent', 'reason' => 'accepted', 'claimed' => true];
+            }
+
+            PGE_Thank_You_Claim::finalize_failure(
+                $log_id,
+                PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR
+            );
+            return ['status' => 'ambiguous', 'reason' => 'finalize_error', 'claimed' => true];
+        }
+
+        if ($outcome === 'rejected') {
+            $status = PGE_Thank_You_Claim::finalize_failure($log_id, PGE_Message_Log::STATUS_FAILED)
+                ? 'failed'
+                : 'ambiguous';
+            return ['status' => $status, 'reason' => 'rejected', 'claimed' => true];
+        }
+
+        PGE_Thank_You_Claim::finalize_failure(
+            $log_id,
+            PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR
+        );
+        return ['status' => 'ambiguous', 'reason' => 'transport_error', 'claimed' => true];
+    }
+
+    /**
+     * Compatibility path that processes current eligible recipients
+     * synchronously. Durable batches call process_recipient() per queued item.
      *
      * @return array{result:string,reason?:string,batch_id:?string,eligible:int,claimed:int,sent:int,failed:int,ambiguous:int,skipped_already_sent:int,skipped_active_claim:int,skipped_claim_error:int,resolver:array<string,mixed>}
      */
@@ -79,100 +184,32 @@ class PGE_Thank_You_Message_Service
             ? date_i18n('j F Y — g:i a', strtotime(str_replace('T', ' ', $event_date_raw)))
             : '';
 
+        $event_context = ['event_name' => $event_name, 'event_date' => $event_date];
         foreach ($recipients as $recipient) {
-            $phone = is_scalar($recipient['phone'] ?? null)
-                ? trim((string) $recipient['phone'])
-                : '';
-            $rsvp_id = (int) ($recipient['rsvp_id'] ?? 0);
-
-            $claim = PGE_Thank_You_Claim::claim(
+            $outcome = self::process_recipient(
                 $event_id,
-                $rsvp_id,
-                $phone,
-                $batch_id,
                 $actor_user_id,
-                'cartat'
+                $batch_id,
+                $recipient,
+                $transport,
+                $event_context
             );
-            $claim_result = (string) ($claim['result'] ?? 'error');
 
-            if ($claim_result === 'already_sent') {
+            if (!empty($outcome['claimed'])) {
+                $summary['claimed']++;
+            }
+
+            $status = (string) ($outcome['status'] ?? 'skipped');
+            $reason = (string) ($outcome['reason'] ?? 'claim_error');
+            if (isset($summary[$status])) {
+                $summary[$status]++;
+            } elseif ($reason === 'already_sent') {
                 $summary['skipped_already_sent']++;
-                continue;
-            }
-            if ($claim_result === 'already_in_progress') {
+            } elseif ($reason === 'active_claim') {
                 $summary['skipped_active_claim']++;
-                continue;
-            }
-            if ($claim_result !== 'claimed') {
+            } else {
                 $summary['skipped_claim_error']++;
-                continue;
             }
-
-            $log_id = (int) ($claim['log_id'] ?? 0);
-            if ($log_id <= 0) {
-                $summary['skipped_claim_error']++;
-                continue;
-            }
-            $summary['claimed']++;
-
-            try {
-                $content = PGE_Message_Content_Resolver::resolve(
-                    PGE_Message_Type::THANK_YOU,
-                    $event_id,
-                    [
-                        'guest_name' => (string) ($recipient['name'] ?? ''),
-                        'event_name' => $event_name,
-                        'event_date' => $event_date,
-                    ]
-                );
-                $text = (string) ($content['text'] ?? '');
-                $wa_number = $transport->format_number($phone);
-            } catch (\Throwable $e) {
-                if (PGE_Thank_You_Claim::finalize_failure($log_id, PGE_Message_Log::STATUS_FAILED)) {
-                    $summary['failed']++;
-                } else {
-                    $summary['ambiguous']++;
-                }
-                continue;
-            }
-
-            try {
-                $transport_result = $transport->send_text($wa_number, $text);
-                $outcome = $transport->interpret_result($transport_result);
-            } catch (\Throwable $e) {
-                // Once the transport call starts, an exception cannot prove
-                // non-delivery. Fence immediate retry using the Claim lease.
-                $outcome = 'transport_error';
-            }
-
-            if ($outcome === 'accepted') {
-                if (PGE_Thank_You_Claim::finalize_success($log_id, $rsvp_id)
-                    || PGE_Thank_You_Claim::is_sent($rsvp_id)) {
-                    $summary['sent']++;
-                } else {
-                    PGE_Thank_You_Claim::finalize_failure(
-                        $log_id,
-                        PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR
-                    );
-                    $summary['ambiguous']++;
-                }
-                continue;
-            }
-
-            if ($outcome === 'rejected') {
-                if (PGE_Thank_You_Claim::finalize_failure($log_id, PGE_Message_Log::STATUS_FAILED)) {
-                    $summary['failed']++;
-                } else {
-                    $summary['ambiguous']++;
-                }
-                continue;
-            }
-
-            PGE_Thank_You_Claim::finalize_failure(
-                $log_id,
-                PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR
-            );
-            $summary['ambiguous']++;
         }
 
         return $summary;
