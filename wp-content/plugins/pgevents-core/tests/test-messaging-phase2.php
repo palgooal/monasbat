@@ -68,7 +68,12 @@ if (!file_exists($__upgrade_stub_dir . '/upgrade.php')) {
 
 $GLOBALS['__test_options'] = [];
 function get_option($name, $default = false) { return $GLOBALS['__test_options'][$name] ?? $default; }
-function update_option($name, $value) { $GLOBALS['__test_options'][$name] = $value; return true; }
+$GLOBALS['__test_option_updates'] = 0;
+function update_option($name, $value) {
+    $GLOBALS['__test_option_updates']++;
+    $GLOBALS['__test_options'][$name] = $value;
+    return true;
+}
 
 // ══════════════════════════════════════════════════════════════════════
 // Fake $wpdb: pge_event_rsvps (subset) + pge_message_log
@@ -92,6 +97,14 @@ class Fake_Wpdb_Messaging_Phase2
         'reply', 'checked_in', 'checked_in_at', 'created_at', 'updated_at',
     ];
     public $message_log_columns = [];
+    public $message_log_table_exists = false;
+    public $lifecycle_column_type = 'datetime';
+    public $lifecycle_column_null = 'YES';
+    public $force_lifecycle_alter_failure = false;
+    public $schema_alter_count = 0;
+    public $schema_dbdelta_count = 0;
+    public $schema_column_reads = 0;
+    public $schema_sql = [];
 
     public $held_locks = [];
     public $lock_acquire_log = [];
@@ -201,6 +214,11 @@ class Fake_Wpdb_Messaging_Phase2
 
         if (preg_match('/ALTER TABLE\s+(\S+)\s+ADD COLUMN\s+(\w+)/i', $sql, $m)) {
             $which = $this->which_table($m[1]);
+            $this->schema_sql[] = $sql;
+            $this->schema_alter_count++;
+            if ($which === 'message_log' && $m[2] === 'lifecycle_started_at' && $this->force_lifecycle_alter_failure) {
+                return false;
+            }
             if ($which === 'rsvps' && !in_array($m[2], $this->rsvps_columns, true)) {
                 $this->rsvps_columns[] = $m[2];
             }
@@ -216,12 +234,28 @@ class Fake_Wpdb_Messaging_Phase2
     public function get_results($sql, $output = null)
     {
         if (preg_match('/SHOW\s+COLUMNS\s+FROM\s+(\S+)/i', $sql, $m)) {
+            $this->schema_column_reads++;
             $which = $this->which_table($m[1]);
             if ($which === 'rsvps') {
-                return array_map(function ($c) { return ['Field' => $c]; }, $this->rsvps_columns);
+                return array_map(function ($c) {
+                    return [
+                        'Field' => $c,
+                        'Type' => $c === 'thank_you_sent_at' ? 'datetime' : 'varchar(255)',
+                        'Null' => $c === 'thank_you_sent_at' ? 'YES' : 'NO',
+                    ];
+                }, $this->rsvps_columns);
             }
             if ($which === 'message_log') {
-                return array_map(function ($c) { return ['Field' => $c]; }, $this->message_log_columns);
+                if (!$this->message_log_table_exists) {
+                    return null;
+                }
+                return array_map(function ($c) {
+                    return [
+                        'Field' => $c,
+                        'Type' => $c === 'lifecycle_started_at' ? $this->lifecycle_column_type : 'varchar(255)',
+                        'Null' => $c === 'lifecycle_started_at' ? $this->lifecycle_column_null : 'YES',
+                    ];
+                }, $this->message_log_columns);
             }
             return [];
         }
@@ -341,6 +375,8 @@ class Fake_Wpdb_Messaging_Phase2
     /** يُستدعى فقط من stub الاختبار لـdbDelta() أعلاه. */
     public function ensure_message_log_table_created()
     {
+        $this->schema_dbdelta_count++;
+        $this->message_log_table_exists = true;
         if (empty($this->message_log_columns)) {
             $this->message_log_columns = ['id', 'event_id', 'rsvp_id', 'lifecycle_started_at', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
         }
@@ -432,6 +468,85 @@ $GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION] = '1.0.0';
 PGE_Messaging_Schema::maybe_upgrade();
 check_true('4b. upgrade من 1.0.0 يضيف lifecycle_started_at إلى الجدول القائم', in_array('lifecycle_started_at', $wpdb->message_log_columns, true));
 check('4c. schema version لا تُعتمد إلا بعد postcondition', $GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION] ?? null, PGE_Messaging_Schema::SCHEMA_VERSION);
+
+// Phase 4A-3 — version الحالية لا تتجاوز structural postconditions.
+$healthy_alters = $wpdb->schema_alter_count;
+$healthy_dbdelta = $wpdb->schema_dbdelta_count;
+$healthy_updates = $GLOBALS['__test_option_updates'];
+PGE_Messaging_Schema::maybe_upgrade();
+check_true('4d. current version + correct contract = no-op بلا ALTER/dbDelta/version churn',
+    $wpdb->schema_alter_count === $healthy_alters
+    && $wpdb->schema_dbdelta_count === $healthy_dbdelta
+    && $GLOBALS['__test_option_updates'] === $healthy_updates);
+
+// Current-version drift: صف قديم يجب أن يبقى byte-for-byte، والعمود الجديد NULL.
+$wpdb->message_log[900] = [
+    'id' => 900, 'event_id' => 9001, 'rsvp_id' => 901, 'guest_phone' => '966500009001',
+    'message_type' => 'thank_you', 'batch_id' => 'schema-drift-row', 'status' => 'pending',
+    'provider' => 'cartat', 'actor_user_id' => 1, 'created_at' => '2026-08-01 10:00:00', 'sent_at' => null,
+];
+$drift_row_before = $wpdb->message_log[900];
+$wpdb->message_log_columns = array_values(array_diff($wpdb->message_log_columns, ['lifecycle_started_at']));
+$GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION] = '1.1.0';
+PGE_Messaging_Schema::maybe_upgrade();
+check_true('4e. current version + missing column detects and repairs drift', in_array('lifecycle_started_at', $wpdb->message_log_columns, true));
+check_true('4f. drift repair ينتج DATETIME NULL', $wpdb->lifecycle_column_type === 'datetime' && $wpdb->lifecycle_column_null === 'YES');
+check('4g. existing row survives additive repair unchanged', $wpdb->message_log[900], $drift_row_before);
+check('4h. successful current-version repair keeps version 1.1.0', $GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION], '1.1.0');
+
+// فشل ADD COLUMN: لا نجاح زائف؛ version لا تُخفَّض لكن postcondition تبقى missing.
+$wpdb->message_log_columns = array_values(array_diff($wpdb->message_log_columns, ['lifecycle_started_at']));
+$wpdb->force_lifecycle_alter_failure = true;
+PGE_Messaging_Schema::maybe_upgrade();
+check_true('4i. failed drift repair leaves structural postcondition missing', !in_array('lifecycle_started_at', $wpdb->message_log_columns, true));
+check('4j. failed current-version repair does not churn/downgrade version', $GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION], '1.1.0');
+$wpdb->force_lifecycle_alter_failure = false;
+PGE_Messaging_Schema::maybe_upgrade();
+
+// Missing option + old existing table follows the same safe additive upgrade.
+$wpdb->message_log_columns = array_values(array_diff($wpdb->message_log_columns, ['lifecycle_started_at']));
+unset($GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION]);
+PGE_Messaging_Schema::maybe_upgrade();
+check_true('4k. missing version + old table upgrades safely', in_array('lifecycle_started_at', $wpdb->message_log_columns, true));
+check('4l. missing version is promoted only after repair', $GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION], '1.1.0');
+
+// Current version + missing table must recreate through the existing CREATE contract.
+$wpdb->message_log_table_exists = false;
+$wpdb->message_log_columns = [];
+$wpdb->message_log = [];
+$GLOBALS['__test_options'][PGE_Messaging_Schema::VERSION_OPTION] = '1.1.0';
+$dbdelta_before_missing_table = $wpdb->schema_dbdelta_count;
+PGE_Messaging_Schema::maybe_upgrade();
+check_true('4m. current version + missing message_log recreates the table', $wpdb->message_log_table_exists && !empty($wpdb->message_log_columns));
+check('4n. missing table uses the existing dbDelta CREATE path once', $wpdb->schema_dbdelta_count, $dbdelta_before_missing_table + 1);
+
+// Wrong/incompatible contract is detected and left untouched (لا MODIFY/CHANGE).
+$wpdb->lifecycle_column_null = 'NO';
+$wrong_contract_alters = $wpdb->schema_alter_count;
+$wrong_contract_reads = $wpdb->schema_column_reads;
+PGE_Messaging_Schema::maybe_upgrade();
+check_true('4o. NOT NULL lifecycle contract is rechecked and fails closed without ALTER',
+    $wpdb->schema_column_reads > $wrong_contract_reads
+    && $wpdb->schema_alter_count === $wrong_contract_alters
+    && $wpdb->lifecycle_column_null === 'NO');
+$wpdb->lifecycle_column_null = 'YES';
+
+// Existing non-NULL marker and healthy schema survive repeated runs unchanged.
+$wpdb->message_log[901] = [
+    'id' => 901, 'event_id' => 9002, 'rsvp_id' => 902,
+    'lifecycle_started_at' => '2026-08-02 11:00:00', 'guest_phone' => '966500009002',
+    'message_type' => 'thank_you', 'batch_id' => 'schema-idempotent-row', 'status' => 'sent',
+    'provider' => 'cartat', 'actor_user_id' => 1, 'created_at' => '2026-08-02 11:01:00', 'sent_at' => '2026-08-02 11:01:10',
+];
+$marker_before = $wpdb->message_log[901];
+$idempotent_alters = $wpdb->schema_alter_count;
+PGE_Messaging_Schema::maybe_upgrade();
+PGE_Messaging_Schema::maybe_upgrade();
+check('4p. existing lifecycle value survives repeated maybe_upgrade()', $wpdb->message_log[901], $marker_before);
+check('4q. repeated healthy runs issue no ALTER', $wpdb->schema_alter_count, $idempotent_alters);
+check_true('4r. Schema hardening contains no destructive SQL', empty(array_filter($wpdb->schema_sql, function ($sql) {
+    return preg_match('/\b(DROP|RENAME|MODIFY|CHANGE|DELETE|TRUNCATE)\b/i', $sql) === 1;
+})));
 
 // 5. indexes الأساسية — في هذا الـFake لا محرّك SQL عام يفهرس فعلياً، لكن
 // الدليل العملي المتاح هو أن الـSchema الحقيقي (class-pge-messaging-schema.php)

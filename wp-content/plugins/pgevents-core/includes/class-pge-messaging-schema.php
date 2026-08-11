@@ -51,18 +51,88 @@ class PGE_Messaging_Schema
     {
         $stored_version = (string) get_option(self::VERSION_OPTION, '');
 
-        if ($stored_version === self::SCHEMA_VERSION) {
+        // الإصدار المخزّن Hint فقط: لا نتجاوز الفحص البنيوي إذا كان الجدول أو
+        // العمود مفقوداً/غير متوافق بسبب Schema drift.
+        if ($stored_version === self::SCHEMA_VERSION && self::schema_postconditions_hold()) {
             return;
         }
 
         $log_table_ok = self::ensure_message_log_table();
         $column_ok = self::ensure_thank_you_column();
 
-        if ($log_table_ok && $column_ok) {
+        if ($log_table_ok && $column_ok && $stored_version !== self::SCHEMA_VERSION) {
             update_option(self::VERSION_OPTION, self::SCHEMA_VERSION);
         }
         // فشل جزئي: لا يُحدَّث الإصدار المخزَّن، فيُعاد المحاولة كاملةً في
         // الطلب التالي (نفس فلسفة الفشل الجزئي في PGE_Checkin_Schema).
+    }
+
+    /**
+     * فحص read-only للعقد البنيوي الحالي. لا تكفي version وحدها لإثبات أن
+     * الجدول والعمود الإضافي ما زالا موجودين بالعقد الصحيح.
+     */
+    private static function schema_postconditions_hold(): bool
+    {
+        $log_columns = self::read_table_columns(self::message_log_table_name());
+        $rsvp_columns = self::read_table_columns(self::rsvps_table_name());
+
+        return self::message_log_columns_are_valid($log_columns)
+            && self::has_column($rsvp_columns, 'thank_you_sent_at');
+    }
+
+    /** @return array<int,array>|null */
+    private static function read_table_columns(string $table): ?array
+    {
+        global $wpdb;
+
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        return is_array($columns) && !empty($columns) ? $columns : null;
+    }
+
+    /** @param array<int,array>|null $columns */
+    private static function has_column(?array $columns, string $name): bool
+    {
+        if ($columns === null) {
+            return false;
+        }
+
+        foreach ($columns as $column) {
+            if ((string) ($column['Field'] ?? '') === $name) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<int,array>|null $columns */
+    private static function message_log_columns_are_valid(?array $columns): bool
+    {
+        if ($columns === null) {
+            return false;
+        }
+
+        $required = ['id', 'event_id', 'rsvp_id', 'lifecycle_started_at', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
+        foreach ($required as $name) {
+            if (!self::has_column($columns, $name)) {
+                return false;
+            }
+        }
+
+        foreach ($columns as $column) {
+            if ((string) ($column['Field'] ?? '') !== 'lifecycle_started_at') {
+                continue;
+            }
+
+            $type = strtolower(trim((string) ($column['Type'] ?? '')));
+            $nullable = strtoupper(trim((string) ($column['Null'] ?? ''))) === 'YES';
+
+            // نقبل تمثيل MySQL لـDATETIME مع precision اختيارية، لكن لا نقبل
+            // نوعاً آخر أو NOT NULL. العقد الخاطئ يُكتشف فقط ولا يُعدَّل.
+            return preg_match('/^datetime(?:\(\d+\))?$/', $type) === 1 && $nullable;
+        }
+
+        return false;
     }
 
     /**
@@ -78,8 +148,6 @@ class PGE_Messaging_Schema
     private static function ensure_message_log_table(): bool
     {
         global $wpdb;
-
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
         $table = self::message_log_table_name();
         $charset_collate = $wpdb->get_charset_collate();
@@ -103,45 +171,31 @@ class PGE_Messaging_Schema
             KEY status (status)
         ) $charset_collate;";
 
-        dbDelta($sql);
-
-        $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+        $columns = self::read_table_columns($table);
         if ($columns === null) {
-            return false;
-        }
-
-        $found = [];
-        foreach ($columns as $column) {
-            $found[] = (string) ($column['Field'] ?? '');
+            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            dbDelta($sql);
+            $columns = self::read_table_columns($table);
+            if ($columns === null) {
+                return false;
+            }
         }
 
         // Phase 4A-2: dbDelta() creates the column on fresh installs. Existing
         // tables get the same additive column explicitly and idempotently.
-        if (!in_array('lifecycle_started_at', $found, true)) {
+        if (!self::has_column($columns, 'lifecycle_started_at')) {
             $added = $wpdb->query("ALTER TABLE $table ADD COLUMN lifecycle_started_at DATETIME NULL AFTER rsvp_id");
             if ($added === false) {
                 return false;
             }
 
-            $columns = $wpdb->get_results("SHOW COLUMNS FROM $table", ARRAY_A);
+            $columns = self::read_table_columns($table);
             if ($columns === null) {
                 return false;
             }
-            $found = [];
-            foreach ($columns as $column) {
-                $found[] = (string) ($column['Field'] ?? '');
-            }
         }
 
-        $required = ['id', 'event_id', 'rsvp_id', 'lifecycle_started_at', 'guest_phone', 'message_type', 'batch_id', 'status', 'provider', 'actor_user_id', 'created_at', 'sent_at'];
-
-        foreach ($required as $r) {
-            if (!in_array($r, $found, true)) {
-                return false;
-            }
-        }
-
-        return true;
+        return self::message_log_columns_are_valid($columns);
     }
 
     /**

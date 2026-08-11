@@ -127,6 +127,7 @@ RSVP وCheck-in مفهومان منفصلان. أهلية Thank You المخطط
 - إذا ظهر Secret أثناء الفحص، لا تعِده في الرد.
 - لا تنفذ Schema/Migration تلقائياً أثناء Audit.
 - أي Schema change يجب أن يكون ضمن Scope صريحاً، additive قدر الإمكان، متبعاً schema/versioning الحالي، ومغطى بالاختبارات.
+- Schema version هي Hint وليست إثباتاً بنيوياً وحدها؛ تحقّق من structural postconditions حتى عندما تكون version المخزنة هي الحالية.
 - أي RSVP lookup بالهاتف يجب أن يمر عبر `pge_rsvp_find_canonical_by_phone()`؛ لا تستخدم `LIMIT 1` لاختيار صف صامتاً من هوية `event_id + normalized_guest_phone`.
 - RSVP row هو Current Snapshot تحت هوية Option A. Lifecycle reset يحدث فقط عبر مسار بدء lifecycle المعتمد: `create()` بعد validation وGuest Limit وduplicate checks، أو Phone Change لهاتف الهدف بعد duplicate/integrity checks؛ لا تنفّذ reset في lookup أو RSVP أو Check-in أو Reminder أو resend، ولا تكرر منطقه في Bulk/Excel.
 - لا تشتق `qr_version` لدورة دعوة جديدة من `invited_at` أو الوقت وحده. Hard Delete يجب أن يحافظ على QR tombstone غير مرئية، وRe-invite يجب أن تدوّر النسخة persistent مع بقاء `_pge_invited_guests` مصدر وجود الدعوة الوحيد.

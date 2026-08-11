@@ -1,10 +1,11 @@
-# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
 > Foundation فقط لـReminder/Thank You، بلا إرسال فعلي؛ Phase 3 — إرسال Reminder
-> اليدوي الفعلي، أول مسار إرسال حقيقي يستخدم بنية Phase 1/2). لا يوثّق تفاصيل
-> وPhase 4A-2 — Claim lease/reclaim فقط بلا إرسال Thank You. لا يوثّق تفاصيل
+> اليدوي الفعلي، أول مسار إرسال حقيقي يستخدم بنية Phase 1/2؛ Phase 4A-2 — Claim
+> lease/reclaim؛ Phase 4A-3 — Schema drift hardening، وكلاهما بلا إرسال Thank You).
+> لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
 > لتلك المراحل عند بدء تنفيذها فعلياً.
@@ -191,6 +192,17 @@ Phase 2 لا تضيف أي إرسال حقيقي لـReminder أو Thank You —
   `PGE_Message_Log`، بلا فهرس زائد على `event_id` وحده (مُغطًّى أصلاً كطرف
   أيسر لفهرس `event_type`).
 
+**Phase 4A-3 — Schema Drift Hardening:** قيمة
+`pge_messaging_schema_version` هي Hint وليست وحدها إثبات سلامة Schema.
+`maybe_upgrade()` لا تنفّذ early return عند version الحالية إلا بعد فحص
+postconditions فعلياً: وجود `pge_message_log`، اكتمال أعمدته، وأن
+`lifecycle_started_at` من نوع `DATETIME` ويسمح بـ`NULL`، مع بقاء عمود RSVP
+المطلوب موجوداً. إذا كان الجدول مفقوداً يُعاد إنشاؤه عبر مسار `dbDelta()`
+الحالي، وإذا كان العمود وحده مفقوداً يُصلح بإضافة `ADD COLUMN` idempotent.
+فشل الإصلاح لا يغيّر version ولا ينتج postcondition سليمة زائفة. وجود العمود
+بعقد غير متوافق مثل `NOT NULL` يُكتشف ويفشل بأمان دون `MODIFY` أو تغيير
+مدمّر تلقائي.
+
 ### 4.2 `PGE_Message_Log` — طبقة Tracking عامة (Tracking فقط)
 
 **الملف:** `includes/class-pge-message-log.php` (جديد).
@@ -281,7 +293,7 @@ postconditions ويستخدم compensation لإعادة خرائط الدعوة 
 
 ### 4.6 الإثبات التنفيذي
 
-ملف `tests/test-messaging-phase2.php` (74 فحصاً، جميعها ناجحة، عبر نفس
+ملف `tests/test-messaging-phase2.php` (89 فحصاً، جميعها ناجحة، عبر نفس
 مُفسِّر PHP 8.3 الحقيقي المُستخدَم في Phase 1) يُثبت: الترقية تضيف العمود
 والجدول فعلياً، `create_pending()` يرفض الأنواع غير المعروفة ولا يخزّن نص
 رسالة/tokens، `mark_sent()`/`mark_failed()` ذريان وIdempotent،
