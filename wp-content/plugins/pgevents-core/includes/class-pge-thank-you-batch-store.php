@@ -82,6 +82,10 @@ class PGE_Thank_You_Batch_Store
             'started_at'    => $now,
             'updated_at'    => $now,
             'completed_at'  => '',
+            'last_worker_tick_at'       => '',
+            'last_watchdog_tick_at'     => '',
+            'last_schedule_failed_at'   => '',
+            'last_schedule_failure_type'=> '',
             'items'         => $items,
         ];
 
@@ -112,6 +116,25 @@ class PGE_Thank_You_Batch_Store
 
         $manifest['updated_at'] = self::now();
         return (bool) update_option(self::batch_key($batch_id), $manifest, false);
+    }
+
+    /**
+     * Persist heartbeat/diagnostic metadata without treating it as queue progress.
+     * The caller must hold the batch tick lock while using this method.
+     *
+     * @param array<string,mixed> $manifest
+     */
+    public static function save_health_metadata(array $manifest): bool
+    {
+        $batch_id = is_scalar($manifest['batch_id'] ?? null)
+            ? trim((string) $manifest['batch_id'])
+            : '';
+        if ($batch_id === '') {
+            return false;
+        }
+
+        update_option(self::batch_key($batch_id), $manifest, false);
+        return self::get($batch_id) === $manifest;
     }
 
     public static function get_active_batch_id(int $event_id): string

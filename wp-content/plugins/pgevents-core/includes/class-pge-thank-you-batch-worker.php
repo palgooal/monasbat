@@ -9,17 +9,14 @@ class PGE_Thank_You_Batch_Worker
     const CHUNK_SIZE = 4;
     const RETRY_DELAY_SECONDS = 25;
     const WATCHDOG_DELAY_SECONDS = 120;
+    const STUCK_AFTER_SECONDS = 300;
+    const EVENT_OVERDUE_SECONDS = 120;
 
     /** @return array<string,mixed> */
     public static function create_batch(int $event_id, int $actor_user_id): array
     {
         if ($event_id <= 0 || get_post_type($event_id) !== 'pge_event') {
             return ['result' => 'error', 'reason' => 'invalid_event'];
-        }
-
-        $transport = PGE_Thank_You_Transport_Factory::resolve();
-        if (!$transport->has_credentials()) {
-            return ['result' => 'error', 'reason' => 'no_provider_credentials'];
         }
 
         $lock = self::acquire_lock(self::operation_lock_name($event_id));
@@ -33,6 +30,14 @@ class PGE_Thank_You_Batch_Worker
                 $active = PGE_Thank_You_Batch_Store::get($active_batch_id);
                 if (is_array($active)
                     && (string) ($active['status'] ?? '') === PGE_Thank_You_Batch_Store::STATUS_ACTIVE) {
+                    if (!self::ensure_recovery_events($event_id, $active_batch_id)) {
+                        return [
+                            'result' => 'error',
+                            'reason' => 'batch_recovery_failed',
+                            'batch_id' => $active_batch_id,
+                            'status' => PGE_Thank_You_Batch_Store::summary($active),
+                        ];
+                    }
                     return [
                         'result' => 'active_batch_exists',
                         'batch_id' => $active_batch_id,
@@ -40,6 +45,11 @@ class PGE_Thank_You_Batch_Worker
                     ];
                 }
                 PGE_Thank_You_Batch_Store::clear_active_batch_id($event_id, $active_batch_id);
+            }
+
+            $transport = PGE_Thank_You_Transport_Factory::resolve();
+            if (!$transport->has_credentials()) {
+                return ['result' => 'error', 'reason' => 'no_provider_credentials'];
             }
 
             $resolved = PGE_Message_Recipient_Resolver::resolve(
@@ -85,8 +95,18 @@ class PGE_Thank_You_Batch_Worker
             self::release_lock(self::operation_lock_name($event_id));
         }
 
-        self::schedule_worker($event_id, $batch_id, 1);
-        self::schedule_watchdog($event_id, $batch_id);
+        $worker_scheduled = self::schedule_worker($event_id, $batch_id, 1);
+        $watchdog_scheduled = self::schedule_watchdog($event_id, $batch_id);
+        if (!$worker_scheduled && !$watchdog_scheduled) {
+            return [
+                'result' => 'error',
+                'reason' => 'batch_schedule_failed',
+                'batch_id' => $batch_id,
+                'status' => PGE_Thank_You_Batch_Store::summary(
+                    PGE_Thank_You_Batch_Store::get($batch_id) ?: []
+                ),
+            ];
+        }
         self::spawn_cron();
         $manifest = PGE_Thank_You_Batch_Store::get($batch_id);
 
@@ -107,8 +127,95 @@ class PGE_Thank_You_Batch_Worker
         return PGE_Thank_You_Batch_Store::summary($manifest);
     }
 
+    /**
+     * Return PII-free operational diagnostics for a known batch.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function get_batch_health(int $event_id, string $batch_id): ?array
+    {
+        $manifest = PGE_Thank_You_Batch_Store::get($batch_id);
+        if (!is_array($manifest)) {
+            if ($batch_id !== ''
+                && PGE_Thank_You_Batch_Store::get_active_batch_id($event_id) === $batch_id) {
+                return self::missing_manifest_health($event_id, $batch_id);
+            }
+            return null;
+        }
+        if ((int) ($manifest['event_id'] ?? 0) !== $event_id) {
+            return null;
+        }
+
+        $summary = PGE_Thank_You_Batch_Store::summary($manifest);
+        $args = [$event_id, $batch_id];
+        $next_worker = wp_next_scheduled(self::WORKER_HOOK, $args);
+        $next_watchdog = wp_next_scheduled(self::WATCHDOG_HOOK, $args);
+        $now = time();
+        $updated_at = self::timestamp((string) ($manifest['updated_at'] ?? ''));
+        $age_seconds = $updated_at > 0 ? max(0, $now - $updated_at) : 0;
+        $has_work = ((int) $summary['queued'] + (int) $summary['processing']
+            + (int) $summary['waiting']) > 0;
+        $worker_overdue = $next_worker !== false
+            && (int) $next_worker < $now - self::EVENT_OVERDUE_SECONDS;
+        $watchdog_overdue = $next_watchdog !== false
+            && (int) $next_watchdog < $now - self::EVENT_OVERDUE_SECONDS;
+        $no_scheduled_events = $next_worker === false && $next_watchdog === false;
+        $active = (string) ($manifest['status'] ?? '') === PGE_Thank_You_Batch_Store::STATUS_ACTIVE;
+        $stuck = $active && $has_work && $age_seconds > self::STUCK_AFTER_SECONDS
+            && ($no_scheduled_events || $worker_overdue || $watchdog_overdue);
+        $stuck_reason = '';
+        if ($stuck) {
+            if ($no_scheduled_events) {
+                $stuck_reason = 'no_scheduled_events';
+            } elseif ($worker_overdue) {
+                $stuck_reason = 'worker_overdue';
+            } else {
+                $stuck_reason = 'watchdog_overdue';
+            }
+        }
+
+        return [
+            'event_id' => $event_id,
+            'batch_id' => $batch_id,
+            'batch_status' => (string) ($manifest['status'] ?? ''),
+            'total' => (int) $summary['total'],
+            'queued' => (int) $summary['queued'],
+            'processing' => (int) $summary['processing'],
+            'waiting' => (int) $summary['waiting'],
+            'sent' => (int) $summary['sent'],
+            'failed' => (int) $summary['failed'],
+            'ambiguous' => (int) $summary['ambiguous'],
+            'skipped' => (int) $summary['skipped'],
+            'started_at' => (string) $summary['started_at'],
+            'updated_at' => (string) $summary['updated_at'],
+            'completed_at' => (string) $summary['completed_at'],
+            'last_worker_tick_at' => (string) ($manifest['last_worker_tick_at'] ?? ''),
+            'last_watchdog_tick_at' => (string) ($manifest['last_watchdog_tick_at'] ?? ''),
+            'last_schedule_failed_at' => (string) ($manifest['last_schedule_failed_at'] ?? ''),
+            'last_schedule_failure_type' => (string) ($manifest['last_schedule_failure_type'] ?? ''),
+            'has_work' => $has_work,
+            'age_seconds' => $age_seconds,
+            'next_worker_tick_at' => $next_worker === false ? 0 : (int) $next_worker,
+            'next_watchdog_tick_at' => $next_watchdog === false ? 0 : (int) $next_watchdog,
+            'worker_overdue' => $worker_overdue,
+            'watchdog_overdue' => $watchdog_overdue,
+            'stuck' => $stuck,
+            'stuck_reason' => $stuck_reason,
+        ];
+    }
+
     public static function run(int $event_id, string $batch_id): void
     {
+        $manifest = PGE_Thank_You_Batch_Store::get($batch_id);
+        if (!is_array($manifest)
+            || (int) ($manifest['event_id'] ?? 0) !== $event_id
+            || (string) ($manifest['status'] ?? '') !== PGE_Thank_You_Batch_Store::STATUS_ACTIVE) {
+            return;
+        }
+        if (!self::record_heartbeat($event_id, $batch_id, 'worker')) {
+            self::schedule_worker($event_id, $batch_id, self::RETRY_DELAY_SECONDS);
+            return;
+        }
         self::schedule_watchdog($event_id, $batch_id);
         $reservation = self::reserve_chunk($event_id, $batch_id);
         if ($reservation === null) {
@@ -179,11 +286,13 @@ class PGE_Thank_You_Batch_Worker
             return;
         }
 
-        self::schedule_watchdog($event_id, $batch_id);
+        self::record_heartbeat($event_id, $batch_id, 'watchdog');
         if (!wp_next_scheduled(self::WORKER_HOOK, [$event_id, $batch_id])) {
-            self::schedule_worker($event_id, $batch_id, 1);
-            self::spawn_cron();
+            if (self::schedule_worker($event_id, $batch_id, 1)) {
+                self::spawn_cron();
+            }
         }
+        self::schedule_watchdog($event_id, $batch_id);
     }
 
     /** @return array<string,mixed>|null */
@@ -338,20 +447,143 @@ class PGE_Thank_You_Batch_Worker
         $item['next_attempt_at'] = '';
     }
 
-    private static function schedule_worker(int $event_id, string $batch_id, int $delay): void
+    private static function schedule_worker(int $event_id, string $batch_id, int $delay): bool
     {
+        return self::schedule_event(
+            $event_id,
+            $batch_id,
+            self::WORKER_HOOK,
+            max(1, $delay),
+            'worker_schedule_failed'
+        );
+    }
+
+    private static function schedule_watchdog(int $event_id, string $batch_id): bool
+    {
+        return self::schedule_event(
+            $event_id,
+            $batch_id,
+            self::WATCHDOG_HOOK,
+            self::WATCHDOG_DELAY_SECONDS,
+            'watchdog_schedule_failed'
+        );
+    }
+
+    private static function schedule_event(
+        int $event_id,
+        string $batch_id,
+        string $hook,
+        int $delay,
+        string $failure_type
+    ): bool {
         $args = [$event_id, $batch_id];
-        if (!wp_next_scheduled(self::WORKER_HOOK, $args)) {
-            wp_schedule_single_event(time() + max(1, $delay), self::WORKER_HOOK, $args);
+        if (wp_next_scheduled($hook, $args) !== false) {
+            return true;
+        }
+
+        $scheduled = wp_schedule_single_event(time() + $delay, $hook, $args);
+        if ($scheduled === true && wp_next_scheduled($hook, $args) !== false) {
+            return true;
+        }
+
+        self::record_schedule_failure($event_id, $batch_id, $failure_type);
+        return false;
+    }
+
+    private static function ensure_recovery_events(int $event_id, string $batch_id): bool
+    {
+        $health = self::get_batch_health($event_id, $batch_id);
+        if (!is_array($health) || $health['batch_status'] !== PGE_Thank_You_Batch_Store::STATUS_ACTIVE) {
+            return false;
+        }
+        $had_worker = (int) $health['next_worker_tick_at'] > 0;
+        $had_watchdog = (int) $health['next_watchdog_tick_at'] > 0;
+        $worker_ok = $had_worker || self::schedule_worker($event_id, $batch_id, 1);
+        $watchdog_ok = $had_watchdog || self::schedule_watchdog($event_id, $batch_id);
+        if ((!$had_worker && $worker_ok) || (!$had_watchdog && $watchdog_ok)) {
+            self::spawn_cron();
+        }
+        return $worker_ok || $watchdog_ok;
+    }
+
+    private static function record_heartbeat(int $event_id, string $batch_id, string $type): bool
+    {
+        $field = $type === 'watchdog' ? 'last_watchdog_tick_at' : 'last_worker_tick_at';
+        return self::update_health_metadata($event_id, $batch_id, [$field => PGE_Thank_You_Batch_Store::now()]);
+    }
+
+    private static function record_schedule_failure(
+        int $event_id,
+        string $batch_id,
+        string $failure_type
+    ): void {
+        $allowed = ['worker_schedule_failed', 'watchdog_schedule_failed'];
+        if (!in_array($failure_type, $allowed, true)) {
+            return;
+        }
+        self::update_health_metadata($event_id, $batch_id, [
+            'last_schedule_failed_at' => PGE_Thank_You_Batch_Store::now(),
+            'last_schedule_failure_type' => $failure_type,
+        ]);
+    }
+
+    /** @param array<string,string> $metadata */
+    private static function update_health_metadata(
+        int $event_id,
+        string $batch_id,
+        array $metadata
+    ): bool {
+        $lock_name = self::tick_lock_name($event_id, $batch_id);
+        if (!self::acquire_lock($lock_name)) {
+            return false;
+        }
+        try {
+            $manifest = PGE_Thank_You_Batch_Store::get($batch_id);
+            if (!is_array($manifest)
+                || (int) ($manifest['event_id'] ?? 0) !== $event_id
+                || (string) ($manifest['status'] ?? '') !== PGE_Thank_You_Batch_Store::STATUS_ACTIVE) {
+                return false;
+            }
+            foreach ($metadata as $field => $value) {
+                $manifest[$field] = $value;
+            }
+            return PGE_Thank_You_Batch_Store::save_health_metadata($manifest);
+        } finally {
+            self::release_lock($lock_name);
         }
     }
 
-    private static function schedule_watchdog(int $event_id, string $batch_id): void
+    /** @return array<string,mixed> */
+    private static function missing_manifest_health(int $event_id, string $batch_id): array
     {
-        $args = [$event_id, $batch_id];
-        if (!wp_next_scheduled(self::WATCHDOG_HOOK, $args)) {
-            wp_schedule_single_event(time() + self::WATCHDOG_DELAY_SECONDS, self::WATCHDOG_HOOK, $args);
-        }
+        return [
+            'event_id' => $event_id,
+            'batch_id' => $batch_id,
+            'batch_status' => 'missing',
+            'total' => 0,
+            'queued' => 0,
+            'processing' => 0,
+            'waiting' => 0,
+            'sent' => 0,
+            'failed' => 0,
+            'ambiguous' => 0,
+            'skipped' => 0,
+            'started_at' => '',
+            'updated_at' => '',
+            'completed_at' => '',
+            'last_worker_tick_at' => '',
+            'last_watchdog_tick_at' => '',
+            'last_schedule_failed_at' => '',
+            'last_schedule_failure_type' => '',
+            'has_work' => false,
+            'age_seconds' => 0,
+            'next_worker_tick_at' => 0,
+            'next_watchdog_tick_at' => 0,
+            'worker_overdue' => false,
+            'watchdog_overdue' => false,
+            'stuck' => true,
+            'stuck_reason' => 'dangling_active_index',
+        ];
     }
 
     private static function spawn_cron(): void

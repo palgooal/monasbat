@@ -9,7 +9,8 @@
 > Phase 4B-2.6 — Durable async-only Batch/Worker؛ Phase 4B-3A — authenticated
 > Preview/Start/Status AJAX؛ Phase 4B-3B — Manual Thank You UI وStatus polling؛
 > Phase 4B-3C — Local/test-only runtime transport seam؛ Phase 4B-3D — تصنيف
-> Preview استشاري لحالة الجاهزية وواجهة متابعة الدفعة النشطة).
+> Preview استشاري لحالة الجاهزية وواجهة متابعة الدفعة النشطة؛ Phase 4B-4B —
+> Cron health وstuck observability وdual-loss recovery الداخلية).
 > لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
@@ -772,6 +773,43 @@ Batch Store دون كشف `batch_id` أو Manifest.
 هذه المعاينة ليست ذرية مع Start ولا تمثل safety boundary. قد تتغير الحالة بعدها؛
 تبقى Claim وإعادة تحقق Worker من الأهلية وRSVP lifecycle هي السلطات النهائية.
 Start و`create_batch()` تبقيان آمنتين خادمياً وبلا اعتماد على تعطيل زر الواجهة.
+
+---
+
+## 6.6 Phase 4B-4B — Cron Health + Stuck Batch Observability (IMPLEMENTED)
+
+يحافظ Manual Thank You على single-event Worker باسم
+`pge_process_thank_you_batch` وWatchdog باسم `pge_watchdog_thank_you_batch`، مع
+`chunk=4` وcontinuation مقدارها 25 ثانية وWatchdog وprocessing/claim leases مقدارها
+120 ثانية. كل استدعاء حرج لـ`wp_schedule_single_event()` يمر عبر helper واحدة تتحقق
+من النتيجة ومن وجود الحدث فعلياً؛ الفشل لا يكمل الدفعة ولا يحذف Manifest، ويُحفظ
+فقط timestamp ونوع آمن من whitelist: `worker_schedule_failed` أو
+`watchdog_schedule_failed`، بلا raw errors أو PII.
+
+تحتفظ Manifest بـ`last_worker_tick_at` و`last_watchdog_tick_at` منفصلين عن
+`updated_at`: الـheartbeats تثبت حياة التنفيذ، بينما يبقى `updated_at` مؤشراً لتقدم
+حالة الصف. بعد إنشاء الدفعة يجب نجاح جدولة Worker أو Watchdog واحدة على الأقل، وإلا
+تعيد Start السبب الآمن `batch_schedule_failed` مع إبقاء الدفعة قابلة للتشخيص
+والاسترداد. وعند استرجاع دفعة نشطة موجودة، تفحص Start الحدثين وتعيد تسليح المفقود
+منهما للدفعة نفسها؛ إذا غابا وفشل المساران معاً تعيد `batch_recovery_failed` ولا
+تنشئ دفعة ثانية. Active index المعلق مع Manifest مفقودة يُزال بأمان، أما Manifest
+النشطة بلا index فلا يعاد بناء index لها عميانياً، ويستطيع Worker المعروف إكمالها.
+
+يوفر `PGE_Thank_You_Batch_Worker::get_batch_health()` عقداً داخلياً فقط، aggregate
+وخالياً من PII، للعدادات والتوقيتات والحدثين القادمين والـheartbeats وفشل الجدولة
+وتصنيف stuck. تكون الدفعة stuck فقط عندما تكون `active` وبها
+`queued + processing + waiting > 0`، ولم يتغير `updated_at` لأكثر من 300 ثانية،
+وفُقد الحدثان معاً أو صار Worker/Watchdog التالي overdue بأكثر من 120 ثانية.
+الأسباب المخرجة محصورة في whitelist صغيرة مثل `no_scheduled_events` و
+`worker_overdue` و`watchdog_overdue` و`dangling_active_index`. هذا التصنيف مشتق ولا
+يضيف Batch status ولا lease جديدة، ولا يوجد endpoint أو global recurring scanner.
+
+الـWatchdog يتحقق من Manifest النشطة، يسجل heartbeat، يعيد Worker المفقودة بعد
+التحقق من نجاح الجدولة، ثم يضمن Watchdog لاحقة؛ لا يدخل Claim أو Send. Tick التي
+تصطدم بالقفل لا تعدل العناصر ولا ترسل، وتضمن continuation. يغطي
+`tests/test-thank-you-cron-health-phase4b4b.php` فشل الجدولة، dual-loss/rearm،
+heartbeats، stuck/overdue، dangling index، lock contention، انقطاع Cron لمدة 30
+دقيقة، الخصوصية، وعدم تكرار النقل.
 
 ---
 

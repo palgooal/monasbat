@@ -103,6 +103,10 @@ git diff --cached
 - Phase 4B-3D — COMPLETE: Preview تصنف مستلمي Thank You المؤهلين read-only إلى
   ready/already-sent/in-progress وتكشف وجود دفعة نشطة دون هويتها؛ التصنيف UX
   استشاري فقط، وتبقى Claim وWorker revalidation سلطتي التنفيذ النهائيتين.
+- Phase 4B-4B — COMPLETE: Cron health وstuck observability داخلية وآمنة بلا PII؛
+  Worker/Watchdog heartbeats منفصلة عن `updated_at`، وكل جدولة حرجة تتحقق من
+  نتيجتها. Start تعيد تسليح Worker/Watchdog المفقودتين للدفعة النشطة نفسها دون
+  إنشاء دفعة ثانية، ولا يوجد global scanner أو endpoint تشخيصي أو Automatic Thank You.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 
