@@ -100,6 +100,9 @@ git diff --cached
   Provider من العميل، وتوقف polling عند الاكتمال/الإغلاق دون إيقاف Worker؛ لا Retry UI.
 - Phase 4B-3C — COMPLETE: Safe Runtime Test Transport seam خاصة بـThank You؛ معطلة
   افتراضياً، خادمية فقط، ومقصورة على local/test دون أي اختيار من العميل أو تأثير على Reminder.
+- Phase 4B-3D — COMPLETE: Preview تصنف مستلمي Thank You المؤهلين read-only إلى
+  ready/already-sent/in-progress وتكشف وجود دفعة نشطة دون هويتها؛ التصنيف UX
+  استشاري فقط، وتبقى Claim وWorker revalidation سلطتي التنفيذ النهائيتين.
 
 أنواع الرسائل المستقلة: `invitation`، `reminder`، `thank_you`.
 

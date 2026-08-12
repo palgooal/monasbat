@@ -564,6 +564,7 @@ get_header();
           <p id="thankYouEligibleCount" class="mt-1 text-xl font-extrabold text-foreground" aria-live="polite">0</p>
           <p id="thankYouEligibilitySummary" class="mt-1 text-xs text-foreground/70"></p>
           <p id="thankYouSkippedPreviewNote" class="hidden mt-1 text-xs text-foreground/60">بعض المدعوين غير مؤهلين للإرسال حالياً.</p>
+          <p id="thankYouActiveBatchNotice" class="hidden mt-2 text-xs font-semibold text-foreground/70" role="status">توجد عملية إرسال شكر جارية حالياً.</p>
         </div>
 
         <div class="mt-3 rounded-xl border border-border bg-secondary/20 p-3">
@@ -1897,6 +1898,7 @@ get_header();
   var thankYouEligibleCount = document.getElementById('thankYouEligibleCount');
   var thankYouEligibilitySummary = document.getElementById('thankYouEligibilitySummary');
   var thankYouSkippedPreviewNote = document.getElementById('thankYouSkippedPreviewNote');
+  var thankYouActiveBatchNotice = document.getElementById('thankYouActiveBatchNotice');
   var thankYouPreviewText = document.getElementById('thankYouPreviewText');
   var thankYouNoEligibleMsg = document.getElementById('thankYouNoEligibleMsg');
   var thankYouProcessingProgress = document.getElementById('thankYouProcessingProgress');
@@ -1970,18 +1972,34 @@ get_header();
 
       var data = res.data || {};
       var eligible = Math.max(0, Number(data.eligible) || 0);
+      var readyToSend = Math.max(0, Number(data.ready_to_send) || 0);
+      var alreadySent = Math.max(0, Number(data.already_sent) || 0);
+      var inProgress = Math.max(0, Number(data.in_progress) || 0);
+      var activeBatch = data.active_batch === true;
       var total = Math.max(0, Number(data.total_current_invitations) || 0);
       var excluded = Math.max(0, total - eligible);
       thankYouEligibleCount.textContent = eligible;
-      thankYouEligibilitySummary.textContent = eligible > 0
-        ? 'سيتم إرسال رسالة الشكر إلى ' + eligible + ' من الحاضرين المؤهلين.'
-        : 'لن تبدأ أي عملية إرسال.';
+      if (eligible === 0) {
+        thankYouEligibilitySummary.textContent = 'لن تبدأ أي عملية إرسال.';
+      } else if (readyToSend === eligible) {
+        thankYouEligibilitySummary.textContent = eligible + ' من الحاضرين مؤهلون. توجد ' + readyToSend + ' رسائل شكر جاهزة للإرسال الآن.';
+      } else if (readyToSend === 0 && alreadySent === eligible) {
+        thankYouEligibilitySummary.textContent = 'سبق إرسال الشكر إلى جميع الحاضرين المؤهلين وعددهم ' + eligible + '. لا توجد رسائل جديدة للإرسال.';
+      } else if (readyToSend === 0 && inProgress === 1) {
+        thankYouEligibilitySummary.textContent = 'سبق إرسال الشكر إلى ' + alreadySent + '، وهناك شخص واحد قيد المعالجة أو انتظار تأكيد محاولة سابقة. لا توجد رسائل جديدة الآن.';
+      } else if (inProgress === 0) {
+        thankYouEligibilitySummary.textContent = eligible + ' مؤهلون: ' + readyToSend + ' جاهزون للإرسال، وسبق إرسال الشكر إلى ' + alreadySent + '.';
+      } else {
+        thankYouEligibilitySummary.textContent = eligible + ' مؤهلون: ' + readyToSend + ' جاهزون للإرسال، وسبق إرسال الشكر إلى ' + alreadySent + '، و' + inProgress + ' قيد المعالجة أو الانتظار.';
+      }
       thankYouSkippedPreviewNote.classList.toggle('hidden', excluded === 0);
+      thankYouActiveBatchNotice.classList.toggle('hidden', !activeBatch);
       thankYouPreviewText.textContent = data.preview_text || '';
       thankYouNoEligibleMsg.classList.toggle('hidden', eligible > 0);
-      startThankYouBtn.disabled = eligible === 0;
+      startThankYouBtn.disabled = readyToSend === 0 && !activeBatch;
+      startThankYouBtn.textContent = activeBatch ? 'متابعة عملية الإرسال' : 'بدء إرسال الشكر';
       thankYouShowState('ready');
-      (eligible > 0 ? startThankYouBtn : document.getElementById('cancelThankYouBtn')).focus();
+      (!startThankYouBtn.disabled ? startThankYouBtn : document.getElementById('cancelThankYouBtn')).focus();
     }).catch(function () {
       if (sessionId !== thankYouSession || thankYouModal.classList.contains('hidden')) return;
       thankYouShowError('تعذّر الاتصال بالخادم. حاول مرة أخرى لاحقاً.');
@@ -1997,8 +2015,10 @@ get_header();
     thankYouEligibleCount.textContent = '0';
     thankYouEligibilitySummary.textContent = '';
     thankYouSkippedPreviewNote.classList.add('hidden');
+    thankYouActiveBatchNotice.classList.add('hidden');
     thankYouPreviewText.textContent = '';
     thankYouNoEligibleMsg.classList.add('hidden');
+    startThankYouBtn.textContent = 'بدء إرسال الشكر';
     thankYouLastFocusedElement = document.activeElement;
     thankYouShowState('loading');
     thankYouModal.classList.remove('hidden');

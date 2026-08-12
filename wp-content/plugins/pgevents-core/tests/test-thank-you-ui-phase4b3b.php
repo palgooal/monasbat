@@ -70,8 +70,8 @@ check_ui('24. closing modal stops polling', preg_match('/function thankYouCloseM
 check_ui('25. page unload stops polling', strpos($ui_script, "window.addEventListener('beforeunload', thankYouStopPolling)") !== false);
 check_ui('26. start is guarded against double submit', strpos($ui_script, 'if (thankYouStartInFlight || startThankYouBtn.disabled) return;') !== false);
 check_ui('27. Start button is disabled synchronously', preg_match('/thankYouStartInFlight = true;\s*startThankYouBtn\.disabled = true;/', $ui_script) === 1);
-check_ui('28. no eligible keeps Start disabled', strpos($ui_script, 'startThankYouBtn.disabled = eligible === 0;') !== false);
-check_ui('29. eligible enables Start through the same boolean contract', strpos($ui_script, 'startThankYouBtn.disabled = eligible === 0;') !== false);
+check_ui('28. zero ready without active batch keeps Start disabled', strpos($ui_script, 'startThankYouBtn.disabled = readyToSend === 0 && !activeBatch;') !== false);
+check_ui('29. ready recipients or active batch enable Start through the same boolean contract', strpos($ui_script, 'startThankYouBtn.disabled = readyToSend === 0 && !activeBatch;') !== false);
 check_ui('30. no-eligible state is user-facing, not technical error', strpos($ui_markup, 'لا يوجد حضور مؤهل لإرسال رسالة شكر حالياً.') !== false);
 check_ui('31. active or new successful batch enters processing', preg_match('/thankYouBatchId = String[\s\S]*?thankYouShowState\(\'processing\'\)/', $ui_script) === 1);
 check_ui('32. successful batch always resumes polling without rejecting existing=true', strpos($ui_script, 'thankYouSchedulePoll(thankYouBatchId);') !== false && strpos($ui_script, 'res.data.existing') === false);
@@ -103,6 +103,18 @@ check_ui('57. Reminder modal remains present', strpos($source, 'id="reminderModa
 check_ui('58. Reminder JavaScript remains present', strpos($source, 'function reminderOpenModal()') !== false && strpos($source, 'function reminderPollStatus(') !== false);
 check_ui('59. Thank You state names stay isolated', strpos($ui_script, 'var reminderPollTimer') === false && strpos($ui_script, 'var thankYouPollTimer') !== false);
 check_ui('60. shared helper remains server-authoritative for nonce and event', strpos($source, "body.set('nonce', CONFIG.nonce)") !== false && strpos($source, "body.set('event_id', CONFIG.eventId)") !== false);
+check_ui('61. Preview reads ready-to-send count', strpos($ui_script, 'Number(data.ready_to_send)') !== false);
+check_ui('62. Preview reads already-sent count', strpos($ui_script, 'Number(data.already_sent)') !== false);
+check_ui('63. Preview reads in-progress count', strpos($ui_script, 'Number(data.in_progress)') !== false);
+check_ui('64. all-ready copy is explicit', strpos($ui_script, "' من الحاضرين مؤهلون. توجد ' + readyToSend + ' رسائل شكر جاهزة للإرسال الآن.'") !== false);
+check_ui('65. mixed ready and sent copy is explicit', strpos($ui_script, "' مؤهلون: ' + readyToSend + ' جاهزون للإرسال، وسبق إرسال الشكر إلى ' + alreadySent + '.'") !== false);
+check_ui('66. all already sent copy is explicit', strpos($ui_script, "'سبق إرسال الشكر إلى جميع الحاضرين المؤهلين وعددهم ' + eligible + '. لا توجد رسائل جديدة للإرسال.'") !== false);
+check_ui('67. one in-progress copy is explicit', strpos($ui_script, "'سبق إرسال الشكر إلى ' + alreadySent + '، وهناك شخص واحد قيد المعالجة أو انتظار تأكيد محاولة سابقة. لا توجد رسائل جديدة الآن.'") !== false);
+check_ui('68. active batch notice is present without an identifier', strpos($ui_markup, 'id="thankYouActiveBatchNotice"') !== false && strpos($ui_markup, 'توجد عملية إرسال شكر جارية حالياً.') !== false);
+check_ui('69. active batch notice follows Preview flag', strpos($ui_script, "thankYouActiveBatchNotice.classList.toggle('hidden', !activeBatch)") !== false);
+check_ui('70. active batch CTA resumes through existing Start', strpos($ui_script, "activeBatch ? 'متابعة عملية الإرسال' : 'بدء إرسال الشكر'") !== false);
+check_ui('71. ready state focus follows actual CTA availability', strpos($ui_script, '!startThankYouBtn.disabled ? startThankYouBtn') !== false);
+check_ui('72. Preview classification renders counts only, never recipient details', strpos($ui_script, 'data.recipients') === false && strpos($ui_script, 'data.items') === false);
 
 echo "Thank You UI Phase 4B-3B: {$passed}/{$total} passed\n";
 if ($failures) {

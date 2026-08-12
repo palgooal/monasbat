@@ -1431,6 +1431,80 @@ if (PGE_INVITATION_MGMT_REMINDER_ENABLED) {
 // recipient input, synchronous Claim/Send, retry, or polling side effect.
 // ============================================================================
 
+/**
+ * Advisory, read-only delivery classification for the Thank You Preview UX.
+ * Eligibility remains owned by the Recipient Resolver; Claim remains the
+ * atomic once-only authority when the worker executes a recipient.
+ *
+ * @param array<int,array<string,mixed>> $recipients
+ * @return array{ready_to_send:int,already_sent:int,in_progress:int,active_batch:bool}
+ */
+function pge_invitation_mgmt_classify_thank_you_preview(int $event_id, array $recipients): array
+{
+    $active_batch = false;
+    $active_items = [];
+    $active_batch_id = PGE_Thank_You_Batch_Store::get_active_batch_id($event_id);
+
+    if ($active_batch_id !== '') {
+        $manifest = PGE_Thank_You_Batch_Store::get($active_batch_id);
+        if (is_array($manifest)
+            && (int) ($manifest['event_id'] ?? 0) === $event_id
+            && (string) ($manifest['status'] ?? '') === PGE_Thank_You_Batch_Store::STATUS_ACTIVE) {
+            $active_batch = true;
+            foreach ((array) ($manifest['items'] ?? []) as $item) {
+                $status = (string) ($item['status'] ?? '');
+                if (!in_array($status, [
+                    PGE_Thank_You_Batch_Store::ITEM_QUEUED,
+                    PGE_Thank_You_Batch_Store::ITEM_PROCESSING,
+                    PGE_Thank_You_Batch_Store::ITEM_WAITING,
+                ], true)) {
+                    continue;
+                }
+
+                $rsvp_id = (int) ($item['rsvp_id'] ?? 0);
+                $lifecycle = is_scalar($item['lifecycle_started_at'] ?? null)
+                    ? trim((string) $item['lifecycle_started_at'])
+                    : '';
+                if ($rsvp_id > 0 && $lifecycle !== '') {
+                    $active_items[$rsvp_id . '|' . $lifecycle] = true;
+                }
+            }
+        }
+    }
+
+    $counts = [
+        'ready_to_send' => 0,
+        'already_sent' => 0,
+        'in_progress' => 0,
+        'active_batch' => $active_batch,
+    ];
+
+    foreach ($recipients as $recipient) {
+        $rsvp_id = (int) ($recipient['rsvp_id'] ?? 0);
+        $lifecycle = is_scalar($recipient['lifecycle_started_at'] ?? null)
+            ? trim((string) $recipient['lifecycle_started_at'])
+            : '';
+        if ($rsvp_id <= 0 || $lifecycle === '') {
+            continue;
+        }
+
+        if (PGE_Thank_You_Claim::is_sent($rsvp_id)) {
+            $counts['already_sent']++;
+            continue;
+        }
+
+        if (isset($active_items[$rsvp_id . '|' . $lifecycle])
+            || !PGE_Thank_You_Claim::can_send($rsvp_id)) {
+            $counts['in_progress']++;
+            continue;
+        }
+
+        $counts['ready_to_send']++;
+    }
+
+    return $counts;
+}
+
 /** Preview current Thank You eligibility and a PII-free sample. */
 function pge_invitation_mgmt_thank_you_preview_handler()
 {
@@ -1456,6 +1530,10 @@ function pge_invitation_mgmt_thank_you_preview_handler()
                     : '',
             ]
         );
+        $classification = pge_invitation_mgmt_classify_thank_you_preview(
+            $event_id,
+            is_array($resolved['recipients'] ?? null) ? $resolved['recipients'] : []
+        );
     } catch (\Throwable $e) {
         wp_send_json_error([
             'message' => 'تعذّرت معاينة رسالة الشكر',
@@ -1465,6 +1543,10 @@ function pge_invitation_mgmt_thank_you_preview_handler()
 
     wp_send_json_success([
         'eligible'                  => (int) ($resolved['eligible'] ?? 0),
+        'ready_to_send'             => (int) ($classification['ready_to_send'] ?? 0),
+        'already_sent'              => (int) ($classification['already_sent'] ?? 0),
+        'in_progress'               => (int) ($classification['in_progress'] ?? 0),
+        'active_batch'              => !empty($classification['active_batch']),
         'total_current_invitations' => (int) ($resolved['total_current_invitations'] ?? 0),
         'skipped_invalid_phone'     => (int) ($resolved['skipped_invalid_phone'] ?? 0),
         'skipped_cancelled'         => (int) ($resolved['skipped_cancelled'] ?? 0),

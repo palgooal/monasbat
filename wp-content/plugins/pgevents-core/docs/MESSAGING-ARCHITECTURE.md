@@ -1,4 +1,4 @@
-# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6/4B-3A/4B-3B/4B-3C
+# نظام رسائل المناسبة — Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4A-2/4A-3 + Phase 4B-1/4B-2/4B-2.6/4B-3A/4B-3B/4B-3C/4B-3D
 
 > يوثّق هذا الملف **فقط** ما تم اعتماده (Phase 0 — Contract) وما تم تنفيذه فعلياً
 > في الكود (Phase 1 — Refactor داخلي بلا تغيير سلوك؛ Phase 2 — بنية تحتية
@@ -8,7 +8,8 @@
 > eligibility read-only لـThank You؛ Phase 4B-2 — Service إرسال داخلية؛
 > Phase 4B-2.6 — Durable async-only Batch/Worker؛ Phase 4B-3A — authenticated
 > Preview/Start/Status AJAX؛ Phase 4B-3B — Manual Thank You UI وStatus polling؛
-> Phase 4B-3C — Local/test-only runtime transport seam).
+> Phase 4B-3C — Local/test-only runtime transport seam؛ Phase 4B-3D — تصنيف
+> Preview استشاري لحالة الجاهزية وواجهة متابعة الدفعة النشطة).
 > لا يوثّق تفاصيل
 > مراحل مستقبلية (Thank You الفعلي، الجدولة التلقائية) إلا كقائمة "غير منفَّذ
 > بعد" مختصرة — راجع تقرير Architecture Audit وتقرير Phase 0 للتفاصيل الكاملة
@@ -744,6 +745,33 @@ define('PGE_TEST_TRANSPORT_OUTCOME', 'accepted'); // accepted|rejected|ambiguous
 الهاتف أو نص الرسالة أو credentials أو تسجلها؛ العداد الوحيد داخل الذاكرة هو عدد استدعاءات
 الإرسال في العملية الحالية. هذه Test seam وليست Product feature، ولا يوجد لها UI أو AJAX
 debug endpoint أو إعداد في قاعدة البيانات.
+
+---
+
+## 6.5 Phase 4B-3D — Thank You Preview Ready-to-Send UX (IMPLEMENTED)
+
+تبقى `PGE_Message_Recipient_Resolver` سلطة أهلية Thank You، وتبقى
+`PGE_Thank_You_Claim` السلطة الذرية الوحيدة لعقد once-only عند التنفيذ. أضيف إلى
+Preview بعد حل المستلمين المؤهلين تصنيف read-only واستشاري فقط إلى:
+`ready_to_send` و`already_sent` و`in_progress`، مع الحفاظ قدر الإمكان على
+`eligible = ready_to_send + already_sent + in_progress`. لا ينشئ التصنيف Claim،
+ولا يكتب Message Log، ولا يعيد هاتفاً أو `rsvp_id` أو lifecycle marker أو Raw
+Manifest.
+
+`already_sent` تعني أن `thank_you_sent_at` تؤكد نجاح الإرسال في دورة RSVP الحالية.
+`in_progress` تعني Claim/ambiguous lease ما زالت نشطة، أو وجود المستلم في دفعة
+Thank You نشطة بحالة `queued/processing/waiting`. المطالبة المنتهية القابلة
+للاسترداد تصنف `ready_to_send`. ويعاد أيضاً Boolean باسم `active_batch` بعد قراءة
+Batch Store دون كشف `batch_id` أو Manifest.
+
+تعرض الواجهة عدد الجاهزين والمُرسل لهم وقيد المعالجة بصياغة تشغيلية واضحة. يُفعّل
+زر البدء عند وجود `ready_to_send > 0`، ويُعطل عند عدم وجود جاهزين ولا دفعة نشطة.
+إذا وجدت دفعة نشطة يظهر تنبيه بسيط ويتحول الزر إلى «متابعة عملية الإرسال»؛ الضغط
+يستخدم Start الحالية كي تعيد الدفعة نفسها ثم يستأنف Status polling.
+
+هذه المعاينة ليست ذرية مع Start ولا تمثل safety boundary. قد تتغير الحالة بعدها؛
+تبقى Claim وإعادة تحقق Worker من الأهلية وRSVP lifecycle هي السلطات النهائية.
+Start و`create_batch()` تبقيان آمنتين خادمياً وبلا اعتماد على تعطيل زر الواجهة.
 
 ---
 

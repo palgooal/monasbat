@@ -44,6 +44,7 @@ $GLOBALS['ty_ajax_user_id'] = 77;
 $GLOBALS['ty_ajax_events'] = [101 => 77, 202 => 88];
 $GLOBALS['ty_ajax_manage'] = [101 => true, 202 => false];
 $GLOBALS['ty_ajax_claims'] = 0;
+$GLOBALS['ty_ajax_log_writes'] = 0;
 $GLOBALS['ty_ajax_sends'] = 0;
 
 function add_action($hook, $callback, $priority = 10, $accepted_args = 1)
@@ -140,10 +141,41 @@ class PGE_Reminder_Message_Service
 
 class PGE_Thank_You_Batch_Store
 {
+    const STATUS_ACTIVE = 'active';
+    const ITEM_QUEUED = 'queued';
+    const ITEM_PROCESSING = 'processing';
+    const ITEM_WAITING = 'waiting';
+
     public static $manifests = [];
+    public static $active_by_event = [];
+
+    public static function get_active_batch_id(int $event_id): string
+    {
+        return (string) (self::$active_by_event[$event_id] ?? '');
+    }
+
     public static function get(string $batch_id): ?array
     {
         return self::$manifests[$batch_id] ?? null;
+    }
+}
+
+class PGE_Thank_You_Claim
+{
+    public static $sent = [];
+    public static $can_send = [];
+    public static $reads = 0;
+
+    public static function is_sent($rsvp_id): bool
+    {
+        self::$reads++;
+        return !empty(self::$sent[(int) $rsvp_id]);
+    }
+
+    public static function can_send($rsvp_id): bool
+    {
+        self::$reads++;
+        return self::$can_send[(int) $rsvp_id] ?? true;
     }
 }
 
@@ -239,7 +271,11 @@ check_true('Thank You AJAX gate enabled', defined('PGE_INVITATION_MGMT_THANK_YOU
 
 // Preview.
 PGE_Message_Recipient_Resolver::$result = [
-    'recipients' => [['phone' => '966500000001', 'rsvp_id' => 55, 'name' => 'Private Guest']],
+    'recipients' => [
+        ['phone' => '966500000001', 'rsvp_id' => 55, 'lifecycle_started_at' => '2026-09-20 10:00:01', 'name' => 'Private Guest'],
+        ['phone' => '966500000002', 'rsvp_id' => 56, 'lifecycle_started_at' => '2026-09-20 10:00:02', 'name' => 'Private Guest 2'],
+        ['phone' => '966500000003', 'rsvp_id' => 57, 'lifecycle_started_at' => '2026-09-20 10:00:03', 'name' => 'Private Guest 3'],
+    ],
     'eligible' => 3,
     'total_current_invitations' => 9,
     'skipped_invalid_phone' => 1,
@@ -255,6 +291,11 @@ $sends_before = $GLOBALS['ty_ajax_sends'];
 $preview = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
 check('valid preview succeeds', $preview['success'], true);
 check('preview eligible count', $preview['data']['eligible'], 3);
+check('all unsent eligible are ready', $preview['data']['ready_to_send'], 3);
+check('all unsent has no already-sent recipients', $preview['data']['already_sent'], 0);
+check('all unsent has no in-progress recipients', $preview['data']['in_progress'], 0);
+check('all unsent has no active batch', $preview['data']['active_batch'], false);
+check('all unsent invariant', $preview['data']['ready_to_send'] + $preview['data']['already_sent'] + $preview['data']['in_progress'], $preview['data']['eligible']);
 check('preview invitation total', $preview['data']['total_current_invitations'], 9);
 check('preview cancelled count', $preview['data']['skipped_cancelled'], 1);
 check('preview not checked-in count', $preview['data']['skipped_not_checked_in'], 2);
@@ -265,10 +306,101 @@ $preview_json = json_encode($preview['data']);
 check('preview excludes phone PII', strpos($preview_json, '966500000001') === false, true);
 check('preview excludes guest list', strpos($preview_json, 'Private Guest') === false, true);
 check('preview excludes RSVP ids', strpos($preview_json, '"rsvp_id"') === false, true);
+check('preview excludes lifecycle markers', strpos($preview_json, 'lifecycle_started_at') === false, true);
+check('preview excludes raw manifest', strpos($preview_json, 'items') === false, true);
 check('preview causes no Claim', $GLOBALS['ty_ajax_claims'], $claims_before);
+check('preview causes no Message Log writes', $GLOBALS['ty_ajax_log_writes'], 0);
 check('preview causes no Send', $GLOBALS['ty_ajax_sends'], $sends_before);
 check('preview resolver type', end(PGE_Message_Recipient_Resolver::$calls)['type'], 'thank_you');
 check('preview resolver intent', end(PGE_Message_Recipient_Resolver::$calls)['filter'], 'checked_in');
+
+// Advisory delivery classification. Claim/Message Log remain read-only here.
+PGE_Thank_You_Claim::$sent = [56 => true];
+$_POST = ajax_post();
+$some_sent = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('some sent ready count', $some_sent['data']['ready_to_send'], 2);
+check('some sent already-sent count', $some_sent['data']['already_sent'], 1);
+check('some sent invariant', $some_sent['data']['ready_to_send'] + $some_sent['data']['already_sent'] + $some_sent['data']['in_progress'], 3);
+
+PGE_Thank_You_Claim::$sent = [55 => true, 56 => true, 57 => true];
+$_POST = ajax_post();
+$all_sent = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('all sent has zero ready', $all_sent['data']['ready_to_send'], 0);
+check('all sent count', $all_sent['data']['already_sent'], 3);
+
+PGE_Thank_You_Claim::$sent = [];
+PGE_Thank_You_Claim::$can_send = [55 => false];
+$_POST = ajax_post();
+$active_claim = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('active claim is in progress', $active_claim['data']['in_progress'], 1);
+check('active claim is not ready', $active_claim['data']['ready_to_send'], 2);
+
+PGE_Thank_You_Claim::$can_send = [55 => true];
+$_POST = ajax_post();
+$stale_claim = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('stale claim is reclaimable and ready', $stale_claim['data']['ready_to_send'], 3);
+check('stale claim is not in progress', $stale_claim['data']['in_progress'], 0);
+
+PGE_Thank_You_Claim::$can_send = [55 => false];
+$_POST = ajax_post();
+$ambiguous_active = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('ambiguous active lease is in progress', $ambiguous_active['data']['in_progress'], 1);
+PGE_Thank_You_Claim::$can_send = [55 => true];
+$_POST = ajax_post();
+$ambiguous_expired = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('ambiguous expired lease is ready', $ambiguous_expired['data']['ready_to_send'], 3);
+
+PGE_Thank_You_Claim::$can_send = [];
+PGE_Thank_You_Batch_Store::$active_by_event[101] = 'active-preview-batch';
+PGE_Thank_You_Batch_Store::$manifests['active-preview-batch'] = [
+    'batch_id' => 'active-preview-batch',
+    'event_id' => 101,
+    'status' => PGE_Thank_You_Batch_Store::STATUS_ACTIVE,
+    'items' => [[
+        'rsvp_id' => 55,
+        'lifecycle_started_at' => '2026-09-20 10:00:01',
+        'status' => PGE_Thank_You_Batch_Store::ITEM_QUEUED,
+    ]],
+];
+$_POST = ajax_post();
+$active_batch_preview = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('active batch flag', $active_batch_preview['data']['active_batch'], true);
+check('active batch queued recipient is in progress', $active_batch_preview['data']['in_progress'], 1);
+check('active batch response remains private', strpos(json_encode($active_batch_preview['data']), 'active-preview-batch') === false, true);
+PGE_Thank_You_Batch_Store::$active_by_event = [];
+unset(PGE_Thank_You_Batch_Store::$manifests['active-preview-batch']);
+
+// A reset/new lifecycle is represented by the Resolver's current recipient and
+// a cleared sent marker; the old source identity is absent after phone change.
+PGE_Message_Recipient_Resolver::$result['recipients'] = [[
+    'phone' => '966500000099',
+    'rsvp_id' => 99,
+    'lifecycle_started_at' => '2026-09-21 12:00:00',
+    'name' => 'Current lifecycle',
+]];
+PGE_Message_Recipient_Resolver::$result['eligible'] = 1;
+PGE_Thank_You_Claim::$sent = [];
+$_POST = ajax_post();
+$new_lifecycle = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('new lifecycle after reset is ready', $new_lifecycle['data']['ready_to_send'], 1);
+check('new lifecycle does not inherit already-sent', $new_lifecycle['data']['already_sent'], 0);
+check('phone-change target lifecycle is the only classified recipient', $new_lifecycle['data']['ready_to_send'] + $new_lifecycle['data']['already_sent'] + $new_lifecycle['data']['in_progress'], 1);
+
+PGE_Message_Recipient_Resolver::$result['recipients'] = [];
+PGE_Message_Recipient_Resolver::$result['eligible'] = 0;
+$_POST = ajax_post();
+$none_eligible = call_ajax('pge_invitation_mgmt_thank_you_preview_handler');
+check('no eligible has zero ready', $none_eligible['data']['ready_to_send'], 0);
+check('no eligible invariant', $none_eligible['data']['ready_to_send'] + $none_eligible['data']['already_sent'] + $none_eligible['data']['in_progress'], 0);
+check('classification performs no Claim writes', $GLOBALS['ty_ajax_claims'], $claims_before);
+check('classification performs no Message Log writes', $GLOBALS['ty_ajax_log_writes'], 0);
+
+PGE_Message_Recipient_Resolver::$result['recipients'] = [
+    ['phone' => '966500000001', 'rsvp_id' => 55, 'lifecycle_started_at' => '2026-09-20 10:00:01', 'name' => 'Private Guest'],
+];
+PGE_Message_Recipient_Resolver::$result['eligible'] = 1;
+PGE_Thank_You_Claim::$sent = [];
+PGE_Thank_You_Claim::$can_send = [];
 
 $GLOBALS['ty_ajax_nonce_valid'] = false;
 $_POST = ajax_post();
