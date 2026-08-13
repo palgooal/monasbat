@@ -61,15 +61,13 @@ if (!function_exists('pge_norm_invite_code')) {
 if (!function_exists('pge_is_host_or_admin')) {
     function pge_is_host_or_admin($event_id)
     {
+        $event_id = (int) $event_id;
+        if ($event_id <= 0 || get_post_type($event_id) !== 'pge_event') return false;
         if (current_user_can('administrator')) return true;
 
         $author_id = (int) get_post_field('post_author', $event_id);
         $uid = get_current_user_id();
-        if ($uid && $uid === $author_id) return true;
-
-        if (current_user_can('edit_post', $event_id)) return true;
-
-        return false;
+        return $uid && $uid === $author_id;
     }
 }
 

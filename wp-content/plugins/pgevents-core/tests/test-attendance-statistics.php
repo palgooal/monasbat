@@ -155,6 +155,11 @@ function get_post($event_id)
 {
     return $GLOBALS['__test_posts'][$event_id] ?? null;
 }
+function get_post_type($post_id)
+{
+    $post = $GLOBALS['__test_posts'][$post_id] ?? null;
+    return $post ? (string) $post->post_type : false;
+}
 function get_post_field($field, $post_id)
 {
     $post = $GLOBALS['__test_posts'][$post_id] ?? null;

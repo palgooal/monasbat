@@ -29,10 +29,11 @@ if (!function_exists('pge_get_invited_phones')) {
 
 if (!function_exists('pge_is_host_or_admin')) {
     function pge_is_host_or_admin($event_id) {
+        $event_id = (int) $event_id;
+        if ($event_id <= 0 || get_post_type($event_id) !== 'pge_event') return false;
         if (current_user_can('administrator')) return true;
         $uid = get_current_user_id();
-        if ($uid && $uid === (int) get_post_field('post_author', $event_id)) return true;
-        return current_user_can('edit_post', $event_id);
+        return $uid && $uid === (int) get_post_field('post_author', $event_id);
     }
 }
 

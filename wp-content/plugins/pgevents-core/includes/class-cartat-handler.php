@@ -969,16 +969,19 @@ class Mon_Cartat_Handler
     /** AJAX — جلب حالة الإرسال */
     public function ajax_queue_status(): void
     {
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'pge_event_manage_nonce')) {
-            wp_send_json_error(['message' => 'Invalid nonce']);
-        }
         if (!is_user_logged_in()) {
             wp_send_json_error(['message' => 'Unauthorized']);
+        }
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'Invalid nonce']);
         }
 
         $event_id = absint($_POST['event_id'] ?? 0);
         if (!$event_id) {
             wp_send_json_error(['message' => 'Missing event_id']);
+        }
+        if (!pge_is_host_or_admin($event_id)) {
+            wp_send_json_error(['message' => 'Unauthorized']);
         }
 
         $queue = get_option($this->queue_key($event_id));

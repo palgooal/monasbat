@@ -12,7 +12,7 @@ if (!function_exists('pge_event_guests_user_can_manage')) {
     function pge_event_guests_user_can_manage($event_id)
     {
         $event_id = (int) $event_id;
-        if (!$event_id) return false;
+        if ($event_id <= 0 || get_post_type($event_id) !== 'pge_event') return false;
 
         $uid = get_current_user_id();
         $author_id = (int) get_post_field('post_author', $event_id);
