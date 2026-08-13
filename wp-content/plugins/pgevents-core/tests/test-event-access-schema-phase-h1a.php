@@ -83,6 +83,8 @@ final class PGE_H1A_Fake_WPDB
     public $throw_on_show = false;
     public $fail_constraint_metadata = false;
     public $fail_table_metadata = false;
+    public $override_created_engine = false;
+    public $created_engine = null;
     public $database_result = 'h1a_test';
     public $constraint_rows_override = [];
     public $on_option_cas = null;
@@ -180,13 +182,17 @@ final class PGE_H1A_Fake_WPDB
     public function get_row($sql, $format = null)
     {
         $this->queries[] = $sql;
-        if (stripos($sql, 'SELECT t.TABLE_COLLATION, c.CHARACTER_SET_NAME FROM information_schema.TABLES ') === 0) {
+        if (stripos($sql, 'SELECT t.ENGINE, t.TABLE_COLLATION, c.CHARACTER_SET_NAME FROM information_schema.TABLES ') === 0) {
             if ($this->fail_table_metadata) return null;
             if (!preg_match("/t\.TABLE_NAME = '([^']+)'$/i", $sql, $m) || !isset($this->tables[$m[1]])) return null;
-            return [
+            $row = [
                 'TABLE_COLLATION' => $this->tables[$m[1]]['table_collation'] ?? null,
                 'CHARACTER_SET_NAME' => $this->tables[$m[1]]['table_charset'] ?? null,
             ];
+            if (array_key_exists('engine', $this->tables[$m[1]])) {
+                $row['ENGINE'] = $this->tables[$m[1]]['engine'];
+            }
+            return $row;
         }
         if (preg_match('/^SHOW CREATE TABLE ([a-zA-Z0-9_]+)$/i', $sql, $m) && isset($this->tables[$m[1]])) {
             return ['Table' => $m[1], 'Create Table' => $this->tables[$m[1]]['create_sql']];
@@ -261,8 +267,13 @@ final class PGE_H1A_Fake_WPDB
     public function apply_create($sql)
     {
         $this->dbdelta_sql[] = $sql;
-        if (!preg_match('/CREATE TABLE ([a-zA-Z0-9_]+) \((.*)\)\s+DEFAULT CHARACTER SET/si', $sql, $m)) return;
+        if (!preg_match('/CREATE TABLE ([a-zA-Z0-9_]+) \((.*)\)\s+(.*?)DEFAULT CHARACTER SET/si', $sql, $m)) return;
         $table = $m[1];
+        $table_options = trim($m[3]);
+        $engine = preg_match('/\AENGINE\s*=\s*([a-zA-Z0-9_]+)\s*\z/i', $table_options, $em)
+            ? $em[1]
+            : null;
+        if ($this->override_created_engine) $engine = $this->created_engine;
         $columns = [];
         $indexes = [];
         foreach (preg_split('/\R/', trim($m[2])) as $line) {
@@ -284,7 +295,7 @@ final class PGE_H1A_Fake_WPDB
             elseif ($index['non_unique'] === 0) $constraints[] = 'UNIQUE';
         }
         $table_collation = $this->collate !== '' ? $this->collate : $this->charset . '_general_ci';
-        $this->tables[$table] = ['columns' => $columns, 'indexes' => $indexes, 'constraints' => $constraints, 'rows' => [], 'create_sql' => $sql, 'table_collation' => $table_collation, 'table_charset' => $this->charset];
+        $this->tables[$table] = ['columns' => $columns, 'indexes' => $indexes, 'constraints' => $constraints, 'rows' => [], 'create_sql' => $sql, 'engine' => $engine, 'table_collation' => $table_collation, 'table_charset' => $this->charset];
     }
 
     public function reset_observation()
@@ -313,6 +324,8 @@ final class PGE_H1A_Fake_WPDB
     public function add_constraint($suffix, $type, $name = null) { $this->tables[$this->table($suffix)]['constraints'][] = ['type' => $type, 'name' => $name]; }
     public function set_table_collation($suffix, $collation) { $this->tables[$this->table($suffix)]['table_collation'] = $collation; }
     public function set_table_charset($suffix, $charset) { $this->tables[$this->table($suffix)]['table_charset'] = $charset; }
+    public function set_table_engine($suffix, $engine) { $this->tables[$this->table($suffix)]['engine'] = $engine; }
+    public function remove_table_engine($suffix) { unset($this->tables[$this->table($suffix)]['engine']); }
     public function set_constraint_rows($suffix, array $rows) { $this->constraint_rows_override[$this->table($suffix)] = $rows; }
     public function append_create_sql($suffix, $sql) {
         $table = $this->table($suffix);
@@ -467,6 +480,7 @@ function h1a_reset_schema_request_state()
         'running' => false,
         'request_completed' => false,
         'request_result' => false,
+        'request_schema_version' => null,
         'suppress_logging' => false,
         'database_name' => null,
         'last_error_code' => '',
@@ -536,7 +550,7 @@ h1a_check('fresh install succeeds', PGE_Event_Access_Schema::maybe_upgrade() ===
 h1a_check('fresh install creates exactly five tables through dbDelta', count($wpdb->dbdelta_sql) === 5 && count($wpdb->tables) === 5);
 h1a_check('all table names honor a non-default prefix', array_keys($wpdb->tables) === array_map(fn($s) => 'site7_' . $s, h1a_expected_suffixes()));
 h1a_check('table existence checks escape LIKE wildcards in the prefix and table name', strpos(implode("\n", $wpdb->queries), "SHOW TABLES LIKE 'site7\\_pge\\_event") !== false);
-h1a_check('fresh install stores schema version only after success', get_option(PGE_Event_Access_Schema::VERSION_OPTION, '') === '1.0.0');
+h1a_check('fresh install stores schema version only after success', get_option(PGE_Event_Access_Schema::VERSION_OPTION, '') === '1.1.0');
 $fresh_health = get_option(PGE_Event_Access_Schema::HEALTH_OPTION, null);
 h1a_check('successful full check stores a generation-bound healthy marker', is_array($fresh_health) && array_keys($fresh_health) === ['schema_version', 'checked_at', 'status', 'generation'] && $fresh_health['schema_version'] === PGE_Event_Access_Schema::SCHEMA_VERSION && is_int($fresh_health['checked_at']) && $fresh_health['status'] === 'healthy' && is_string($fresh_health['generation']));
 h1a_check('fresh install creates no rows or backfill', array_sum(array_map(fn($t) => count($t['rows']), $wpdb->tables)) === 0);
@@ -547,6 +561,8 @@ h1a_check('approved nullable default-slot contract is emitted', strpos($all_sql,
 h1a_check('membership identity and role/status columns are emitted', strpos($all_sql, 'UNIQUE KEY event_user (event_id, user_id)') !== false && strpos($all_sql, 'role VARCHAR(20) NOT NULL') !== false);
 h1a_check('all approved composite indexes are emitted', strpos($all_sql, 'KEY event_status (event_id, status, id)') !== false && strpos($all_sql, 'KEY event_membership (event_id, membership_id, group_id)') !== false && strpos($all_sql, 'KEY actor_created (actor_user_id, created_at, id)') !== false);
 h1a_check('schema DDL contains no forbidden SQL features', preg_match('/FOREIGN\s+KEY|\bENUM\s*\(|\bJSON\b|GENERATED\s+ALWAYS|CREATE\s+(?:UNIQUE\s+)?INDEX.+WHERE/is', $all_sql) === 0);
+h1a_check('all five CREATE TABLE statements declare InnoDB explicitly', substr_count($all_sql, 'ENGINE=InnoDB') === 5);
+h1a_check('captured schema DDL declares no alternate storage engine', preg_match('/ENGINE\s*=\s*(?!InnoDB\b)[a-zA-Z0-9_]+/i', $all_sql) === 0);
 
 // A current health marker is the runtime fast path; request memoization is even cheaper.
 $wpdb->reset_observation();
@@ -558,6 +574,123 @@ h1a_check('healthy rerun does not rewrite current version', count($GLOBALS['h1a_
 $option_reads = count($GLOBALS['h1a_option_reads']);
 h1a_check('same-request repeat returns memoized success', PGE_Event_Access_Schema::maybe_upgrade() === true && count($wpdb->queries) === 0 && count($GLOBALS['h1a_option_reads']) === $option_reads);
 h1a_check('health and retry windows use the approved constants', PGE_Event_Access_Schema::HEALTH_TTL_SECONDS === 43200 && PGE_Event_Access_Schema::RETRY_THROTTLE_SECONDS === 300);
+
+// Side-effect-free readiness API: persisted markers only, never repair.
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('is_ready accepts coherent current version, health, and success markers', PGE_Event_Access_Schema::is_ready() === true);
+h1a_check('is_ready reads exactly version, health, and attempt options', $GLOBALS['h1a_option_reads'] === [PGE_Event_Access_Schema::VERSION_OPTION, PGE_Event_Access_Schema::HEALTH_OPTION, PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]);
+h1a_check('is_ready performs no SQL, dbDelta, lock, or option write', count($wpdb->queries) === 0 && count($wpdb->dbdelta_sql) === 0 && count($GLOBALS['h1a_option_updates']) === 0);
+h1a_check('repeated pre-upgrade is_ready rereads only the three persisted markers', PGE_Event_Access_Schema::is_ready() === true && count($GLOBALS['h1a_option_reads']) === 6 && count($wpdb->queries) === 0);
+
+$readiness_mutations = [
+    'missing version' => function () { unset($GLOBALS['h1a_options'][PGE_Event_Access_Schema::VERSION_OPTION]); },
+    'old version' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::VERSION_OPTION] = '1.0.0'; },
+    'missing health' => function () { unset($GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]); },
+    'failed health' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['status'] = 'failed'; },
+    'expired health' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['checked_at'] = $GLOBALS['h1a_now'] - PGE_Event_Access_Schema::HEALTH_TTL_SECONDS; },
+    'future health' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['checked_at'] = $GLOBALS['h1a_now'] + 1; },
+    'malformed health generation' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['generation'] = []; },
+    'missing attempt' => function () { unset($GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]); },
+    'in-progress attempt' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['status'] = 'in_progress'; },
+    'failed attempt' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['status'] = 'failed'; },
+    'attempt generation mismatch' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['generation'] = '20000000-0000-4000-8000-000000000002'; },
+    'attempt schema version mismatch' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['schema_version'] = '1.0.0'; },
+    'zero attempted_at' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['attempted_at'] = 0; },
+    'negative completed_at' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['completed_at'] = -1; },
+    'malformed completed_at' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['completed_at'] = '123'; },
+    'attempted_at after completed_at' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['attempted_at'] = $GLOBALS['h1a_now'] + 1; },
+    'completed_at differs from checked_at' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['completed_at']--; },
+    'corrupt health option type' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION] = new stdClass(); },
+    'corrupt attempt option type' => function () { $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION] = 'corrupt'; },
+];
+foreach ($readiness_mutations as $label => $mutate) {
+    $wpdb = h1a_install_healthy('tenant_', true);
+    $mutate();
+    h1a_check("is_ready rejects $label", PGE_Event_Access_Schema::is_ready() === false);
+    h1a_check("is_ready $label has no side effects", count($wpdb->queries) === 0 && count($wpdb->dbdelta_sql) === 0 && count($GLOBALS['h1a_option_updates']) === 0 && count($GLOBALS['h1a_option_reads']) === 3);
+}
+
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('maybe_upgrade fast success remains valid before readiness memoization', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$wpdb->reset_observation();
+h1a_check('is_ready after same-request fast success rereads all markers without SQL', PGE_Event_Access_Schema::is_ready() === true && $GLOBALS['h1a_option_reads'] === [PGE_Event_Access_Schema::VERSION_OPTION, PGE_Event_Access_Schema::HEALTH_OPTION, PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION] && count($wpdb->queries) === 0);
+
+$wpdb = h1a_install_healthy();
+h1a_check('full verification succeeds before same-request readiness check', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$wpdb->reset_observation();
+h1a_check('is_ready after same-request full success rereads all markers without schema SQL', PGE_Event_Access_Schema::is_ready() === true && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
+
+$wpdb = h1a_install_healthy();
+$wpdb->set_table_engine('pge_event_invitation_groups', 'MyISAM');
+h1a_check('engine failure establishes a failed request result', PGE_Event_Access_Schema::maybe_upgrade() === false);
+$wpdb->reset_observation();
+h1a_check('is_ready after same-request failure remains false without retrying', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 0 && count($wpdb->queries) === 0 && count($GLOBALS['h1a_option_updates']) === 0);
+
+// Fix1 readiness ordering: success is always re-proved from current markers.
+$newer_generation = '30000000-0000-4000-8000-000000000003';
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('R1 setup maybe_upgrade success', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['status'] = 'failed';
+$wpdb->reset_observation();
+h1a_check('R1 newer failed attempt invalidates prior request success', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0 && count($GLOBALS['h1a_option_updates']) === 0);
+
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('R1 health setup maybe_upgrade success', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['status'] = 'failed';
+$wpdb->reset_observation();
+h1a_check('R1 invalidated health overrides prior request success', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
+
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('R2 setup maybe_upgrade success', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION] = [
+    'schema_version' => PGE_Event_Access_Schema::SCHEMA_VERSION,
+    'attempted_at' => $GLOBALS['h1a_now'],
+    'status' => 'in_progress',
+    'reason_code' => 'full_check_started',
+    'generation' => $newer_generation,
+];
+$wpdb->reset_observation();
+h1a_check('R2 newer in-progress generation invalidates prior request success', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
+
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('R3 setup maybe_upgrade success', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['generation'] = $newer_generation;
+$wpdb->reset_observation();
+h1a_check('R3 generation mismatch invalidates prior request success', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
+
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('R4 setup maybe_upgrade success', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::VERSION_OPTION] = '1.0.0';
+$wpdb->reset_observation();
+h1a_check('R4 version change invalidates prior request success', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
+
+$wpdb = h1a_install_healthy('tenant_', true);
+$old_health = $GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION];
+$old_attempt = $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION];
+$GLOBALS['h1a_fail_option_update'] = true;
+h1a_check('R5 full check failure survives total terminal persistence failure', PGE_Event_Access_Schema::activate() === false && $GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION] === $old_health && $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION] === $old_attempt);
+$wpdb->reset_observation();
+h1a_check('R5 request failure is authoritative over apparently healthy old markers', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 0 && count($wpdb->queries) === 0 && count($GLOBALS['h1a_option_updates']) === 0);
+
+$wpdb = h1a_install_healthy();
+h1a_check('R6 readiness is false before upgrade when health is expired', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 3);
+$wpdb->reset_observation();
+h1a_check('R6 maybe_upgrade succeeds after an earlier readiness false', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$wpdb->reset_observation();
+h1a_check('R6 readiness rereads markers and becomes true after upgrade', PGE_Event_Access_Schema::is_ready() === true && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
+
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('R7 initial readiness is true', PGE_Event_Access_Schema::is_ready() === true && count($GLOBALS['h1a_option_reads']) === 3);
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['status'] = 'in_progress';
+$wpdb->reset_observation();
+h1a_check('R7 repeated readiness observes externally changed markers', PGE_Event_Access_Schema::is_ready() === false && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
+
+$wpdb = h1a_install_healthy('tenant_', true);
+h1a_check('R8 setup maybe_upgrade success', PGE_Event_Access_Schema::maybe_upgrade() === true);
+$wpdb->reset_observation();
+h1a_check('R8 first unchanged readiness rereads and succeeds', PGE_Event_Access_Schema::is_ready() === true && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
+$wpdb->reset_observation();
+h1a_check('R8 second unchanged readiness rereads and succeeds', PGE_Event_Access_Schema::is_ready() === true && count($GLOBALS['h1a_option_reads']) === 3 && count($wpdb->queries) === 0);
 
 $wpdb = h1a_install_healthy('tenant_', true);
 h1a_check('activation forces a full check despite current health', PGE_Event_Access_Schema::activate() === true && count(array_filter($wpdb->queries, fn($q) => stripos($q, 'SELECT GET_LOCK(') === 0)) === 1);
@@ -595,6 +728,105 @@ $GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION] = [
     'status' => 'failed',
 ];
 h1a_check('schema version mismatch bypasses retry throttle', PGE_Event_Access_Schema::maybe_upgrade() === true && count(array_filter($wpdb->queries, fn($q) => stripos($q, 'SELECT GET_LOCK(') === 0)) === 1);
+
+// H1A-E1 version transition: 1.0.0 markers can never commit 1.1.0 readiness.
+$wpdb = h1a_install_healthy('tenant_', true);
+$old_generation = '10000000-0000-4000-8000-000000000001';
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::VERSION_OPTION] = '1.0.0';
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION] = [
+    'schema_version' => '1.0.0', 'checked_at' => $GLOBALS['h1a_now'],
+    'status' => 'healthy', 'generation' => $old_generation,
+];
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION] = [
+    'schema_version' => '1.0.0', 'attempted_at' => $GLOBALS['h1a_now'],
+    'completed_at' => $GLOBALS['h1a_now'], 'status' => 'success',
+    'reason_code' => 'success', 'generation' => $old_generation,
+];
+h1a_check('stored 1.0.0 success markers cannot use the 1.1.0 fast path', PGE_Event_Access_Schema::maybe_upgrade() === true && count(array_filter($wpdb->queries, fn($q) => stripos($q, 'SELECT GET_LOCK(') === 0)) === 1);
+h1a_check('successful 1.1.0 full proof replaces all old-version markers', get_option(PGE_Event_Access_Schema::VERSION_OPTION, '') === '1.1.0' && ($GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['schema_version'] ?? '') === '1.1.0' && ($GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['schema_version'] ?? '') === '1.1.0');
+
+$wpdb = h1a_install_healthy('tenant_', true);
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::VERSION_OPTION] = '1.0.0';
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION] = [
+    'schema_version' => '1.0.0', 'attempted_at' => $GLOBALS['h1a_now'],
+    'status' => 'failed', 'reason_code' => 'old_failure', 'generation' => $old_generation,
+];
+h1a_check('version mismatch bypasses a recent 1.0.0 retry throttle', PGE_Event_Access_Schema::maybe_upgrade() === true && count(array_filter($wpdb->queries, fn($q) => stripos($q, 'SELECT GET_LOCK(') === 0)) === 1);
+
+// Engine metadata is authoritative and every owned table is checked separately.
+foreach (['InnoDB', 'innodb', 'INNODB', "\tInnoDB\r\n\v\f"] as $engine) {
+    $wpdb = h1a_install_healthy();
+    foreach (h1a_expected_suffixes() as $suffix) $wpdb->set_table_engine($suffix, $engine);
+    h1a_check("engine metadata '$engine' passes after trim and case normalization", PGE_Event_Access_Schema::maybe_upgrade() === true);
+}
+
+foreach (['MyISAM', 'MEMORY', 'Aria', 'CSV'] as $engine) {
+    $wpdb = h1a_install_healthy();
+    $GLOBALS['h1a_options'][PGE_Event_Access_Schema::VERSION_OPTION] = '1.0.0';
+    $wpdb->set_table_engine('pge_event_host_group_access', $engine);
+    h1a_check("$engine engine fails the complete schema proof", PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'engine_mismatch_access');
+    h1a_check("$engine drift does not advance the version", get_option(PGE_Event_Access_Schema::VERSION_OPTION, '') === '1.0.0');
+    h1a_check("$engine drift triggers no automatic engine conversion", count(array_filter($wpdb->queries, fn($q) => preg_match('/ALTER\s+TABLE.+ENGINE|\bCONVERT\b|DROP\s+TABLE|RENAME\s+TABLE/is', $q))) === 0);
+}
+
+$invalid_engines = [
+    'null engine metadata' => null,
+    'empty engine metadata' => '',
+    'array engine metadata' => ['InnoDB'],
+    'object engine metadata' => (object) ['name' => 'InnoDB'],
+];
+foreach ($invalid_engines as $label => $engine) {
+    $wpdb = h1a_install_healthy();
+    $wpdb->set_table_engine('pge_event_invitation_groups', $engine);
+    h1a_check("$label fails closed", PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'engine_metadata_invalid_groups');
+}
+$wpdb = h1a_install_healthy();
+$wpdb->remove_table_engine('pge_event_invitation_groups');
+h1a_check('missing ENGINE metadata key fails closed', PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'engine_metadata_invalid_groups');
+$wpdb = h1a_install_healthy();
+$wpdb->fail_table_metadata = true;
+h1a_check('engine metadata query failure fails closed', PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'engine_metadata_invalid_groups');
+
+$strict_engine_cases = [
+    'NUL only' => "\0",
+    'trailing NUL' => "InnoDB\0",
+    'leading NUL' => "\0InnoDB",
+    'NUL before approved trailing whitespace' => "InnoDB\0 \t\r\n",
+    'NUL after approved leading whitespace' => " \tInnoDB\0",
+    'internal NUL suffix' => "InnoDB\0extra",
+    'internal NUL in engine name' => "Inno\0DB",
+    'extra trailing text' => 'InnoDB extra',
+    'extra leading text' => 'extra InnoDB',
+    'SOH control byte' => "InnoDB\x01",
+    'DEL control byte' => "InnoDB\x7F",
+];
+foreach ($strict_engine_cases as $label => $engine) {
+    $wpdb = h1a_install_healthy();
+    $GLOBALS['h1a_options'][PGE_Event_Access_Schema::VERSION_OPTION] = '1.0.0';
+    $wpdb->set_table_engine('pge_event_invitation_groups', $engine);
+    $result = PGE_Event_Access_Schema::maybe_upgrade();
+    $unsafe_sql = array_filter($wpdb->queries, fn($q) => preg_match('/ALTER\s+TABLE.+ENGINE|\bCONVERT\b|DROP\s+TABLE|RENAME\s+TABLE/is', $q));
+    h1a_check("strict engine rejects $label", $result === false && PGE_Event_Access_Schema::get_last_error_code() === 'engine_mismatch_groups');
+    h1a_check("strict engine $label keeps schema uncommitted and performs no repair", get_option(PGE_Event_Access_Schema::VERSION_OPTION, '') === '1.0.0' && ($GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['status'] ?? '') !== 'healthy' && ($GLOBALS['h1a_options'][PGE_Event_Access_Schema::LAST_ATTEMPT_OPTION]['status'] ?? '') !== 'success' && count($wpdb->dbdelta_sql) === 0 && count($unsafe_sql) === 0);
+}
+
+$wpdb = h1a_install_healthy();
+$GLOBALS['h1a_options'][PGE_Event_Access_Schema::VERSION_OPTION] = '1.0.0';
+$wpdb->set_table_engine('pge_event_access_audit_log', 'MyISAM');
+$wpdb->remove_column('pge_event_access_audit_log', 'metadata');
+h1a_check('non-InnoDB existing table blocks additive repair before ALTER', PGE_Event_Access_Schema::maybe_upgrade() === false && !isset($wpdb->tables[$wpdb->table('pge_event_access_audit_log')]['columns']['metadata']));
+h1a_check('one non-InnoDB table prevents a healthy success marker', ($GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['status'] ?? '') === 'failed' && get_option(PGE_Event_Access_Schema::VERSION_OPTION, '') === '1.0.0');
+
+$wpdb = h1a_install_healthy();
+$wpdb->remove_column('pge_event_invitation_groups', 'archived_at');
+$wpdb->set_table_engine('pge_event_access_audit_log', 'MyISAM');
+h1a_check('later non-InnoDB table blocks repairs to earlier tables', PGE_Event_Access_Schema::maybe_upgrade() === false && !isset($wpdb->tables[$wpdb->table('pge_event_invitation_groups')]['columns']['archived_at']));
+
+$wpdb = h1a_fresh();
+$wpdb->override_created_engine = true;
+$wpdb->created_engine = null;
+h1a_check('fresh dbDelta creation is not trusted without InnoDB metadata', PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'engine_metadata_invalid_groups');
+h1a_check('unverified fresh engine stores neither version nor healthy success', get_option(PGE_Event_Access_Schema::VERSION_OPTION, '') === '' && ($GLOBALS['h1a_options'][PGE_Event_Access_Schema::HEALTH_OPTION]['status'] ?? '') !== 'healthy');
 
 // Missing table and additive drift repair while version is already current.
 $wpdb = h1a_install_healthy();
@@ -718,7 +950,7 @@ $wpdb->set_table_charset('pge_event_invitation_groups', 'latin1');
 h1a_check('different table charset fails closed', PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'table_charset_mismatch_groups');
 $wpdb = h1a_install_healthy();
 $wpdb->fail_table_metadata = true;
-h1a_check('missing table collation metadata fails closed', PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'table_collation_read_failed_groups');
+h1a_check('missing table metadata fails closed before collation acceptance', PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'engine_metadata_invalid_groups');
 $wpdb = h1a_install_healthy();
 $wpdb->set_column('pge_event_invitation_groups', 'name_key', ['Collation' => 'utf8mb4_bin']);
 h1a_check('name_key collation drift fails closed', PGE_Event_Access_Schema::maybe_upgrade() === false && PGE_Event_Access_Schema::get_last_error_code() === 'column_collation_mismatch_groups_name_key');
@@ -1256,8 +1488,10 @@ h1a_check('constraint keywords in column comments or index names are not false p
 $schema_source = file_get_contents(PGE_PATH . 'includes/class-pge-event-access-schema.php');
 $plugin_source = file_get_contents(PGE_PATH . 'pgevents-core.php');
 h1a_check('plugin loads the schema exactly once', substr_count($plugin_source, "require_once PGE_PATH . 'includes/class-pge-event-access-schema.php';") === 1);
-h1a_check('schema source contains no repository or authorization implementation', strpos($schema_source, 'Repository') === false && strpos($schema_source, 'current_user_can') === false && strpos($schema_source, 'pge_is_host_or_admin') === false);
-h1a_check('schema source performs no row inserts, backfill, or post-meta writes', preg_match('/\bINSERT\s+INTO\b|update_post_meta|add_post_meta|readiness/i', $schema_source) === 0);
+h1a_check('schema source contains no repository or authorization implementation', strpos($schema_source, 'class PGE_Event_Access_Repository') === false && strpos($schema_source, 'current_user_can') === false && strpos($schema_source, 'pge_is_host_or_admin') === false);
+h1a_check('schema source performs no row inserts, backfill, or post-meta writes', preg_match('/\bINSERT\s+INTO\b|update_post_meta|add_post_meta/i', $schema_source) === 0);
+h1a_check('production schema source contains no destructive or engine-conversion SQL', preg_match('/ALTER\s+TABLE[^;"\']*\bENGINE\s*=|CONVERT\s+TO\s+CHARACTER\s+SET|DROP\s+TABLE|RENAME\s+TABLE|ENGINE\s*=\s*(?:MyISAM|MEMORY|Aria)/i', $schema_source) === 0);
+h1a_check('production schema source declares InnoDB exactly five times', substr_count($schema_source, 'ENGINE=InnoDB') === 5);
 h1a_check('schema is independent from Catalog, RSVP, and Messaging classes', strpos($schema_source, 'Mon_Catalog_Schema') === false && strpos($schema_source, 'pge_event_rsvps') === false && strpos($schema_source, 'PGE_Messaging_Schema') === false);
 
 echo "\nH1A: {$passed}/" . ($passed + $failed) . " passed\n";

@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) exit;
  */
 class PGE_Event_Access_Schema
 {
-    const SCHEMA_VERSION = '1.0.0';
+    const SCHEMA_VERSION = '1.1.0';
     const VERSION_OPTION = 'pge_event_access_schema_version';
     const HEALTH_OPTION = 'pge_event_access_schema_health';
     const LAST_ATTEMPT_OPTION = 'pge_event_access_schema_last_attempt';
@@ -29,6 +29,9 @@ class PGE_Event_Access_Schema
 
     /** @var bool */
     private static $request_result = false;
+
+    /** @var string|null */
+    private static $request_schema_version = null;
 
     /** @var bool */
     private static $suppress_logging = false;
@@ -57,11 +60,10 @@ class PGE_Event_Access_Schema
         $stored_version = (string) get_option(self::VERSION_OPTION, '');
         $health = get_option(self::HEALTH_OPTION, null);
         $attempt = get_option(self::LAST_ATTEMPT_OPTION, null);
-        if ($stored_version === self::SCHEMA_VERSION
-            && self::health_is_current($health)
-            && self::attempt_commits_health($attempt, $health)) {
+        if (self::readiness_state_is_current($stored_version, $health, $attempt)) {
             self::$request_completed = true;
             self::$request_result = true;
+            self::$request_schema_version = self::SCHEMA_VERSION;
             self::$last_error_code = '';
             return true;
         }
@@ -75,6 +77,30 @@ class PGE_Event_Access_Schema
         }
 
         return self::run_full_check();
+    }
+
+    /**
+     * Side-effect-free readiness proof for future H1B write guards.
+     *
+     * A false result never triggers repair, DDL, diagnostics, locks, logging,
+     * or option writes. Every future public repository write must fail with
+     * schema_not_ready before opening a transaction when this returns false.
+     */
+    public static function is_ready()
+    {
+        // A failed full check in this request is authoritative even if every
+        // terminal marker write failed and older markers still look healthy.
+        if (self::$request_completed
+            && self::$request_result === false
+            && self::$request_schema_version === self::SCHEMA_VERSION) {
+            return false;
+        }
+
+        $stored_version = get_option(self::VERSION_OPTION, '');
+        $health = get_option(self::HEALTH_OPTION, null);
+        $attempt = get_option(self::LAST_ATTEMPT_OPTION, null);
+
+        return self::readiness_state_is_current($stored_version, $health, $attempt);
     }
 
     /** Activation always proves the complete contract, ignoring cached health. */
@@ -163,6 +189,7 @@ class PGE_Event_Access_Schema
             self::$running = false;
             self::$request_completed = true;
             self::$request_result = (bool) $result;
+            self::$request_schema_version = self::SCHEMA_VERSION;
         }
 
         return (bool) $result;
@@ -172,6 +199,12 @@ class PGE_Event_Access_Schema
     {
         if (self::probe_schema_postconditions()) {
             return true;
+        }
+
+        // Prove every existing table's engine before making any additive
+        // repair. A single non-transactional table blocks all schema work.
+        if (!self::existing_table_metadata_is_safe()) {
+            return false;
         }
 
         if (!self::ensure_tables_and_columns()) {
@@ -199,6 +232,17 @@ class PGE_Event_Access_Schema
         } finally {
             self::$suppress_logging = false;
         }
+    }
+
+    private static function existing_table_metadata_is_safe()
+    {
+        foreach (self::table_names() as $key => $table) {
+            if (self::table_exists($table)
+                && self::read_table_metadata($key, $table) === false) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static function store_success_state($generation, array $initial_attempt, &$health_for_cleanup)
@@ -355,6 +399,14 @@ class PGE_Event_Access_Schema
         $now = self::now();
         return $health['checked_at'] <= $now
             && $health['checked_at'] > ($now - self::HEALTH_TTL_SECONDS);
+    }
+
+    private static function readiness_state_is_current($stored_version, $health, $attempt)
+    {
+        return is_string($stored_version)
+            && $stored_version === self::SCHEMA_VERSION
+            && self::health_is_current($health)
+            && self::attempt_commits_health($attempt, $health);
     }
 
     private static function attempt_commits_health($attempt, $health)
@@ -572,7 +624,7 @@ class PGE_Event_Access_Schema
                 UNIQUE KEY event_active_name (event_id, name_key),
                 UNIQUE KEY event_default_slot (event_id, default_slot),
                 KEY event_status (event_id, status, id)
-            ) $charset_collate;",
+            ) ENGINE=InnoDB $charset_collate;",
             'memberships' => "CREATE TABLE {$tables['memberships']} (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 event_id BIGINT(20) UNSIGNED NOT NULL,
@@ -588,7 +640,7 @@ class PGE_Event_Access_Schema
                 UNIQUE KEY event_user (event_id, user_id),
                 KEY event_status_role (event_id, status, role, id),
                 KEY user_status (user_id, status, event_id)
-            ) $charset_collate;",
+            ) ENGINE=InnoDB $charset_collate;",
             'access' => "CREATE TABLE {$tables['access']} (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 event_id BIGINT(20) UNSIGNED NOT NULL,
@@ -600,7 +652,7 @@ class PGE_Event_Access_Schema
                 UNIQUE KEY membership_group (membership_id, group_id),
                 KEY event_membership (event_id, membership_id, group_id),
                 KEY event_group (event_id, group_id, membership_id)
-            ) $charset_collate;",
+            ) ENGINE=InnoDB $charset_collate;",
             'assignments' => "CREATE TABLE {$tables['assignments']} (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 event_id BIGINT(20) UNSIGNED NOT NULL,
@@ -612,7 +664,7 @@ class PGE_Event_Access_Schema
                 PRIMARY KEY (id),
                 UNIQUE KEY event_guest (event_id, guest_phone),
                 KEY event_group (event_id, group_id, guest_phone)
-            ) $charset_collate;",
+            ) ENGINE=InnoDB $charset_collate;",
             'audit' => "CREATE TABLE {$tables['audit']} (
                 id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                 event_id BIGINT(20) UNSIGNED NOT NULL,
@@ -626,7 +678,7 @@ class PGE_Event_Access_Schema
                 KEY event_created (event_id, created_at, id),
                 KEY entity_history (entity_type, entity_id, id),
                 KEY actor_created (actor_user_id, created_at, id)
-            ) $charset_collate;",
+            ) ENGINE=InnoDB $charset_collate;",
         ];
     }
 
@@ -645,7 +697,16 @@ class PGE_Event_Access_Schema
                 if (!self::table_exists($table)) {
                     return self::fail('table_create_failed_' . $key);
                 }
+                if (self::read_table_metadata($key, $table) === false) {
+                    return false;
+                }
                 continue;
+            }
+
+            // Existing non-transactional tables are operational drift, not a
+            // safe additive repair. Never rebuild or convert them implicitly.
+            if (self::read_table_metadata($key, $table) === false) {
+                return false;
             }
 
             if (!self::ensure_existing_columns($key, $table, $specs[$key]['columns'])) {
@@ -1122,12 +1183,31 @@ class PGE_Event_Access_Schema
         }
 
         $row = $wpdb->get_row($wpdb->prepare(
-            'SELECT t.TABLE_COLLATION, c.CHARACTER_SET_NAME FROM information_schema.TABLES t LEFT JOIN information_schema.COLLATIONS c ON c.COLLATION_NAME = t.TABLE_COLLATION WHERE t.TABLE_SCHEMA = %s AND t.TABLE_NAME = %s',
+            'SELECT t.ENGINE, t.TABLE_COLLATION, c.CHARACTER_SET_NAME FROM information_schema.TABLES t LEFT JOIN information_schema.COLLATIONS c ON c.COLLATION_NAME = t.TABLE_COLLATION WHERE t.TABLE_SCHEMA = %s AND t.TABLE_NAME = %s',
             $database,
             $table
         ), ARRAY_A);
         if (!is_array($row)
-            || !is_string($row['TABLE_COLLATION'] ?? null)
+            || !array_key_exists('ENGINE', $row)
+            || !is_string($row['ENGINE'])) {
+            self::fail('engine_metadata_invalid_' . $key);
+            return false;
+        }
+
+        // Strip only explicitly approved textual ASCII whitespace. PHP's
+        // default trim mask also strips NUL, which must remain a mismatch.
+        $engine = trim($row['ENGINE'], " \t\n\r\v\f");
+        if ($engine === '') {
+            self::fail('engine_metadata_invalid_' . $key);
+            return false;
+        }
+
+        if (strcasecmp($engine, 'InnoDB') !== 0) {
+            self::fail('engine_mismatch_' . $key);
+            return false;
+        }
+
+        if (!is_string($row['TABLE_COLLATION'] ?? null)
             || $row['TABLE_COLLATION'] === ''
             || !is_string($row['CHARACTER_SET_NAME'] ?? null)
             || $row['CHARACTER_SET_NAME'] === '') {
@@ -1148,7 +1228,7 @@ class PGE_Event_Access_Schema
             return false;
         }
 
-        return ['collation' => $actual_collation, 'charset' => $actual_charset];
+        return ['engine' => 'innodb', 'collation' => $actual_collation, 'charset' => $actual_charset];
     }
 
     private static function column_collation_matches($key, $name, array $column, array $table_metadata)
