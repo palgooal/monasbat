@@ -257,6 +257,7 @@ require_once PGE_PATH . 'includes/supervisor-login-ajax.php';
 // هنا مباشرة (لا تحميل ضمني عبر side-effect requires داخل invitation-
 // management-ajax.php كما كان سابقاً) — Loading Audit، Phase 9A Final Fix.
 require_once PGE_PATH . 'includes/class-pge-invitation-management-schema.php';
+require_once PGE_PATH . 'includes/class-pge-event-access-schema.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-management-audit.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-repository.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-service.php';
