@@ -72,6 +72,7 @@ final class PGE_H1BR1_Fake_WPDB
 
     public function get_results($token, $format = null) { return $this->consume($token, 'results'); }
     public function get_var($token) { return $this->consume($token, 'var'); }
+    public function query($query) { $this->queries[] = $query; return 0; }
 
     private function consume($token, $kind)
     {
@@ -115,6 +116,26 @@ function h1br1_check($label, $condition)
 }
 
 function h1br1_code($value) { return $value instanceof WP_Error ? $value->get_error_code() : null; }
+
+function h1br1_executed_sql($wpdb)
+{
+    $sql = [];
+    foreach ($wpdb->queries as $query) {
+        $sql[] = isset($wpdb->prepared[$query]) ? $wpdb->prepared[$query]['sql'] : $query;
+    }
+    return $sql;
+}
+
+function h1br1_has_forbidden_read_sql(array $sql)
+{
+    foreach ($sql as $statement) {
+        if (!is_string($statement)
+            || preg_match('/\b(?:INSERT|UPDATE|DELETE|REPLACE|START\s+TRANSACTION|BEGIN|COMMIT|ROLLBACK|FOR\s+UPDATE|LOCK\s+TABLES|GET_LOCK|RELEASE_LOCK)\b/i', $statement) === 1) {
+            return true;
+        }
+    }
+    return false;
+}
 
 function h1br1_fresh()
 {
@@ -499,12 +520,60 @@ h1br1_check('unknown or unapproved audit filters are rejected', h1br1_code(PGE_E
 $wpdb = h1br1_fresh();
 h1br1_check('audit actor and entity IDs remain strict PHP integers', h1br1_code(PGE_Event_Access_Repository::list_audit(10, ['actor_user_id' => '7'])) === 'invalid_filter' && h1br1_code(PGE_Event_Access_Repository::list_audit(10, ['entity_id' => 1.0])) === 'invalid_filter' && count($wpdb->prepared) === 0);
 
+// Read/write separation: invoke every production read method independently,
+// reset the SQL recorder for every case, and inspect the SQL that actually ran.
+$read_cases = [
+    'get_group' => function () { $db = h1br1_fresh(); h1br1_expect_group_lookup($db); return [$db, PGE_Event_Access_Repository::get_group(10, 1)]; },
+    'list_groups' => function () { $db = h1br1_fresh(); $db->expect('var', ['SELECT COUNT(*)'], [10], '1'); $db->expect('results', ['ORDER BY id ASC'], [10, 20, 0], [h1br1_group()]); return [$db, PGE_Event_Access_Repository::list_groups(10)]; },
+    'get_default_group' => function () { $db = h1br1_fresh(); $db->expect('results', ['default_slot = %d'], [10, 1, 'active'], []); return [$db, PGE_Event_Access_Repository::get_default_group(10)]; },
+    'find_active_group_by_name_key' => function () { $db = h1br1_fresh(); $db->expect('results', ['name_key = %s'], [10, 'main', 'active'], []); return [$db, PGE_Event_Access_Repository::find_active_group_by_name_key(10, 'main')]; },
+    'count_groups' => function () { $db = h1br1_fresh(); $db->expect('var', ['SELECT COUNT(*)'], [10], '0'); return [$db, PGE_Event_Access_Repository::count_groups(10)]; },
+    'get_membership' => function () { $db = h1br1_fresh(); h1br1_expect_membership_lookup($db); return [$db, PGE_Event_Access_Repository::get_membership(10, 2)]; },
+    'get_membership_for_user' => function () { $db = h1br1_fresh(); $db->expect('results', ['user_id = %d'], [10, 20], []); return [$db, PGE_Event_Access_Repository::get_membership_for_user(10, 20)]; },
+    'list_memberships' => function () { $db = h1br1_fresh(); $db->expect('var', ['SELECT COUNT(*)'], [10], '0'); $db->expect('results', ['ORDER BY id ASC'], [10, 20, 0], []); return [$db, PGE_Event_Access_Repository::list_memberships(10)]; },
+    'list_group_ids_for_membership' => function () { $db = h1br1_fresh(); h1br1_expect_membership_lookup($db); $db->expect('results', ['pge_event_host_group_access'], [10, 2], []); return [$db, PGE_Event_Access_Repository::list_group_ids_for_membership(10, 2)]; },
+    'list_membership_ids_for_group' => function () { $db = h1br1_fresh(); h1br1_expect_group_lookup($db); $db->expect('results', ['pge_event_host_group_access'], [10, 1], []); return [$db, PGE_Event_Access_Repository::list_membership_ids_for_group(10, 1)]; },
+    'membership_has_group_access' => function () { $db = h1br1_fresh(); h1br1_expect_membership_lookup($db); h1br1_expect_group_lookup($db); $db->expect('results', ['membership_id = %d', 'group_id = %d'], [10, 2, 1], []); return [$db, PGE_Event_Access_Repository::membership_has_group_access(10, 2, 1)]; },
+    'get_guest_assignment' => function () { $db = h1br1_fresh(); $db->expect('results', ['guest_phone = %s'], [10, '0591234567'], []); return [$db, PGE_Event_Access_Repository::get_guest_assignment(10, '0591234567')]; },
+    'list_group_assignments' => function () { $db = h1br1_fresh(); h1br1_expect_group_lookup($db); $db->expect('var', ['SELECT COUNT(*)'], [10, 1], '0'); $db->expect('results', ['ORDER BY a.id ASC'], [10, 1, 20, 0], []); return [$db, PGE_Event_Access_Repository::list_group_assignments(10, 1)]; },
+    'count_group_assignments' => function () { $db = h1br1_fresh(); h1br1_expect_group_lookup($db); $db->expect('var', ['SELECT COUNT(*)'], [10, 1], '0'); return [$db, PGE_Event_Access_Repository::count_group_assignments(10, 1)]; },
+    'map_guest_groups' => function () { $db = h1br1_fresh(); $db->expect('results', ['guest_phone IN (%s)'], [10, '059123'], []); return [$db, PGE_Event_Access_Repository::map_guest_groups(10, ['059123'])]; },
+    'list_audit' => function () { $db = h1br1_fresh(); $db->expect('var', ['SELECT COUNT(*)'], [10], '0'); $db->expect('results', ['ORDER BY created_at DESC'], [10, 20, 0], []); return [$db, PGE_Event_Access_Repository::list_audit(10)]; },
+];
+$read_only_ok = true;
+foreach ($read_cases as $case) {
+    [$case_db, $case_result] = $case();
+    $read_only_ok = $read_only_ok && !($case_result instanceof WP_Error)
+        && $case_db->expectations === []
+        && !h1br1_has_forbidden_read_sql(h1br1_executed_sql($case_db));
+}
+$readiness_db = h1br1_fresh();
+$GLOBALS['h1br1_ready'] = false;
+PGE_Event_Access_Repository::get_group(10, 1);
+$read_only_ok = $read_only_ok && h1br1_executed_sql($readiness_db) === [];
+
+// Mutation proof for the SQL classifier: representative direct, indirect,
+// mid-pagination, audit, transaction, and locking statements are all caught.
+$mutation_guard_ok = true;
+foreach ([
+    'UPDATE x SET y = 1',
+    'START TRANSACTION',
+    'SELECT * FROM x FOR UPDATE',
+    'INSERT INTO audit_log (id) VALUES (1)',
+    'DELETE FROM x',
+    'SELECT GET_LOCK("x", 0)',
+] as $forbidden_probe) {
+    $probe = h1br1_fresh();
+    $probe->query($forbidden_probe);
+    $mutation_guard_ok = $mutation_guard_ok && h1br1_has_forbidden_read_sql(h1br1_executed_sql($probe));
+}
+
 // Static boundary guards.
 $source = file_get_contents(PGE_PATH . 'includes/class-pge-event-access-repository.php');
 $loader = file_get_contents(PGE_PATH . 'pgevents-core.php');
 h1br1_check('loader requires the repository exactly once after the schema', substr_count($loader, "require_once PGE_PATH . 'includes/class-pge-event-access-repository.php';") === 1 && strpos($loader, 'class-pge-event-access-schema.php') < strpos($loader, 'class-pge-event-access-repository.php'));
-h1br1_check('repository source contains no authorization or request-user calls', preg_match('/current_user_can|get_current_user_id|pge_is_host_or_admin|nonce/i', $source) === 0);
-h1br1_check('repository source contains no mutation, transaction, lock, hook, or schema-upgrade call', preg_match('/\b(?:INSERT|UPDATE|DELETE|START\s+TRANSACTION|COMMIT|ROLLBACK|GET_LOCK)\b/i', $source) === 0 && strpos($source, 'add_action(') === false && strpos($source, 'dbDelta(') === false && strpos($source, 'maybe_upgrade(') === false);
+h1br1_check('repository source contains no authorization, post-meta, advisory-lock, hook, or schema-upgrade calls', preg_match('/current_user_can|get_current_user_id|check_ajax_referer|wp_verify_nonce|pge_is_host_or_admin|pge_event_guests_user_can_manage|get_post_meta|update_post_meta|delete_post_meta|GET_LOCK|RELEASE_LOCK|LOCK\s+TABLES|add_action\s*\(|dbDelta\s*\(|maybe_upgrade\s*\(/i', $source) === 0);
+h1br1_check('all sixteen public reads execute read-only SQL and the mutation classifier detects forbidden probes', $read_only_ok && $mutation_guard_ok);
 h1br1_check('all SQL table names are derived from the runtime prefix', strpos($source, 'wp_pge_') === false && strpos($source, '$wpdb->prefix') !== false);
 h1br1_check('repository never invoked schema upgrade during the suite', $GLOBALS['h1br1_upgrade_calls'] === 0);
 h1br1_check('fake SQL expectations all matched query scope and parameters', !$GLOBALS['h1br1_expectation_failures']);
