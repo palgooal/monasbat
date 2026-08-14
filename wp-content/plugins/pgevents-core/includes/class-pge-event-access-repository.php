@@ -7,7 +7,8 @@ if (!defined('ABSPATH')) exit;
  * The repository is deliberately static: it owns no request or user state,
  * performs no authorization, and executes SQL only after the schema-readiness
  * and event-scope guards pass. Group mutations and their audit records share
- * one transaction; the remaining domains stay read-only in this phase.
+ * one transaction. Membership lifecycle and group-access mutations use the
+ * same transaction boundary without owning authorization or request state.
  */
 class PGE_Event_Access_Repository
 {
@@ -205,6 +206,211 @@ class PGE_Event_Access_Repository
             $group = self::read_group_inside_transaction($event_id, $group_id);
             if ($group instanceof WP_Error) return $group;
             return ['changed' => true, 'group' => $group];
+        });
+    }
+
+    public static function create_membership($event_id, $user_id, $role, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($user_id) || !self::valid_role($role) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        $user = self::require_user($user_id);
+        if ($user instanceof WP_Error) return $user;
+
+        return self::with_event_transaction(function () use ($event_id, $user_id, $role, $actor_user_id) {
+            $memberships = self::lock_memberships($event_id);
+            if ($memberships instanceof WP_Error) return $memberships;
+            if (self::find_locked_membership_by_user($memberships, $user_id) !== null) return self::duplicate_membership();
+            $now = current_time('mysql', true);
+            $table = self::table('memberships');
+            if ($table instanceof WP_Error) return $table;
+            global $wpdb;
+            $wpdb->insert_id = 0;
+            $inserted = self::mutation_query(
+                "INSERT INTO $table (event_id, user_id, role, status, created_by_user_id, activated_at, revoked_at, created_at, updated_at) VALUES (%d, %d, %s, %s, %d, %s, NULL, %s, %s)",
+                [$event_id, $user_id, $role, 'active', $actor_user_id, $now, $now, $now]
+            );
+            if ($inserted instanceof WP_Error) {
+                $existing = self::read_membership_for_user_inside_transaction($event_id, $user_id);
+                return is_array($existing) ? self::duplicate_membership() : $inserted;
+            }
+            if ($inserted !== 1) return self::database_error();
+            $membership_id = $wpdb->insert_id ?? null;
+            if (!is_int($membership_id) || $membership_id <= 0) return self::database_error();
+            $membership = self::read_membership_inside_transaction($event_id, $membership_id);
+            if ($membership instanceof WP_Error) return $membership;
+            if (!self::membership_matches_create($membership, $user_id, $role, $actor_user_id, $now)) return self::database_error();
+            $audit = self::insert_audit($event_id, $actor_user_id, 'membership_created', 'membership', $membership_id, ['role' => $role], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return ['changed' => true, 'membership' => $membership];
+        });
+    }
+
+    public static function change_membership_role($event_id, $membership_id, $expected_role, $new_role, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($membership_id) || !self::valid_role($expected_role) || !self::valid_role($new_role) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        return self::with_event_transaction(function () use ($event_id, $membership_id, $expected_role, $new_role, $actor_user_id) {
+            $memberships = self::lock_memberships($event_id);
+            if ($memberships instanceof WP_Error) return $memberships;
+            $membership = self::find_locked_membership_by_id($memberships, $membership_id);
+            if ($membership === null) return self::not_found();
+            $user = self::require_user($membership['user_id']);
+            if ($user instanceof WP_Error) return $user;
+            if ($membership['status'] !== 'active') return self::invalid_state();
+            if ($membership['role'] !== $expected_role) return self::concurrent_update();
+            if ($expected_role === $new_role) return ['changed' => false, 'membership' => $membership];
+            $now = current_time('mysql', true);
+            $table = self::table('memberships');
+            if ($table instanceof WP_Error) return $table;
+            $updated = self::mutation_query("UPDATE $table SET role = %s, updated_at = %s WHERE event_id = %d AND id = %d AND status = %s AND role = %s", [$new_role, $now, $event_id, $membership_id, 'active', $expected_role]);
+            if ($updated instanceof WP_Error) return $updated;
+            if ($updated !== 1) return $updated === 0 ? self::concurrent_update() : self::database_error();
+            $after = self::read_membership_inside_transaction($event_id, $membership_id);
+            if ($after instanceof WP_Error) return $after;
+            if ($after['role'] !== $new_role || $after['status'] !== 'active' || $after['updated_at'] !== $now) return self::database_error();
+            $audit = self::insert_audit($event_id, $actor_user_id, 'membership_role_changed', 'membership', $membership_id, ['previous_role' => $expected_role, 'new_role' => $new_role], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return ['changed' => true, 'membership' => $after];
+        });
+    }
+
+    public static function revoke_membership($event_id, $membership_id, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($membership_id) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        return self::with_event_transaction(function () use ($event_id, $membership_id, $actor_user_id) {
+            $memberships = self::lock_memberships($event_id);
+            if ($memberships instanceof WP_Error) return $memberships;
+            $membership = self::find_locked_membership_by_id($memberships, $membership_id);
+            if ($membership === null) return self::not_found();
+            $access_rows = self::lock_membership_access($event_id, $membership_id);
+            if ($access_rows instanceof WP_Error) return $access_rows;
+            $count = count($access_rows);
+            if ($membership['status'] === 'revoked' && $count === 0) return ['changed' => false, 'membership' => $membership];
+            $now = current_time('mysql', true);
+            $status_changed = $membership['status'] === 'active';
+            if ($status_changed) {
+                $table = self::table('memberships');
+                if ($table instanceof WP_Error) return $table;
+                $updated = self::mutation_query("UPDATE $table SET status = %s, revoked_at = %s, updated_at = %s WHERE event_id = %d AND id = %d AND status = %s", ['revoked', $now, $now, $event_id, $membership_id, 'active']);
+                if ($updated instanceof WP_Error) return $updated;
+                if ($updated !== 1) return $updated === 0 ? self::concurrent_update() : self::database_error();
+            }
+            if ($count > 0) {
+                $access = self::table('access');
+                if ($access instanceof WP_Error) return $access;
+                $deleted = self::delete_rows($access, ['event_id' => $event_id, 'membership_id' => $membership_id], ['%d', '%d']);
+                if ($deleted instanceof WP_Error) return $deleted;
+                if ($deleted !== $count) return is_int($deleted) && $deleted >= 0 ? self::concurrent_update() : self::database_error();
+            }
+            $remaining = self::lock_membership_access($event_id, $membership_id);
+            if ($remaining instanceof WP_Error || $remaining !== []) return self::database_error();
+            $after = self::read_membership_inside_transaction($event_id, $membership_id);
+            if ($after instanceof WP_Error) return $after;
+            if ($after['status'] !== 'revoked' || $after['revoked_at'] === null || ($status_changed && $after['updated_at'] !== $now)) return self::database_error();
+            $audit = self::insert_audit($event_id, $actor_user_id, 'membership_revoked', 'membership', $membership_id, ['status_changed' => $status_changed, 'revoked_group_access_count' => $count], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return ['changed' => true, 'membership' => $after];
+        });
+    }
+
+    public static function reactivate_membership($event_id, $membership_id, $role, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($membership_id) || !self::valid_role($role) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        return self::with_event_transaction(function () use ($event_id, $membership_id, $role, $actor_user_id) {
+            $memberships = self::lock_memberships($event_id);
+            if ($memberships instanceof WP_Error) return $memberships;
+            $membership = self::find_locked_membership_by_id($memberships, $membership_id);
+            if ($membership === null) return self::not_found();
+            $user = self::require_user($membership['user_id']);
+            if ($user instanceof WP_Error) return $user;
+            $access_rows = self::lock_membership_access($event_id, $membership_id);
+            if ($access_rows instanceof WP_Error) return $access_rows;
+            if ($membership['status'] === 'active') return $membership['role'] === $role ? ['changed' => false, 'membership' => $membership] : self::invalid_state();
+            if ($access_rows !== []) return self::database_error();
+            $now = current_time('mysql', true);
+            $table = self::table('memberships');
+            if ($table instanceof WP_Error) return $table;
+            $updated = self::mutation_query("UPDATE $table SET status = %s, role = %s, activated_at = %s, revoked_at = NULL, updated_at = %s WHERE event_id = %d AND id = %d AND status = %s", ['active', $role, $now, $now, $event_id, $membership_id, 'revoked']);
+            if ($updated instanceof WP_Error) return $updated;
+            if ($updated !== 1) return $updated === 0 ? self::concurrent_update() : self::database_error();
+            $after = self::read_membership_inside_transaction($event_id, $membership_id);
+            if ($after instanceof WP_Error) return $after;
+            if ($after['status'] !== 'active' || $after['role'] !== $role || $after['activated_at'] !== $now || $after['revoked_at'] !== null || $after['updated_at'] !== $now) return self::database_error();
+            $audit = self::insert_audit($event_id, $actor_user_id, 'membership_reactivated', 'membership', $membership_id, ['previous_role' => $membership['role'], 'new_role' => $role], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return ['changed' => true, 'membership' => $after];
+        });
+    }
+
+    public static function grant_group_access($event_id, $membership_id, $group_id, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($membership_id) || !self::valid_id($group_id) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        return self::with_event_transaction(function () use ($event_id, $membership_id, $group_id, $actor_user_id) {
+            $groups = self::lock_groups($event_id);
+            if ($groups instanceof WP_Error) return self::write_storage_error($groups);
+            $memberships = self::lock_memberships($event_id);
+            if ($memberships instanceof WP_Error) return $memberships;
+            $group = self::find_locked_group_by_id($groups, $group_id);
+            $membership = self::find_locked_membership_by_id($memberships, $membership_id);
+            if ($group === null || $membership === null) return self::not_found();
+            $user = self::require_user($membership['user_id']);
+            if ($user instanceof WP_Error) return $user;
+            if ($group['status'] !== 'active' || $membership['status'] !== 'active') return self::invalid_state();
+            $relation = self::lock_access_relation($event_id, $membership_id, $group_id);
+            if ($relation instanceof WP_Error) return $relation;
+            if ($relation !== null) return ['changed' => false, 'membership_id' => $membership_id, 'group_id' => $group_id, 'has_access' => true];
+            $now = current_time('mysql', true);
+            $table = self::table('access');
+            if ($table instanceof WP_Error) return $table;
+            global $wpdb;
+            $wpdb->insert_id = 0;
+            $inserted = self::mutation_query("INSERT INTO $table (event_id, membership_id, group_id, granted_by_user_id, created_at) VALUES (%d, %d, %d, %d, %s)", [$event_id, $membership_id, $group_id, $actor_user_id, $now]);
+            if ($inserted instanceof WP_Error) return $inserted;
+            if ($inserted !== 1) return self::database_error();
+            $access_id = $wpdb->insert_id ?? null;
+            if (!is_int($access_id) || $access_id <= 0) return self::database_error();
+            $after = self::read_access_relation_inside_transaction($event_id, $membership_id, $group_id);
+            if ($after instanceof WP_Error) return $after;
+            if ($after === null || $after['id'] !== $access_id || $after['granted_by_user_id'] !== $actor_user_id || $after['created_at'] !== $now) return self::database_error();
+            $audit = self::insert_audit($event_id, $actor_user_id, 'group_access_granted', 'group_access', $access_id, ['membership_id' => $membership_id, 'group_id' => $group_id], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return ['changed' => true, 'membership_id' => $membership_id, 'group_id' => $group_id, 'has_access' => true];
+        });
+    }
+
+    public static function revoke_group_access($event_id, $membership_id, $group_id, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($membership_id) || !self::valid_id($group_id) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        return self::with_event_transaction(function () use ($event_id, $membership_id, $group_id, $actor_user_id) {
+            $groups = self::lock_groups($event_id);
+            if ($groups instanceof WP_Error) return self::write_storage_error($groups);
+            $memberships = self::lock_memberships($event_id);
+            if ($memberships instanceof WP_Error) return $memberships;
+            if (self::find_locked_group_by_id($groups, $group_id) === null || self::find_locked_membership_by_id($memberships, $membership_id) === null) return self::not_found();
+            $relation = self::lock_access_relation($event_id, $membership_id, $group_id);
+            if ($relation instanceof WP_Error) return $relation;
+            if ($relation === null) return ['changed' => false, 'membership_id' => $membership_id, 'group_id' => $group_id, 'has_access' => false];
+            $table = self::table('access');
+            if ($table instanceof WP_Error) return $table;
+            $deleted = self::delete_rows($table, ['event_id' => $event_id, 'membership_id' => $membership_id, 'group_id' => $group_id], ['%d', '%d', '%d']);
+            if ($deleted instanceof WP_Error) return $deleted;
+            if ($deleted !== 1) return $deleted === 0 ? self::concurrent_update() : self::database_error();
+            $after = self::read_access_relation_inside_transaction($event_id, $membership_id, $group_id);
+            if ($after instanceof WP_Error || $after !== null) return self::database_error();
+            $now = current_time('mysql', true);
+            $audit = self::insert_audit($event_id, $actor_user_id, 'group_access_revoked', 'group_access', $relation['id'], ['membership_id' => $membership_id, 'group_id' => $group_id], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return ['changed' => true, 'membership_id' => $membership_id, 'group_id' => $group_id, 'has_access' => false];
         });
     }
 
@@ -609,6 +815,20 @@ class PGE_Event_Access_Repository
 
     private static function with_group_transaction($event_id, $operation)
     {
+        return self::with_event_transaction(function () use ($event_id, $operation) {
+            $groups = self::lock_groups($event_id);
+            if ($groups instanceof WP_Error) return $groups;
+            $result = call_user_func($operation, $groups);
+            if (!($result instanceof WP_Error)
+                && (!is_array($result) || !array_key_exists('changed', $result) || !array_key_exists('group', $result))) {
+                return self::database_error();
+            }
+            return $result;
+        });
+    }
+
+    private static function with_event_transaction($operation)
+    {
         global $wpdb;
         if (!is_callable($operation)) return self::database_error();
         $previous_error = isset($wpdb->last_error) ? $wpdb->last_error : '';
@@ -619,32 +839,13 @@ class PGE_Event_Access_Repository
             if ($begin instanceof WP_Error) return $begin;
             $started = true;
 
-            $table = self::table('groups');
-            if ($table instanceof WP_Error) {
-                self::rollback_transaction();
-                $started = false;
-                return $table;
-            }
-            $rows = self::read_results("SELECT * FROM $table WHERE event_id = %d ORDER BY id FOR UPDATE", [$event_id]);
-            if ($rows instanceof WP_Error) {
-                self::rollback_transaction();
-                $started = false;
-                return $rows;
-            }
-            $groups = self::normalize_locked_groups($rows, $event_id);
-            if ($groups instanceof WP_Error) {
-                self::rollback_transaction();
-                $started = false;
-                return $groups;
-            }
-
-            $result = call_user_func($operation, $groups);
+            $result = call_user_func($operation);
             if ($result instanceof WP_Error) {
                 self::rollback_transaction();
                 $started = false;
                 return $result;
             }
-            if (!is_array($result) || !array_key_exists('changed', $result) || !array_key_exists('group', $result)) {
+            if (!is_array($result) || !array_key_exists('changed', $result)) {
                 self::rollback_transaction();
                 $started = false;
                 return self::database_error();
@@ -707,6 +908,22 @@ class PGE_Event_Access_Repository
         return $query_error === '' && is_int($result) && $result >= 0 ? $result : self::database_error();
     }
 
+    private static function delete_rows($table, array $where, array $formats)
+    {
+        global $wpdb;
+        $previous_error = isset($wpdb->last_error) ? $wpdb->last_error : '';
+        $wpdb->last_error = '';
+        try {
+            $result = $wpdb->delete($table, $where, $formats);
+        } catch (Throwable $e) {
+            $wpdb->last_error = $previous_error;
+            return self::database_error();
+        }
+        $query_error = (string) $wpdb->last_error;
+        $wpdb->last_error = $previous_error;
+        return $query_error === '' && is_int($result) && $result >= 0 ? $result : self::database_error();
+    }
+
     private static function normalize_locked_groups(array $rows, $event_id)
     {
         $groups = [];
@@ -718,6 +935,68 @@ class PGE_Event_Access_Repository
             $groups[] = $group;
         }
         return $groups;
+    }
+
+    private static function lock_groups($event_id)
+    {
+        $table = self::table('groups');
+        if ($table instanceof WP_Error) return $table;
+        $rows = self::read_results("SELECT * FROM $table WHERE event_id = %d ORDER BY id FOR UPDATE", [$event_id]);
+        return $rows instanceof WP_Error ? $rows : self::normalize_locked_groups($rows, $event_id);
+    }
+
+    private static function lock_memberships($event_id)
+    {
+        $table = self::table('memberships');
+        if ($table instanceof WP_Error) return $table;
+        $rows = self::read_results("SELECT * FROM $table WHERE event_id = %d ORDER BY id FOR UPDATE", [$event_id]);
+        if ($rows instanceof WP_Error) return $rows;
+        $out = []; $seen_ids = []; $seen_users = [];
+        foreach ($rows as $row) {
+            $membership = self::normalize_membership($row, $event_id);
+            if ($membership instanceof WP_Error || isset($seen_ids[$membership['id']]) || isset($seen_users[$membership['user_id']])) return self::database_error();
+            $seen_ids[$membership['id']] = true; $seen_users[$membership['user_id']] = true; $out[] = $membership;
+        }
+        return $out;
+    }
+
+    private static function lock_membership_access($event_id, $membership_id)
+    {
+        $table = self::table('access');
+        if ($table instanceof WP_Error) return $table;
+        $rows = self::read_results("SELECT * FROM $table WHERE event_id = %d AND membership_id = %d ORDER BY id FOR UPDATE", [$event_id, $membership_id]);
+        if ($rows instanceof WP_Error) return $rows;
+        $out = []; $seen = [];
+        foreach ($rows as $row) {
+            $access = self::normalize_access($row, $event_id, $membership_id);
+            if ($access instanceof WP_Error || isset($seen[$access['id']]) || isset($seen['g:' . $access['group_id']])) return self::database_error();
+            $seen[$access['id']] = true; $seen['g:' . $access['group_id']] = true; $out[] = $access;
+        }
+        return $out;
+    }
+
+    private static function lock_access_relation($event_id, $membership_id, $group_id)
+    {
+        $table = self::table('access');
+        if ($table instanceof WP_Error) return $table;
+        $rows = self::read_results("SELECT * FROM $table WHERE event_id = %d AND membership_id = %d AND group_id = %d ORDER BY id FOR UPDATE", [$event_id, $membership_id, $group_id]);
+        if ($rows instanceof WP_Error) return $rows;
+        if (count($rows) > 1) return self::database_error();
+        if (!$rows) return null;
+        $access = self::normalize_access($rows[0], $event_id, $membership_id, $group_id);
+        return $access instanceof WP_Error ? self::write_storage_error($access) : $access;
+    }
+
+    private static function find_locked_membership_by_id(array $memberships, $id)
+    {
+        foreach ($memberships as $membership) if ($membership['id'] === $id) return $membership;
+        return null;
+    }
+
+    private static function find_locked_membership_by_user(array $memberships, $user_id)
+    {
+        foreach ($memberships as $membership) if ($membership['user_id'] === $user_id) return $membership;
+        return null;
     }
 
     private static function find_locked_group_by_id(array $groups, $group_id)
@@ -769,7 +1048,17 @@ class PGE_Event_Access_Repository
 
     private static function insert_group_audit($event_id, $actor_user_id, $action, $group_id, $metadata, $now)
     {
-        if (!in_array($action, self::GROUP_WRITE_AUDIT_ACTIONS, true) || !self::valid_id($actor_user_id) || !self::valid_id($group_id)) {
+        return self::insert_audit($event_id, $actor_user_id, $action, 'group', $group_id, $metadata, $now);
+    }
+
+    private static function insert_audit($event_id, $actor_user_id, $action, $entity_type, $entity_id, $metadata, $now)
+    {
+        $pairs = [
+            'group_created' => 'group', 'group_renamed' => 'group', 'default_group_changed' => 'group', 'group_archived' => 'group',
+            'membership_created' => 'membership', 'membership_role_changed' => 'membership', 'membership_revoked' => 'membership', 'membership_reactivated' => 'membership',
+            'group_access_granted' => 'group_access', 'group_access_revoked' => 'group_access',
+        ];
+        if (($pairs[$action] ?? null) !== $entity_type || !self::valid_id($actor_user_id) || !self::valid_id($entity_id)) {
             return self::database_error();
         }
         $table = self::table('audit');
@@ -777,7 +1066,7 @@ class PGE_Event_Access_Repository
         if ($metadata === null) {
             $result = self::mutation_query(
                 "INSERT INTO $table (event_id, actor_user_id, action, entity_type, entity_id, metadata, created_at) VALUES (%d, %d, %s, %s, %d, NULL, %s)",
-                [$event_id, $actor_user_id, $action, 'group', $group_id, $now]
+                [$event_id, $actor_user_id, $action, $entity_type, $entity_id, $now]
             );
         } else {
             if (!is_array($metadata) || self::is_list($metadata) || !function_exists('wp_json_encode')) return self::database_error();
@@ -785,7 +1074,7 @@ class PGE_Event_Access_Repository
             if (!is_string($json) || $json === '') return self::database_error();
             $result = self::mutation_query(
                 "INSERT INTO $table (event_id, actor_user_id, action, entity_type, entity_id, metadata, created_at) VALUES (%d, %d, %s, %s, %d, %s, %s)",
-                [$event_id, $actor_user_id, $action, 'group', $group_id, $json, $now]
+                [$event_id, $actor_user_id, $action, $entity_type, $entity_id, $json, $now]
             );
         }
         if ($result instanceof WP_Error) return $result;
@@ -800,6 +1089,43 @@ class PGE_Event_Access_Repository
         if ($row instanceof WP_Error) return $row;
         if ($row === null) return self::database_error();
         return self::normalize_group($row, $event_id);
+    }
+
+    private static function read_membership_inside_transaction($event_id, $membership_id)
+    {
+        $table = self::table('memberships');
+        if ($table instanceof WP_Error) return $table;
+        $row = self::read_optional_row("SELECT * FROM $table WHERE event_id = %d AND id = %d LIMIT 2", [$event_id, $membership_id]);
+        if ($row instanceof WP_Error || $row === null) return self::database_error();
+        $membership = self::normalize_membership($row, $event_id);
+        return $membership instanceof WP_Error ? self::write_storage_error($membership) : $membership;
+    }
+
+    private static function read_membership_for_user_inside_transaction($event_id, $user_id)
+    {
+        $table = self::table('memberships');
+        if ($table instanceof WP_Error) return $table;
+        $row = self::read_optional_row("SELECT * FROM $table WHERE event_id = %d AND user_id = %d LIMIT 2", [$event_id, $user_id]);
+        if ($row instanceof WP_Error || $row === null) return $row;
+        $membership = self::normalize_membership($row, $event_id);
+        return $membership instanceof WP_Error ? self::write_storage_error($membership) : $membership;
+    }
+
+    private static function read_access_relation_inside_transaction($event_id, $membership_id, $group_id)
+    {
+        $table = self::table('access');
+        if ($table instanceof WP_Error) return $table;
+        $row = self::read_optional_row("SELECT * FROM $table WHERE event_id = %d AND membership_id = %d AND group_id = %d LIMIT 2", [$event_id, $membership_id, $group_id]);
+        if ($row instanceof WP_Error || $row === null) return $row;
+        $access = self::normalize_access($row, $event_id, $membership_id, $group_id);
+        return $access instanceof WP_Error ? self::write_storage_error($access) : $access;
+    }
+
+    private static function membership_matches_create(array $membership, $user_id, $role, $actor_user_id, $now)
+    {
+        return $membership['user_id'] === $user_id && $membership['role'] === $role && $membership['status'] === 'active'
+            && $membership['created_by_user_id'] === $actor_user_id && $membership['activated_at'] === $now
+            && $membership['revoked_at'] === null && $membership['created_at'] === $now && $membership['updated_at'] === $now;
     }
 
     private static function translate_duplicate_after_failure($event_id, $name_key, $except_id, $fallback)
@@ -1042,6 +1368,10 @@ class PGE_Event_Access_Repository
             || !self::required_string($row['updated_at'] ?? null)) {
             return self::database_error();
         }
+        if (($row['status'] === 'active' && $row['revoked_at'] !== null)
+            || ($row['status'] === 'revoked' && !self::required_string($row['revoked_at']))) {
+            return self::database_error();
+        }
         return [
             'id' => $id,
             'event_id' => $row_event,
@@ -1054,6 +1384,21 @@ class PGE_Event_Access_Repository
             'created_at' => $row['created_at'],
             'updated_at' => $row['updated_at'],
         ];
+    }
+
+    private static function normalize_access($row, $event_id, $membership_id = null, $group_id = null)
+    {
+        if (!is_array($row)) return self::database_error();
+        foreach (['id', 'event_id', 'membership_id', 'group_id', 'granted_by_user_id', 'created_at'] as $key) if (!array_key_exists($key, $row)) return self::database_error();
+        $id = self::db_positive_int($row['id']);
+        $row_event = self::db_positive_int($row['event_id']);
+        $row_membership = self::db_positive_int($row['membership_id']);
+        $row_group = self::db_positive_int($row['group_id']);
+        $granter = self::db_positive_int($row['granted_by_user_id']);
+        if ($id === null || $row_event === null || $row_membership === null || $row_group === null || $granter === null || !self::required_string($row['created_at'])) return self::database_error();
+        if ($row_event !== $event_id) return self::cross_event();
+        if (($membership_id !== null && $row_membership !== $membership_id) || ($group_id !== null && $row_group !== $group_id)) return self::database_error();
+        return ['id' => $id, 'event_id' => $row_event, 'membership_id' => $row_membership, 'group_id' => $row_group, 'granted_by_user_id' => $granter, 'created_at' => $row['created_at']];
     }
 
     private static function normalize_assignment($row, $event_id)
@@ -1174,6 +1519,28 @@ class PGE_Event_Access_Repository
         return is_int($value) && $value > 0;
     }
 
+    private static function valid_role($value)
+    {
+        return is_string($value) && in_array($value, self::MEMBERSHIP_ROLES, true);
+    }
+
+    private static function write_storage_error($error)
+    {
+        if (!($error instanceof WP_Error)) return self::database_error();
+        return $error->get_error_code() === 'cross_event' ? self::database_error() : $error;
+    }
+
+    private static function require_user($user_id)
+    {
+        if (!function_exists('get_userdata')) return self::database_error();
+        try {
+            $user = get_userdata($user_id);
+        } catch (Throwable $e) {
+            return self::database_error();
+        }
+        return $user === false || $user === null ? self::not_found() : $user;
+    }
+
     private static function only_filters(array $filters, array $allowed)
     {
         foreach (array_keys($filters) as $key) {
@@ -1218,14 +1585,19 @@ class PGE_Event_Access_Repository
         return new WP_Error('duplicate_group', 'An active invitation group with this identity already exists.');
     }
 
+    private static function duplicate_membership()
+    {
+        return new WP_Error('duplicate_membership', 'An event host membership already exists.');
+    }
+
     private static function invalid_state()
     {
-        return new WP_Error('invalid_state', 'The invitation group is not in a writable state.');
+        return new WP_Error('invalid_state', 'The event access record is not in a writable state.');
     }
 
     private static function concurrent_update()
     {
-        return new WP_Error('concurrent_update', 'The invitation group changed during the operation.');
+        return new WP_Error('concurrent_update', 'The event access record changed during the operation.');
     }
 
     private static function invalid_filter()

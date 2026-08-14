@@ -393,6 +393,16 @@ $memberships = PGE_Event_Access_Repository::list_memberships(10, ['status' => 'a
 h1br1_check('membership filters and ordering are prepared', is_array($memberships) && count($memberships['items']) === 1 && !$GLOBALS['h1br1_expectation_failures']);
 $wpdb = h1br1_fresh();
 h1br1_check('unknown membership filters are rejected', h1br1_code(PGE_Event_Access_Repository::list_memberships(10, ['user_id' => 20])) === 'invalid_filter');
+$wpdb = h1br1_fresh();
+$wpdb->expect('results', ['event_id = %d', 'id = %d'], [10, 2], [h1br1_membership(['revoked_at' => '2026-08-14 02:00:00'])]);
+h1br1_check('active membership rejects a non-null revoked_at', h1br1_code(PGE_Event_Access_Repository::get_membership(10, 2)) === 'database_error');
+$wpdb = h1br1_fresh();
+$wpdb->expect('results', ['event_id = %d', 'id = %d'], [10, 2], [h1br1_membership(['status' => 'revoked'])]);
+h1br1_check('revoked membership requires revoked_at', h1br1_code(PGE_Event_Access_Repository::get_membership(10, 2)) === 'database_error');
+$wpdb = h1br1_fresh();
+$wpdb->expect('var', ['SELECT COUNT(*)'], [10], '2');
+$wpdb->expect('results', ['ORDER BY id ASC'], [10, 20, 0], [h1br1_membership(), h1br1_membership(['id' => '3', 'user_id' => '21', 'revoked_at' => '2026-08-14 02:00:00'])]);
+h1br1_check('one lifecycle-corrupt membership fails the complete list', h1br1_code(PGE_Event_Access_Repository::list_memberships(10)) === 'database_error');
 
 // Group-access relation reads.
 $wpdb = h1br1_fresh();
