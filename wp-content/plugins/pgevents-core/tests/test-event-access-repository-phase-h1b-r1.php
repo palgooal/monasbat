@@ -513,6 +513,30 @@ $wpdb->expect('var', ['tenant7_pge_event_access_audit_log', 'action = %s', 'enti
 $wpdb->expect('results', ['ORDER BY created_at DESC, id DESC', 'LIMIT %d OFFSET %d'], [10, 'group_created', 'group', 7, 1, 20, 0], [h1br1_audit()]);
 $audit = PGE_Event_Access_Repository::list_audit(10, $filters);
 h1br1_check('audit read filters and ordering are deterministic', is_array($audit) && $audit['items'][0]['metadata'] === ['source' => 'test'] && !$GLOBALS['h1br1_expectation_failures']);
+foreach ([
+    'guest_group_assigned' => ['group_id' => 1],
+    'guest_group_moved' => ['previous_group_id' => 1, 'new_group_id' => 2],
+    'guest_group_unassigned' => ['previous_group_id' => 2],
+] as $action => $metadata) {
+    $wpdb = h1br1_fresh();
+    $wpdb->expect('var', ['tenant7_pge_event_access_audit_log', 'action = %s', 'entity_type = %s'], [10, $action, 'guest_assignment'], '1');
+    $wpdb->expect('results', ['ORDER BY created_at DESC, id DESC'], [10, $action, 'guest_assignment', 20, 0], [h1br1_audit([
+        'action' => $action,
+        'entity_type' => 'guest_assignment',
+        'entity_id' => '3',
+        'metadata' => json_encode($metadata),
+    ])]);
+    $result = PGE_Event_Access_Repository::list_audit(10, ['action' => $action, 'entity_type' => 'guest_assignment']);
+    h1br1_check("audit reads and validates $action metadata", is_array($result) && $result['items'][0]['metadata'] === $metadata && !$GLOBALS['h1br1_expectation_failures']);
+}
+$wpdb = h1br1_fresh();
+$wpdb->expect('var', ['tenant7_pge_event_access_audit_log'], [10], '1');
+$wpdb->expect('results', ['ORDER BY created_at DESC, id DESC'], [10, 20, 0], [h1br1_audit([
+    'action' => 'guest_group_moved',
+    'entity_type' => 'guest_assignment',
+    'metadata' => '{"previous_group_id":1,"new_group_id":"2"}',
+])]);
+h1br1_check('guest assignment audit metadata types fail closed', h1br1_code(PGE_Event_Access_Repository::list_audit(10)) === 'database_error');
 foreach (['{"broken"', '"scalar"', 'null'] as $metadata) {
     $wpdb = h1br1_fresh();
     $wpdb->expect('var', ['tenant7_pge_event_access_audit_log'], [10], '1');

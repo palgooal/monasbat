@@ -414,6 +414,153 @@ class PGE_Event_Access_Repository
         });
     }
 
+    public static function assign_guest_to_group($event_id, $guest_phone, $group_id, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($group_id) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        $phone = self::normalize_phone_input($guest_phone);
+        if ($phone instanceof WP_Error) return $phone;
+        $guest = self::require_current_guest($event_id, $phone);
+        if ($guest instanceof WP_Error) return $guest;
+
+        return self::with_event_transaction(function () use ($event_id, $phone, $group_id, $actor_user_id) {
+            $groups = self::lock_groups($event_id);
+            if ($groups instanceof WP_Error) return self::write_storage_error($groups);
+            $assignment = self::lock_guest_assignment($event_id, $phone);
+            if ($assignment instanceof WP_Error) return $assignment;
+            if ($assignment !== null) {
+                $current_group = self::validate_assignment_group_reference($assignment, $groups, $event_id);
+                if ($current_group instanceof WP_Error) return $current_group;
+            }
+            $target = self::find_locked_group_by_id($groups, $group_id);
+            if ($target === null) return self::not_found();
+            if ($target['status'] !== 'active') return self::invalid_state();
+
+            if ($assignment !== null) {
+                if ($assignment['group_id'] !== $group_id) return self::concurrent_update();
+                return self::assignment_write_result(false, $assignment['id'], $group_id, true);
+            }
+
+            $now = current_time('mysql', true);
+            $table = self::table('assignments');
+            if ($table instanceof WP_Error) return $table;
+            global $wpdb;
+            $wpdb->insert_id = 0;
+            $inserted = self::mutation_query(
+                "INSERT INTO $table (event_id, guest_phone, group_id, assigned_by_user_id, created_at, updated_at) VALUES (%d, %s, %d, %d, %s, %s)",
+                [$event_id, $phone, $group_id, $actor_user_id, $now, $now]
+            );
+            if ($inserted instanceof WP_Error) {
+                $raced = self::read_assignment_inside_transaction($event_id, $phone);
+                if (is_array($raced)) {
+                    $race_group = self::validate_assignment_group_reference($raced, $groups, $event_id);
+                    if (!($race_group instanceof WP_Error) && $race_group !== 'missing') return self::concurrent_update();
+                }
+                return self::database_error();
+            }
+            if ($inserted !== 1) return self::database_error();
+            $assignment_id = $wpdb->insert_id ?? null;
+            if (!is_int($assignment_id) || $assignment_id <= 0) return self::database_error();
+
+            $after = self::read_assignment_inside_transaction($event_id, $phone);
+            if ($after instanceof WP_Error || $after === null
+                || !self::assignment_matches_create($after, $assignment_id, $event_id, $phone, $group_id, $actor_user_id, $now)) {
+                return self::database_error();
+            }
+            $audit = self::insert_audit($event_id, $actor_user_id, 'guest_group_assigned', 'guest_assignment', $assignment_id, ['group_id' => $group_id], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return self::assignment_write_result(true, $assignment_id, $group_id, true);
+        });
+    }
+
+    public static function move_guest_to_group($event_id, $guest_phone, $expected_group_id, $new_group_id, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($expected_group_id) || !self::valid_id($new_group_id) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        $phone = self::normalize_phone_input($guest_phone);
+        if ($phone instanceof WP_Error) return $phone;
+        $guest = self::require_current_guest($event_id, $phone);
+        if ($guest instanceof WP_Error) return $guest;
+
+        return self::with_event_transaction(function () use ($event_id, $phone, $expected_group_id, $new_group_id, $actor_user_id) {
+            $groups = self::lock_groups($event_id);
+            if ($groups instanceof WP_Error) return self::write_storage_error($groups);
+            $assignment = self::lock_guest_assignment($event_id, $phone);
+            if ($assignment instanceof WP_Error) return $assignment;
+            if ($assignment === null) return self::concurrent_update();
+            $current_group = self::validate_assignment_group_reference($assignment, $groups, $event_id);
+            if ($current_group instanceof WP_Error) return $current_group;
+            if ($assignment['group_id'] !== $expected_group_id) return self::concurrent_update();
+            $target = self::find_locked_group_by_id($groups, $new_group_id);
+            if ($target === null) return self::not_found();
+            if ($target['status'] !== 'active') return self::invalid_state();
+            if ($expected_group_id === $new_group_id) {
+                return self::assignment_write_result(false, $assignment['id'], $assignment['group_id'], true);
+            }
+
+            $now = current_time('mysql', true);
+            $table = self::table('assignments');
+            if ($table instanceof WP_Error) return $table;
+            $updated = self::mutation_query(
+                "UPDATE $table SET group_id = %d, assigned_by_user_id = %d, updated_at = %s WHERE id = %d AND event_id = %d AND guest_phone = %s AND group_id = %d",
+                [$new_group_id, $actor_user_id, $now, $assignment['id'], $event_id, $phone, $expected_group_id]
+            );
+            if ($updated instanceof WP_Error) return $updated;
+            if ($updated !== 1) return $updated === 0 ? self::concurrent_update() : self::database_error();
+
+            $after = self::read_assignment_inside_transaction($event_id, $phone);
+            if ($after instanceof WP_Error || $after === null
+                || $after['id'] !== $assignment['id'] || $after['event_id'] !== $event_id
+                || $after['guest_phone'] !== $phone || $after['group_id'] !== $new_group_id
+                || $after['assigned_by_user_id'] !== $actor_user_id
+                || $after['created_at'] !== $assignment['created_at'] || $after['updated_at'] !== $now) {
+                return self::database_error();
+            }
+            $audit = self::insert_audit($event_id, $actor_user_id, 'guest_group_moved', 'guest_assignment', $assignment['id'], ['previous_group_id' => $expected_group_id, 'new_group_id' => $new_group_id], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return self::assignment_write_result(true, $assignment['id'], $new_group_id, true);
+        });
+    }
+
+    public static function unassign_guest_from_group($event_id, $guest_phone, $expected_group_id, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($expected_group_id) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        $phone = self::normalize_phone_input($guest_phone);
+        if ($phone instanceof WP_Error) return $phone;
+
+        return self::with_event_transaction(function () use ($event_id, $phone, $expected_group_id, $actor_user_id) {
+            $groups = self::lock_groups($event_id);
+            if ($groups instanceof WP_Error) return self::write_storage_error($groups);
+            $assignment = self::lock_guest_assignment($event_id, $phone);
+            if ($assignment instanceof WP_Error) return $assignment;
+            if ($assignment === null) return self::assignment_write_result(false, null, null, false);
+            $current_group = self::validate_assignment_group_reference($assignment, $groups, $event_id);
+            if ($current_group instanceof WP_Error) return $current_group;
+            if ($assignment['group_id'] !== $expected_group_id) return self::concurrent_update();
+
+            $table = self::table('assignments');
+            if ($table instanceof WP_Error) return $table;
+            $deleted = self::delete_rows(
+                $table,
+                ['id' => $assignment['id'], 'event_id' => $event_id, 'guest_phone' => $phone, 'group_id' => $expected_group_id],
+                ['%d', '%d', '%s', '%d']
+            );
+            if ($deleted instanceof WP_Error) return $deleted;
+            if ($deleted !== 1) return $deleted === 0 ? self::concurrent_update() : self::database_error();
+            $after = self::read_assignment_inside_transaction($event_id, $phone);
+            if ($after instanceof WP_Error || $after !== null) return self::database_error();
+
+            $now = current_time('mysql', true);
+            $audit = self::insert_audit($event_id, $actor_user_id, 'guest_group_unassigned', 'guest_assignment', $assignment['id'], ['previous_group_id' => $expected_group_id], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return self::assignment_write_result(true, null, null, false);
+        });
+    }
+
     public static function get_group($event_id, $group_id)
     {
         $guard = self::guard_event($event_id);
@@ -987,6 +1134,20 @@ class PGE_Event_Access_Repository
         return $access instanceof WP_Error ? self::write_storage_error($access) : $access;
     }
 
+    private static function lock_guest_assignment($event_id, $phone)
+    {
+        $table = self::table('assignments');
+        if ($table instanceof WP_Error) return $table;
+        $rows = self::read_results(
+            "SELECT * FROM $table WHERE event_id = %d AND guest_phone = %s ORDER BY id FOR UPDATE",
+            [$event_id, $phone]
+        );
+        if ($rows instanceof WP_Error) return $rows;
+        if (count($rows) > 1) return self::database_error();
+        if (!$rows) return null;
+        return self::normalize_write_assignment($rows[0], $event_id, $phone);
+    }
+
     private static function find_locked_membership_by_id(array $memberships, $id)
     {
         foreach ($memberships as $membership) if ($membership['id'] === $id) return $membership;
@@ -1057,9 +1218,14 @@ class PGE_Event_Access_Repository
             'group_created' => 'group', 'group_renamed' => 'group', 'default_group_changed' => 'group', 'group_archived' => 'group',
             'membership_created' => 'membership', 'membership_role_changed' => 'membership', 'membership_revoked' => 'membership', 'membership_reactivated' => 'membership',
             'group_access_granted' => 'group_access', 'group_access_revoked' => 'group_access',
+            'guest_group_assigned' => 'guest_assignment', 'guest_group_moved' => 'guest_assignment', 'guest_group_unassigned' => 'guest_assignment',
         ];
         if (($pairs[$action] ?? null) !== $entity_type || !self::valid_id($actor_user_id) || !self::valid_id($entity_id)) {
             return self::database_error();
+        }
+        if (strpos($action, 'guest_group_') === 0) {
+            $metadata = self::normalize_guest_audit_metadata($action, $metadata);
+            if ($metadata instanceof WP_Error) return $metadata;
         }
         $table = self::table('audit');
         if ($table instanceof WP_Error) return $table;
@@ -1119,6 +1285,51 @@ class PGE_Event_Access_Repository
         if ($row instanceof WP_Error || $row === null) return $row;
         $access = self::normalize_access($row, $event_id, $membership_id, $group_id);
         return $access instanceof WP_Error ? self::write_storage_error($access) : $access;
+    }
+
+    private static function read_assignment_inside_transaction($event_id, $phone)
+    {
+        $table = self::table('assignments');
+        if ($table instanceof WP_Error) return $table;
+        $row = self::read_optional_row(
+            "SELECT * FROM $table WHERE event_id = %d AND guest_phone = %s ORDER BY id LIMIT 2",
+            [$event_id, $phone]
+        );
+        if ($row instanceof WP_Error || $row === null) return $row;
+        return self::normalize_write_assignment($row, $event_id, $phone);
+    }
+
+    private static function validate_assignment_group_reference(array $assignment, array $groups, $event_id)
+    {
+        $group = self::find_locked_group_by_id($groups, $assignment['group_id']);
+        if ($group !== null) return $group;
+
+        $table = self::table('groups');
+        if ($table instanceof WP_Error) return $table;
+        $row = self::read_optional_row("SELECT event_id FROM $table WHERE id = %d LIMIT 2", [$assignment['group_id']]);
+        if ($row instanceof WP_Error) return $row;
+        if ($row === null) return 'missing';
+        $related_event = self::db_positive_int($row['event_id'] ?? null);
+        if ($related_event === null || $related_event !== $event_id) return self::database_error();
+        return self::database_error();
+    }
+
+    private static function assignment_matches_create(array $assignment, $assignment_id, $event_id, $phone, $group_id, $actor_user_id, $now)
+    {
+        return $assignment['id'] === $assignment_id && $assignment['event_id'] === $event_id
+            && $assignment['guest_phone'] === $phone && $assignment['group_id'] === $group_id
+            && $assignment['assigned_by_user_id'] === $actor_user_id
+            && $assignment['created_at'] === $now && $assignment['updated_at'] === $now;
+    }
+
+    private static function assignment_write_result($changed, $assignment_id, $group_id, $has_assignment)
+    {
+        return [
+            'changed' => $changed,
+            'assignment_id' => $assignment_id,
+            'group_id' => $group_id,
+            'has_assignment' => $has_assignment,
+        ];
     }
 
     private static function membership_matches_create(array $membership, $user_id, $role, $actor_user_id, $now)
@@ -1401,6 +1612,37 @@ class PGE_Event_Access_Repository
         return ['id' => $id, 'event_id' => $row_event, 'membership_id' => $row_membership, 'group_id' => $row_group, 'granted_by_user_id' => $granter, 'created_at' => $row['created_at']];
     }
 
+    private static function normalize_write_assignment($row, $event_id, $phone)
+    {
+        if (!is_array($row)) return self::database_error();
+        foreach (['id', 'event_id', 'guest_phone', 'group_id', 'assigned_by_user_id', 'created_at', 'updated_at'] as $key) {
+            if (!array_key_exists($key, $row)) return self::database_error();
+        }
+        $id = self::db_positive_int($row['id']);
+        $row_event = self::db_positive_int($row['event_id']);
+        $group_id = self::db_positive_int($row['group_id']);
+        $actor_id = self::db_positive_int($row['assigned_by_user_id']);
+        $stored_phone = $row['guest_phone'];
+        $canonical = is_string($stored_phone) && function_exists('pge_event_guests_norm_phone')
+            ? pge_event_guests_norm_phone($stored_phone)
+            : null;
+        if ($id === null || $row_event === null || $group_id === null || $actor_id === null
+            || $row_event !== $event_id || !is_string($stored_phone) || $stored_phone !== $phone
+            || !is_string($canonical) || $canonical !== $stored_phone || strlen($stored_phone) > 32
+            || !self::required_string($row['created_at']) || !self::required_string($row['updated_at'])) {
+            return self::database_error();
+        }
+        return [
+            'id' => $id,
+            'event_id' => $row_event,
+            'guest_phone' => $stored_phone,
+            'group_id' => $group_id,
+            'assigned_by_user_id' => $actor_id,
+            'created_at' => $row['created_at'],
+            'updated_at' => $row['updated_at'],
+        ];
+    }
+
     private static function normalize_assignment($row, $event_id)
     {
         if (!is_array($row)) return self::database_error();
@@ -1460,6 +1702,10 @@ class PGE_Event_Access_Repository
             $metadata = json_decode($row['metadata'], true);
             if (json_last_error() !== JSON_ERROR_NONE || !is_array($metadata)) return self::database_error();
         }
+        if (strpos($row['action'], 'guest_group_') === 0) {
+            $metadata = self::normalize_guest_audit_metadata($row['action'], $metadata);
+            if ($metadata instanceof WP_Error) return $metadata;
+        }
         return [
             'id' => $id,
             'event_id' => $row_event,
@@ -1470,6 +1716,19 @@ class PGE_Event_Access_Repository
             'metadata' => $metadata,
             'created_at' => $row['created_at'],
         ];
+    }
+
+    private static function normalize_guest_audit_metadata($action, $metadata)
+    {
+        $shapes = [
+            'guest_group_assigned' => ['group_id'],
+            'guest_group_moved' => ['previous_group_id', 'new_group_id'],
+            'guest_group_unassigned' => ['previous_group_id'],
+        ];
+        $keys = $shapes[$action] ?? null;
+        if ($keys === null || !is_array($metadata) || array_keys($metadata) !== $keys) return self::database_error();
+        foreach ($keys as $key) if (!self::valid_id($metadata[$key])) return self::database_error();
+        return $metadata;
     }
 
     private static function normalize_scoped_ids(array $rows, $event_id, $field)
@@ -1528,6 +1787,23 @@ class PGE_Event_Access_Repository
     {
         if (!($error instanceof WP_Error)) return self::database_error();
         return $error->get_error_code() === 'cross_event' ? self::database_error() : $error;
+    }
+
+    private static function require_current_guest($event_id, $phone)
+    {
+        if (!function_exists('pge_event_guests_resolve_current_by_phone')) return self::database_error();
+        try {
+            $result = pge_event_guests_resolve_current_by_phone($event_id, $phone);
+        } catch (Throwable $e) {
+            return self::database_error();
+        }
+        if (!is_array($result) || array_keys($result) !== ['status'] || !is_string($result['status'])) {
+            return self::database_error();
+        }
+        if ($result['status'] === 'found') return true;
+        if ($result['status'] === 'not_found') return self::not_found();
+        if ($result['status'] === 'ambiguous') return self::ambiguous_guest();
+        return self::database_error();
     }
 
     private static function require_user($user_id)
@@ -1598,6 +1874,11 @@ class PGE_Event_Access_Repository
     private static function concurrent_update()
     {
         return new WP_Error('concurrent_update', 'The event access record changed during the operation.');
+    }
+
+    private static function ambiguous_guest()
+    {
+        return new WP_Error('ambiguous_guest', 'The invited guest identity is ambiguous.');
     }
 
     private static function invalid_filter()

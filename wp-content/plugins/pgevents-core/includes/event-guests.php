@@ -8,6 +8,51 @@ if (!function_exists('pge_event_guests_norm_phone')) {
     }
 }
 
+if (!function_exists('pge_event_guests_resolve_current_by_phone')) {
+    /**
+     * Resolve one current invited-guest identity without exposing guest data.
+     *
+     * This intentionally inspects the raw guest records. The normal map cannot
+     * prove uniqueness because canonical phone keys collapse duplicates.
+     */
+    function pge_event_guests_resolve_current_by_phone($event_id, $guest_phone)
+    {
+        if (!is_int($event_id) || $event_id <= 0 || !is_string($guest_phone)) {
+            return ['status' => 'storage_error'];
+        }
+
+        $canonical = pge_event_guests_norm_phone($guest_phone);
+        if (!is_string($canonical) || $canonical === '') {
+            return ['status' => 'storage_error'];
+        }
+
+        $stored = get_post_meta($event_id, '_pge_invited_guests', true);
+        if ($stored === '' || $stored === null || $stored === false || $stored === []) {
+            return ['status' => 'not_found'];
+        }
+        if (!is_array($stored)) {
+            return ['status' => 'storage_error'];
+        }
+
+        $matches = 0;
+        foreach ($stored as $guest) {
+            if (!is_array($guest) || !array_key_exists('phone', $guest) || !is_string($guest['phone'])) {
+                return ['status' => 'storage_error'];
+            }
+            $phone = pge_event_guests_norm_phone($guest['phone']);
+            if (!is_string($phone) || $phone === '') {
+                return ['status' => 'storage_error'];
+            }
+            if ($phone === $canonical) {
+                $matches++;
+                if ($matches > 1) return ['status' => 'ambiguous'];
+            }
+        }
+
+        return ['status' => $matches === 1 ? 'found' : 'not_found'];
+    }
+}
+
 if (!function_exists('pge_event_guests_user_can_manage')) {
     function pge_event_guests_user_can_manage($event_id)
     {
