@@ -15,6 +15,7 @@ class PGE_Event_Access_Repository
     const DEFAULT_PER_PAGE = 20;
     const MAX_PER_PAGE = 100;
     const MAX_PHONE_BATCH = 200;
+    const MAX_GROUP_BATCH = 200;
 
     const GROUP_STATUSES = ['active', 'archived'];
     const MEMBERSHIP_STATUSES = ['active', 'revoked'];
@@ -805,6 +806,53 @@ class PGE_Event_Access_Repository
             "$assignments a LEFT JOIN $groups g ON g.id = a.group_id",
             'a.event_id = %d AND a.group_id = %d',
             [$event_id, $group_id],
+            'ORDER BY a.id ASC',
+            $pagination,
+            function ($row) use ($event_id) { return self::normalize_assignment($row, $event_id); },
+            'a.*, g.event_id AS related_event_id'
+        );
+    }
+
+    /**
+     * Read-only, multi-group counterpart to list_group_assignments().
+     *
+     * Added for Phase H1C-A2 (H1B Authorization Core) so a collaborator's
+     * scoped guest read can be answered with one bounded, indexed query
+     * instead of either an N+1 loop over list_group_assignments() per
+     * granted group or a "load every guest then filter in PHP" pattern.
+     * Strictly read-only: no actor, no WP session/capability/nonce logic,
+     * no schema change. $group_ids must already be resolved and trusted by
+     * the caller (e.g. an actor's granted_group_ids) — a group id that does
+     * not belong to $event_id simply matches zero rows here, it is not an
+     * error, since a.event_id = %d already scopes every candidate row to
+     * this event before the IN(...) filter is applied.
+     */
+    public static function list_group_assignments_for_groups($event_id, array $group_ids, $page = 1, $per_page = self::DEFAULT_PER_PAGE)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::is_list($group_ids) || $group_ids === [] || count($group_ids) > self::MAX_GROUP_BATCH) {
+            return self::invalid_input();
+        }
+        $ids = [];
+        $seen = [];
+        foreach ($group_ids as $group_id) {
+            if (!self::valid_id($group_id)) return self::invalid_input();
+            if (isset($seen[$group_id])) continue;
+            $seen[$group_id] = true;
+            $ids[] = $group_id;
+        }
+        $pagination = self::validate_pagination($page, $per_page);
+        if ($pagination instanceof WP_Error) return $pagination;
+
+        $assignments = self::table('assignments');
+        $groups = self::table('groups');
+        if ($assignments instanceof WP_Error || $groups instanceof WP_Error) return self::database_error();
+        $placeholders = implode(', ', array_fill(0, count($ids), '%d'));
+        return self::paginate(
+            "$assignments a LEFT JOIN $groups g ON g.id = a.group_id",
+            "a.event_id = %d AND a.group_id IN ($placeholders)",
+            array_merge([$event_id], $ids),
             'ORDER BY a.id ASC',
             $pagination,
             function ($row) use ($event_id) { return self::normalize_assignment($row, $event_id); },

@@ -259,6 +259,12 @@ require_once PGE_PATH . 'includes/supervisor-login-ajax.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-management-schema.php';
 require_once PGE_PATH . 'includes/class-pge-event-access-schema.php';
 require_once PGE_PATH . 'includes/class-pge-event-access-repository.php';
+// Phase H1C-A2 (H1B Authorization Core) — طبقة قرار صلاحيات/نطاق مستقلة فوق Repository أعلاه مباشرة (Repository = تخزين/ثوابت،
+// Authorization = من يملك صلاحية فعل ماذا). قراءة فقط تجاه Repository (بلا كتابة/schema جديدة)، بلا
+// current_user_can/get_current_user_id/nonce/session، بلا أي معرفة
+// بـEntry Supervisor. لا UI، لا AJAX، لا REST هنا — لا معالج إنتاجي حالي
+// يستدعي هذه الطبقة بعد، الربط بمسارات الإنتاج قرار مرحلة لاحقة منفصلة.
+require_once PGE_PATH . 'includes/class-pge-event-access-authorization.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-management-audit.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-repository.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-service.php';
