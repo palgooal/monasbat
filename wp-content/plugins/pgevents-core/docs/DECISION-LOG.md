@@ -326,3 +326,48 @@ Phase 3)؛ Public API/كود Resolver لا يتغيران بين Phase 3 وPhase
 ```
 
 ---
+
+```
+Decision ID: DEC-004
+Date: 2026-08-15
+Title: H1C-W1 Guest Read Architecture — قبول مؤقت + Technical Debt (H1C-GR1)
+Reason: مراجعة Phase H1C-W1D أثبتت من الكود الفعلي أن قراءة الضيوف للمتعاونين
+(PGE_Event_Access_Application_Service::list_for_collaborator()) تحسم الـScope
+بالكامل عبر H1B (Authorization/Result/Projection scoping = YES) قبل أي لمس
+لـPost Meta، لكن pge_event_guests_get_map($event_id) — الدالة الوحيدة المتاحة
+لقراءة تفاصيل الضيوف — تُحمِّل حتماً كامل الـblob المُسلسَل لـ_pge_invited_guests
+في ذاكرة PHP دفعة واحدة، إذ لا يوجد بديل أضيق في الكود القائم (Storage/PII
+scoping = NO). هذا ليس ثغرة تفويض ولا تسريب بيانات للعميل (لا شيء يتجاوز
+الاستخراج المصرَّح به يصل لأي Response) — التوصيف الدقيق: server-side
+over-fetch / defense-in-depth weakness / architectural limitation. نظراً لضيق
+أثر المشكلة (مسار قراءة واحد فقط في W1) مقابل حجم أي إعادة تصميم لتخزين الضيوف
+(consumer inventory: عشرات نقاط القراءة/الكتابة عبر Invitation/Messaging/
+Check-in/Thank-You)، اعتُمد قبول H1C-W1 مؤقتاً كما هو معماريًا دون حجب
+الـCommit، مع تسجيل الفجوة كـTechnical Debt رسمي بدلاً من تجاهلها أو المبالغة
+في تصنيفها.
+Approved By: Project Owner
+Affected Documents: includes/class-pge-event-access-application-service.php
+Status: Approved
+
+== الصياغة المعتمدة لوصف السلوك الحالي (لا غيرها) ==
+
+مسموح: "scope-before-load with scoped projection over a full serialized guest
+blob" — أي: الـScope يُحسَم أولاً على طبقة H1B العلائقية، ثم يُحمَّل كامل
+الـblob حتماً، ثم تُستخرَج فقط الهواتف المصرَّح بها مسبقاً، ثم يُعاد فقط ما مر
+عبر project_guest_fields() بالإسقاط الصحيح للدور.
+
+ممنوع: "only authorized guest PII is loaded" أو "out-of-scope guest PII is
+never loaded" أو أي صياغة مكافئة توحي بأن التحميل نفسه (لا الإرجاع) كان محدوداً
+بالـScope.
+
+== Technical Debt المسجَّل ==
+
+Phase H1C-GR1 — Relational Guest Read Projection (لم تبدأ، لا Schema/Migration
+حتى الآن): إضافة طبقة قراءة علائقية مُشتقّة (derived/rebuildable) لتفاصيل
+الضيوف، تُزامَن عبر نقطة الكتابة الموحّدة الموجودة أصلاً
+pge_event_guests_save_map()، بينما يبقى _pge_invited_guests (Post Meta) هو
+مصدر الحقيقة (Source-of-Truth Model 1). لا ترحيل كامل عن Post Meta (تم استبعاد
+هذا الخيار صراحة لعدم تناسبه مع حجم المشكلة الفعلي في هذه المرحلة).
+```
+
+---

@@ -262,9 +262,18 @@ require_once PGE_PATH . 'includes/class-pge-event-access-repository.php';
 // Phase H1C-A2 (H1B Authorization Core) — طبقة قرار صلاحيات/نطاق مستقلة فوق Repository أعلاه مباشرة (Repository = تخزين/ثوابت،
 // Authorization = من يملك صلاحية فعل ماذا). قراءة فقط تجاه Repository (بلا كتابة/schema جديدة)، بلا
 // current_user_can/get_current_user_id/nonce/session، بلا أي معرفة
-// بـEntry Supervisor. لا UI، لا AJAX، لا REST هنا — لا معالج إنتاجي حالي
-// يستدعي هذه الطبقة بعد، الربط بمسارات الإنتاج قرار مرحلة لاحقة منفصلة.
+// بـEntry Supervisor. لا UI، لا AJAX، لا REST داخل هذه الطبقة نفسها — يتم
+// استهلاكها الآن فعليًا لأول مرة عبر H1C-W1 (Application Service + AJAX
+// read-only path أدناه)؛ أي ربط إنتاجي إضافي (كتابة/UI/REST) يبقى قرار
+// مرحلة لاحقة منفصلة.
 require_once PGE_PATH . 'includes/class-pge-event-access-authorization.php';
+// Phase H1C-W1 (Collaborator Read-Only Application Wiring) — الأول من نوعه:
+// أول مسار إنتاجي حقيقي فوق طبقة H1B Authorization Core أعلاه. قراءة فقط
+// بالكامل (لا write API من Repository/Authorization يُستدعى هنا). يُحمَّل
+// بعد Repository/Authorization مباشرة وقبل أي شيء آخر، بالترتيب الصحيح
+// (Repository -> Authorization -> Application Service -> AJAX wiring).
+require_once PGE_PATH . 'includes/class-pge-event-access-application-service.php';
+require_once PGE_PATH . 'includes/event-access-ajax.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-management-audit.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-repository.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-service.php';
