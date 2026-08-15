@@ -39,35 +39,49 @@ if (!defined('ABSPATH')) exit;
  * exactly as PGE_Invitation_Repository::list_invitations() already does for
  * the existing Owner UI) and does not change existing guest semantics.
  *
- * Guest storage boundary (Section 9/23 of the H1C-W1 brief — read this
- * before changing the PII-loading order below): guest identity data
- * (name/note/code) lives in a single WordPress Post Meta value per event
- * (`_pge_invited_guests`), not in a queryable table — get_post_meta() always
- * deserializes the entire stored value for that meta key; there is no
- * WordPress or plugin primitive that can fetch a subset of it without first
- * loading the whole blob into PHP memory. pge_event_guests_get_map($event_id)
- * is the one function in this codebase that performs that load (already
- * relied on by PGE_Invitation_Repository and, for a single-phone lookup,
- * PGE_Guest_Resolution_Service::load_guest_meta()) — there is no safer
- * existing alternative to reuse. Given that constraint, this class:
+ * Guest storage boundary — Owner/Admin (unchanged since H1C-W1, unchanged by
+ * GR1): guest identity data (name/note/code) is authoritative in a single
+ * WordPress Post Meta value per event (`_pge_invited_guests`, DEC-004 —
+ * docs/DECISION-LOG.md), and get_post_meta() always deserializes the entire
+ * stored value for that meta key. Owner/Admin genuinely need every guest in
+ * the event, assigned or not, so this path still reads it directly via
+ * pge_event_guests_get_map() — that is a real full-event read, not an
+ * over-fetch, and GR1 deliberately leaves it unchanged (H1C-GR1 brief,
+ * Section 23: "لا تغيّر Owner/Admin في GR1 إلا لسبب مثبت").
+ *
+ * Guest storage boundary — Manager/Viewer (collaborator), changed by Phase
+ * H1C-GR1: this path no longer calls pge_event_guests_get_map() in its
+ * steady-state (H1C-W1D found this to be Storage/PII scoping = NO — the
+ * full per-event blob was loaded into PHP memory before extracting only the
+ * authorized phones). It now resolves guest identity via
+ * PGE_Event_Guest_Read_Projection::get_guests_by_phones() — a real scoped
+ * SQL query (event_id + guest_phone IN (...only the phones already proven
+ * authorized by the H1B scoped assignment read...)) against a derived,
+ * rebuildable, non-authoritative relational projection kept in sync from
+ * the single existing pge_event_guests_save_map() write choke point. See
+ * that class's own docblock for the full sync/freshness/rebuild contract,
+ * and DEC-004 for why Post Meta remains Source of Truth throughout. This
+ * class still:
  *   (a) always resolves H1B scope FIRST (resolve_context() + a real,
  *       DB-paginated, zero-Post-Meta-touch scoped assignment read for
- *       collaborators) and only calls pge_event_guests_get_map() AFTER
- *       scope is known to be non-empty (Section 23 — proven in the test
- *       suite by instrumenting get_post_meta() call order/count);
- *   (b) for a collaborator, only ever extracts the handful of phones
+ *       collaborators) before any guest-identity lookup of any kind;
+ *   (b) for a collaborator, only ever requests the handful of phones
  *       (bounded by $per_page, at most PGE_Event_Access_Repository::
  *       MAX_PER_PAGE = 100) that were already proven authorized by the
- *       scoped assignment read — every other entry in the loaded map is
- *       discarded immediately and never enters any return value;
- *   (c) never calls get_post_meta() at all when a collaborator has zero
+ *       scoped assignment read — no other phone is ever passed to the
+ *       projection lookup, and the underlying SQL query only ever selects
+ *       rows matching those exact phones;
+ *   (c) never touches the guest store at all when a collaborator has zero
  *       granted groups or zero assignments on the requested page (Section
  *       22 — list_scoped_group_assignments() itself already short-circuits
  *       to an empty result without issuing even a group-assignment query in
  *       the zero-grant case).
- * This is a known, documented limitation of the current guest storage
- * design, not a gap introduced by this phase — see the final report's
- * "Known Limits" section for the full statement.
+ * The one exception is recovery: if the projection is not yet built or is
+ * found incomplete for the requested phones, exactly one rebuild-from-Post-
+ * Meta is triggered and the scoped fetch retried once before failing closed
+ * — see scoped_guest_identity_rows() below. That rebuild is architecturally
+ * the same category as the Owner/Admin full-event read above (event-wide,
+ * not actor-scoped), not a per-collaborator-request PII over-fetch.
  */
 final class PGE_Event_Access_Application_Service
 {
@@ -232,21 +246,22 @@ final class PGE_Event_Access_Application_Service
      * assignment table, zero Post Meta access, and a zero-query short
      * circuit when the actor has no granted groups at all).
      *
-     * H1C-W1D finding (Storage/PII scoping = NO — see that report):
-     * pge_event_guests_get_map() below is the only guest-store primitive
-     * available, and it necessarily deserializes the *entire* per-event
-     * _pge_invited_guests blob into PHP memory in one call — there is no
-     * narrower fetch. What IS true, and is what this scoped read actually
-     * guarantees: that full-blob load only happens AFTER the scoped
-     * assignment read above has completed (never before, and never at all
-     * in the zero-grant case), and only the phones already proven
-     * authorized by that scoped read are ever extracted from the loaded
-     * map into a projected item. Every other entry the blob load put into
-     * memory is discarded and never reaches project_guest_fields() or any
-     * return value. This is "scope-before-load with scoped projection over
-     * a full serialized guest blob", not a scoped storage-layer fetch —
-     * documented technical debt, see Phase H1C-GR1 (Relational Guest Read
-     * Projection).
+     * Phase H1C-GR1: guest identity for the authorized phones is now
+     * resolved via PGE_Event_Guest_Read_Projection::get_guests_by_phones() —
+     * a real scoped SQL query (event_id + guest_phone IN (...only the
+     * authorized phones...)) against a derived relational read projection,
+     * NOT pge_event_guests_get_map(). This method never calls
+     * pge_event_guests_get_map() (verified by a dedicated source-level test,
+     * Section 34 of the GR1 brief) in its steady-state path. The one
+     * exception, by design, is recovery: if the projection is not ready or
+     * turns out incomplete for the requested phones, PGE_Event_Guest_Read_
+     * Projection::rebuild_event() is called (which itself reads the full
+     * Post Meta map once, the same event-wide category of read as the
+     * existing Owner/Admin path) and the scoped SQL fetch is retried once;
+     * if it is still incomplete after that, the read fails closed
+     * (REASON_GUEST_DATA_ERROR) — it never silently falls back to loading
+     * pge_event_guests_get_map() and filtering in PHP (Section 16 of the
+     * GR1 brief: that would quietly reintroduce Storage/PII scoping = NO).
      */
     private static function list_for_collaborator($context, $page, $per_page)
     {
@@ -263,29 +278,36 @@ final class PGE_Event_Access_Application_Service
             return self::page_result([], (int) $scoped['page'], (int) $scoped['per_page'], (int) $scoped['total'], (int) $scoped['total_pages']);
         }
 
-        if (!function_exists('pge_event_guests_get_map')
+        if (!class_exists('PGE_Event_Guest_Read_Projection')
             || !function_exists('pge_event_guests_get_row_payload')) {
             return self::guest_data_error();
         }
 
         $event_id = $context->event_id();
-        $map = pge_event_guests_get_map($event_id);
-        if (!is_array($map)) return self::guest_data_error();
-
-        $items = [];
+        $phones = [];
+        $group_by_phone = [];
         foreach ($scoped['items'] as $assignment) {
             if (!is_array($assignment) || !isset($assignment['guest_phone'], $assignment['group_id'])) {
                 return self::guest_data_error();
             }
-            $phone = $assignment['guest_phone'];
-            $guest_record = $map[$phone] ?? null;
+            $phone = (string) $assignment['guest_phone'];
+            $phones[] = $phone;
+            $group_by_phone['phone:' . $phone] = (int) $assignment['group_id'];
+        }
 
-            // Missing or malformed guest record for an assignment the actor
-            // was already proven authorized to see: fail the entire scoped
-            // read closed (Section 13/29) rather than silently drop this
-            // one row, which would otherwise make total/total_pages drift
-            // out of sync with the actually-returned item count without
-            // any signal to the caller.
+        $guest_rows = self::scoped_guest_identity_rows($event_id, $phones);
+        if ($guest_rows instanceof WP_Error) return self::guest_data_error();
+
+        $items = [];
+        foreach ($phones as $phone) {
+            $guest_record = $guest_rows['phone:' . $phone] ?? null;
+
+            // Still missing after the rebuild-and-retry above: the H1B
+            // assignment is authorized, but no matching guest identity
+            // exists (deleted from Post Meta without an assignment cleanup,
+            // or a genuinely corrupted projection). Fail the entire scoped
+            // read closed (Section 13/29 of the H1C-W1 brief, unchanged by
+            // GR1) rather than silently drop this one row.
             if (!is_array($guest_record) || !array_key_exists('phone', $guest_record)) {
                 return self::guest_data_error();
             }
@@ -293,11 +315,92 @@ final class PGE_Event_Access_Application_Service
             $row_payload = pge_event_guests_get_row_payload($event_id, $guest_record);
             $items[] = [
                 'guest' => PGE_Event_Access_Authorization::project_guest_fields($context, $row_payload),
-                'group_id' => (int) $assignment['group_id'],
+                'group_id' => $group_by_phone['phone:' . $phone] ?? null,
             ];
         }
 
         return self::page_result($items, (int) $scoped['page'], (int) $scoped['per_page'], (int) $scoped['total'], (int) $scoped['total_pages']);
+    }
+
+    /**
+     * Scoped guest-identity resolution for a bounded, already-authorized
+     * phone list. Ensures the projection is ready, performs the scoped SQL
+     * fetch, and — if the result is incomplete for the requested phones —
+     * forces a fresh rebuild-from-Post-Meta and retries before failing
+     * closed (Section 16/17/32 of the original GR1 brief: rebuild, retry,
+     * then fail closed — never a silent drop, never a fallback to loading
+     * the full guest map and filtering in PHP).
+     *
+     * Freshness Publication Protocol Redesign: this method no longer calls
+     * PGE_Event_Guest_Read_Projection::is_ready() as a separate pre-check
+     * before every scoped fetch. get_guests_by_phones() already resolves
+     * readiness internally (it never queries a build-in-progress
+     * generation, and returns an empty list — not an error — when nothing
+     * is currently active), so a redundant is_ready() call would only add
+     * a third SQL query to the steady-state collaborator read path for no
+     * additional correctness — the original GR1 performance target is a
+     * bounded, small query count per scoped read. "Not ready" and "ready
+     * but incomplete for the requested phones" are therefore handled
+     * identically here: both surface as a result missing one or more
+     * requested phones, which triggers exactly one rebuild-and-retry, up to
+     * $max_attempts, before failing closed.
+     *
+     * A rebuild_event() failure is not treated as an immediate hard error
+     * either: under the fingerprint-verify protocol, rebuild_event() can
+     * legitimately return false for a reason that is NOT a database
+     * failure — its own publish attempt can lose to a fresher concurrent
+     * write whose content no longer matches what this rebuild fresh-read at
+     * the start (attempt_publish() rejects a stale-on-arrival candidate by
+     * design). That is a benign, self-healing loss, not a fault: the next
+     * attempt's get_guests_by_phones() call simply re-resolves whatever
+     * generation is active by then, which may already be exactly what is
+     * needed. Only the FINAL attempt's failure is treated as unrecoverable.
+     * This bounded retry never weakens the fail-closed guarantee: rows are
+     * still only ever returned once a scoped fetch proves complete for
+     * every requested phone.
+     *
+     * @return array<string,array{phone:string,name:string,note:string,code:string}> phone-prefixed
+     *   lookup ("phone:<phone>" => row), or WP_Error on unrecoverable failure.
+     */
+    private static function scoped_guest_identity_rows($event_id, array $phones)
+    {
+        $max_attempts = 3;
+
+        for ($attempt = 1; $attempt <= $max_attempts; $attempt++) {
+            $rows = PGE_Event_Guest_Read_Projection::get_guests_by_phones($event_id, $phones);
+            if ($rows instanceof WP_Error) return self::guest_data_error();
+            if (!is_array($rows)) return self::guest_data_error();
+
+            $lookup = [];
+            foreach ($rows as $row) {
+                if (!is_array($row) || !isset($row['phone'])) {
+                    return self::guest_data_error();
+                }
+                $lookup['phone:' . $row['phone']] = $row;
+            }
+
+            $complete = true;
+            foreach ($phones as $phone) {
+                if (!isset($lookup['phone:' . $phone])) {
+                    $complete = false;
+                    break;
+                }
+            }
+
+            if ($complete) {
+                return $lookup;
+            }
+
+            // Not ready yet, or ready but incomplete for the requested
+            // phones: force a fresh rebuild from cache-bypassing Post Meta
+            // and retry, unless this was already the final attempt.
+            if (!PGE_Event_Guest_Read_Projection::rebuild_event($event_id) && $attempt === $max_attempts) {
+                return self::guest_data_error();
+            }
+        }
+
+        // Exhausted every attempt: fail closed.
+        return self::guest_data_error();
     }
 
     // ──────────────────────────────────────────────────────────────

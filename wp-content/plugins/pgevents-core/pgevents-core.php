@@ -259,6 +259,16 @@ require_once PGE_PATH . 'includes/supervisor-login-ajax.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-management-schema.php';
 require_once PGE_PATH . 'includes/class-pge-event-access-schema.php';
 require_once PGE_PATH . 'includes/class-pge-event-access-repository.php';
+// Phase H1C-GR1 (Relational Guest Read Projection) — DEC-004 (docs/DECISION-
+// LOG.md): طبقة قراءة علائقية مشتقّة/قابلة لإعادة البناء/غير سلطوية لهوية
+// الضيوف (phone/name/note/code فقط)، تُزامَن من نقطة الكتابة الوحيدة الموجودة
+// أصلاً pge_event_guests_save_map() (includes/event-guests.php، يُحمَّل لاحقاً
+// أدناه). Post Meta (_pge_invited_guests) يبقى Source of Truth بلا تغيير —
+// هذا الجدولان مجرد cache قابل للحذف والبناء من جديد في أي وقت. يُحمَّل هنا
+// (قبل Authorization/Application Service) لأن مسار Manager/Viewer في
+// Application Service يستهلكه مباشرة.
+require_once PGE_PATH . 'includes/class-pge-event-guest-read-projection-schema.php';
+require_once PGE_PATH . 'includes/class-pge-event-guest-read-projection.php';
 // Phase H1C-A2 (H1B Authorization Core) — طبقة قرار صلاحيات/نطاق مستقلة فوق Repository أعلاه مباشرة (Repository = تخزين/ثوابت،
 // Authorization = من يملك صلاحية فعل ماذا). قراءة فقط تجاه Repository (بلا كتابة/schema جديدة)، بلا
 // current_user_can/get_current_user_id/nonce/session، بلا أي معرفة

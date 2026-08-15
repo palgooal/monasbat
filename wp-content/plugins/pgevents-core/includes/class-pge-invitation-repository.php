@@ -600,7 +600,18 @@ class PGE_Invitation_Repository
         // Same-phone edits are metadata-only and must not start a lifecycle.
         if ($old_normalized === $new_normalized) {
             $guests_map[$old_normalized] = $updated_guest;
-            pge_event_guests_save_map($event_id, $guests_map);
+            $saved_same_phone = pge_event_guests_save_map($event_id, $guests_map);
+            // Strict Pre-Write Invalidation Contract Fix Pass — save_map()
+            // now returns null when the authoritative write was aborted
+            // BEFORE Post Meta was touched (lock unavailable, or pre-write
+            // invalidation could not be confirmed). Nothing was written in
+            // that case — no rollback is needed (this is the FIRST write in
+            // this branch; no prior side effect exists to undo) — but this
+            // caller must not report success for a write that never
+            // happened. Generic, PII-free reason code only.
+            if (!is_array($saved_same_phone)) {
+                return ['result' => 'error', 'reason' => 'guest_write_unavailable'];
+            }
 
             $status_map = self::get_status_map($event_id);
             $entry = $status_map[$old_normalized] ?? [
@@ -829,10 +840,33 @@ class PGE_Invitation_Repository
         $entry = $status_map[$normalized_phone] ?? [];
 
         unset($guests_map[$normalized_phone]);
+        $saved_after_delete = pge_event_guests_save_map($event_id, $guests_map);
+        // Strict Pre-Write Invalidation Contract Fix Pass — save_map() can
+        // now abort BEFORE Post Meta is touched (lock unavailable, or
+        // pre-write invalidation unconfirmed), returning null. This caller
+        // previously ignored the return value entirely and always reported
+        // 'deleted' — now checked explicitly so a caller can never be told
+        // a delete happened when Post Meta was never touched.
+        //
+        // Ordering note: pge_event_guests_remove_phone_refs() (legacy
+        // `_pge_rsvp_map`/`_pge_checkins` cleanup) is now called ONLY after
+        // a CONFIRMED successful guest-map write, not before it as in prior
+        // passes. It previously ran unconditionally before save_map() — safe
+        // only because save_map() previously always succeeded. Now that a
+        // pre-write abort is possible, running it first would have left
+        // those legacy refs cleared while the guest itself was never
+        // actually removed from `_pge_invited_guests` — a genuinely new,
+        // narrow inconsistency window this reordering closes. This is a
+        // minimal, targeted reordering, not a broader refactor of delete()'s
+        // no-compensation-by-design semantics (see the Hard Delete Semantics
+        // docblock above) — RSVP itself is still deliberately untouched by
+        // delete(), unchanged from before.
+        if (!is_array($saved_after_delete)) {
+            return ['result' => 'error', 'reason' => 'guest_write_unavailable'];
+        }
         if (function_exists('pge_event_guests_remove_phone_refs')) {
             pge_event_guests_remove_phone_refs($event_id, $normalized_phone);
         }
-        pge_event_guests_save_map($event_id, $guests_map);
 
         $now = current_time('mysql', true);
         $entry['status'] = self::STATUS_DELETED;

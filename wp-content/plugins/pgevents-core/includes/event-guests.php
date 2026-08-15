@@ -70,15 +70,27 @@ if (!function_exists('pge_event_guests_user_can_manage')) {
     }
 }
 
-if (!function_exists('pge_event_guests_parse_phones_meta')) {
-    function pge_event_guests_parse_phones_meta($event_id)
+if (!function_exists('pge_event_guests_normalize_phones_value')) {
+    /**
+     * Concurrency Correctness Fix Pass — Fresh-Read Audit.
+     *
+     * Shared canonicalization for `_pge_invited_phones`' legacy value shape
+     * (either an array of phone strings, or a newline-delimited string).
+     * Extracted so pge_event_guests_parse_phones_meta() (cached,
+     * get_post_meta()-backed) and pge_event_guests_parse_phones_meta_fresh()
+     * (cache-bypassing, raw $wpdb query) always produce byte-identical
+     * output for byte-identical underlying stored content — the two must
+     * never diverge, or a freshness-fingerprint comparison built from one
+     * could never match one built from the other.
+     *
+     * @return array<int,string> de-duplicated, normalized phone list.
+     */
+    function pge_event_guests_normalize_phones_value($value)
     {
-        $raw = get_post_meta($event_id, '_pge_invited_phones', true);
-
-        if (is_array($raw)) {
-            $phones = $raw;
+        if (is_array($value)) {
+            $phones = $value;
         } else {
-            $raw = (string) $raw;
+            $raw = (string) $value;
             $raw = str_replace(["\r\n", "\r"], "\n", $raw);
             $phones = array_filter(array_map('trim', explode("\n", $raw)));
         }
@@ -93,11 +105,84 @@ if (!function_exists('pge_event_guests_parse_phones_meta')) {
     }
 }
 
-if (!function_exists('pge_event_guests_get_map')) {
-    function pge_event_guests_get_map($event_id)
+if (!function_exists('pge_event_guests_parse_phones_meta')) {
+    function pge_event_guests_parse_phones_meta($event_id)
+    {
+        $raw = get_post_meta($event_id, '_pge_invited_phones', true);
+
+        return pge_event_guests_normalize_phones_value($raw);
+    }
+}
+
+if (!function_exists('pge_event_guests_parse_phones_meta_fresh')) {
+    /**
+     * Concurrency Correctness Fix Pass — Fresh-Read Audit.
+     *
+     * Cache-bypassing counterpart to pge_event_guests_parse_phones_meta():
+     * queries wp_postmeta directly for `_pge_invited_phones`, mirroring
+     * pge_event_guests_get_map_fresh()'s raw-query pattern for
+     * `_pge_invited_guests`, so this function's output can never come from
+     * a same-process WP object cache echo. Used exclusively by
+     * pge_event_guests_get_map_fresh() to thread a genuinely fresh
+     * legacy-phones value through to
+     * pge_event_guests_normalize_stored_map()'s optional third parameter,
+     * closing the gap where the fresh reader's empty/legacy fallback could
+     * otherwise silently reach the cached get_post_meta() read instead.
+     *
+     * @return array|null null only on a genuine query error; an array
+     *   (possibly empty) otherwise — including when no meta row exists yet.
+     */
+    function pge_event_guests_parse_phones_meta_fresh($event_id)
     {
         $event_id = (int) $event_id;
-        $stored = get_post_meta($event_id, '_pge_invited_guests', true);
+        if ($event_id <= 0) {
+            return null;
+        }
+
+        global $wpdb;
+        $wpdb->last_error = '';
+        $raw = $wpdb->get_var($wpdb->prepare(
+            "SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s ORDER BY meta_id ASC LIMIT 1",
+            $event_id,
+            '_pge_invited_phones'
+        ));
+
+        if ($raw === null) {
+            if ($wpdb->last_error !== '') {
+                return null;
+            }
+            return [];
+        }
+
+        return pge_event_guests_normalize_phones_value(maybe_unserialize($raw));
+    }
+}
+
+if (!function_exists('pge_event_guests_normalize_stored_map')) {
+    /**
+     * Phase H1C-GR1 — Freshness Publication Protocol Redesign.
+     *
+     * Shared canonicalization: turns whatever `_pge_invited_guests` holds
+     * (or, when empty, the legacy `_pge_invited_phones` fallback) into the
+     * exact same phone-keyed map shape, regardless of whether the caller is
+     * the normal (WP-object-cache-backed) reader below or the
+     * cache-bypassing fresh reader. Both MUST produce identical output for
+     * identical stored content — PGE_Event_Guest_Read_Projection's content
+     * fingerprint comparison is only meaningful if they do.
+     *
+     * Concurrency Correctness Fix Pass — Fresh-Read Audit: $legacy_phones
+     * is an OPTIONAL third parameter. When omitted (null, the default),
+     * behavior is fully unchanged — the empty-map fallback below calls the
+     * ordinary, WP-object-cache-backed pge_event_guests_parse_phones_meta().
+     * When explicitly passed an array (including an empty one), that array
+     * is used directly instead — this is how pge_event_guests_get_map_fresh()
+     * threads a genuinely cache-bypassing legacy-phones read through, so
+     * that ALL data entering a freshness comparison comes from a
+     * cache-bypassing read, not just the primary `_pge_invited_guests` key.
+     */
+    function pge_event_guests_normalize_stored_map($event_id, $stored, $legacy_phones = null)
+    {
+        $event_id = (int) $event_id;
         $map = [];
 
         if (is_array($stored)) {
@@ -127,7 +212,9 @@ if (!function_exists('pge_event_guests_get_map')) {
         }
 
         if (empty($map)) {
-            $legacy_phones = pge_event_guests_parse_phones_meta($event_id);
+            $legacy_phones = is_array($legacy_phones)
+                ? $legacy_phones
+                : pge_event_guests_parse_phones_meta($event_id);
             foreach ($legacy_phones as $phone) {
                 $map[$phone] = [
                     'phone' => $phone,
@@ -139,6 +226,93 @@ if (!function_exists('pge_event_guests_get_map')) {
         }
 
         return $map;
+    }
+}
+
+if (!function_exists('pge_event_guests_get_map')) {
+    function pge_event_guests_get_map($event_id)
+    {
+        $event_id = (int) $event_id;
+        $stored = get_post_meta($event_id, '_pge_invited_guests', true);
+        return pge_event_guests_normalize_stored_map($event_id, $stored);
+    }
+}
+
+if (!function_exists('pge_event_guests_get_map_fresh')) {
+    /**
+     * Phase H1C-GR1 — Freshness Publication Protocol Redesign.
+     *
+     * A cache-BYPASSING read of `_pge_invited_guests`: queries wp_postmeta
+     * directly instead of going through get_post_meta(), because WordPress's
+     * per-request object cache would otherwise return whatever THIS process
+     * itself last wrote for this key (update_meta_cache()'s
+     * eager-fetch-on-first-touch behavior populates the cache from the DB
+     * only once per request and is never invalidated mid-request by another
+     * process's write) rather than re-querying the database — meaning it
+     * could never observe a concurrent OTHER process's more recent write.
+     * This function exists specifically so
+     * PGE_Event_Guest_Read_Projection::attempt_publish()/rebuild_event() can
+     * verify/rebuild against what is ACTUALLY currently stored, not against
+     * a same-process cache echo.
+     *
+     * ORDER BY meta_id ASC LIMIT 1 deliberately matches get_post_meta()'s
+     * own "first row wins" semantics for a (rare, not expected under the
+     * single-choke-point contract) multi-row same-key case, so this
+     * function's output can never diverge from what get_post_meta() would
+     * eventually return once its cache is (re)populated from the DB.
+     *
+     * Deliberately used ONLY on the write/rebuild path (never from the
+     * steady-state collaborator scoped-read path) — see
+     * PGE_Event_Guest_Read_Projection's class docblock.
+     *
+     * Concurrency Correctness Fix Pass — Fresh-Read Audit: this function
+     * ALSO fetches `_pge_invited_phones` via a fresh, cache-bypassing query
+     * (pge_event_guests_parse_phones_meta_fresh()) and threads it through
+     * to pge_event_guests_normalize_stored_map()'s optional third
+     * parameter. Without this, the empty/legacy fallback INSIDE the
+     * normalizer would silently reach `_pge_invited_phones` via the
+     * ordinary, WP-object-cache-backed get_post_meta() even when called
+     * from here — undermining this function's cache-bypassing contract for
+     * any event still relying on the legacy phones-only storage shape. A
+     * genuine query error reading the legacy key is propagated as an
+     * overall fresh-read failure (null), the same as a genuine error
+     * reading the primary key.
+     *
+     * @return array|null null only on a genuine query error; an array
+     *   (possibly empty) otherwise — including when no meta row exists yet.
+     */
+    function pge_event_guests_get_map_fresh($event_id)
+    {
+        $event_id = (int) $event_id;
+        if ($event_id <= 0) {
+            return null;
+        }
+
+        global $wpdb;
+        $wpdb->last_error = '';
+        $raw = $wpdb->get_var($wpdb->prepare(
+            "SELECT meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s ORDER BY meta_id ASC LIMIT 1",
+            $event_id,
+            '_pge_invited_guests'
+        ));
+
+        if ($raw === null && $wpdb->last_error !== '') {
+            return null;
+        }
+
+        $legacy_fresh = pge_event_guests_parse_phones_meta_fresh($event_id);
+        if ($legacy_fresh === null) {
+            // Genuine query error reading the legacy fallback key: this is
+            // a fresh-read failure, not "no legacy phones" — must not
+            // silently degrade to a cached read.
+            return null;
+        }
+
+        // $raw === null with no error means "no row at all" — identical
+        // meaning to get_post_meta()'s '' — canonicalize the same way.
+        $stored = ($raw === null) ? null : maybe_unserialize($raw);
+
+        return pge_event_guests_normalize_stored_map($event_id, $stored, $legacy_fresh);
     }
 }
 
@@ -172,8 +346,199 @@ if (!function_exists('pge_event_guests_save_map')) {
             ];
         }
 
-        update_post_meta($event_id, '_pge_invited_guests', $clean);
-        update_post_meta($event_id, '_pge_invited_phones', array_keys($clean));
+        // Strict Pre-Write Invalidation Contract Fix Pass (this pass) — see
+        // the class docblock in class-pge-event-guest-read-projection.php
+        // ("STRICT PRE-WRITE INVALIDATION CONTRACT FIX PASS") for the full
+        // analysis. Prior passes closed the reader-vs-writer race by making
+        // the authoritative write ALWAYS proceed and racing a best-effort
+        // invalidation/self-heal against it — leaving one honestly-disclosed
+        // residual corner case where a sustained invalidation failure could
+        // still let a lock-free reader briefly observe
+        // `Post Meta = V2 AND Projection = READY(V1)`. This pass eliminates
+        // that window ENTIRELY instead of minimizing it: the authoritative
+        // write below is now GATED on both the per-event lock AND a
+        // CONFIRMED pre-write invalidation. If either cannot be confirmed,
+        // this function ABORTS BEFORE update_post_meta() runs at all —
+        // Post Meta is never touched, and this function returns null
+        // instead of the clean map, so a caller can never observe or report
+        // success for a write that never happened. This changes save_map()'s
+        // return contract for the FIRST time since this class's write path
+        // was introduced: previously always array; now array on success,
+        // null on a pre-write failure (lock unavailable, or pre-write
+        // invalidation could not be confirmed after retries). This is
+        // authorized explicitly for this pass: gating WHEN a write may
+        // *start* is a write-sequencing safety gate, not a change to what
+        // is authoritative — Post Meta remains the sole Source of Truth,
+        // and the derived projection's CONTENT still never gates or
+        // overrides it; only the ORDERING of an individual write attempt is
+        // gated. See the full caller audit in the phase report: every
+        // direct caller was reviewed and only 3 of 7 real call sites needed
+        // any change at all, because two already defensively checked
+        // is_array() on the return value, two are rollback/compensation
+        // calls that already re-verify actual persisted state (not the
+        // return value) as their real postcondition, and 3 (edit()'s
+        // same-phone path, delete(), and the legacy regen-code AJAX
+        // endpoint) previously ignored the return value entirely and were
+        // updated to check it.
+        $has_projection = class_exists('PGE_Event_Guest_Read_Projection');
+
+        if ($has_projection) {
+            if (!PGE_Event_Guest_Read_Projection::acquire_event_lock($event_id)) {
+                // Cannot prove no concurrent writer is mid-publish for this
+                // event — a concurrent writer's OWN update_post_meta() could
+                // land between an unlocked write here and that writer's own
+                // verify/activate sequence. Never write unlocked: abort
+                // before Post Meta is touched at all. No SQL/lock name/DB
+                // error/guest data in the log line.
+                error_log("PGE guest write aborted before authoritative Post Meta write for event_id={$event_id}: per-event lock not acquired");
+                return null;
+            }
+
+            // Pre-write invalidation: revoke READY trust from whatever
+            // generation is currently active BEFORE the authoritative Post
+            // Meta write, so a lock-free reader can never observe
+            // Post Meta=V2 while Projection=READY(V1). Retried a small,
+            // bounded number of times immediately (no backoff — this is a
+            // trivial single-row UPDATE, not a resource worth waiting on),
+            // because a single transient failure must not abort a write
+            // that could otherwise safely proceed.
+            $invalidated = false;
+            for ($pge_grp_invalidate_attempt = 0; $pge_grp_invalidate_attempt < 3 && !$invalidated; $pge_grp_invalidate_attempt++) {
+                try {
+                    $invalidated = PGE_Event_Guest_Read_Projection::force_stale_best_effort($event_id);
+                } catch (\Throwable $e) {
+                    // Never allow an exception here to propagate — treated
+                    // exactly like a failed (false) attempt and retried the
+                    // same way. No raw exception text/SQL/guest data logged.
+                    $invalidated = false;
+                }
+            }
+            if (!$invalidated) {
+                // Cannot prove the OLD generation's READY trust was actually
+                // revoked — writing Post Meta now would risk exactly the
+                // forbidden window this whole phase exists to close. Abort
+                // before the write, release the lock we DID acquire above,
+                // and let a later successful save_map() call, or the
+                // Application Service's lazy rebuild_event() path, recover.
+                error_log("PGE guest write aborted before authoritative Post Meta write for event_id={$event_id}: pre-write invalidation could not be confirmed after retries");
+                PGE_Event_Guest_Read_Projection::release_event_lock($event_id);
+                return null;
+            }
+        }
+
+        // From this point on, EITHER the projection class does not exist
+        // (nothing to protect) OR the lock is held AND invalidation is
+        // confirmed — the authoritative write below is now safe to proceed
+        // unconditionally; nothing past this point may abort it.
+        //
+        // Authoritative Write Confirmation & Lock Cleanup Fix Pass (this
+        // pass): everything from the authoritative Post Meta write through
+        // projection synchronization now runs inside a single try/finally
+        // that covers the per-event lock acquired above, so ANY Throwable
+        // occurring anywhere in this section — including one thrown by a
+        // save_post/updated_post_meta hook or plugin callback triggered
+        // BY update_post_meta() itself, not just by sync_event() — still
+        // reaches the finally and releases the lock exactly once. The lock
+        // must never depend on PHP request termination to be freed, and
+        // MariaDB's GET_LOCK is reentrant on the same connection, so a
+        // leaked hold count is unacceptable even if a later acquisition in
+        // the same request appears to succeed.
+        //
+        // This pass also closes the remaining authoritative-write
+        // correctness gap: previously, once update_post_meta() was called,
+        // the function assumed the write succeeded and unconditionally
+        // returned $clean. update_post_meta()'s own boolean return is NOT
+        // a valid success signal here — WordPress returns false when the
+        // requested value is identical to what is already stored, which is
+        // not a failure. Instead, the authoritative postcondition is
+        // verified with a fresh, cache-bypassing read
+        // (pge_event_guests_get_map_fresh(), the SAME infrastructure
+        // PGE_Event_Guest_Read_Projection already uses to verify freshness
+        // before publishing) compared against the exact $clean map that was
+        // requested. That fresh read already incorporates the
+        // `_pge_invited_phones` legacy-fallback compatibility path (via
+        // pge_event_guests_normalize_stored_map()'s shared logic), so a
+        // single comparison against it correctly catches a partial write
+        // across BOTH Post Meta keys — including the one case where
+        // `_pge_invited_phones` alone can influence the canonical result:
+        // $clean is empty and the normalizer would otherwise reconstruct
+        // stale guests from a not-yet-updated legacy phones value. No
+        // second source of truth is introduced — Post Meta remains sole
+        // authority; this only confirms what was actually persisted before
+        // trusting it.
+        if ($has_projection) {
+            $authoritative_confirmed = false;
+            try {
+                update_post_meta($event_id, '_pge_invited_guests', $clean);
+                update_post_meta($event_id, '_pge_invited_phones', array_keys($clean));
+
+                $fresh_after_write = pge_event_guests_get_map_fresh($event_id);
+                $authoritative_confirmed = is_array($fresh_after_write);
+                if ($authoritative_confirmed) {
+                    $expected = $clean;
+                    $actual = $fresh_after_write;
+                    ksort($expected);
+                    ksort($actual);
+                    $authoritative_confirmed = ($expected === $actual);
+                }
+
+                if (!$authoritative_confirmed) {
+                    // Cannot prove the requested map is actually what is
+                    // now canonically stored — never report success for an
+                    // unconfirmed authoritative write. The pre-write
+                    // invalidation above already revoked the OLD
+                    // generation's READY trust, so nothing here may leave
+                    // it (or a false new one) trusted as current. No
+                    // SQL/lock name/DB error/guest data logged.
+                    error_log("PGE guest write could not be confirmed as authoritative for event_id={$event_id}: post-write verification mismatch");
+                    PGE_Event_Guest_Read_Projection::force_stale_best_effort($event_id);
+                    return null;
+                }
+
+                // Phase H1C-GR1 (DEC-004) — this function is the single,
+                // verified choke point for every guest-identity write in
+                // this codebase (no other call site writes
+                // `_pge_invited_guests` directly). Synchronize the derived,
+                // non-authoritative relational read projection from the
+                // exact map that was just CONFIRMED persisted above as
+                // Source of Truth. The authoritative write is confirmed by
+                // this point regardless of what happens below — a
+                // projection sync/build failure here is a POST-write,
+                // DERIVED-layer failure, categorically distinct from the
+                // pre-write and write-confirmation failures above: it must
+                // NEVER be reported to the caller as if the authoritative
+                // write itself failed. $clean is passed directly (not
+                // re-read from Post Meta) so the projection reflects
+                // precisely what this call just confirmed it wrote.
+                PGE_Event_Guest_Read_Projection::sync_event($event_id, $clean);
+            } catch (\Throwable $e) {
+                // Freshness Hardening Fix Pass: never log the raw exception
+                // message, SQL text, or any guest field — a fixed, minimal
+                // message only.
+                error_log("PGE guest read projection synchronization failed for event_id={$event_id}");
+                try {
+                    PGE_Event_Guest_Read_Projection::force_stale_best_effort($event_id);
+                } catch (\Throwable $e2) {
+                    // Never allow a secondary failure here to escape either.
+                }
+                if (!$authoritative_confirmed) {
+                    // The Throwable happened before (or during) confirming
+                    // the authoritative write itself — this is NOT a
+                    // post-write, derived-layer failure, and must not be
+                    // reported as success.
+                    return null;
+                }
+                // else: the Throwable happened during sync_event() AFTER
+                // the authoritative write was already confirmed — fall
+                // through to the normal success return below, unchanged
+                // from the prior pass's accepted behavior.
+            } finally {
+                PGE_Event_Guest_Read_Projection::release_event_lock($event_id);
+            }
+        } else {
+            update_post_meta($event_id, '_pge_invited_guests', $clean);
+            update_post_meta($event_id, '_pge_invited_phones', array_keys($clean));
+        }
 
         return $clean;
     }
@@ -524,7 +889,16 @@ add_action('wp_ajax_pge_event_guest_regen_code', function () {
           . strtoupper(substr(str_replace(['+','/','='],'',base64_encode(random_bytes(6))), 0, 4));
 
     $guests_map[$phone]['code'] = $new_code;
-    pge_event_guests_save_map($event_id, $guests_map);
+    $saved_regen = pge_event_guests_save_map($event_id, $guests_map);
+    // Strict Pre-Write Invalidation Contract Fix Pass — this legacy direct
+    // caller previously ignored the return value entirely and always sent
+    // wp_send_json_success(), even if the write never happened. save_map()
+    // can now return null when the write was aborted BEFORE Post Meta was
+    // touched — checked explicitly so this endpoint never reports success
+    // for a write that never occurred. Generic, PII-free message only.
+    if (!is_array($saved_regen)) {
+        wp_send_json_error('تعذّر تنفيذ العملية، يرجى المحاولة مجدداً');
+    }
 
     wp_send_json_success([
         'message' => 'تم توليد رمز جديد',

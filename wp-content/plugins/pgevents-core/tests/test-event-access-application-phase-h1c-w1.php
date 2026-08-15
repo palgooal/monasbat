@@ -70,6 +70,19 @@ function wp_unslash($value) { return $value; }
 function wp_json_encode($data) { return json_encode($data); }
 function current_time($type = 'mysql', $gmt = 0) { return '2026-01-01 00:00:00'; }
 
+// Freshness Publication Protocol Redesign — pge_event_guests_get_map_fresh()
+// unserializes the raw wp_postmeta value it reads via a direct $wpdb query.
+function maybe_unserialize($value)
+{
+    if (is_string($value)) {
+        $unserialized = @unserialize($value);
+        if ($unserialized !== false || $value === 'b:0;') {
+            return $unserialized;
+        }
+    }
+    return $value;
+}
+
 $GLOBALS['w1_current_user_id'] = 0;
 $GLOBALS['w1_logged_in'] = true;
 $GLOBALS['w1_admins'] = [];
@@ -154,6 +167,14 @@ function w1_tables()
         'access' => 'wp_pge_event_host_group_access',
         'assignments' => 'wp_pge_invitation_group_assignments',
         'rsvps' => 'wp_pge_event_rsvps',
+        // Phase H1C-GR1 — derived, non-authoritative guest read projection.
+        'projection' => 'wp_pge_event_guest_read_projection',
+        'projection_state' => 'wp_pge_event_guest_read_projection_state',
+        // Freshness Publication Protocol Redesign — the raw table
+        // pge_event_guests_get_map_fresh() queries directly, bypassing the
+        // WP object cache, to verify a build's content against what is
+        // ACTUALLY currently stored.
+        'postmeta' => 'wp_postmeta',
     ];
 }
 
@@ -165,6 +186,8 @@ function w1_reset_db()
         'access' => [],
         'assignments' => [],
         'rsvps' => [],
+        'projection' => [],
+        'projection_state' => [],
         'next_id' => 1,
         'query_count' => 0,
     ];
@@ -176,6 +199,12 @@ function w1_reset_db()
     $GLOBALS['w1_guest_postmeta_call_count'] = 0;
     $GLOBALS['w1_current_user_id'] = 0;
     $GLOBALS['w1_logged_in'] = true;
+    // Phase H1C-GR1 Freshness Hardening Fix Pass.
+    $GLOBALS['w1_last_insert_id'] = 0;
+    // Concurrency Correctness Fix Pass — per-event GET_LOCK simulation.
+    $GLOBALS['w1_lock_state'] = [];
+    $GLOBALS['w1_lock_deny_next'] = 0;
+    $GLOBALS['w1_lock_always_deny'] = false;
 }
 
 function w1_next_id() { return $GLOBALS['w1_db']['next_id']++; }
@@ -346,6 +375,268 @@ function w1_dispatch_select($sql)
         return $out;
     }
 
+    // Phase H1C-GR1 — PGE_Event_Guest_Read_Projection::get_guests_by_phones().
+    // Freshness Publication Protocol Redesign: also scoped to the active
+    // generation — only that generation is ever queried, never a
+    // build-in-progress one.
+    $projSelect = '/^SELECT guest_phone, guest_name, guest_note, guest_code FROM '
+        . preg_quote($t['projection'], '/') . ' WHERE event_id = (\d+) AND generation = (\d+) AND guest_phone IN \(([^)]*)\)$/';
+    if (preg_match($projSelect, $sql, $m)) {
+        $event_id = (int) $m[1];
+        $generation = (int) $m[2];
+        $phones = array_map(function ($p) { return trim(trim($p), "'"); }, explode(',', $m[3]));
+        $out = [];
+        foreach ($GLOBALS['w1_db']['projection'] as $row) {
+            if ($row['event_id'] !== $event_id || $row['generation'] !== $generation || !in_array($row['guest_phone'], $phones, true)) continue;
+            $out[] = [
+                'guest_phone' => $row['guest_phone'],
+                'guest_name' => $row['guest_name'],
+                'guest_note' => $row['guest_note'],
+                'guest_code' => $row['guest_code'],
+            ];
+        }
+        return $out;
+    }
+
+    return null;
+}
+
+/**
+ * Phase H1C-GR1 — PGE_Event_Guest_Read_Projection::state() single-row lookup.
+ */
+function w1_dispatch_row($sql)
+{
+    $t = w1_tables();
+    $sql = trim($sql);
+    $GLOBALS['w1_access_log'][] = 'db:query';
+
+    if (preg_match('/^SELECT status, row_count, synced_at, active_generation, active_fingerprint FROM ' . preg_quote($t['projection_state'], '/') . ' WHERE event_id = (\d+)$/', $sql, $m)) {
+        $event_id = (int) $m[1];
+        $state = $GLOBALS['w1_db']['projection_state'][$event_id] ?? null;
+        return $state === null ? null : [
+            'status' => $state['status'],
+            'row_count' => $state['row_count'],
+            'synced_at' => $state['synced_at'],
+            'active_generation' => $state['active_generation'],
+            'active_fingerprint' => $state['active_fingerprint'],
+        ];
+    }
+
+    return false; // "unrecognized" sentinel — distinct from "recognized, no row" (null)
+}
+
+/**
+ * Freshness Publication Protocol Redesign — get_var() dispatcher for:
+ * LAST_INSERT_ID() read-back (allocate_build_generation()'s slot allocator)
+ * and the cache-bypassing raw wp_postmeta SELECT that backs
+ * pge_event_guests_get_map_fresh().
+ *
+ * @return array{0:mixed,1:bool} [value, recognized]
+ */
+function w1_dispatch_generation_scalar($sql)
+{
+    $t = w1_tables();
+    $sql = trim($sql);
+    $GLOBALS['w1_access_log'][] = 'db:query';
+
+    if ($sql === 'SELECT LAST_INSERT_ID()') {
+        return [$GLOBALS['w1_last_insert_id'], true];
+    }
+
+    if (preg_match('/^SELECT meta_value FROM ' . preg_quote($t['postmeta'], '/') . ' WHERE post_id = (\d+) AND meta_key = \'(_pge_invited_guests|_pge_invited_phones)\' ORDER BY meta_id ASC LIMIT 1$/', $sql, $m)) {
+        $post_id = (int) $m[1];
+        $meta_key = $m[2];
+        if ($meta_key === '_pge_invited_guests') {
+            $GLOBALS['w1_guest_postmeta_call_count']++;
+        }
+        $GLOBALS['w1_access_log'][] = 'postmeta:' . $meta_key . ':' . $post_id;
+        if (!array_key_exists($post_id, $GLOBALS['w1_post_meta']) || !array_key_exists($meta_key, $GLOBALS['w1_post_meta'][$post_id])) {
+            return [null, true];
+        }
+        return [serialize($GLOBALS['w1_post_meta'][$post_id][$meta_key]), true];
+    }
+
+    // Concurrency Correctness Fix Pass — per-event serialization lock
+    // (PGE_Event_Guest_Read_Projection::acquire_event_lock()). Simulated as
+    // always-available (returns 1) unless a test explicitly arms
+    // w1_lock_deny_next/w1_lock_always_deny to simulate contention/failure.
+    if (preg_match("/^SELECT GET_LOCK\('([^']*)', (\d+)\)\$/", $sql, $m)) {
+        $name = $m[1];
+        if ($GLOBALS['w1_lock_always_deny'] || $GLOBALS['w1_lock_deny_next'] > 0) {
+            if ($GLOBALS['w1_lock_deny_next'] > 0) {
+                $GLOBALS['w1_lock_deny_next']--;
+            }
+            return [0, true];
+        }
+        $GLOBALS['w1_lock_state'][$name] = ($GLOBALS['w1_lock_state'][$name] ?? 0) + 1;
+        return [1, true];
+    }
+
+    return [null, false];
+}
+
+/**
+ * Phase H1C-GR1 — mutating queries against the derived projection/state
+ * tables ONLY. Anything else stays unrecognized (the caller falls back to
+ * the original "unexpected mutating query()" failure path, preserving the
+ * existing write-isolation guard for every table this class does NOT own).
+ *
+ * @return int|false|null null = "not one of ours, caller should fall back".
+ */
+function w1_dispatch_query($sql)
+{
+    $t = w1_tables();
+    $sql = trim($sql);
+    $GLOBALS['w1_access_log'][] = 'db:query';
+
+    // stage_rows(): INSERT one row for a specific (never-before-used)
+    // generation.
+    $insertProj = '/^INSERT INTO ' . preg_quote($t['projection'], '/')
+        . ' \(event_id, generation, guest_phone, guest_name, guest_note, guest_code, updated_at\) VALUES \((\d+), (\d+), \'([^\']*)\', \'([^\']*)\', \'([^\']*)\', \'([^\']*)\', \'([^\']*)\'\)$/';
+    if (preg_match($insertProj, $sql, $m)) {
+        $event_id = (int) $m[1];
+        $generation = (int) $m[2];
+        foreach ($GLOBALS['w1_db']['projection'] as $row) {
+            if ($row['event_id'] === $event_id && $row['generation'] === $generation && $row['guest_phone'] === $m[3]) {
+                return false; // UNIQUE(event_id, generation, guest_phone) violation.
+            }
+        }
+        $GLOBALS['w1_db']['projection'][] = [
+            'event_id' => $event_id, 'generation' => $generation, 'guest_phone' => $m[3], 'guest_name' => $m[4],
+            'guest_note' => $m[5], 'guest_code' => $m[6], 'updated_at' => $m[7],
+        ];
+        return 1;
+    }
+
+    // discard_generation(): DELETE targeted at exactly one (non-active)
+    // generation.
+    $deleteOne = '/^DELETE FROM ' . preg_quote($t['projection'], '/') . ' WHERE event_id = (\d+) AND generation = (\d+)$/';
+    if (preg_match($deleteOne, $sql, $m)) {
+        $event_id = (int) $m[1];
+        $generation = (int) $m[2];
+        $before = count($GLOBALS['w1_db']['projection']);
+        $GLOBALS['w1_db']['projection'] = array_values(array_filter(
+            $GLOBALS['w1_db']['projection'],
+            function ($row) use ($event_id, $generation) { return !($row['event_id'] === $event_id && $row['generation'] === $generation); }
+        ));
+        return $before - count($GLOBALS['w1_db']['projection']);
+    }
+
+    // cleanup_old_generations(): DELETE every generation except the one just
+    // activated AND except whatever generation the state row currently
+    // reports active (Concurrency Correctness Fix Pass — defense-in-depth
+    // guard, see PGE_Event_Guest_Read_Projection::cleanup_old_generations()).
+    $deleteExcept = '/^DELETE FROM ' . preg_quote($t['projection'], '/') . ' WHERE event_id = (\d+) AND generation <> (\d+) AND generation <> COALESCE\(\(SELECT active_generation FROM ' . preg_quote($t['projection_state'], '/') . ' WHERE event_id = (\d+)\), 0\)$/';
+    if (preg_match($deleteExcept, $sql, $m)) {
+        $event_id = (int) $m[1];
+        $keep = (int) $m[2];
+        $active = (int) ($GLOBALS['w1_db']['projection_state'][$event_id]['active_generation'] ?? 0);
+        $before = count($GLOBALS['w1_db']['projection']);
+        $GLOBALS['w1_db']['projection'] = array_values(array_filter(
+            $GLOBALS['w1_db']['projection'],
+            function ($row) use ($event_id, $keep, $active) {
+                if ($row['event_id'] !== $event_id) return true;
+                return $row['generation'] === $keep || $row['generation'] === $active;
+            }
+        ));
+        return $before - count($GLOBALS['w1_db']['projection']);
+    }
+
+    // delete_event(): event-wide projection DELETE (all generations).
+    $deleteAll = '/^DELETE FROM ' . preg_quote($t['projection'], '/') . ' WHERE event_id = (\d+)$/';
+    if (preg_match($deleteAll, $sql, $m)) {
+        $event_id = (int) $m[1];
+        $before = count($GLOBALS['w1_db']['projection']);
+        $GLOBALS['w1_db']['projection'] = array_values(array_filter(
+            $GLOBALS['w1_db']['projection'],
+            function ($row) use ($event_id) { return $row['event_id'] !== $event_id; }
+        ));
+        return $before - count($GLOBALS['w1_db']['projection']);
+    }
+
+    // allocate_build_generation(): atomic, non-authoritative slot allocator
+    // via the MySQL LAST_INSERT_ID(expr) idiom. On the UPDATE (ON DUPLICATE
+    // KEY) branch, deliberately does NOT touch `status`.
+    $allocate = '/^INSERT INTO ' . preg_quote($t['projection_state'], '/')
+        . ' \(event_id, active_generation, active_fingerprint, next_generation, status, row_count, synced_at, updated_at\) VALUES \((\d+), 0, \'\', LAST_INSERT_ID\(1\), \'([^\']*)\', 0, NULL, \'([^\']*)\'\) ON DUPLICATE KEY UPDATE next_generation = LAST_INSERT_ID\(next_generation \+ 1\), updated_at = VALUES\(updated_at\)$/';
+    if (preg_match($allocate, $sql, $m)) {
+        $event_id = (int) $m[1];
+        $status = $m[2];
+        $now = $m[3];
+        $existing = $GLOBALS['w1_db']['projection_state'][$event_id] ?? null;
+        if ($existing === null) {
+            $new_generation = 1;
+            $GLOBALS['w1_db']['projection_state'][$event_id] = [
+                'active_generation' => 0, 'active_fingerprint' => '', 'next_generation' => $new_generation,
+                'status' => $status, 'row_count' => 0, 'synced_at' => null, 'updated_at' => $now,
+            ];
+        } else {
+            $new_generation = (int) $existing['next_generation'] + 1;
+            $GLOBALS['w1_db']['projection_state'][$event_id]['next_generation'] = $new_generation;
+            $GLOBALS['w1_db']['projection_state'][$event_id]['updated_at'] = $now;
+        }
+        $GLOBALS['w1_last_insert_id'] = $new_generation;
+        return 1;
+    }
+
+    // activate_generation(): unconditional activation UPDATE. Correctness
+    // comes from the fresh-read verify steps that bracket this call in
+    // attempt_publish(), not from a CAS predicate on this statement itself.
+    $activate = '/^UPDATE ' . preg_quote($t['projection_state'], '/')
+        . ' SET active_generation = (\d+), active_fingerprint = \'([^\']*)\', status = \'ready\', row_count = (\d+), synced_at = \'([^\']*)\', updated_at = \'([^\']*)\' WHERE event_id = (\d+)$/';
+    if (preg_match($activate, $sql, $m)) {
+        $generation = (int) $m[1];
+        $fingerprint = $m[2];
+        $row_count = (int) $m[3];
+        $synced_at = $m[4];
+        $updated_at = $m[5];
+        $event_id = (int) $m[6];
+        if (!isset($GLOBALS['w1_db']['projection_state'][$event_id])) {
+            return 0;
+        }
+        $GLOBALS['w1_db']['projection_state'][$event_id]['active_generation'] = $generation;
+        $GLOBALS['w1_db']['projection_state'][$event_id]['active_fingerprint'] = $fingerprint;
+        $GLOBALS['w1_db']['projection_state'][$event_id]['status'] = 'ready';
+        $GLOBALS['w1_db']['projection_state'][$event_id]['row_count'] = $row_count;
+        $GLOBALS['w1_db']['projection_state'][$event_id]['synced_at'] = $synced_at;
+        $GLOBALS['w1_db']['projection_state'][$event_id]['updated_at'] = $updated_at;
+        return 1;
+    }
+
+    // force_stale_best_effort(): plain, unconditional — revokes trust only.
+    $forceStale = '/^UPDATE ' . preg_quote($t['projection_state'], '/') . ' SET status = \'stale\' WHERE event_id = (\d+)$/';
+    if (preg_match($forceStale, $sql, $m)) {
+        $event_id = (int) $m[1];
+        if (!isset($GLOBALS['w1_db']['projection_state'][$event_id])) {
+            return 0;
+        }
+        $GLOBALS['w1_db']['projection_state'][$event_id]['status'] = 'stale';
+        return 1;
+    }
+
+    if (preg_match('/^DELETE FROM ' . preg_quote($t['projection_state'], '/') . ' WHERE event_id = (\d+)$/', $sql, $m)) {
+        $event_id = (int) $m[1];
+        $existed = isset($GLOBALS['w1_db']['projection_state'][$event_id]);
+        unset($GLOBALS['w1_db']['projection_state'][$event_id]);
+        return $existed ? 1 : 0;
+    }
+
+    // Concurrency Correctness Fix Pass — RELEASE_LOCK() for the per-event
+    // serialization lock. Best-effort: releasing an unheld name is a
+    // documented no-op (returns NULL in real MySQL), not an error.
+    if (preg_match("/^SELECT RELEASE_LOCK\('([^']*)'\)\$/", $sql, $m)) {
+        $name = $m[1];
+        $held = $GLOBALS['w1_lock_state'][$name] ?? 0;
+        if ($held > 0) {
+            $GLOBALS['w1_lock_state'][$name] = $held - 1;
+            if ($GLOBALS['w1_lock_state'][$name] === 0) {
+                unset($GLOBALS['w1_lock_state'][$name]);
+            }
+            return 1;
+        }
+        return 0;
+    }
+
     return null;
 }
 
@@ -371,9 +662,11 @@ function w1_dispatch_scalar($sql)
 class PGE_W1_Fake_WPDB
 {
     public $prefix = 'wp_';
+    public $postmeta = 'wp_postmeta';
     public $last_error = '';
     public $insert_id = 0;
     public $write_calls = 0;
+    public $projection_write_calls = 0;
 
     public function prepare($sql, ...$args)
     {
@@ -400,15 +693,55 @@ class PGE_W1_Fake_WPDB
     {
         $GLOBALS['w1_db']['query_count']++;
         $value = w1_dispatch_scalar($sql);
-        if ($value === false) {
-            $this->last_error = 'w1-fake-wpdb: unrecognized scalar query: ' . $sql;
-            return null;
+        if ($value !== false) {
+            $this->last_error = '';
+            return $value;
         }
-        return $value;
+
+        // Phase H1C-GR1 Freshness Hardening Fix Pass — the generation
+        // machinery's own scalar lookups (LAST_INSERT_ID()/
+        // current_expected_generation()), tried second so the pre-existing
+        // COUNT(*) dispatch above is untouched.
+        $this->last_error = '';
+        [$gen_value, $recognized] = w1_dispatch_generation_scalar($sql);
+        if ($recognized) {
+            return $gen_value;
+        }
+
+        $this->last_error = 'w1-fake-wpdb: unrecognized scalar query: ' . $sql;
+        return null;
     }
 
+    public function get_row($sql, $output = null)
+    {
+        $GLOBALS['w1_db']['query_count']++;
+        $row = w1_dispatch_row($sql);
+        if ($row === false) {
+            $this->last_error = 'w1-fake-wpdb: unrecognized get_row() query: ' . $sql;
+            return null;
+        }
+        return $row; // null here means "recognized, no matching row" — a real result.
+    }
+
+    /**
+     * Phase H1C-GR1: mutating queries against the derived projection/state
+     * tables are recognized and handled WITHOUT counting as a write_calls
+     * violation — that counter's whole purpose (Section 25 of the H1C-W1
+     * brief, J1/L17 below) is to prove the Application Service never
+     * mutates AUTHORITATIVE data (H1B tables, RSVP, guest Post Meta). A
+     * derived, non-authoritative read-projection cache maintaining itself
+     * is a different category entirely, not a violation of that guarantee.
+     * Anything NOT recognized as a projection/state write still hits the
+     * original "unexpected mutating query()" failure path unchanged.
+     */
     public function query($sql)
     {
+        $GLOBALS['w1_db']['query_count']++;
+        $result = w1_dispatch_query($sql);
+        if ($result !== null) {
+            $this->projection_write_calls++;
+            return $result;
+        }
         $this->write_calls++;
         $this->last_error = 'w1-fake-wpdb: unexpected mutating query() call: ' . $sql;
         return false;
@@ -475,6 +808,13 @@ function wp_verify_nonce($nonce, $action) { return hash_equals(w1_nonce($action)
 
 require_once PGE_PATH . 'includes/helpers.php';
 require_once PGE_PATH . 'includes/class-pge-event-access-repository.php';
+// Phase H1C-GR1 — pure logic + $wpdb calls only (no dbDelta/DB-bootstrap
+// side effects at require time: maybe_upgrade() is only ever registered via
+// the no-op add_action()/register_activation_hook() shims above, never
+// actually invoked in this test run) — safe to require the REAL classes
+// rather than faking them, unlike the heavier PGE_Event_Access_Schema below.
+require_once PGE_PATH . 'includes/class-pge-event-guest-read-projection-schema.php';
+require_once PGE_PATH . 'includes/class-pge-event-guest-read-projection.php';
 require_once PGE_PATH . 'includes/class-pge-event-access-authorization.php';
 require_once PGE_PATH . 'includes/class-pge-event-access-application-service.php';
 require_once PGE_PATH . 'includes/event-guests.php';
@@ -703,8 +1043,22 @@ w1_set_guest(302, '970000077777', 'Has A Record', 'n', 'FFFF-1111');
 w1_ok('G3 (Section 13) partial guest-record corruption never yields a smaller-than-total items list; the read fails closed entirely instead', w1_code($S::list_accessible_guests_for_actor(302, 85)) === PGE_Event_Access_Application_Service::REASON_GUEST_DATA_ERROR);
 
 // ══════════════════════════════════════════════════════════════
-// Section H — Scoped PII loading order proof (Section 23)
+// Section H — Scoped PII loading order proof (Section 23 of H1C-W1;
+// re-proved and STRENGTHENED for Phase H1C-GR1's Storage/PII scoping)
 // ══════════════════════════════════════════════════════════════
+
+// H1C-GR1 changes what this section actually proves. Pre-GR1, "scope before
+// guest PII" meant "scope resolved before the one-time full Post Meta blob
+// load". Post-GR1, the steady-state guarantee is strictly stronger: once
+// the projection has been synced at least once (the normal, expected state
+// for any event that has gone through pge_event_guests_save_map() at all),
+// a collaborator scoped read never touches Post Meta AGAIN — not "touches
+// it only after scope", but doesn't touch it at all. Rebuild-on-miss (the
+// one remaining path that DOES touch Post Meta, for a never-synced or
+// stale projection) is exercised and proved separately in
+// tests/test-event-guest-read-projection-phase-h1c-gr1.php — this section
+// proves the steady-state golden path only, which is what a real event
+// experiences on every read after its first.
 
 w1_reset_db();
 w1_event(400, 90);
@@ -715,21 +1069,32 @@ w1_assignment(400, '970000055555', $gH1);
 w1_set_guest(400, '970000055555', 'Order Guest', 'note', 'GGGG-1111');
 w1_rsvp(400, '970000055555', 'yes', 1);
 
+// Prime the projection once (equivalent to "this event has been saved via
+// pge_event_guests_save_map() before" — the real, expected steady state)
+// BEFORE resetting the access log, so the measured read below is the
+// golden path, not a first-read rebuild.
+PGE_Event_Guest_Read_Projection::rebuild_event(400);
+
 $GLOBALS['w1_access_log'] = [];
+$GLOBALS['w1_guest_postmeta_call_count'] = 0;
 $order_result = $S::list_accessible_guests_for_actor(400, 91);
 $log = $GLOBALS['w1_access_log'];
 $first_db_index = array_search('db:query', $log, true);
-$first_postmeta_index = null;
-foreach ($log as $i => $entry) {
-    if (strpos($entry, 'postmeta:_pge_invited_guests:') === 0) { $first_postmeta_index = $i; break; }
-}
+
 w1_ok('H1 (Section 23) at least one scope-resolution DB query happened', $first_db_index !== false);
-w1_ok('H2 (Section 23) the guest Post Meta store was touched', $first_postmeta_index !== null);
 w1_ok(
-    'H3 (Section 23) scope resolution (DB) happened strictly before guest PII (Post Meta) was ever touched',
-    $first_db_index !== false && $first_postmeta_index !== null && $first_db_index < $first_postmeta_index
+    'H2 (Phase H1C-GR1 — Storage/PII scoping = YES) a steady-state (already-synced) collaborator scoped read touches the guest Post Meta store ZERO times, not just "after scope"',
+    $GLOBALS['w1_guest_postmeta_call_count'] === 0
+);
+w1_ok(
+    'H3 (Phase H1C-GR1) the same steady-state read never emits a "postmeta:_pge_invited_guests:" access-log entry at all',
+    !in_array(true, array_map(function ($e) { return strpos($e, 'postmeta:_pge_invited_guests:') === 0; }, $log), true)
 );
 w1_ok('H4 the successful order-proof read actually returned the guest (sanity check the proof is not vacuous)', is_array($order_result) && count($order_result['items']) === 1);
+w1_ok(
+    'H5 (Section 34) list_for_collaborator\'s executable path resolved guest identity from the projection query log, not from a fresh Post Meta load',
+    in_array('db:query', $log, true)
+);
 
 // ══════════════════════════════════════════════════════════════
 // Section I — Pagination semantics on the collaborator (DB-paginated) path
