@@ -1171,19 +1171,28 @@ foreach ($forbidden_writes_read_path as $needle) {
 }
 w1_ok('J2a (Section 25, scoped to the original H1C-W1 read path only) the read path never references any write-API method name', $found_in_read_path === [], implode(',', $found_in_read_path));
 
-// The ten purely-structural/membership/group-access write methods remain
-// forbidden EVERYWHERE in this file, including inside the new H1C-W2
-// section — W2's own explicit mandate is guest-assignment writes only.
+// Phase H1C-W3 (a later, explicitly authorized phase — same precedent as
+// the W2 note above) legitimately adds exactly two more write-API calls to
+// THIS SAME class — grant_group_access/revoke_group_access — in its own
+// clearly separated section starting at grant_group_access_for_actor(),
+// after the H1C-W2 section. grant_group_access/revoke_group_access are
+// therefore removed from this "forbidden anywhere in the file" list for the
+// same reason assign_guest_to_group/move_guest_to_group/
+// unassign_guest_from_group were never in it: asserting their total absence
+// would fail by design, not by regression, the moment W3's own
+// explicitly-requested methods exist. The eight remaining
+// structural/membership write methods (group lifecycle and membership
+// lifecycle — still genuinely unwired anywhere in production) remain fully
+// forbidden EVERYWHERE in this file, W1/W2/W3 sections alike.
 $forbidden_writes_whole_file = [
     'create_group', 'archive_group', 'rename_group', 'set_default_group',
     'create_membership', 'change_membership_role', 'revoke_membership', 'reactivate_membership',
-    'grant_group_access', 'revoke_group_access',
 ];
 $found_whole_file = [];
 foreach ($forbidden_writes_whole_file as $needle) {
     if (strpos($application_service_code_only, $needle) !== false) $found_whole_file[] = $needle;
 }
-w1_ok('J2b every non-guest-assignment write-API method name is still absent from the ENTIRE file (W1 and W2 sections alike)', $found_whole_file === [], implode(',', $found_whole_file));
+w1_ok('J2b every still-unwired structural/membership write-API method name (group and membership lifecycle) is still absent from the ENTIRE file — grant_group_access/revoke_group_access are excluded from this list per the H1C-W3 precedent note above', $found_whole_file === [], implode(',', $found_whole_file));
 
 // ══════════════════════════════════════════════════════════════
 // Section K — Input validation / fail-closed edges

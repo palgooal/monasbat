@@ -379,3 +379,160 @@ if (!function_exists('pge_event_access_unassign_guest_handler')) {
     }
 }
 add_action('wp_ajax_pge_event_access_unassign_guest', 'pge_event_access_unassign_guest_handler');
+
+/**
+ * H1C-W3 — Owner/Admin Group-Access Lifecycle Write Wiring: two
+ * authenticated AJAX actions (grant/revoke), same conventions as the H1C-W2
+ * write handlers above.
+ *
+ * Registered wp_ajax_ ONLY — never wp_ajax_nopriv_, same as every handler
+ * in this file (a dedicated source-level W3 test asserts no
+ * wp_ajax_nopriv_pge_event_access_{grant,revoke}_group_access hook exists
+ * anywhere in this file).
+ *
+ * Actor identity: actor_user_id is read exclusively via
+ * pge_event_access_write_request_context() — the same shared helper the
+ * H1C-W2 write handlers use, reading get_current_user_id() only. There is
+ * no $_POST['actor_user_id']/['user_id']/['owner_id'] read anywhere in this
+ * file; a client-sent field of that name is silently ignored, which a
+ * dedicated "actor spoof" test in the W3 suite verifies end-to-end.
+ *
+ * This is an Owner/Admin-only operation (the Authorization Core's
+ * can_manage_group_access() capability check takes no group-scoping
+ * parameter at all — see the Application Service docblock for the full
+ * contract), so unlike the H1C-W2 handlers there is no group-scoped actor to
+ * reason about here: a Manager/Viewer/Revoked/Stranger caller is rejected by
+ * role before any existence-sensitive Repository lookup of membership_id or
+ * group_id. membership_id/group_id are still parsed as strict positive
+ * integers here in this handler before the Application Service call (same
+ * as event_id, below) — that parsing reveals nothing about whether either id
+ * actually exists, so it carries no enumeration risk. This AJAX layer never
+ * references the Authorization class directly by name — it calls only
+ * PGE_Event_Access_Application_Service, exactly like every other handler in
+ * this file (Section 9's fixed architecture: AJAX -> Application Service ->
+ * Authorization -> Repository).
+ */
+
+if (!function_exists('pge_event_access_public_group_access_write_error')) {
+    /**
+     * Collapses an Application Service group-access write-use-case
+     * WP_Error into a small, fixed, enumeration-resistant public shape —
+     * the group-access counterpart of pge_event_access_public_write_error()
+     * above. Kept separate on purpose: this domain's reachable codes differ
+     * (invalid_state instead of ambiguous_guest/invalid_group — see
+     * PGE_Event_Access_Application_Service::map_group_access_write_result()'s
+     * own docblock for the exact, reviewed mapping), and the existing
+     * function backs the already-tested H1C-W2 handlers and must not change
+     * under this phase's own "no unrelated refactor" instruction.
+     *
+     * Every denial reason (stranger, revoked membership, forged context,
+     * or simply not Owner/Admin) collapses to the same public
+     * 'not_authorized' bucket. No message here ever contains SQL, a table
+     * name, a membership id, or a guest phone/name.
+     */
+    function pge_event_access_public_group_access_write_error($error)
+    {
+        $code = ($error instanceof WP_Error) ? (string) $error->get_error_code() : '';
+
+        if ($code === PGE_Event_Access_Application_Service::REASON_NOT_AUTHORIZED) {
+            return ['message' => 'ليس لديك صلاحية لتنفيذ هذا الإجراء', 'reason' => 'not_authorized'];
+        }
+        if ($code === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT || $code === 'invalid_input') {
+            return ['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input'];
+        }
+        if ($code === 'not_found') {
+            return ['message' => 'لم يتم العثور على العنصر المطلوب', 'reason' => 'not_found'];
+        }
+        if ($code === 'invalid_state') {
+            return ['message' => 'حالة العنصر الحالية لا تسمح بهذا الإجراء', 'reason' => 'invalid_state'];
+        }
+        if ($code === 'concurrent_update') {
+            return ['message' => 'تم تغيير الحالة أثناء تنفيذ العملية، يرجى إعادة المحاولة', 'reason' => 'concurrent_update'];
+        }
+        if ($code === 'write_unavailable') {
+            return ['message' => 'الخدمة غير متاحة حالياً، يرجى المحاولة لاحقاً', 'reason' => 'write_unavailable'];
+        }
+
+        // database_error / guest_data_error / anything else unrecognized —
+        // a single generic bucket, no internal detail.
+        return ['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error'];
+    }
+}
+
+if (!function_exists('pge_event_access_send_group_access_write_result')) {
+    function pge_event_access_send_group_access_write_result($result)
+    {
+        if ($result instanceof WP_Error) {
+            wp_send_json_error(pge_event_access_public_group_access_write_error($result));
+        }
+        if (!is_array($result) || !array_key_exists('changed', $result) || !array_key_exists('membership_id', $result)
+            || !array_key_exists('group_id', $result) || !array_key_exists('has_access', $result)) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        wp_send_json_success([
+            'changed' => $result['changed'],
+            'membership_id' => $result['membership_id'],
+            'group_id' => $result['group_id'],
+            'has_access' => $result['has_access'],
+        ]);
+    }
+}
+
+if (!function_exists('pge_event_access_grant_group_access_handler')) {
+    function pge_event_access_grant_group_access_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $membership_id = pge_event_access_strict_positive_int($_POST['membership_id'] ?? null);
+        $group_id = pge_event_access_strict_positive_int($_POST['group_id'] ?? null);
+
+        if ($event_id === null || $membership_id === null || $group_id === null) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::grant_group_access_for_actor(
+            $event_id,
+            $actor_user_id,
+            $membership_id,
+            $group_id
+        );
+
+        pge_event_access_send_group_access_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_grant_group_access', 'pge_event_access_grant_group_access_handler');
+
+if (!function_exists('pge_event_access_revoke_group_access_handler')) {
+    function pge_event_access_revoke_group_access_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $membership_id = pge_event_access_strict_positive_int($_POST['membership_id'] ?? null);
+        $group_id = pge_event_access_strict_positive_int($_POST['group_id'] ?? null);
+
+        if ($event_id === null || $membership_id === null || $group_id === null) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::revoke_group_access_for_actor(
+            $event_id,
+            $actor_user_id,
+            $membership_id,
+            $group_id
+        );
+
+        pge_event_access_send_group_access_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_revoke_group_access', 'pge_event_access_revoke_group_access_handler');

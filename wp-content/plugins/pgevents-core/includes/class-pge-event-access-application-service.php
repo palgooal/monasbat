@@ -5,20 +5,25 @@ if (!defined('ABSPATH')) exit;
  * H1C-W1 — Collaborator Read-Only Application Wiring (original scope of
  * this file). H1C-W2 — Collaborator Scoped Guest-Assignment Write Wiring
  * (Section below "Collaborator scoped guest-assignment writes"): the first
- * writes this class performs, added in a later phase.
+ * writes this class performs, added in a later phase. H1C-W3 — Owner/Admin
+ * Group-Access Lifecycle Write Wiring (Section below "Owner/Admin
+ * group-access lifecycle writes"): the second write surface, added in a
+ * still later phase.
  *
  * The first production Application-layer consumer of the H1B Authorization
  * Core (PGE_Event_Access_Authorization / PGE_Event_Access_Authorization_Context)
  * and Repository (PGE_Event_Access_Repository). The original H1C-W1 read
  * paths above remain read-only exactly as before — they still call no
  * write/mutation method on either dependency. As of H1C-W2, this class ALSO
- * calls exactly three Repository mutation methods, and only those three:
- * assign_guest_to_group / move_guest_to_group / unassign_guest_from_group
- * (see the dedicated section below). Every other write/mutation method
- * (create_group/rename_group/archive_group/set_default_group/
- * create_membership/change_membership_role/revoke_membership/
- * reactivate_membership/grant_group_access/revoke_group_access) is still
- * never referenced here and remains out of scope for this class.
+ * calls exactly three Repository mutation methods: assign_guest_to_group /
+ * move_guest_to_group / unassign_guest_from_group (see the dedicated
+ * section below). As of H1C-W3, this class additionally calls exactly two
+ * more: grant_group_access / revoke_group_access (see that section's own
+ * dedicated block below) — five Repository mutation methods total. Every
+ * other write/mutation method (create_group/rename_group/archive_group/
+ * set_default_group/create_membership/change_membership_role/
+ * revoke_membership/reactivate_membership) is still never referenced here
+ * and remains out of scope for this class.
  *
  * Architecture (Section 6 of the H1C-W1 brief):
  *
@@ -874,6 +879,192 @@ final class PGE_Event_Access_Application_Service
     private static function valid_guest_phone($value): bool
     {
         return is_string($value) && $value !== '';
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Owner/Admin group-access lifecycle writes (Phase H1C-W3)
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * H1C-W3 — Owner/Admin Group-Access Lifecycle Write Wiring.
+     *
+     * Discovery (see the H1C-W3 report for the full inventory): of the ten
+     * remaining H1B Repository write APIs never wired to any Application
+     * layer before this phase — create_group/rename_group/archive_group/
+     * set_default_group (group lifecycle), create_membership/
+     * change_membership_role/revoke_membership/reactivate_membership
+     * (membership lifecycle), grant_group_access/revoke_group_access
+     * (group-access lifecycle) — grant_group_access/revoke_group_access is
+     * the smallest complete vertical slice: two methods, no state machine,
+     * no cascading side effects on other domains, and an Authorization
+     * contract (PGE_Event_Access_Authorization::can_manage_group_access())
+     * that is already fully proven both in code and in the existing A2 test
+     * suite (Section D: owner allowed, admin allowed, manager denied,
+     * viewer denied — verified directly against source before this file was
+     * written, not assumed from memory).
+     *
+     * Unlike H1C-W2's guest-assignment writes, can_manage_group_access()
+     * takes NO group-id parameter at all and is owner_or_admin_only() with
+     * zero exception for Manager/Viewer — there is no "partially authorized
+     * scoped actor" concept in this domain the way a Manager granted some-
+     * but-not-all groups is in guest assignment. A denied actor here (
+     * Manager/Viewer/Revoked/Stranger) is rejected by role before any
+     * existence-sensitive Repository lookup of membership_id or group_id —
+     * i.e. before any Repository call at all. Only syntax/positive-integer
+     * validation of membership_id/group_id occurs beforehand (step 1 below),
+     * which reveals nothing about whether either id actually exists — so,
+     * unlike manager_scoped_current_assignment_check() in the
+     * guest-assignment section above, no analogous scoped pre-check helper
+     * is needed or added here: the existing can_manage_group_access() gate
+     * is already a complete, existence-independent denial for every actor
+     * type this method must deny. This is a direct, provable consequence of
+     * the Authorization contract, not an assumption.
+     *
+     * Same fixed order as every other write use case in this class:
+     *   1. strict scalar input validation (REASON_INVALID_INPUT);
+     *   2. PGE_Event_Access_Authorization::resolve_context() — fresh,
+     *      point-in-time, never caller-supplied;
+     *   3. PGE_Event_Access_Authorization::can_manage_group_access($context)
+     *      — Owner/Admin only, no group-scoping parameter;
+     *   4. only on an explicit allow, the matching H1B Repository mutation
+     *      method — Repository is never invoked when the decision is deny.
+     *
+     * H1B state-machine semantics (idempotent grant no-op, revoke-absent
+     * no-op, concurrent_update on a raced delete, invalid_state on an
+     * archived group or revoked membership) are never re-implemented here —
+     * both methods below call straight through to the real, already-tested
+     * H1B Repository method and only translate its result/error into the
+     * small public contract (see map_group_access_write_result() below).
+     *
+     * actor_user_id is an explicit parameter here too, exactly like H1C-W2
+     * — the AJAX transport (event-access-ajax.php) is the only caller that
+     * reads get_current_user_id(); this class never reads $_POST, a nonce,
+     * or any session state directly.
+     *
+     * GR1 interaction: none. Group-access grants/revokes never touch guest
+     * identity (name/note/code) or PGE_Event_Guest_Read_Projection at all.
+     *
+     * Success shape (never contains PII):
+     *   ['ok' => true, 'changed' => bool, 'membership_id' => int,
+     *    'group_id' => int, 'has_access' => bool]
+     * — an exact passthrough of PGE_Event_Access_Repository's own
+     * grant_group_access()/revoke_group_access() result shape, plus the
+     * 'ok' marker.
+     */
+
+    /**
+     * @return array{ok:true,changed:bool,membership_id:int,group_id:int,has_access:bool}|WP_Error
+     */
+    public static function grant_group_access_for_actor($event_id, $actor_user_id, $membership_id, $group_id)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
+            || !self::valid_scalar_id($membership_id) || !self::valid_scalar_id($group_id)) {
+            return self::invalid_input();
+        }
+
+        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
+
+        $decision = PGE_Event_Access_Authorization::can_manage_group_access($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::grant_group_access($event_id, $membership_id, $group_id, $actor_user_id);
+        return self::map_group_access_write_result($result);
+    }
+
+    /**
+     * @return array{ok:true,changed:bool,membership_id:int,group_id:int,has_access:bool}|WP_Error
+     */
+    public static function revoke_group_access_for_actor($event_id, $actor_user_id, $membership_id, $group_id)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
+            || !self::valid_scalar_id($membership_id) || !self::valid_scalar_id($group_id)) {
+            return self::invalid_input();
+        }
+
+        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
+
+        $decision = PGE_Event_Access_Authorization::can_manage_group_access($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::revoke_group_access($event_id, $membership_id, $group_id, $actor_user_id);
+        return self::map_group_access_write_result($result);
+    }
+
+    /**
+     * Translates a real PGE_Event_Access_Repository group-access write
+     * result into a small, fixed public contract — the group-access
+     * counterpart of map_repository_write_result() above (kept separate on
+     * purpose: the result/error shapes differ — membership_id/has_access
+     * here vs assignment_id/has_assignment there — and grant_group_access()/
+     * revoke_group_access() never return ambiguous_guest, so merging the two
+     * mappings would either invent a code that can't occur here or silently
+     * drop one that can).
+     *
+     * Reviewed against the ACTUAL grant_group_access()/revoke_group_access()
+     * source (class-pge-event-access-repository.php) rather than an assumed
+     * list:
+     *
+     *   invalid_input     -> invalid_input
+     *   schema_not_ready   -> write_unavailable (storage layer not ready)
+     *   not_found          -> not_found. Fires for: the group missing/
+     *                         archived-table-absent, the membership missing,
+     *                         a cross-event group/membership id (lock_groups()/
+     *                         lock_memberships() scope strictly by event_id,
+     *                         so a foreign id is simply absent from the
+     *                         locked set — never a distinguishable code), or
+     *                         (grant only) the membership's underlying WP
+     *                         user no longer existing. Not split into
+     *                         separate codes: the Repository does not
+     *                         distinguish them either.
+     *   invalid_state      -> invalid_state (grant only: the group is
+     *                         archived OR the membership is revoked/
+     *                         inactive — collapsed into one reason exactly
+     *                         as the Repository itself does not distinguish
+     *                         which side was invalid)
+     *   concurrent_update  -> concurrent_update (revoke only: the access
+     *                         relation vanished between the locking read and
+     *                         the delete)
+     *   database_error     -> database_error
+     *   anything else      -> database_error (never a raw/unrecognized code
+     *                         reaches a caller)
+     *
+     * @return array{ok:true,changed:bool,membership_id:int,group_id:int,has_access:bool}|WP_Error
+     */
+    private static function map_group_access_write_result($result)
+    {
+        if (is_array($result)) {
+            if (!array_key_exists('changed', $result) || !array_key_exists('membership_id', $result)
+                || !array_key_exists('group_id', $result) || !array_key_exists('has_access', $result)) {
+                return self::guest_data_error();
+            }
+            return [
+                'ok' => true,
+                'changed' => (bool) $result['changed'],
+                'membership_id' => $result['membership_id'],
+                'group_id' => $result['group_id'],
+                'has_access' => (bool) $result['has_access'],
+            ];
+        }
+
+        if (!($result instanceof WP_Error)) return self::guest_data_error();
+
+        $code = (string) $result->get_error_code();
+        $map = [
+            'invalid_input' => 'invalid_input',
+            'schema_not_ready' => 'write_unavailable',
+            'not_found' => 'not_found',
+            'invalid_state' => 'invalid_state',
+            'concurrent_update' => 'concurrent_update',
+            'database_error' => 'database_error',
+        ];
+        $public_code = $map[$code] ?? 'database_error';
+        return new WP_Error($public_code, 'Unable to complete the requested group-access change.');
     }
 
     // ──────────────────────────────────────────────────────────────
