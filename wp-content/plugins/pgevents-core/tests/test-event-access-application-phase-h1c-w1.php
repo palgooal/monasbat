@@ -1142,17 +1142,48 @@ function w1_strip_php_comments($source)
 // H1C-A2's TOCTOU docblock did for the $wpdb guard.
 $application_service_source = file_get_contents(PGE_PATH . 'includes/class-pge-event-access-application-service.php');
 $application_service_code_only = w1_strip_php_comments($application_service_source);
-$forbidden_writes = [
+
+// Phase H1C-W2 (a later, explicitly authorized phase) legitimately adds
+// exactly three write-API calls to THIS SAME class — assign_guest_to_group/
+// move_guest_to_group/unassign_guest_from_group — in a clearly separated
+// section starting at assign_guest_to_group_for_actor(). J2's original
+// "zero write-API references anywhere in the file" form is therefore no
+// longer the correct invariant to assert (it would fail by design, not by
+// regression, the moment W2's own explicitly-requested methods exist). The
+// invariant that ACTUALLY matters and must still hold — that the ORIGINAL
+// H1C-W1 read path (list_accessible_guests_for_actor and everything above
+// the H1C-W2 write section) still never calls a write API — is preserved
+// below by scoping the search to only that boundary. Every OTHER
+// structural/group/membership write method remains fully forbidden
+// anywhere in the file, W1 or W2 section alike, unchanged.
+$w2_write_section_pos = strpos($application_service_code_only, 'function assign_guest_to_group_for_actor');
+$read_path_code_only = $w2_write_section_pos === false ? $application_service_code_only : substr($application_service_code_only, 0, $w2_write_section_pos);
+
+$forbidden_writes_read_path = [
     'assign_guest_to_group', 'move_guest_to_group', 'unassign_guest_from_group',
     'create_group', 'archive_group', 'rename_group', 'set_default_group',
     'create_membership', 'change_membership_role', 'revoke_membership', 'reactivate_membership',
     'grant_group_access', 'revoke_group_access',
 ];
-$found_forbidden = [];
-foreach ($forbidden_writes as $needle) {
-    if (strpos($application_service_code_only, $needle) !== false) $found_forbidden[] = $needle;
+$found_in_read_path = [];
+foreach ($forbidden_writes_read_path as $needle) {
+    if (strpos($read_path_code_only, $needle) !== false) $found_in_read_path[] = $needle;
 }
-w1_ok('J2 (Section 25) the Application Service EXECUTABLE code (comments stripped) references zero write-API method names', $found_forbidden === [], implode(',', $found_forbidden));
+w1_ok('J2a (Section 25, scoped to the original H1C-W1 read path only) the read path never references any write-API method name', $found_in_read_path === [], implode(',', $found_in_read_path));
+
+// The ten purely-structural/membership/group-access write methods remain
+// forbidden EVERYWHERE in this file, including inside the new H1C-W2
+// section — W2's own explicit mandate is guest-assignment writes only.
+$forbidden_writes_whole_file = [
+    'create_group', 'archive_group', 'rename_group', 'set_default_group',
+    'create_membership', 'change_membership_role', 'revoke_membership', 'reactivate_membership',
+    'grant_group_access', 'revoke_group_access',
+];
+$found_whole_file = [];
+foreach ($forbidden_writes_whole_file as $needle) {
+    if (strpos($application_service_code_only, $needle) !== false) $found_whole_file[] = $needle;
+}
+w1_ok('J2b every non-guest-assignment write-API method name is still absent from the ENTIRE file (W1 and W2 sections alike)', $found_whole_file === [], implode(',', $found_whole_file));
 
 // ══════════════════════════════════════════════════════════════
 // Section K — Input validation / fail-closed edges
