@@ -1741,6 +1741,128 @@ final class PGE_Event_Access_Application_Service
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Owner/Admin audit trail read (Phase H1C-W6)
+    //
+    // One use case wiring PGE_Event_Access_Repository::list_audit() through
+    // can_view_audit() (PGE_Event_Access_Authorization's own docblock names
+    // this exact method — "list_audit / read audit trail" — as this
+    // capability's contract) to real actor authority. can_view_audit() is
+    // an IDENTICAL flat owner_or_admin_only() gate to can_manage_membership()/
+    // can_manage_group_access()/can_manage_event_structure() — no
+    // group-scoping, no Manager/Viewer exception — verified directly from
+    // PGE_Event_Access_Authorization source, not assumed.
+    //
+    // Unlike the four W2-W5 write use cases, this is a pure read: filtering,
+    // pagination, and row normalization are entirely the Repository's job
+    // (list_audit() already validates its own filters/pagination and
+    // guarantees audit metadata can never carry a guest phone number or
+    // name — only numeric group/membership ids for guest_group_* actions,
+    // enforced by normalize_guest_audit_metadata()'s own strict per-action
+    // shape whitelist). This method adds no new filtering/redaction logic
+    // of its own; it only adds the authorization gate and an honest public
+    // error-code mapping, the same shape every other use case in this class
+    // already uses.
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Phase H1C-EC1 is reused completely unmodified via
+     * resolve_event_actor_context(): a nonexistent event_id or any other
+     * pre-authority context failure collapses to the same not_authorized()
+     * a denied real-event actor gets, so this read cannot be used as an
+     * event-id or actor existence oracle. Once can_view_audit() has
+     * allowed the actor through, a genuine Repository error (invalid_filter,
+     * schema_not_ready, database_error, ...) keeps its own honest public
+     * code via map_audit_read_result() below — it is never silently turned
+     * into not_authorized just because this use case exists.
+     *
+     * $filters is passed through to PGE_Event_Access_Repository::list_audit()
+     * exactly as given — the only accepted keys and their per-key
+     * validation are entirely that method's own existing contract
+     * (action/entity_type/actor_user_id/entity_id via only_filters()); no
+     * filter rule is invented or duplicated here.
+     *
+     * @return array{items:array,page:int,per_page:int,total:int,total_pages:int}|WP_Error
+     */
+    public static function list_audit_for_actor($event_id, $actor_user_id, array $filters = [], $page = 1, $per_page = null)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_view_audit($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        $pagination = self::validate_pagination($page, $per_page);
+        if ($pagination instanceof WP_Error) return $pagination;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::list_audit(
+            $event_id,
+            $filters,
+            $pagination['page'],
+            $pagination['per_page']
+        );
+        return self::map_audit_read_result($result);
+    }
+
+    /**
+     * Translates a real PGE_Event_Access_Repository::list_audit() result
+     * into a small, fixed public contract, following the identical pattern
+     * map_membership_write_result()/map_group_write_result()/
+     * map_group_access_write_result() already use for their own domains.
+     *
+     * Reviewed against the ACTUAL list_audit() source (not an assumed
+     * list): its only reachable WP_Error codes are schema_not_ready,
+     * invalid_input, not_found, invalid_filter, cross_event (a
+     * normalize_audit() integrity guard), and database_error.
+     *
+     *   invalid_input    -> invalid_input
+     *   invalid_filter   -> invalid_filter
+     *   schema_not_ready -> read_unavailable
+     *   not_found        -> not_found
+     *   cross_event      -> database_error (an internal integrity signal,
+     *                       not a distinct public reason)
+     *   database_error   -> database_error
+     *   anything else    -> database_error (never a raw/unrecognized code
+     *                       reaches a caller)
+     *
+     * A success result is already exactly the page_result() shape
+     * (items/page/per_page/total/total_pages) — list_audit() builds it via
+     * the same paginate() helper every other Repository list method uses —
+     * so it is returned as-is after a defensive shape check, with no
+     * reconstruction.
+     *
+     * @return array{items:array,page:int,per_page:int,total:int,total_pages:int}|WP_Error
+     */
+    private static function map_audit_read_result($result)
+    {
+        if (is_array($result)) {
+            foreach (['items', 'page', 'per_page', 'total', 'total_pages'] as $field) {
+                if (!array_key_exists($field, $result)) return self::guest_data_error();
+            }
+            if (!is_array($result['items'])) return self::guest_data_error();
+            return $result;
+        }
+
+        if (!($result instanceof WP_Error)) return self::guest_data_error();
+
+        $code = (string) $result->get_error_code();
+        $map = [
+            'invalid_input' => 'invalid_input',
+            'invalid_filter' => 'invalid_filter',
+            'schema_not_ready' => 'read_unavailable',
+            'not_found' => 'not_found',
+            'cross_event' => 'database_error',
+            'database_error' => 'database_error',
+        ];
+        $public_code = $map[$code] ?? 'database_error';
+        return new WP_Error($public_code, 'Unable to retrieve the requested audit trail.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Internal helpers
     // ──────────────────────────────────────────────────────────────
 

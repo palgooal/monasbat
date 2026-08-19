@@ -144,6 +144,234 @@ if (!function_exists('pge_event_access_list_guests_handler')) {
 add_action('wp_ajax_pge_event_access_list_guests', 'pge_event_access_list_guests_handler');
 
 /**
+ * H1C-W6 — Audit Trail Read Wiring: one authenticated, Owner/Admin-only
+ * read AJAX action, same transport conventions as the H1C-W1 read handler
+ * above (login check, 'pge_event_manage_nonce' nonce, event_id from
+ * $_POST, actor identity exclusively from get_current_user_id() — no
+ * $_POST['actor_user_id']/'user_id'/'owner_id'/'manager_id' is ever read
+ * anywhere in this handler to determine WHO is asking).
+ *
+ * Registered wp_ajax_ ONLY — never wp_ajax_nopriv_ (same convention as
+ * every other action in this file; an unauthenticated request never
+ * reaches this handler at all).
+ *
+ * H1C-W6 Corrective Pass — strict transport parsing: event_id and every
+ * numeric filter (filter_actor_user_id / filter_entity_id) are parsed with
+ * the SAME pge_event_access_strict_positive_int() helper the W2-W5 write
+ * handlers already use below, not a casual (int) cast — "12abc" must never
+ * silently become 12. page/per_page follow the identical strict-or-fail
+ * rule (see the two variables' own comments below): a MISSING value still
+ * gets the existing default (page=1, per_page=null i.e. Repository's own
+ * default), but an EXPLICITLY supplied value that fails strict parsing is
+ * never silently coerced into a default or any other value — it is instead
+ * passed through as a value guaranteed to fail the Application/Repository's
+ * own authoritative validation (invalid_input for page, invalid_filter for
+ * a malformed numeric filter), so the reachable public 'reason' always
+ * reflects a real Application/Repository decision, never a transport-layer
+ * guess.
+ *
+ * Optional audit filters are read from distinctly-prefixed $_POST keys
+ * (filter_action / filter_entity_type / filter_actor_user_id /
+ * filter_entity_id) so a filter on a logged actor's id can never be
+ * confused with, or substituted for, the real requesting actor's own
+ * identity above. Only keys actually present and non-empty in $_POST are
+ * added to the $filters array passed through to the Application Service —
+ * every accepted key name and its own validation is entirely
+ * PGE_Event_Access_Repository::list_audit()'s existing contract; no filter
+ * rule is invented here. filter_action/filter_entity_type are passed
+ * through wp_unslash() ONLY — never sanitize_text_field()/trim()/
+ * strtolower()/sanitize_key() — because any of those would repair a
+ * malformed-but-valid-looking client value (e.g. " group_created " with
+ * stray whitespace) into a value Repository's own strict exact-match
+ * AUDIT_ACTIONS/AUDIT_ENTITY_TYPES check would then accept, silently
+ * substituting a transport-layer guess for Repository's authoritative
+ * decision. Repository::list_audit() alone decides whether the value is a
+ * real AUDIT_ACTIONS/AUDIT_ENTITY_TYPES member.
+ *
+ * This handler calls PGE_Event_Access_Application_Service only — never the
+ * Repository or the Authorization Core classes directly. Errors are mapped
+ * with the dedicated pge_event_access_public_audit_error() below — NOT the
+ * older pge_event_access_public_error() above, which predates this
+ * domain's own invalid_filter/read_unavailable codes and would collapse
+ * both to the same generic server_error bucket a genuine invalid_input
+ * already uses.
+ */
+if (!function_exists('pge_event_access_public_audit_error')) {
+    /**
+     * Collapses a list_audit_for_actor() WP_Error into a small, fixed,
+     * enumeration-resistant public shape — the audit-read counterpart of
+     * pge_event_access_public_error() (H1C-W1) and
+     * pge_event_access_public_write_error() (H1C-W2+). Kept as its own
+     * function rather than folded into either existing one: this domain's
+     * reachable codes (invalid_filter, read_unavailable) genuinely differ
+     * from both, and the two existing, already-tested mappers must not
+     * change behavior for their own callers.
+     *
+     * Reviewed against map_audit_read_result()'s own documented mapping in
+     * PGE_Event_Access_Application_Service (not assumed): not_authorized,
+     * invalid_input, invalid_filter, read_unavailable, not_found, and
+     * database_error are the only codes that method can return.
+     *
+     *   not_authorized   -> not_authorized (EC1: an existing-but-denied
+     *                       event, a nonexistent event, and a pre-authority
+     *                       context-resolution failure all collapse to this
+     *                       same code before this function ever runs — see
+     *                       resolve_event_actor_context()'s own docblock —
+     *                       so this bucket is already indistinguishable by
+     *                       construction, not by anything done here)
+     *   invalid_input    -> invalid_input
+     *   invalid_filter   -> invalid_filter
+     *   read_unavailable -> read_unavailable
+     *   not_found        -> server_error (a post-authority Repository
+     *                       not_found can only mean an internal race — the
+     *                       event existed when resolve_event_actor_context()
+     *                       checked it a moment earlier — never a caller-
+     *                       facing "invalid event" distinct from
+     *                       not_authorized; folding it into the generic
+     *                       bucket keeps that pre-authority/post-authority
+     *                       line intact instead of accidentally re-exposing
+     *                       a not_found an unproven actor could ever see)
+     *   database_error   -> server_error
+     *   anything else    -> server_error (never a raw/unrecognized code
+     *                       reaches a caller)
+     *
+     * No message here ever contains SQL, a table name, a membership id, or
+     * a guest phone/name.
+     */
+    function pge_event_access_public_audit_error($error)
+    {
+        $code = ($error instanceof WP_Error) ? (string) $error->get_error_code() : '';
+
+        if ($code === PGE_Event_Access_Application_Service::REASON_NOT_AUTHORIZED) {
+            return ['message' => 'ليس لديك صلاحية لعرض سجل هذه المناسبة', 'reason' => 'not_authorized'];
+        }
+        if ($code === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT || $code === 'invalid_input') {
+            return ['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input'];
+        }
+        if ($code === 'invalid_filter') {
+            return ['message' => 'معايير التصفية غير صالحة', 'reason' => 'invalid_filter'];
+        }
+        if ($code === 'read_unavailable') {
+            return ['message' => 'الخدمة غير متاحة حالياً، يرجى المحاولة لاحقاً', 'reason' => 'read_unavailable'];
+        }
+
+        // not_found / database_error / guest_data_error / anything else
+        // unrecognized — a single generic bucket, no internal detail.
+        return ['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error'];
+    }
+}
+
+if (!function_exists('pge_event_access_list_audit_handler')) {
+    function pge_event_access_list_audit_handler()
+    {
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'غير مصرح', 'reason' => 'not_logged_in']);
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$nonce || !wp_verify_nonce($nonce, 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'رمز الأمان غير صالح', 'reason' => 'invalid_nonce']);
+        }
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        if ($event_id === null) {
+            wp_send_json_error(['message' => 'مناسبة غير صالحة', 'reason' => 'invalid_event']);
+        }
+
+        // page: missing -> the existing default of 1. Explicitly supplied
+        // but not a strict positive integer -> passed through as null,
+        // which self::validate_pagination() always rejects as invalid_input
+        // (it has no "null means default" special case for $page, unlike
+        // $per_page below) — the failure is reported by the Application
+        // Service's own authoritative validation, not invented here.
+        if (!isset($_POST['page']) || $_POST['page'] === '') {
+            $page = 1;
+        } else {
+            $page = pge_event_access_strict_positive_int($_POST['page']);
+        }
+
+        // per_page: missing/empty -> null, preserved exactly as before —
+        // PGE_Event_Access_Application_Service::validate_pagination()
+        // already treats a null $per_page as "substitute Repository's own
+        // DEFAULT_PER_PAGE", so null must be reserved for that meaning
+        // alone. An explicitly supplied value that fails strict parsing is
+        // therefore passed through as 0 instead — pge_event_access_
+        // strict_positive_int() never itself returns 0, so this can only
+        // ever mean "the client explicitly sent something invalid", and 0
+        // always fails validate_pagination()'s own $per_page > 0 check,
+        // i.e. invalid_input — never silently reinterpreted as "use the
+        // default".
+        if (!isset($_POST['per_page']) || $_POST['per_page'] === '') {
+            $per_page = null;
+        } else {
+            $per_page = pge_event_access_strict_positive_int($_POST['per_page']);
+            if ($per_page === null) $per_page = 0;
+        }
+
+        $filters = [];
+        // wp_unslash() ONLY — no sanitize_text_field()/trim()/strtolower()/
+        // sanitize_key(). Repository::list_audit()'s own strict exact-match
+        // AUDIT_ACTIONS/AUDIT_ENTITY_TYPES check is the sole authority on
+        // whether this value is valid; this file must not repair a
+        // malformed-but-valid-looking value (stray whitespace, wrong case,
+        // ...) into one Repository would accept.
+        if (isset($_POST['filter_action']) && $_POST['filter_action'] !== '') {
+            $filters['action'] = wp_unslash($_POST['filter_action']);
+        }
+        if (isset($_POST['filter_entity_type']) && $_POST['filter_entity_type'] !== '') {
+            $filters['entity_type'] = wp_unslash($_POST['filter_entity_type']);
+        }
+        // filter_actor_user_id / filter_entity_id: strict-parsed exactly
+        // like event_id above. A malformed value (e.g. "12abc") parses to
+        // null — the key is still added (never silently omitted) so
+        // Repository::list_audit()'s own valid_id() check authoritatively
+        // rejects it as invalid_filter, instead of this file either
+        // dropping the filter (silently broadening the query) or coercing
+        // "12abc" into 12 (silently querying the wrong actor/entity).
+        if (isset($_POST['filter_actor_user_id']) && $_POST['filter_actor_user_id'] !== '') {
+            $filters['actor_user_id'] = pge_event_access_strict_positive_int($_POST['filter_actor_user_id']);
+        }
+        if (isset($_POST['filter_entity_id']) && $_POST['filter_entity_id'] !== '') {
+            $filters['entity_id'] = pge_event_access_strict_positive_int($_POST['filter_entity_id']);
+        }
+
+        // Actor identity comes exclusively from the authenticated WP
+        // session, same as the H1C-W1 read handler above. No client-
+        // supplied actor/user/owner/manager id field of any kind is read
+        // anywhere in this file to determine the requesting actor.
+        $actor_user_id = (int) get_current_user_id();
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::list_audit_for_actor(
+            $event_id,
+            $actor_user_id,
+            $filters,
+            $page,
+            $per_page
+        );
+
+        if ($result instanceof WP_Error) {
+            wp_send_json_error(pge_event_access_public_audit_error($result));
+        }
+        if (!is_array($result) || !isset($result['items'])) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        wp_send_json_success([
+            'items' => $result['items'],
+            'page' => $result['page'],
+            'per_page' => $result['per_page'],
+            'total' => $result['total'],
+            'total_pages' => $result['total_pages'],
+        ]);
+    }
+}
+add_action('wp_ajax_pge_event_access_list_audit', 'pge_event_access_list_audit_handler');
+
+/**
  * H1C-W2 — Collaborator Scoped Guest-Assignment Write Wiring: three
  * authenticated AJAX actions (assign/move/unassign), same conventions as
  * the H1C-W1 read handler above.
