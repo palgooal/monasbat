@@ -1197,17 +1197,33 @@ w1_ok('J2a (Section 25, scoped to the original H1C-W1 read path only) the read p
 // clearly separated section starting at create_group_for_actor(), after the
 // H1C-W3 section. Those four Group Lifecycle method names are therefore also
 // removed from this "forbidden anywhere in the file" list for the identical
-// reason. The four remaining Membership Lifecycle write methods — still
-// genuinely unwired anywhere in production as of H1C-W4 — remain fully
-// forbidden EVERYWHERE in this file, W1/W2/W3/W4 sections alike.
-$forbidden_writes_whole_file = [
-    'create_membership', 'change_membership_role', 'revoke_membership', 'reactivate_membership',
-];
+// reason.
+//
+// Phase H1C-W5 (a later, explicitly authorized phase — same precedent yet
+// again) legitimately adds the four remaining Membership Lifecycle write
+// methods — create_membership/change_membership_role/revoke_membership/
+// reactivate_membership — in their own clearly separated section starting
+// at create_membership_for_actor(), after the H1C-W4 section. Those four
+// method names are therefore also removed from this list for the identical
+// reason: asserting their total absence would now fail by design (H1C-W5
+// legitimately wired them), not by regression.
+//
+// Every write-API method name this project currently defines is now
+// legitimately wired somewhere in this file, so the "forbidden anywhere in
+// the file" list below is intentionally empty — kept as a live structure
+// (rather than deleted outright) so a FUTURE phase's own new write method
+// name can be added back to it the same way every prior phase's own
+// precedent note did, without having to reinvent this pattern from
+// scratch. An empty forbidden list is not a silently-vacuous check: J2a
+// above still independently proves the READ path itself never references
+// any write-API method name, which is the guarantee this class of test
+// actually protects.
+$forbidden_writes_whole_file = [];
 $found_whole_file = [];
 foreach ($forbidden_writes_whole_file as $needle) {
     if (strpos($application_service_code_only, $needle) !== false) $found_whole_file[] = $needle;
 }
-w1_ok('J2b every still-unwired Membership Lifecycle write-API method name is still absent from the ENTIRE file — Group Lifecycle (create_group/rename_group/archive_group/set_default_group) and grant_group_access/revoke_group_access are excluded from this list per the H1C-W3/H1C-W4 precedent notes above', $found_whole_file === [], implode(',', $found_whole_file));
+w1_ok('J2b every still-unwired write-API method name (none remain, as of Phase H1C-W5) is absent from the ENTIRE file — Group Lifecycle, Group-Access, and Membership Lifecycle write methods are all excluded from this list per the H1C-W3/H1C-W4/H1C-W5 precedent notes above', $found_whole_file === [], implode(',', $found_whole_file));
 
 // ══════════════════════════════════════════════════════════════
 // Section K — Input validation / fail-closed edges

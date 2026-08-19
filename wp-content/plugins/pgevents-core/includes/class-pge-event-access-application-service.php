@@ -10,7 +10,10 @@ if (!defined('ABSPATH')) exit;
  * group-access lifecycle writes"): the second write surface, added in a
  * still later phase. H1C-W4 — Owner/Admin Group Lifecycle Write Wiring
  * (Section below "Owner/Admin group lifecycle writes"): the third write
- * surface, added in a still later phase.
+ * surface, added in a still later phase. H1C-W5 — Owner/Admin Membership
+ * Lifecycle Write Wiring (Section below "Owner/Admin membership lifecycle
+ * writes"): the fourth and final write surface, added in a still later
+ * phase.
  *
  * The first production Application-layer consumer of the H1B Authorization
  * Core (PGE_Event_Access_Authorization / PGE_Event_Access_Authorization_Context)
@@ -23,15 +26,20 @@ if (!defined('ABSPATH')) exit;
  * more: grant_group_access / revoke_group_access (see that section's own
  * dedicated block below). As of H1C-W4, this class additionally calls
  * exactly four more: create_group / rename_group / archive_group /
- * set_default_group (see that section's own dedicated block below) — nine
- * Repository mutation methods total. Every other write/mutation method
- * (create_membership/change_membership_role/revoke_membership/
- * reactivate_membership — the Membership Lifecycle surface) is still never
- * referenced here and remains out of scope for this class.
+ * set_default_group (see that section's own dedicated block below). As of
+ * H1C-W5, this class additionally calls exactly four more:
+ * create_membership / change_membership_role / revoke_membership /
+ * reactivate_membership (see that section's own dedicated block below) —
+ * thirteen Repository mutation methods total, which is every write/mutation
+ * method PGE_Event_Access_Repository exposes. There is no remaining
+ * Repository mutation surface out of scope for this class.
  *
  * Architecture (Section 6 of the H1C-W1 brief):
  *
- *   Transport (future AJAX handler)
+ *   Transport (includes/event-access-ajax.php's authenticated wp_ajax_
+ *   handlers — nonce-checked, logged-in-only, no wp_ajax_nopriv_ variant
+ *   for any write action; the H1C-W1 read path above is served by its own
+ *   read-only wp_ajax_ handler in the same file)
  *     -> Authentication/nonce (transport's job, not this class's)
  *     -> PGE_Event_Access_Application_Service (this file)
  *     -> PGE_Event_Access_Authorization (decision)
@@ -1432,6 +1440,304 @@ final class PGE_Event_Access_Application_Service
         ];
         $public_code = $map[$code] ?? 'database_error';
         return new WP_Error($public_code, 'Unable to complete the requested group change.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Owner/Admin membership lifecycle writes (Phase H1C-W5)
+    //
+    // Four use cases wiring PGE_Event_Access_Repository::create_membership()/
+    // change_membership_role()/revoke_membership()/reactivate_membership()
+    // through can_manage_membership() (PGE_Event_Access_Authorization's own
+    // docblock names exactly these four methods as this capability's
+    // contract) to real actor authority, following the identical inline
+    // pattern H1C-W3's grant/revoke_group_access_for_actor() already use —
+    // resolve_event_actor_context() then a direct can_manage_membership()
+    // check — rather than H1C-W4's dedicated resolve_group_structure_authority()
+    // wrapper: with only two steps to share across four callers and no
+    // group-scoping parameter of its own, a third private method here would
+    // add a layer of indirection without removing any real duplication
+    // W4's four-line capability-check block didn't already avoid.
+    //
+    // Authorization contract (verified against H1C-A2's own Section D loop,
+    // not assumed): can_manage_membership() is owner_or_admin_only() — an
+    // IDENTICAL flat gate to can_manage_event_structure()/
+    // can_manage_group_access(), no group-scoping, no Manager/Viewer
+    // exception. A denied actor (Manager/Viewer/Revoked/Stranger) is
+    // rejected by role alone, before ANY existence-sensitive Repository
+    // lookup of membership_id, user_id, role, or status — so this gate
+    // alone is what makes Section 17/18's User-ID and Membership-ID
+    // enumeration resistance true by construction, not by any extra design
+    // added below.
+    //
+    // Self-management audit (verified against PGE_Event_Access_Authorization_
+    // Context::resolve(), not assumed): Owner/Admin authority is derived
+    // ENTIRELY from post_type/post_author/actor_is_administrator() — the
+    // membership table is never consulted for them (resolve() returns early
+    // for is_admin/is_owner, before any membership read). Owner is not, and
+    // cannot be, represented as a row in the membership table at all; there
+    // is no "Owner changes their own membership" case to special-case,
+    // because no membership row can BE the Owner's row. An Owner/Admin who
+    // also happens to separately hold an ordinary manager/viewer membership
+    // row (nothing in Repository prevents this — create_membership()'s only
+    // duplicate check is against the membership table itself, independent
+    // of post_author/admin capability) can target that row like any other
+    // via these four methods; can_manage_membership() does not, and does
+    // not need to, special-case a self-targeting membership_id/user_id,
+    // because authority here was never derived from the membership table in
+    // the first place. A Manager is denied before the capability check ever
+    // reaches a specific membership_id, so "can a Manager target their own
+    // membership" is moot — they cannot reach any membership_id, including
+    // their own.
+    //
+    // Repository contract (reviewed directly against source AND against the
+    // already-passing, dedicated H1B-W2 membership-lifecycle test coverage
+    // — not assumed):
+    //   - create_membership($event_id, $user_id, $role, $actor_user_id):
+    //     role must be exactly 'manager'|'viewer' (Repository's own
+    //     valid_role() — Owner is never an acceptable role here). Requires
+    //     the target WP user to exist (require_user() -> not_found if not
+    //     — the SAME generic 'not_found' code a nonexistent event_id
+    //     itself would produce pre-authority, confirmed by H1B-W2's own
+    //     "missing target user is generic not_found" test — this is a
+    //     POST-authority Repository code, reachable only after
+    //     can_manage_membership() already allowed the actor through, so it
+    //     does not reopen any PRE-AUTHORITY oracle). Refuses ANY existing
+    //     membership row for that user at that event — ACTIVE or REVOKED —
+    //     with duplicate_membership (H1B-W2 "create duplicate revoked");
+    //     reactivate_membership() is the correct API for a user with a
+    //     prior revoked row, not create_membership() again.
+    //   - change_membership_role($event_id, $membership_id, $expected_role,
+    //     $new_role, $actor_user_id): optimistic concurrency via
+    //     $expected_role (stale value -> concurrent_update, same shape as
+    //     H1C-W2's expected_group_id). Same role is a true no-op (no
+    //     mutation, no audit). Refuses a revoked membership with
+    //     invalid_state — there is no "change role while revoked" path;
+    //     reactivate_membership() (which itself takes a $role parameter)
+    //     is the correct API for that. Does NOT touch group-access grants
+    //     at all (H1B-W2 "role change then revoke preserves role and
+    //     removes grants" proves grants survive a role change untouched).
+    //   - revoke_membership($event_id, $membership_id, $actor_user_id):
+    //     THE cascade operation — deletes every group-access grant row for
+    //     this membership_id in the SAME transaction as the status change,
+    //     verified atomic by H1B-W2's own rollback tests (an audit-insert
+    //     failure restores BOTH the membership status AND every deleted
+    //     access row). True no-op only when ALREADY revoked AND already
+    //     zero access rows; an already-revoked membership that still
+    //     somehow carries latent access rows is NOT a no-op — it cleans
+    //     those up and audits with status_changed=false (H1B-W2 "revoke
+    //     revoked cleans stale access"). Does NOT require the target WP
+    //     user to still exist (H1B-W2 "revoke membership permits deleted
+    //     user" — a pure teardown operation, unlike the other three).
+    //     Audit metadata records revoked_group_access_count.
+    //   - reactivate_membership($event_id, $membership_id, $role,
+    //     $actor_user_id): revoked -> active, with the CALLER-SUPPLIED
+    //     $role (not necessarily the membership's previous role — H1B-W2
+    //     tests both "reactivate as manager" and "reactivate as viewer"
+    //     off the same revoked-manager fixture). Does NOT restore any
+    //     group-access grants revoke_membership() previously deleted — the
+    //     Repository actively REFUSES with database_error if a revoked
+    //     membership somehow still carries latent access rows (H1B-W2
+    //     "reactivate refuses latent access"), i.e. Repository's own
+    //     invariant is "a revoked membership always has zero access rows,
+    //     full stop" — a reactivated membership always starts with zero
+    //     granted groups; a separate grant_group_access_for_actor() (W3)
+    //     call is required afterward to restore any group scope (H1B-W2
+    //     "reactivate then grant succeeds" proves this composition works).
+    //     Active-with-same-role is a no-op; active-with-a-different-role is
+    //     invalid_state (use change_membership_role_for_actor() for that —
+    //     reactivate is not a role-change API for an already-active
+    //     membership). Requires the target WP user to still exist, exactly
+    //     like create_membership().
+    //   - ALL FOUR share the SAME pre-existing, deliberate Repository
+    //     guard already documented and tested at H1B-W2 level: lock_
+    //     memberships($event_id) fails the WHOLE event closed with
+    //     database_error the instant it finds ANY membership row at that
+    //     event with a duplicate user_id — not just the row a specific
+    //     membership_id/user_id targets. This is NOT a new discovery and
+    //     NOT fixed here (out of scope — Repository is untouched by this
+    //     phase); W5's own tests isolate any deliberately-corrupted-
+    //     membership fixture to its own dedicated event, exactly like the
+    //     H1C-EC1 follow-up round already had to do for W3.
+    //
+    // Event-Context Enumeration Privacy (Phase H1C-EC1, reused unmodified):
+    // every method below starts with resolve_event_actor_context() — the
+    // SAME shared PRE-AUTHORITY primitive W1/W2/W3/W4 already use — so a
+    // nonexistent event_id and an existing-but-denied event are publicly
+    // indistinguishable here too, with zero new code in that helper. This
+    // phase does not touch resolve_event_actor_context() at all (no bug
+    // was found here that would justify it).
+    //
+    // Public result minimization (Section 15): Repository's own membership
+    // row carries created_by_user_id/activated_at/revoked_at/created_at/
+    // updated_at — none of which any caller of this phase needs yet (there
+    // is no UI/REST surface consuming this result), so
+    // map_membership_write_result() below deliberately narrows the public
+    // shape to changed/membership_id/user_id/role/status only. user_id is
+    // kept (not stripped) because it is POST-authority information an
+    // already-proven Owner/Admin is entitled to (it is literally the input
+    // they supplied for create_membership_for_actor(), and for the other
+    // three it identifies which person the membership_id they already
+    // targeted belongs to) — omitting it would make the result useless for
+    // any real caller without improving privacy, since PRE-AUTHORITY denial
+    // never reaches this mapper at all.
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * @return array{ok:true,changed:bool,membership_id:int,user_id:int,role:string,status:string}|WP_Error
+     */
+    public static function create_membership_for_actor($event_id, $actor_user_id, $user_id, $role)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
+            || !self::valid_scalar_id($user_id) || !is_string($role)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_membership($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::create_membership($event_id, $user_id, $role, $actor_user_id);
+        return self::map_membership_write_result($result);
+    }
+
+    /**
+     * @return array{ok:true,changed:bool,membership_id:int,user_id:int,role:string,status:string}|WP_Error
+     */
+    public static function change_membership_role_for_actor($event_id, $actor_user_id, $membership_id, $expected_role, $new_role)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
+            || !self::valid_scalar_id($membership_id) || !is_string($expected_role) || !is_string($new_role)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_membership($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::change_membership_role($event_id, $membership_id, $expected_role, $new_role, $actor_user_id);
+        return self::map_membership_write_result($result);
+    }
+
+    /**
+     * @return array{ok:true,changed:bool,membership_id:int,user_id:int,role:string,status:string}|WP_Error
+     */
+    public static function revoke_membership_for_actor($event_id, $actor_user_id, $membership_id)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id) || !self::valid_scalar_id($membership_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_membership($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::revoke_membership($event_id, $membership_id, $actor_user_id);
+        return self::map_membership_write_result($result);
+    }
+
+    /**
+     * @return array{ok:true,changed:bool,membership_id:int,user_id:int,role:string,status:string}|WP_Error
+     */
+    public static function reactivate_membership_for_actor($event_id, $actor_user_id, $membership_id, $role)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
+            || !self::valid_scalar_id($membership_id) || !is_string($role)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_membership($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::reactivate_membership($event_id, $membership_id, $role, $actor_user_id);
+        return self::map_membership_write_result($result);
+    }
+
+    /**
+     * Translates a real PGE_Event_Access_Repository membership-lifecycle
+     * write result into a small, fixed public contract. Kept separate from
+     * map_group_write_result()/map_group_access_write_result()/
+     * map_repository_write_result() on purpose — this domain's shape
+     * (membership row) and reachable codes (duplicate_membership) genuinely
+     * differ from all three.
+     *
+     * Reviewed against the ACTUAL create_membership()/change_membership_role()/
+     * revoke_membership()/reactivate_membership() source AND the dedicated
+     * H1B-W2 test coverage, not an assumed list:
+     *
+     *   invalid_input        -> invalid_input
+     *   schema_not_ready      -> write_unavailable
+     *   not_found             -> not_found (missing/cross-event membership_id
+     *                           on all four; ALSO a missing target WP user
+     *                           on create/change_role/reactivate specifically
+     *                           — revoke_membership() alone tolerates a
+     *                           deleted user, per its own Repository
+     *                           contract)
+     *   invalid_state         -> invalid_state (change_role against a
+     *                           revoked membership; reactivate against an
+     *                           already-active membership with a DIFFERENT
+     *                           role than requested)
+     *   duplicate_membership  -> duplicate (create only — an active OR
+     *                           revoked membership row already exists for
+     *                           that user at that event)
+     *   concurrent_update     -> concurrent_update (change_role: stale
+     *                           expected_role; any of the four: the row
+     *                           changed between the locking read and the
+     *                           write)
+     *   database_error        -> database_error (also covers reactivate's
+     *                           own latent-access integrity refusal — see
+     *                           this section's docblock above)
+     *   anything else         -> database_error (never a raw/unrecognized
+     *                           code reaches a caller)
+     *
+     * @return array{ok:true,changed:bool,membership_id:int,user_id:int,role:string,status:string}|WP_Error
+     */
+    private static function map_membership_write_result($result)
+    {
+        if (is_array($result)) {
+            if (!array_key_exists('changed', $result) || !array_key_exists('membership', $result) || !is_array($result['membership'])) {
+                return self::guest_data_error();
+            }
+            $membership = $result['membership'];
+            foreach (['id', 'user_id', 'role', 'status'] as $field) {
+                if (!array_key_exists($field, $membership)) return self::guest_data_error();
+            }
+            return [
+                'ok' => true,
+                'changed' => (bool) $result['changed'],
+                'membership_id' => $membership['id'],
+                'user_id' => $membership['user_id'],
+                'role' => $membership['role'],
+                'status' => $membership['status'],
+            ];
+        }
+
+        if (!($result instanceof WP_Error)) return self::guest_data_error();
+
+        $code = (string) $result->get_error_code();
+        $map = [
+            'invalid_input' => 'invalid_input',
+            'schema_not_ready' => 'write_unavailable',
+            'not_found' => 'not_found',
+            'invalid_state' => 'invalid_state',
+            'duplicate_membership' => 'duplicate',
+            'concurrent_update' => 'concurrent_update',
+            'database_error' => 'database_error',
+        ];
+        $public_code = $map[$code] ?? 'database_error';
+        return new WP_Error($public_code, 'Unable to complete the requested membership change.');
     }
 
     // ──────────────────────────────────────────────────────────────

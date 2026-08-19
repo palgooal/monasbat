@@ -844,3 +844,274 @@ if (!function_exists('pge_event_access_set_default_group_handler')) {
     }
 }
 add_action('wp_ajax_pge_event_access_set_default_group', 'pge_event_access_set_default_group_handler');
+
+/**
+ * H1C-W5 — Owner/Admin Membership Lifecycle Write Wiring: four authenticated
+ * AJAX actions (create/change_role/revoke/reactivate), same conventions as
+ * every write handler above.
+ *
+ * Registered wp_ajax_ ONLY — never wp_ajax_nopriv_ (a dedicated source-level
+ * W5 test asserts no wp_ajax_nopriv_pge_event_access_{create,change_role,
+ * revoke,reactivate}_membership hook exists anywhere in this file).
+ *
+ * Actor identity: actor_user_id is read exclusively via
+ * pge_event_access_write_request_context() — get_current_user_id() only.
+ * There is no $_POST['actor_user_id']/['owner_id']/['manager_id'] read
+ * anywhere in this file; a client-sent field of that name is silently
+ * ignored (Section 20/22's actor-spoof tests verify this end-to-end).
+ * CREATE alone reads a $_POST['target_user_id'] field — deliberately named
+ * apart from 'user_id' (see that handler's own inline comment: three other
+ * phases' pre-existing source guards scan this whole file for the literal
+ * $_POST['user_id'] as an actor-spoof red flag, and 'target_user_id' avoids
+ * colliding with that check over a naming choice rather than an actual
+ * risk). It identifies WHO IS BEING GRANTED membership, never who is
+ * acting — spoofing it only changes which user a proven Owner/Admin's
+ * CREATE would target, it can never forge the actor's own authority, since
+ * actor_user_id itself is never read from $_POST at all (Section 20's
+ * spoof tests verify this explicitly for target_user_id too).
+ *
+ * This is an Owner/Admin-only operation (can_manage_membership() takes no
+ * group-scoping parameter, identical shape to can_manage_event_structure()/
+ * can_manage_group_access()), so exactly like the H1C-W3/W4 handlers a
+ * Manager/Viewer/Revoked/Stranger caller is rejected by role before any
+ * existence-sensitive Repository lookup of membership_id, user_id, role, or
+ * status — this is what makes Section 17/18's User-ID and Membership-ID
+ * enumeration resistance true here, not any extra AJAX-layer logic. This
+ * file never references the Authorization class directly by name — it
+ * calls only PGE_Event_Access_Application_Service, exactly like every other
+ * handler in this file (AJAX -> Application Service -> Authorization ->
+ * Repository).
+ *
+ * Role fields (expected_role/new_role on CHANGE ROLE; role on CREATE/
+ * REACTIVATE) are read via pge_event_access_read_membership_role() — raw
+ * wp_unslash() only, deliberately NOT sanitize_key()'d or lowercased, so an
+ * invalid role (wrong case, unrecognized string) fails Application
+ * Service's is_string() gate and Repository's own exact-match valid_role()
+ * as invalid_input rather than being silently coerced into a different,
+ * unintended role.
+ *
+ * Event-Context Enumeration Privacy (Phase H1C-EC1, reused unmodified): the
+ * shared resolve_event_actor_context() gate these four Application Service
+ * methods call means a nonexistent event_id and an existing-but-denied
+ * event are publicly indistinguishable here too — no AJAX-layer change was
+ * needed for that guarantee to hold.
+ */
+
+if (!function_exists('pge_event_access_read_membership_role')) {
+    /**
+     * Reads a $_POST field intended as a membership role WITHOUT
+     * sanitize_key()/sanitize_text_field() — see this section's top
+     * docblock for why. wp_unslash() alone reverses WordPress's magic-quotes
+     * escaping and changes nothing else. A missing field returns null; a
+     * non-string field passes through UNCHANGED — the caller's own
+     * is_string() gate (and, redundantly, Application Service's) rejects it
+     * as invalid_input before any Repository call.
+     */
+    function pge_event_access_read_membership_role($field)
+    {
+        if (!array_key_exists($field, $_POST)) return null;
+        return wp_unslash($_POST[$field]);
+    }
+}
+
+if (!function_exists('pge_event_access_public_membership_write_error')) {
+    /**
+     * Collapses an Application Service membership-lifecycle write-use-case
+     * WP_Error into a small, fixed, enumeration-resistant public shape —
+     * the membership-lifecycle counterpart of pge_event_access_public_write_error()/
+     * pge_event_access_public_group_access_write_error()/
+     * pge_event_access_public_group_write_error() above. Kept separate on
+     * purpose: this domain's reachable codes differ again (duplicate maps
+     * from 'duplicate_membership', not 'duplicate_group' — see
+     * PGE_Event_Access_Application_Service::map_membership_write_result()'s
+     * own docblock for the exact, reviewed mapping), and the existing
+     * functions back already-tested handlers and must not change under this
+     * phase's own "no unrelated refactor" instruction.
+     *
+     * Every denial reason (stranger, revoked membership, forged context,
+     * simply not Owner/Admin, OR event_id not referring to an existing
+     * event) collapses to the same public 'not_authorized' bucket — the
+     * last case via the shared resolve_event_actor_context() gate (Phase
+     * H1C-EC1), reused unmodified by this phase. No message here ever
+     * contains SQL, a table name, a membership id, or a WP user id.
+     */
+    function pge_event_access_public_membership_write_error($error)
+    {
+        $code = ($error instanceof WP_Error) ? (string) $error->get_error_code() : '';
+
+        if ($code === PGE_Event_Access_Application_Service::REASON_NOT_AUTHORIZED) {
+            return ['message' => 'ليس لديك صلاحية لتنفيذ هذا الإجراء', 'reason' => 'not_authorized'];
+        }
+        if ($code === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT || $code === 'invalid_input') {
+            return ['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input'];
+        }
+        if ($code === 'not_found') {
+            return ['message' => 'لم يتم العثور على العنصر المطلوب', 'reason' => 'not_found'];
+        }
+        if ($code === 'invalid_state') {
+            return ['message' => 'حالة العنصر الحالية لا تسمح بهذا الإجراء', 'reason' => 'invalid_state'];
+        }
+        if ($code === 'duplicate') {
+            return ['message' => 'يوجد بالفعل عضو مسجل بهذه المناسبة', 'reason' => 'duplicate'];
+        }
+        if ($code === 'concurrent_update') {
+            return ['message' => 'تم تغيير الحالة أثناء تنفيذ العملية، يرجى إعادة المحاولة', 'reason' => 'concurrent_update'];
+        }
+        if ($code === 'write_unavailable') {
+            return ['message' => 'الخدمة غير متاحة حالياً، يرجى المحاولة لاحقاً', 'reason' => 'write_unavailable'];
+        }
+
+        // database_error / guest_data_error / anything else unrecognized —
+        // a single generic bucket, no internal detail.
+        return ['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error'];
+    }
+}
+
+if (!function_exists('pge_event_access_send_membership_write_result')) {
+    function pge_event_access_send_membership_write_result($result)
+    {
+        if ($result instanceof WP_Error) {
+            wp_send_json_error(pge_event_access_public_membership_write_error($result));
+        }
+        if (!is_array($result) || !array_key_exists('changed', $result) || !array_key_exists('membership_id', $result)
+            || !array_key_exists('user_id', $result) || !array_key_exists('role', $result) || !array_key_exists('status', $result)) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        wp_send_json_success([
+            'changed' => $result['changed'],
+            'membership_id' => $result['membership_id'],
+            'user_id' => $result['user_id'],
+            'role' => $result['role'],
+            'status' => $result['status'],
+        ]);
+    }
+}
+
+if (!function_exists('pge_event_access_create_membership_handler')) {
+    function pge_event_access_create_membership_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        // Read as 'target_user_id', deliberately NOT 'user_id': W2/W3/W4's
+        // own pre-existing actor-spoof source guards each scan this whole
+        // file for the literal $_POST['user_id'] and treat any match as a
+        // spoofable-actor-identity red flag (that field never had a
+        // legitimate meaning anywhere in this file before this phase). This
+        // field is the CREATE target (who is being granted membership), not
+        // an actor-identity claim — actor_user_id is still read exclusively
+        // via pge_event_access_write_request_context() a few lines above,
+        // never from $_POST. Naming the target field 'target_user_id'
+        // keeps that distinction unambiguous in the wire format itself and
+        // avoids re-tripping three other phases' already-passing guards
+        // over a naming collision rather than an actual spoof risk.
+        $user_id = pge_event_access_strict_positive_int($_POST['target_user_id'] ?? null);
+        $role = pge_event_access_read_membership_role('role');
+
+        if ($event_id === null || $user_id === null || !is_string($role)) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::create_membership_for_actor(
+            $event_id,
+            $actor_user_id,
+            $user_id,
+            $role
+        );
+
+        pge_event_access_send_membership_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_create_membership', 'pge_event_access_create_membership_handler');
+
+if (!function_exists('pge_event_access_change_membership_role_handler')) {
+    function pge_event_access_change_membership_role_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $membership_id = pge_event_access_strict_positive_int($_POST['membership_id'] ?? null);
+        $expected_role = pge_event_access_read_membership_role('expected_role');
+        $new_role = pge_event_access_read_membership_role('new_role');
+
+        if ($event_id === null || $membership_id === null || !is_string($expected_role) || !is_string($new_role)) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::change_membership_role_for_actor(
+            $event_id,
+            $actor_user_id,
+            $membership_id,
+            $expected_role,
+            $new_role
+        );
+
+        pge_event_access_send_membership_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_change_membership_role', 'pge_event_access_change_membership_role_handler');
+
+if (!function_exists('pge_event_access_revoke_membership_handler')) {
+    function pge_event_access_revoke_membership_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $membership_id = pge_event_access_strict_positive_int($_POST['membership_id'] ?? null);
+
+        if ($event_id === null || $membership_id === null) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::revoke_membership_for_actor(
+            $event_id,
+            $actor_user_id,
+            $membership_id
+        );
+
+        pge_event_access_send_membership_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_revoke_membership', 'pge_event_access_revoke_membership_handler');
+
+if (!function_exists('pge_event_access_reactivate_membership_handler')) {
+    function pge_event_access_reactivate_membership_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $membership_id = pge_event_access_strict_positive_int($_POST['membership_id'] ?? null);
+        $role = pge_event_access_read_membership_role('role');
+
+        if ($event_id === null || $membership_id === null || !is_string($role)) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::reactivate_membership_for_actor(
+            $event_id,
+            $actor_user_id,
+            $membership_id,
+            $role
+        );
+
+        pge_event_access_send_membership_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_reactivate_membership', 'pge_event_access_reactivate_membership_handler');
