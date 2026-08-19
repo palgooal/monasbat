@@ -916,5 +916,231 @@ foreach (['manager', 'manager_unauth', 'viewer', 'revoked_manager', 'revoked_vie
 }
 w3_ok('L1 zero Repository mutations across the entire denied-actor x grant/revoke matrix', $total_denied_mutations === 0);
 
+// ──────────────────────────────────────────────────────────────
+// Section M — Event-Context Enumeration Privacy Hardening (Phase H1C-EC1)
+//
+// Proves the same family of Event-ID Enumeration Oracle H1C-W4 found and
+// closed on its own write surface also existed here, on both W3 write use
+// cases, and is now closed.
+// ──────────────────────────────────────────────────────────────
+
+$w3_nonexistent_event_id = 999999;
+
+// M1 — Application Service layer: for every denied actor type x both
+// operations, the WP_Error code is IDENTICAL whether event_id refers to a
+// real event the actor is denied on, or to an event_id that does not
+// exist at all. Zero Repository mutations / zero audit rows on both sides.
+$f = w3_matrix_fixture();
+w3_access(10, $f['target_mgr'], $f['g1']); // a real grant to operate on for revoke
+
+foreach (['grant_group_access_for_actor', 'revoke_group_access_for_actor'] as $method) {
+    foreach ([
+        ['manager', $f['manager']], ['manager_unauth', $f['manager_unauth']], ['viewer', $f['viewer']],
+        ['revoked_manager', $f['revoked_manager']], ['revoked_viewer', $f['revoked_viewer']],
+        ['stranger', $f['stranger']],
+    ] as [$who, $actor_id]) {
+        $before_mut = $GLOBALS['w3_mutation_calls'];
+        $before_audit = count($GLOBALS['w3_db']['audit']);
+        $code_existing = w3_code(call_user_func([$AS, $method], 10, $actor_id, $f['target_mgr'], $f['g1']));
+        $mut_ok_existing = $GLOBALS['w3_mutation_calls'] === $before_mut && count($GLOBALS['w3_db']['audit']) === $before_audit;
+
+        $before_mut = $GLOBALS['w3_mutation_calls'];
+        $before_audit = count($GLOBALS['w3_db']['audit']);
+        $code_missing = w3_code(call_user_func([$AS, $method], $w3_nonexistent_event_id, $actor_id, $f['target_mgr'], $f['g1']));
+        $mut_ok_missing = $GLOBALS['w3_mutation_calls'] === $before_mut && count($GLOBALS['w3_db']['audit']) === $before_audit;
+
+        w3_ok("M1 $method $who on an EXISTING event is not_authorized", $code_existing === 'not_authorized');
+        w3_ok("M1 $method $who on a NONEXISTENT event is ALSO not_authorized, never a distinct not_found", $code_missing === 'not_authorized');
+        w3_ok("M1 $method $who: existing-denied vs nonexistent-event are publicly indistinguishable (identical WP_Error code)", $code_existing === $code_missing);
+        w3_ok("M1 $method $who: zero Repository mutations / zero audit rows on both sides", $mut_ok_existing && $mut_ok_missing);
+    }
+}
+
+// M2 — AJAX layer: full public JSON response (reason AND message) is
+// byte-for-byte identical between an existing event the actor is denied on
+// and a nonexistent event, for both endpoints.
+$w3_handlers = [
+    'grant' => 'pge_event_access_grant_group_access_handler',
+    'revoke' => 'pge_event_access_revoke_group_access_handler',
+];
+
+foreach ($w3_handlers as $op => $handler_fn) {
+    foreach ([['manager', $f['manager']], ['stranger', $f['stranger']]] as [$who, $actor_id]) {
+        $GLOBALS['w3_current_user_id'] = $actor_id;
+        w3_ajax_post(['event_id' => '10', 'membership_id' => (string) $f['target_mgr'], 'group_id' => (string) $f['g1']]);
+        $resp_existing = w3_call_ajax_handler($handler_fn);
+
+        $GLOBALS['w3_current_user_id'] = $actor_id;
+        w3_ajax_post(['event_id' => (string) $w3_nonexistent_event_id, 'membership_id' => (string) $f['target_mgr'], 'group_id' => (string) $f['g1']]);
+        $resp_missing = w3_call_ajax_handler($handler_fn);
+
+        w3_ok("M2 AJAX $op $who: existing-denied response is not_authorized", $resp_existing['success'] === false && $resp_existing['data']['reason'] === 'not_authorized');
+        w3_ok("M2 AJAX $op $who: nonexistent-event response is ALSO not_authorized, never not_found", $resp_missing['success'] === false && $resp_missing['data']['reason'] === 'not_authorized');
+        w3_ok("M2 AJAX $op $who: full public response (reason AND message) is byte-for-byte identical between existing-denied and nonexistent-event", $resp_existing['data'] === $resp_missing['data']);
+    }
+}
+
+// M3 — Actor spoofing remains impossible even against a nonexistent
+// event_id.
+$GLOBALS['w3_current_user_id'] = $f['manager'];
+w3_ajax_post([
+    'event_id' => (string) $w3_nonexistent_event_id, 'membership_id' => (string) $f['target_mgr'], 'group_id' => (string) $f['g1'],
+    'actor_user_id' => (string) $f['owner'], 'user_id' => (string) $f['owner'],
+    'owner_id' => (string) $f['owner'], 'manager_id' => (string) $f['owner'],
+]);
+$before_mut = $GLOBALS['w3_mutation_calls'];
+$resp = w3_call_ajax_handler('pge_event_access_grant_group_access_handler');
+w3_ok('M3 actor spoof remains impossible against a nonexistent event_id — the real (denied Manager) session is still denied as not_authorized', $resp['success'] === false && $resp['data']['reason'] === 'not_authorized');
+w3_ok('M3 the spoofed request against a nonexistent event triggered zero Repository mutations', $GLOBALS['w3_mutation_calls'] === $before_mut);
+
+// M4 — Regression sanity: a real Owner on a real event is completely
+// unaffected (the fix only touches the resolve_context() WP_Error branch,
+// which a proven Owner/Admin never enters for an EXISTING event).
+$f4 = w3_matrix_fixture();
+$result = call_user_func([$AS, 'grant_group_access_for_actor'], 10, $f4['owner'], $f4['target_mgr'], $f4['g1']);
+w3_ok('M4 Owner on a real event can still GRANT normally after the fix', is_array($result) && $result['changed'] === true);
+
+// M5 — Critical negative proof: the fix is NOT a blind global
+// not_found -> not_authorized rule. A proven Owner on a REAL event with a
+// membership_id that genuinely does not exist still gets the real, honest,
+// POST-authority Repository not_found.
+$f5 = w3_matrix_fixture();
+$result = call_user_func([$AS, 'grant_group_access_for_actor'], 10, $f5['owner'], 999999, $f5['g1']);
+w3_ok('M5 Owner on a REAL event with a genuinely missing membership_id still returns real not_found (the fix did NOT become a blind global rule)', w3_code($result) === 'not_found');
+
+// M6 — Source-level lock-in: both public methods route through the shared
+// resolve_event_actor_context() gate.
+$app_source_full_m = file_get_contents(PGE_PATH . 'includes/class-pge-event-access-application-service.php');
+$app_code_only_m = w3_strip_comments($app_source_full_m);
+w3_ok('M6 the shared resolve_event_actor_context() gate exists', strpos($app_code_only_m, 'function resolve_event_actor_context') !== false);
+foreach (['grant_group_access_for_actor', 'revoke_group_access_for_actor'] as $method) {
+    $pos = strpos($app_code_only_m, "function $method");
+    $next_pos = strpos($app_code_only_m, 'function ', $pos + 10);
+    $body = $next_pos !== false ? substr($app_code_only_m, $pos, $next_pos - $pos) : substr($app_code_only_m, $pos);
+    w3_ok(
+        "M6 $method uses the shared resolve_event_actor_context() gate directly (no independent resolve_context() call of its own)",
+        strpos($body, 'resolve_event_actor_context') !== false && strpos($body, 'PGE_Event_Access_Authorization::resolve_context') === false
+    );
+}
+
+// ──────────────────────────────────────────────────────────────
+// Section N — PRE-AUTHORITY phase-based collapse follow-up (Phase
+// H1C-EC1 follow-up security review).
+//
+// Section M above proved and closed the 'not_found' half of the
+// resolve_context() Event-ID Enumeration Oracle. A follow-up review
+// found the shared gate (resolve_event_actor_context()) was collapsing
+// ONLY the 'not_found' WP_Error code, while every OTHER resolve_context()
+// WP_Error -- most notably 'database_error' from an ambiguous/duplicated
+// membership row for this same actor at a REAL event -- was passed
+// through unchanged. That database_error is still raised strictly BEFORE
+// any Owner/Admin capability decision, i.e. PRE-AUTHORITY exactly like
+// not_found, so it must ALSO collapse to not_authorized. This section
+// proves Case A (nonexistent event) and Case B (a real, existing event
+// where this actor's own membership row is ambiguous) are publicly
+// indistinguishable.
+// ──────────────────────────────────────────────────────────────
+
+function w3_ambiguous_membership_fixture()
+{
+    w3_reset_db();
+    w3_event(20, 1); // owner = user 1, a fresh event distinct from Section M's event 10
+    $g1 = w3_group(20);
+    // Actor 8 gets TWO active membership rows for the SAME (event, user)
+    // pair -> Repository's get_membership_for_user() ("... LIMIT 2")
+    // fails closed with database_error before any role/capability
+    // decision is ever reached.
+    w3_membership(20, 8, 'manager');
+    w3_membership(20, 8, 'viewer');
+    $target = w3_membership(20, 50, 'manager'); // a separate, always-inactive target for grant/revoke to operate on
+    return ['g1' => $g1, 'owner' => 1, 'ambiguous_actor' => 8, 'target' => $target];
+}
+
+$w3_nonexistent_event_id_n = 888888;
+
+// N1 — Application Service layer, both operations.
+$fn = w3_ambiguous_membership_fixture();
+w3_access(20, $fn['target'], $fn['g1']); // seed a real grant so revoke has something to act on
+foreach (['grant_group_access_for_actor', 'revoke_group_access_for_actor'] as $method) {
+    $before_mut = $GLOBALS['w3_mutation_calls'];
+    $before_audit = count($GLOBALS['w3_db']['audit']);
+    $code_existing = w3_code(call_user_func([$AS, $method], 20, $fn['ambiguous_actor'], $fn['target'], $fn['g1']));
+    $mut_ok_existing = $GLOBALS['w3_mutation_calls'] === $before_mut && count($GLOBALS['w3_db']['audit']) === $before_audit;
+
+    $before_mut = $GLOBALS['w3_mutation_calls'];
+    $before_audit = count($GLOBALS['w3_db']['audit']);
+    $code_missing = w3_code(call_user_func([$AS, $method], $w3_nonexistent_event_id_n, $fn['ambiguous_actor'], $fn['target'], $fn['g1']));
+    $mut_ok_missing = $GLOBALS['w3_mutation_calls'] === $before_mut && count($GLOBALS['w3_db']['audit']) === $before_audit;
+
+    w3_ok("N1 $method ambiguous-membership actor on the REAL event 20 is not_authorized, NOT a distinct database_error", $code_existing === 'not_authorized');
+    w3_ok("N1 $method ambiguous-membership actor on a NONEXISTENT event is ALSO not_authorized", $code_missing === 'not_authorized');
+    w3_ok("N1 $method: existing (ambiguous-membership) vs nonexistent-event are publicly indistinguishable (identical WP_Error code)", $code_existing === $code_missing);
+    w3_ok("N1 $method: zero Repository mutations / zero audit rows on both sides", $mut_ok_existing && $mut_ok_missing);
+}
+
+// N2 — AJAX layer.
+$fn2 = w3_ambiguous_membership_fixture();
+w3_access(20, $fn2['target'], $fn2['g1']);
+foreach ($w3_handlers as $op => $handler_fn) {
+    $GLOBALS['w3_current_user_id'] = $fn2['ambiguous_actor'];
+    w3_ajax_post(['event_id' => '20', 'membership_id' => (string) $fn2['target'], 'group_id' => (string) $fn2['g1']]);
+    $resp_existing = w3_call_ajax_handler($handler_fn);
+
+    $GLOBALS['w3_current_user_id'] = $fn2['ambiguous_actor'];
+    w3_ajax_post(['event_id' => (string) $w3_nonexistent_event_id_n, 'membership_id' => (string) $fn2['target'], 'group_id' => (string) $fn2['g1']]);
+    $resp_missing = w3_call_ajax_handler($handler_fn);
+
+    w3_ok("N2 AJAX $op ambiguous-membership actor: real-event response is not_authorized, never database_error/server_error", $resp_existing['success'] === false && $resp_existing['data']['reason'] === 'not_authorized');
+    w3_ok("N2 AJAX $op ambiguous-membership actor: nonexistent-event response is ALSO not_authorized", $resp_missing['success'] === false && $resp_missing['data']['reason'] === 'not_authorized');
+    w3_ok("N2 AJAX $op: full public response (reason AND message) is byte-for-byte identical between the real ambiguous-membership event and a nonexistent event", $resp_existing['data'] === $resp_missing['data']);
+}
+
+// N3 — Actor spoofing.
+$fn3 = w3_ambiguous_membership_fixture();
+$GLOBALS['w3_current_user_id'] = $fn3['ambiguous_actor'];
+w3_ajax_post([
+    'event_id' => '20', 'membership_id' => (string) $fn3['target'], 'group_id' => (string) $fn3['g1'],
+    'actor_user_id' => (string) $fn3['owner'], 'user_id' => (string) $fn3['owner'],
+    'owner_id' => (string) $fn3['owner'], 'manager_id' => (string) $fn3['owner'],
+]);
+$before_mut = $GLOBALS['w3_mutation_calls'];
+$resp = w3_call_ajax_handler('pge_event_access_grant_group_access_handler');
+w3_ok('N3 actor spoof remains impossible for the ambiguous-membership actor — still not_authorized', $resp['success'] === false && $resp['data']['reason'] === 'not_authorized');
+w3_ok('N3 the spoofed request triggered zero Repository mutations', $GLOBALS['w3_mutation_calls'] === $before_mut);
+
+// N4 — Regression sanity: a real Owner on an unrelated, uncorrupted real
+// event is completely unaffected by this fix. Deliberately uses a
+// SEPARATE clean event (via w3_matrix_fixture(), event 10) rather than
+// event 20: Repository's lock_memberships() (called by every grant/
+// revoke on a given event) fails the WHOLE event closed with
+// database_error the moment ANY membership row at that event is
+// ambiguous — by design, since it cannot know in advance which
+// membership_id a caller will target. That is a pre-existing, unrelated
+// Repository data-integrity guard, not something this phase's fix
+// touches, so it must not be conflated with the PRE-AUTHORITY collapse
+// under test here (proven independently in N1-N3 above via the actor's
+// OWN resolve_context() failure, which happens before lock_memberships()
+// is ever reached).
+$fn4 = w3_matrix_fixture();
+$result = call_user_func([$AS, 'grant_group_access_for_actor'], 10, $fn4['owner'], $fn4['target_mgr'], $fn4['g1']);
+w3_ok('N4 the real Owner of an unrelated, uncorrupted event can still GRANT normally after the fix', is_array($result) && $result['changed'] === true);
+
+// N5 — Post-authority error fidelity still preserved (same unrelated
+// clean event as N4, for the same reason).
+$fn5 = w3_matrix_fixture();
+$result5 = call_user_func([$AS, 'grant_group_access_for_actor'], 10, $fn5['owner'], 999999, $fn5['g1']);
+w3_ok('N5 Owner on a REAL event with a genuinely missing membership_id still returns real not_found (widened PRE-AUTHORITY collapse did not spill into POST-authority errors)', w3_code($result5) === 'not_found');
+
+// N6 — Source-level: resolve_event_actor_context() must not special-case
+// on a specific WP_Error code.
+$app_source_full_n2 = file_get_contents(PGE_PATH . 'includes/class-pge-event-access-application-service.php');
+$pos_n2 = strpos($app_source_full_n2, 'function resolve_event_actor_context');
+$next_pos_n2 = strpos($app_source_full_n2, 'function ', $pos_n2 + 10);
+$body_n2 = $next_pos_n2 !== false ? substr($app_source_full_n2, $pos_n2, $next_pos_n2 - $pos_n2) : substr($app_source_full_n2, $pos_n2);
+w3_ok(
+    'N6 resolve_event_actor_context() does not special-case on get_error_code() (every WP_Error collapses, not just one code)',
+    strpos($body_n2, 'get_error_code') === false
+);
+
 echo "\nH1C-W3: {$passed}/" . ($passed + $failed) . " passed\n";
 exit($failed === 0 ? 0 : 1);

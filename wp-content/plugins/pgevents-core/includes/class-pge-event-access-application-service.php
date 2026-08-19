@@ -8,7 +8,9 @@ if (!defined('ABSPATH')) exit;
  * writes this class performs, added in a later phase. H1C-W3 — Owner/Admin
  * Group-Access Lifecycle Write Wiring (Section below "Owner/Admin
  * group-access lifecycle writes"): the second write surface, added in a
- * still later phase.
+ * still later phase. H1C-W4 — Owner/Admin Group Lifecycle Write Wiring
+ * (Section below "Owner/Admin group lifecycle writes"): the third write
+ * surface, added in a still later phase.
  *
  * The first production Application-layer consumer of the H1B Authorization
  * Core (PGE_Event_Access_Authorization / PGE_Event_Access_Authorization_Context)
@@ -19,11 +21,13 @@ if (!defined('ABSPATH')) exit;
  * move_guest_to_group / unassign_guest_from_group (see the dedicated
  * section below). As of H1C-W3, this class additionally calls exactly two
  * more: grant_group_access / revoke_group_access (see that section's own
- * dedicated block below) — five Repository mutation methods total. Every
- * other write/mutation method (create_group/rename_group/archive_group/
- * set_default_group/create_membership/change_membership_role/
- * revoke_membership/reactivate_membership) is still never referenced here
- * and remains out of scope for this class.
+ * dedicated block below). As of H1C-W4, this class additionally calls
+ * exactly four more: create_group / rename_group / archive_group /
+ * set_default_group (see that section's own dedicated block below) — nine
+ * Repository mutation methods total. Every other write/mutation method
+ * (create_membership/change_membership_role/revoke_membership/
+ * reactivate_membership — the Membership Lifecycle surface) is still never
+ * referenced here and remains out of scope for this class.
  *
  * Architecture (Section 6 of the H1C-W1 brief):
  *
@@ -128,9 +132,16 @@ final class PGE_Event_Access_Application_Service
             return self::invalid_input();
         }
 
-        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        // Phase H1C-EC1 — Event-Context Enumeration Privacy Hardening: uses
+        // the shared resolve_event_actor_context() helper (see its
+        // docblock in the Internal helpers section) so a nonexistent
+        // event_id collapses to the same not_authorized() a denied actor
+        // gets for a real event, instead of leaking a distinct not_found
+        // through to the public AJAX 'reason'. Everything below this line
+        // — the pagination check and the owner/admin vs. active-
+        // collaborator vs. deny branching — is completely unchanged.
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
         if ($context instanceof WP_Error) return $context;
-        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
 
         $pagination = self::validate_pagination($page, $per_page);
         if ($pagination instanceof WP_Error) return $pagination;
@@ -529,9 +540,11 @@ final class PGE_Event_Access_Application_Service
             return self::invalid_input();
         }
 
-        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        // Phase H1C-EC1: shared PRE-AUTHORITY primitive — see its docblock
+        // in the Internal helpers section. can_assign_guest()'s own
+        // capability decision below is unchanged.
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
         if ($context instanceof WP_Error) return $context;
-        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
 
         $decision = PGE_Event_Access_Authorization::can_assign_guest($context);
         if (empty($decision['allowed'])) return self::not_authorized();
@@ -563,9 +576,11 @@ final class PGE_Event_Access_Application_Service
             return self::invalid_input();
         }
 
-        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        // Phase H1C-EC1: shared PRE-AUTHORITY primitive — see its docblock
+        // in the Internal helpers section. can_move_guest()'s own
+        // capability decision below is unchanged.
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
         if ($context instanceof WP_Error) return $context;
-        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
 
         $decision = PGE_Event_Access_Authorization::can_move_guest($context, $expected_group_id, $new_group_id);
         if (empty($decision['allowed'])) return self::not_authorized();
@@ -611,9 +626,11 @@ final class PGE_Event_Access_Application_Service
             return self::invalid_input();
         }
 
-        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        // Phase H1C-EC1: shared PRE-AUTHORITY primitive — see its docblock
+        // in the Internal helpers section. can_unassign_guest()'s own
+        // capability decision below is unchanged.
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
         if ($context instanceof WP_Error) return $context;
-        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
 
         $decision = PGE_Event_Access_Authorization::can_unassign_guest($context, $expected_group_id);
         if (empty($decision['allowed'])) return self::not_authorized();
@@ -962,9 +979,11 @@ final class PGE_Event_Access_Application_Service
             return self::invalid_input();
         }
 
-        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        // Phase H1C-EC1: shared PRE-AUTHORITY primitive — see its docblock
+        // in the Internal helpers section. can_manage_group_access()'s own
+        // capability decision below is unchanged.
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
         if ($context instanceof WP_Error) return $context;
-        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
 
         $decision = PGE_Event_Access_Authorization::can_manage_group_access($context);
         if (empty($decision['allowed'])) return self::not_authorized();
@@ -984,9 +1003,11 @@ final class PGE_Event_Access_Application_Service
             return self::invalid_input();
         }
 
-        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        // Phase H1C-EC1: shared PRE-AUTHORITY primitive — see its docblock
+        // in the Internal helpers section. can_manage_group_access()'s own
+        // capability decision below is unchanged.
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
         if ($context instanceof WP_Error) return $context;
-        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
 
         $decision = PGE_Event_Access_Authorization::can_manage_group_access($context);
         if (empty($decision['allowed'])) return self::not_authorized();
@@ -1068,6 +1089,352 @@ final class PGE_Event_Access_Application_Service
     }
 
     // ──────────────────────────────────────────────────────────────
+    // Owner/Admin group lifecycle writes (Phase H1C-W4)
+    //
+    // H1C-W3's own "Recommended Next Phase" note named this as the natural
+    // follow-on: it is the one remaining piece that makes the group/
+    // membership/group-access domain actually usable end-to-end in
+    // production — there was previously no way to create a group at all.
+    //
+    // Authorization contract (PGE_Event_Access_Authorization::
+    // can_manage_event_structure()) — verified directly against source
+    // (owner_or_admin_only(), byte-identical delegation to the same private
+    // helper as can_manage_membership()/can_manage_group_access()) and
+    // against the existing, already-passing H1C-A2 test suite's Section D
+    // loop (owner allowed, admin allowed, manager denied, viewer denied for
+    // this exact capability name), not assumed from memory or from this
+    // phase's own planning notes. Same shape as H1C-W3's
+    // can_manage_group_access(): zero group-scoping parameter, zero
+    // exception for Manager/Viewer, no "partially authorized scoped actor"
+    // concept in this domain — so, exactly as documented for H1C-W3 above,
+    // no analogous scoped pre-check helper is needed or added here. A
+    // denied actor (Manager/Viewer/Revoked/Stranger) is rejected by role
+    // before any existence-sensitive Repository lookup of group_id — the
+    // only work that happens before the Authorization gate is syntax-level:
+    // strict positive-integer validation of event_id/actor_user_id/group_id
+    // and a basic is_string() type check on any name argument. Neither
+    // reveals whether a group, its name, or its default/archived state
+    // actually exists. This is Group-ID enumeration resistance specifically
+    // — a DISTINCT guarantee from Event-ID enumeration resistance, which is
+    // handled by the shared resolve_group_structure_authority() gate below
+    // (see its own docblock for the Event-Context Enumeration Privacy Fix
+    // Pass this phase's independent review found and fixed: a denied actor
+    // could previously distinguish an existing-but-unauthorized event_id
+    // from a nonexistent one via the public AJAX 'reason' field). Do not
+    // read this paragraph as a claim that Event-ID existence is hidden —
+    // that guarantee lives entirely in resolve_group_structure_authority().
+    //
+    // Repository contract (PGE_Event_Access_Repository::create_group()/
+    // rename_group()/archive_group()/set_default_group(), reviewed directly
+    // against source, none of it re-implemented here):
+    //   - All four methods share an IDENTICAL success shape —
+    //     ['changed' => bool, 'group' => <normalized group row>] — which is
+    //     why one shared map_group_write_result() below is honest and
+    //     non-lossy, unlike H1C-W2's guest-assignment mapper (a different
+    //     shape) staying separate from H1C-W3's group-access mapper
+    //     (likewise a different shape).
+    //   - create_group($event_id, $name, $actor_user_id, $make_default =
+    //     false): $name goes through Repository's own
+    //     normalize_group_name_input() (trims/collapses whitespace, rejects
+    //     '<'/'>' and control characters, 191-codepoint cap) — Application
+    //     Service never re-validates name content, only that it is a
+    //     string at all (a non-string is invalid_input; a string Repository
+    //     itself rejects is invalid_name — two distinct, real codes, not
+    //     invented here). Duplicate ACTIVE name (case-insensitive via
+    //     name_key) -> duplicate_group. $make_default is NOT exposed
+    //     through the AJAX layer for this phase (see the AJAX section
+    //     below) — Application Service still accepts it for direct/future
+    //     callers, matching the real Repository signature exactly.
+    //   - rename_group($event_id, $group_id, $expected_name, $new_name,
+    //     $actor_user_id): $expected_name is a REQUIRED optimistic-
+    //     concurrency parameter (not optional in the real signature) — the
+    //     caller must state what it believes the CURRENT name is; a
+    //     mismatch is concurrent_update, exactly like H1C-W2's
+    //     expected_group_id. Renaming an archived group is invalid_state.
+    //     Renaming to the exact same (name, name_key) is a no-op
+    //     (changed:false). Renaming to a duplicate ACTIVE name (excluding
+    //     itself) is duplicate_group. Missing/cross-event group_id is
+    //     not_found (lock_groups() scopes by event_id — a foreign id is
+    //     simply absent from the locked set, same lesson as H1C-W2/W3).
+    //   - archive_group($event_id, $group_id, $actor_user_id): archiving an
+    //     already-archived group is a no-op success (changed:false) — NOT
+    //     an error. Archiving clears name_key AND default_slot in the same
+    //     UPDATE (so archiving the current default group silently un-
+    //     defaults it — the audit metadata records was_default for this
+    //     reason; no separate default_group_changed audit row is written
+    //     for that side effect). archive_group performs NO check at all on
+    //     existing guest assignments or group-access grants referencing the
+    //     group — it archives unconditionally (besides the already-archived
+    //     no-op). This is consistent with H1C-W3's already-proven asymmetry
+    //     (revoke_group_access has no status check either): archiving never
+    //     cascades into the assignments or access tables. A subsequent
+    //     grant_group_access or assign_guest_to_group against the now-
+    //     archived group is separately blocked by THOSE methods' own
+    //     invalid_state/invalid_group checks — never by archive_group
+    //     itself. Nothing here re-implements or changes any of that.
+    //   - set_default_group($event_id, $group_id, $actor_user_id): target
+    //     must be active (archived target is invalid_state). Setting the
+    //     already-current default again is a no-op (changed:false).
+    //     Switching default from G1 to G2 clears G1's slot then sets G2's
+    //     slot inside the same transaction; a lost race on either half maps
+    //     to concurrent_update via update_group_default_slot()'s own
+    //     WHERE-clause row-count check — Application Service does not
+    //     re-implement any part of this two-step switch.
+    //
+    // Same fixed order as every other write use case in this class:
+    //   1. strict input validation (REASON_INVALID_INPUT);
+    //   2. PGE_Event_Access_Authorization::resolve_context() — fresh,
+    //      point-in-time, never caller-supplied;
+    //   3. PGE_Event_Access_Authorization::can_manage_event_structure();
+    //   4. only on explicit allow, the matching Repository mutation call,
+    //      whose result is passed through map_group_write_result() below.
+    // Steps 2-3 are implemented by the single shared private
+    // resolve_group_structure_authority() gate below (Event-Context
+    // Enumeration Privacy Fix Pass) rather than being duplicated inline in
+    // each of the four public methods — see that method's own docblock for
+    // the pre-authority/post-authority distinction this gate enforces.
+    //
+    // GR1 interaction: none. Group lifecycle writes never touch guest
+    // identity (name/note/code/phone) or PGE_Event_Guest_Read_Projection —
+    // groups are a structural concept, not a guest-identity concept.
+    //
+    // Success shape (never contains guest PII — there is none in this
+    // domain):
+    //   ['ok' => true, 'changed' => bool, 'group' => [
+    //      'id', 'event_id', 'name', 'name_key', 'status', 'is_default',
+    //      'created_by_user_id', 'created_at', 'updated_at', 'archived_at',
+    //   ]]
+    // — an exact passthrough of PGE_Event_Access_Repository's own group
+    // row shape, plus the 'ok' marker. No field is trimmed: this capability
+    // is Owner/Admin-only with no partial-authorization concept, so — same
+    // reasoning already established for H1C-W3's group-access reads/writes
+    // — a full, honest passthrough carries no enumeration or data-
+    // minimization concern for the only actors who can ever reach it.
+
+    /**
+     * Shared pre-authority context+authorization gate for the four Group
+     * Lifecycle write use cases (H1C-W4 — Event-Context Enumeration
+     * Privacy Fix Pass).
+     *
+     * BUG FOUND AND FIXED HERE (isolated to this one shared gate): before
+     * this fix, each of the four methods below did
+     * `if ($context instanceof WP_Error) return $context;` — returning
+     * PGE_Event_Access_Authorization::resolve_context()'s own raw WP_Error
+     * to the caller UNCHANGED. resolve_context() checks
+     * `get_post_type($event_id) !== 'pge_event'` and returns a distinct
+     * WP_Error('not_found', ...) for a NONEXISTENT event BEFORE any
+     * Owner/Admin/Manager/Viewer decision is ever made (this is a
+     * deliberate, correct, and untouched part of the Authorization Core's
+     * OWN contract — H1C-A2's own test C4 explicitly asserts this exact
+     * behavior). The bug was not in Authorization Core: it was that this
+     * internal, pre-authority signal was passed straight through to the
+     * public AJAX boundary, where pge_event_access_public_group_write_error()
+     * maps 'not_found' to a DISTINCT public reason/message from
+     * 'not_authorized'. An authenticated actor with a valid nonce but no
+     * Owner/Admin authority over event_id could therefore compare the
+     * public 'reason' field of two otherwise-identical requests —
+     * (existing event, denied) vs (nonexistent event) — and use any of the
+     * four Group Lifecycle AJAX endpoints as an Event-ID existence oracle,
+     * even though Group-ID enumeration was already fully resistant (a
+     * denied actor never reaches a Repository group_id lookup at all).
+     *
+     * Fix: every resolve_context() WP_Error — regardless of which code it
+     * carries (not_found, database_error, schema_not_ready propagated from
+     * Repository, or anything else) — now collapses to the SAME
+     * not_authorized() result as an explicit can_manage_event_structure()
+     * denial, because at this exact point in the fixed step order NO
+     * authority has been proven yet: this is unconditionally a
+     * PRE-AUTHORITY failure. This is deliberately NOT a blind "every
+     * not_found becomes not_authorized" rule applied everywhere:
+     * Repository's OWN not_found (a missing/cross-event group_id, raised
+     * strictly AFTER authority is already proven, inside
+     * create_group()/rename_group()/archive_group()/set_default_group()
+     * and reported through map_group_write_result() below, completely
+     * untouched by this method) keeps its full, honest
+     * not_found/invalid_state/duplicate/concurrent_update/database_error
+     * fidelity — because the only actor who can ever reach that code path
+     * is one who has ALREADY proven Owner/Admin authority over event_id.
+     * Group-ID enumeration resistance and Event-ID enumeration resistance
+     * are therefore two distinct, separately-proven guarantees — see the
+     * dedicated "Event-Context Enumeration Privacy Fix Pass" test section
+     * in the H1C-W4 suite for both.
+     *
+     * @return PGE_Event_Access_Authorization_Context|WP_Error
+     */
+    private static function resolve_group_structure_authority($event_id, $actor_user_id)
+    {
+        // Phase H1C-EC1: the PRE-AUTHORITY context-resolution step (and its
+        // not_authorized collapse) now lives in the single shared
+        // resolve_event_actor_context() helper (see its own docblock in the
+        // Internal helpers section below) rather than being duplicated
+        // inline here — W1/W2/W3 now use the identical primitive. This
+        // method still owns the group-structure-specific capability
+        // decision (can_manage_event_structure()) exactly as before; no
+        // behavior changes for any of the four Group Lifecycle callers.
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_event_structure($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        return $context;
+    }
+
+    /**
+     * @return array{ok:true,changed:bool,group:array}|WP_Error
+     */
+    public static function create_group_for_actor($event_id, $actor_user_id, $name, $make_default = false)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
+            || !is_string($name) || !is_bool($make_default)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_group_structure_authority($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::create_group($event_id, $name, $actor_user_id, $make_default);
+        return self::map_group_write_result($result);
+    }
+
+    /**
+     * @return array{ok:true,changed:bool,group:array}|WP_Error
+     */
+    public static function rename_group_for_actor($event_id, $actor_user_id, $group_id, $expected_name, $new_name)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id) || !self::valid_scalar_id($group_id)
+            || !is_string($expected_name) || !is_string($new_name)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_group_structure_authority($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::rename_group($event_id, $group_id, $expected_name, $new_name, $actor_user_id);
+        return self::map_group_write_result($result);
+    }
+
+    /**
+     * @return array{ok:true,changed:bool,group:array}|WP_Error
+     */
+    public static function archive_group_for_actor($event_id, $actor_user_id, $group_id)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id) || !self::valid_scalar_id($group_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_group_structure_authority($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::archive_group($event_id, $group_id, $actor_user_id);
+        return self::map_group_write_result($result);
+    }
+
+    /**
+     * @return array{ok:true,changed:bool,group:array}|WP_Error
+     */
+    public static function set_default_group_for_actor($event_id, $actor_user_id, $group_id)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id) || !self::valid_scalar_id($group_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_group_structure_authority($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::set_default_group($event_id, $group_id, $actor_user_id);
+        return self::map_group_write_result($result);
+    }
+
+    /**
+     * Translates a real PGE_Event_Access_Repository group-lifecycle write
+     * result into a small, fixed public contract. Kept separate from
+     * map_repository_write_result() (guest-assignment) and
+     * map_group_access_write_result() (group-access) on purpose — this
+     * domain's shape (group row) and reachable codes (invalid_name,
+     * duplicate_group) genuinely differ from both.
+     *
+     * Reviewed against the ACTUAL create_group()/rename_group()/
+     * archive_group()/set_default_group() source rather than an assumed
+     * list:
+     *
+     *   invalid_input      -> invalid_input
+     *   invalid_name        -> invalid_name (create/rename only — the
+     *                         supplied name failed Repository's own
+     *                         normalize_group_name_input(): empty after
+     *                         trim, contains '<'/'>' or control
+     *                         characters, or exceeds the 191-codepoint
+     *                         cap)
+     *   schema_not_ready    -> write_unavailable
+     *   not_found           -> not_found (missing or cross-event group_id
+     *                         — lock_groups() scopes strictly by event_id,
+     *                         so a foreign id is simply absent from the
+     *                         locked set)
+     *   invalid_state       -> invalid_state (rename/set_default target is
+     *                         archived)
+     *   duplicate_group     -> duplicate (create/rename only — an ACTIVE
+     *                         group with the same case-insensitive name
+     *                         already exists)
+     *   concurrent_update   -> concurrent_update (rename: expected_name no
+     *                         longer matches; rename/archive/set_default:
+     *                         the row changed between the locking read and
+     *                         the write)
+     *   database_error      -> database_error
+     *   anything else       -> database_error (never a raw/unrecognized
+     *                         code reaches a caller)
+     *
+     * @return array{ok:true,changed:bool,group:array}|WP_Error
+     */
+    private static function map_group_write_result($result)
+    {
+        if (is_array($result)) {
+            if (!array_key_exists('changed', $result) || !array_key_exists('group', $result) || !is_array($result['group'])) {
+                return self::guest_data_error();
+            }
+            $group = $result['group'];
+            foreach (['id', 'event_id', 'name', 'name_key', 'status', 'is_default', 'created_by_user_id', 'created_at', 'updated_at', 'archived_at'] as $field) {
+                if (!array_key_exists($field, $group)) return self::guest_data_error();
+            }
+            return [
+                'ok' => true,
+                'changed' => (bool) $result['changed'],
+                'group' => [
+                    'id' => $group['id'],
+                    'event_id' => $group['event_id'],
+                    'name' => $group['name'],
+                    'name_key' => $group['name_key'],
+                    'status' => $group['status'],
+                    'is_default' => (bool) $group['is_default'],
+                    'created_by_user_id' => $group['created_by_user_id'],
+                    'created_at' => $group['created_at'],
+                    'updated_at' => $group['updated_at'],
+                    'archived_at' => $group['archived_at'],
+                ],
+            ];
+        }
+
+        if (!($result instanceof WP_Error)) return self::guest_data_error();
+
+        $code = (string) $result->get_error_code();
+        $map = [
+            'invalid_input' => 'invalid_input',
+            'invalid_name' => 'invalid_name',
+            'schema_not_ready' => 'write_unavailable',
+            'not_found' => 'not_found',
+            'invalid_state' => 'invalid_state',
+            'duplicate_group' => 'duplicate',
+            'concurrent_update' => 'concurrent_update',
+            'database_error' => 'database_error',
+        ];
+        $public_code = $map[$code] ?? 'database_error';
+        return new WP_Error($public_code, 'Unable to complete the requested group change.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Internal helpers
     // ──────────────────────────────────────────────────────────────
 
@@ -1104,6 +1471,98 @@ final class PGE_Event_Access_Application_Service
     private static function not_authorized()
     {
         return new WP_Error(self::REASON_NOT_AUTHORIZED, 'Actor is not authorized to read this event\'s guests.');
+    }
+
+    /**
+     * Phase H1C-EC1 — Cross-Surface Event-Context Enumeration Privacy
+     * Hardening.
+     *
+     * Shared PRE-AUTHORITY context-resolution primitive used by every
+     * use case in this class that starts with
+     * PGE_Event_Access_Authorization::resolve_context($event_id,
+     * $actor_user_id) — H1C-W1's list_accessible_guests_for_actor(),
+     * H1C-W2's assign_guest_to_group_for_actor()/
+     * move_guest_to_group_for_actor()/unassign_guest_from_group_for_actor(),
+     * H1C-W3's grant_group_access_for_actor()/revoke_group_access_for_actor(),
+     * and H1C-W4's resolve_group_structure_authority() (itself now a thin
+     * wrapper around this method, see its own docblock).
+     *
+     * BACKGROUND: resolve_context() legitimately returns a raw WP_Error
+     * (most commonly 'not_found' when get_post_type($event_id) !==
+     * 'pge_event', but also 'database_error'/'schema_not_ready' propagated
+     * from Repository) BEFORE any Owner/Admin/Manager/Viewer decision is
+     * ever made — this is correct, deliberate Authorization Core behavior
+     * (H1C-A2's own test C4 asserts it directly) and is NOT changed here.
+     * H1C-W4's own review found that returning that raw WP_Error unchanged
+     * to a caller let a denied, authenticated actor with a valid nonce
+     * distinguish "event exists but I'm not authorized" from "event does
+     * not exist" via the public reason/message — an Event-ID existence
+     * oracle. H1C-W4 fixed this for its own four write methods; Phase
+     * H1C-EC1 closes the same family of oracle on the three surfaces that
+     * predate W4 (W1's read path, W2's guest-assignment writes, W3's
+     * group-access writes), all of which had the identical raw-passthrough
+     * pattern.
+     *
+     * CONTRACT (Phase H1C-EC1 follow-up security review — corrected from
+     * this method's first draft): the collapse decision is made by PHASE,
+     * not by which specific WP_Error code resolve_context() happened to
+     * return. ANY WP_Error out of resolve_context() — 'not_found',
+     * 'database_error', 'schema_not_ready', or anything else it could ever
+     * return — is BY DEFINITION a PRE-AUTHORITY failure: the caller never
+     * even reached an Owner/Admin/Manager/Viewer capability decision. Every
+     * one of them collapses here to the SAME not_authorized() result.
+     *
+     * This method's first draft only collapsed the 'not_found' code, on the
+     * reasoning that resolve_context()'s other WP_Error branches (e.g. its
+     * own 'database_error' from a failed is_admin/author/membership lookup,
+     * such as when Repository detects more than one active membership row
+     * for the same actor at the same event) are only ever reachable for an
+     * event that DOES exist, so they seemed safe to pass through unchanged
+     * without leaking event existence. A follow-up review corrected this:
+     * the privacy invariant this phase enforces is not "hide event
+     * existence" narrowly, it is "a denied/unproven actor learns nothing
+     * about ANY pre-authority state from a different public reason/message"
+     * — and a real PRE-AUTHORITY database_error (surfaced as 'server_error'
+     * at the public boundary) is still a signal an unproven actor could use
+     * to distinguish this failure mode from every other pre-authority
+     * denial, which is exactly the kind of oracle this phase exists to
+     * close. So the contract is phase-based (pre- vs. post-authority), not
+     * code-based. This is still NOT a blind "every not_found in this class
+     * becomes not_authorized" rule applied everywhere: a REAL Repository
+     * not_found/invalid_state/duplicate/concurrent_update/invalid_group/
+     * ambiguous_guest/database_error raised AFTER a capability decision has
+     * already allowed the actor through (i.e. everything downstream of
+     * this method's return value, once a caller's own can_*() check has
+     * passed) is a separate, completely untouched code path and keeps its
+     * full, honest fidelity for the only actors who can ever reach it.
+     *
+     * This method does ONLY context resolution — it deliberately does NOT
+     * make the capability decision itself, because that decision differs
+     * per use case (W1 branches three ways — owner/admin vs. active
+     * collaborator vs. deny; W2 calls a different, differently-parameterized
+     * capability check per operation — can_assign_guest()/can_move_guest()/
+     * can_unassign_guest(); W3/W4 use a single flat Owner/Admin-only gate
+     * each). Forcing one shared capability decision here would either
+     * invent a rule that doesn't exist for W1/W2, or silently narrow W1's
+     * three-way branch — both rejected. Each caller still makes its own
+     * capability decision immediately after calling this method, exactly
+     * as before.
+     *
+     * @return PGE_Event_Access_Authorization_Context|WP_Error
+     */
+    private static function resolve_event_actor_context($event_id, $actor_user_id)
+    {
+        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
+        // Every resolve_context() WP_Error is a PRE-AUTHORITY failure — no
+        // capability decision was ever reached — so every one of them
+        // collapses to the same not_authorized() result, regardless of its
+        // own code. See the docblock above for why this is phase-based, not
+        // code-based, and why it is still not a blind global rule: nothing
+        // downstream of a successful capability decision is touched here.
+        if ($context instanceof WP_Error) return self::not_authorized();
+        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
+
+        return $context;
     }
 
     private static function invalid_input()

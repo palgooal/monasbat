@@ -985,7 +985,16 @@ w1_ok('E4 stranger denial never touches guest Post Meta', $GLOBALS['w1_guest_pos
 
 w1_membership(200, 66, 'manager', 'active');
 w1_membership(200, 66, 'viewer', 'active'); // duplicate/ambiguous -> Repository already fails this closed
-w1_ok('F1 malformed/duplicate membership fails closed (propagated from Repository)', w1_code($S::list_accessible_guests_for_actor(200, 66)) === 'database_error');
+// Phase H1C-EC1 follow-up: this database_error is raised by
+// resolve_context() BEFORE any owner/admin/active-collaborator/deny
+// decision is reached — a PRE-AUTHORITY failure exactly like a
+// nonexistent event_id — so per the corrected phase-based privacy
+// invariant (see Section N below) it now collapses to not_authorized
+// at the Application Service boundary instead of surfacing the real
+// database_error. Repository/Authorization Core still return the real
+// database_error internally (unchanged, still covered by H1C-A2) — only
+// this use case's public-facing result changed.
+w1_ok('F1 malformed/duplicate membership fails closed as not_authorized at the public boundary (Phase H1C-EC1 follow-up: PRE-AUTHORITY database_error is no longer distinguishable from any other pre-authority failure)', w1_code($S::list_accessible_guests_for_actor(200, 66)) === 'not_authorized');
 
 // A membership row for a DIFFERENT event than the one being queried must
 // never leak into this event's authorization decision.
@@ -1180,19 +1189,25 @@ w1_ok('J2a (Section 25, scoped to the original H1C-W1 read path only) the read p
 // same reason assign_guest_to_group/move_guest_to_group/
 // unassign_guest_from_group were never in it: asserting their total absence
 // would fail by design, not by regression, the moment W3's own
-// explicitly-requested methods exist. The eight remaining
-// structural/membership write methods (group lifecycle and membership
-// lifecycle — still genuinely unwired anywhere in production) remain fully
-// forbidden EVERYWHERE in this file, W1/W2/W3 sections alike.
+// explicitly-requested methods exist.
+//
+// Phase H1C-W4 (a later, explicitly authorized phase — same precedent again)
+// legitimately adds exactly four more write-API calls to THIS SAME class —
+// create_group/rename_group/archive_group/set_default_group — in its own
+// clearly separated section starting at create_group_for_actor(), after the
+// H1C-W3 section. Those four Group Lifecycle method names are therefore also
+// removed from this "forbidden anywhere in the file" list for the identical
+// reason. The four remaining Membership Lifecycle write methods — still
+// genuinely unwired anywhere in production as of H1C-W4 — remain fully
+// forbidden EVERYWHERE in this file, W1/W2/W3/W4 sections alike.
 $forbidden_writes_whole_file = [
-    'create_group', 'archive_group', 'rename_group', 'set_default_group',
     'create_membership', 'change_membership_role', 'revoke_membership', 'reactivate_membership',
 ];
 $found_whole_file = [];
 foreach ($forbidden_writes_whole_file as $needle) {
     if (strpos($application_service_code_only, $needle) !== false) $found_whole_file[] = $needle;
 }
-w1_ok('J2b every still-unwired structural/membership write-API method name (group and membership lifecycle) is still absent from the ENTIRE file — grant_group_access/revoke_group_access are excluded from this list per the H1C-W3 precedent note above', $found_whole_file === [], implode(',', $found_whole_file));
+w1_ok('J2b every still-unwired Membership Lifecycle write-API method name is still absent from the ENTIRE file — Group Lifecycle (create_group/rename_group/archive_group/set_default_group) and grant_group_access/revoke_group_access are excluded from this list per the H1C-W3/H1C-W4 precedent notes above', $found_whole_file === [], implode(',', $found_whole_file));
 
 // ══════════════════════════════════════════════════════════════
 // Section K — Input validation / fail-closed edges
@@ -1203,7 +1218,13 @@ w1_ok('J2b every still-unwired structural/membership write-API method name (grou
 // exists after the intervening w1_reset_db() calls in Sections G/H/I.
 w1_ok('K1 event_id <= 0 is rejected', w1_code($S::list_accessible_guests_for_actor(0, 96)) === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT);
 w1_ok('K2 actor_user_id <= 0 is rejected', w1_code($S::list_accessible_guests_for_actor(500, -1)) === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT);
-w1_ok('K3 non-existent event is rejected', w1_code($S::list_accessible_guests_for_actor(999999, 96)) === 'not_found');
+// Phase H1C-EC1 (Event-Context Enumeration Privacy Hardening): before this
+// fix, a nonexistent event returned the raw 'not_found' straight from
+// PGE_Event_Access_Authorization::resolve_context() — a DIFFERENT code from
+// the 'not_authorized' a denied actor gets on a real event, which is the
+// Event-ID existence oracle this phase closes. See Section M below for the
+// full existing-denied vs. nonexistent-event comparison.
+w1_ok('K3 (Phase H1C-EC1) non-existent event now collapses to not_authorized, not a distinct not_found', w1_code($S::list_accessible_guests_for_actor(999999, 96)) === 'not_authorized');
 w1_ok('K4 per_page beyond MAX_PER_PAGE is rejected', w1_code($S::list_accessible_guests_for_actor(500, 96, 1, 99999)) === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT);
 w1_ok('K5 page <= 0 is rejected', w1_code($S::list_accessible_guests_for_actor(500, 96, 0, 20)) === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT);
 w1_ok('K6 default per_page is applied when omitted', is_array($S::list_accessible_guests_for_actor(500, 96)) && $S::list_accessible_guests_for_actor(500, 96)['per_page'] === PGE_Event_Access_Repository::DEFAULT_PER_PAGE);
@@ -1301,7 +1322,11 @@ w1_ok('L11 (Section 17) a client-supplied actor_user_id is ignored — the real 
 // group id, guest phone, or SQL ever appears in a public AJAX error.
 $GLOBALS['w1_current_user_id'] = 66; // duplicate/ambiguous membership -> database_error internally
 $resp = w1_ajax_request(['nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => 200]);
-w1_ok('L12 (Section 19) an internal database_error never reaches the client as-is', $resp['success'] === false && ($resp['data']['reason'] ?? null) === 'server_error');
+// Phase H1C-EC1 follow-up: PRE-AUTHORITY database_error (raised before
+// any capability decision) now collapses to not_authorized at the
+// public boundary rather than the generic server_error bucket — see
+// Section N below and F1 above for the same corrected invariant.
+w1_ok('L12 (Section 19) an internal PRE-AUTHORITY database_error never reaches the client as-is — it collapses to not_authorized, not server_error', $resp['success'] === false && ($resp['data']['reason'] ?? null) === 'not_authorized');
 $public_json = json_encode($resp);
 w1_ok('L13 (Section 19) public error JSON contains no phone-shaped digit run', preg_match('/\d{6,}/', $public_json) !== 1);
 w1_ok('L14 (Section 19) public error JSON never contains the word database', stripos($public_json, 'database') === false);
@@ -1309,16 +1334,206 @@ w1_ok('L15 (Section 19) public error JSON never contains a raw SQL keyword', str
 
 // Section 30: exact set of public reasons observed across this whole run —
 // enumeration resistance at the transport boundary.
+// Phase H1C-EC1: this assertion's expected reason changed from
+// 'invalid_event' to 'not_authorized'. Before the fix, 'invalid_event' WAS
+// already a distinct bucket from 'not_authorized' (the denial reason an
+// existing-but-denied event gets, e.g. L8/L9 above) — so while this never
+// literally leaked the word 'not_found', it still leaked event existence
+// via a second, different reason string. Section M below proves the
+// stronger, correct invariant: existing-denied and nonexistent-event are
+// now byte-for-byte identical public responses, not just "neither one is
+// literally not_found".
 $GLOBALS['w1_current_user_id'] = 60;
 $resp = w1_ajax_request(['nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => 999999]);
-w1_ok('L16 non-existent event via AJAX maps to invalid_event, never a distinct not_found leak', $resp['success'] === false && ($resp['data']['reason'] ?? null) === 'invalid_event');
+w1_ok('L16 (Phase H1C-EC1) non-existent event via AJAX maps to not_authorized — indistinguishable from an existing-but-denied event, closing the Event-ID existence oracle', $resp['success'] === false && ($resp['data']['reason'] ?? null) === 'not_authorized');
 
 // No write side effects across the entire AJAX section either.
 w1_ok('L17 (Section 25/30) zero $wpdb write calls occurred across the entire AJAX section', $wpdb->write_calls === 0);
 
 // ══════════════════════════════════════════════════════════════
+// Section M — Event-Context Enumeration Privacy Hardening (Phase H1C-EC1)
+//
+// Proves the same family of Event-ID Enumeration Oracle H1C-W4 found and
+// closed on its own write surface also existed here, on W1's read-only
+// surface, and is now closed. Reuses Section L's still-live event 200
+// fixture (owner=60, manager=61 scoped to gB1, viewer=62 scoped to gB2,
+// revoked manager=64, stranger=65 never a member).
+// ══════════════════════════════════════════════════════════════
+
+$w1_nonexistent_event_id = 999999;
+
+// M1 — Application Service layer: for every actor type that W1's own
+// read-path contract ACTUALLY denies, the WP_Error code is IDENTICAL
+// whether event_id refers to a real event the actor is denied on, or to
+// an event_id that does not exist at all.
+//
+// Unlike W2/W3/W4 (per-operation write capability checks), W1 is a READ
+// surface: an ACTIVE Manager or Viewer collaborator is never "denied" —
+// list_accessible_guests_for_actor() gives them a successful, scoped read
+// via list_for_collaborator() regardless of which groups they hold access
+// to (see the pre-existing, still-passing 'L6 ... manager AJAX call
+// succeeds and is scoped to exactly 1 guest'). So 'manager'/'viewer' are
+// NOT valid members of a "denied actor" comparison set here — only a
+// revoked membership or a true stranger (never a member at all) are
+// genuinely denied on W1's read path. M1b below locks in the opposite
+// fact: active manager/viewer succeed on a real event and get a real,
+// non-oracle-relevant not_found (never not_authorized) on a nonexistent
+// one — because for them it is legitimate, per-request input validation,
+// not an authorization decision at all is being masked.
+foreach ([
+    ['revoked_manager', 64], ['stranger', 65],
+] as [$who, $actor_id]) {
+    $code_existing = w1_code($S::list_accessible_guests_for_actor(200, $actor_id));
+    $code_missing = w1_code($S::list_accessible_guests_for_actor($w1_nonexistent_event_id, $actor_id));
+    w1_ok("M1 $who on an EXISTING event is not_authorized", $code_existing === 'not_authorized');
+    w1_ok("M1 $who on a NONEXISTENT event is ALSO not_authorized, never a distinct not_found", $code_missing === 'not_authorized');
+    w1_ok("M1 $who: existing-denied vs nonexistent-event are publicly indistinguishable (identical WP_Error code)", $code_existing === $code_missing);
+}
+
+// M1b — Regression sanity for the actor types EXCLUDED from M1 above:
+// active Manager/Viewer are not part of the oracle-comparison set because
+// they are never denied on a real event in the first place. Confirms this
+// still holds after the fix (their real-event read still succeeds) and
+// records their nonexistent-event outcome for completeness, without
+// asserting it must equal not_authorized (no such invariant is claimed
+// for actors who were never denied to begin with).
+foreach ([['manager', 61], ['viewer', 62]] as [$who, $actor_id]) {
+    $existing_resp = $S::list_accessible_guests_for_actor(200, $actor_id);
+    w1_ok("M1b $who on an EXISTING event still SUCCEEDS (scoped read, unaffected by the fix)", !is_wp_error($existing_resp));
+    $missing_code = w1_code($S::list_accessible_guests_for_actor($w1_nonexistent_event_id, $actor_id));
+    w1_ok("M1b $who on a NONEXISTENT event is not_authorized (same PRE-AUTHORITY collapse as every other actor type)", $missing_code === 'not_authorized');
+}
+
+// M2 — AJAX layer: full public JSON response (reason AND message) is
+// byte-for-byte identical between an existing event the actor is denied on
+// and a nonexistent event.
+foreach ([['revoked_manager', 64], ['stranger', 65]] as [$who, $actor_id]) {
+    $GLOBALS['w1_current_user_id'] = $actor_id;
+    $resp_existing = w1_ajax_request(['nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => 200]);
+    $resp_missing = w1_ajax_request(['nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => $w1_nonexistent_event_id]);
+    w1_ok("M2 AJAX $who: existing-denied response is not_authorized", $resp_existing['success'] === false && $resp_existing['data']['reason'] === 'not_authorized');
+    w1_ok("M2 AJAX $who: nonexistent-event response is ALSO not_authorized, never invalid_event/not_found", $resp_missing['success'] === false && $resp_missing['data']['reason'] === 'not_authorized');
+    w1_ok("M2 AJAX $who: full public response (reason AND message) is byte-for-byte identical between existing-denied and nonexistent-event", $resp_existing['data'] === $resp_missing['data']);
+}
+
+// M3 — Actor spoofing remains impossible even against a nonexistent
+// event_id.
+$GLOBALS['w1_current_user_id'] = 65; // real session = stranger (denied)
+$resp = w1_ajax_request([
+    'nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => $w1_nonexistent_event_id,
+    'actor_user_id' => 60, 'user_id' => 60, 'owner_id' => 60, 'manager_id' => 60,
+]);
+w1_ok('M3 actor spoof remains impossible against a nonexistent event_id — the real (stranger) session is still denied as not_authorized', $resp['success'] === false && $resp['data']['reason'] === 'not_authorized');
+
+// M4 — Regression sanity: Owner/Admin on a real event are completely
+// unaffected by the fix (the fix only touches the resolve_context()
+// WP_Error branch, which a proven Owner/Admin never enters, since Owner/
+// Admin status is decided from post_type/post_author/user_can() alone,
+// before any WP_Error could be returned for an EXISTING event).
+$GLOBALS['w1_current_user_id'] = 60;
+$resp = w1_ajax_request(['nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => 200]);
+w1_ok('M4 Owner on a real event can still read normally after the fix', $resp['success'] === true && isset($resp['data']['items']));
+
+// M5 — Zero $wpdb write calls across this entire new section too (read
+// surface — no audit table involved for W1).
+w1_ok('M5 zero $wpdb write calls occurred across this entire Section M', $wpdb->write_calls === 0);
+
+// M6 — Source-level lock-in: list_accessible_guests_for_actor() routes
+// through the shared resolve_event_actor_context() gate.
+$app_source_full_m = file_get_contents(PGE_PATH . 'includes/class-pge-event-access-application-service.php');
+$app_code_only_m = w1_strip_php_comments($app_source_full_m);
+w1_ok('M6 the shared resolve_event_actor_context() gate exists', strpos($app_code_only_m, 'function resolve_event_actor_context') !== false);
+$pos_m = strpos($app_code_only_m, 'function list_accessible_guests_for_actor');
+$next_pos_m = strpos($app_code_only_m, 'function ', $pos_m + 10);
+$body_m = $next_pos_m !== false ? substr($app_code_only_m, $pos_m, $next_pos_m - $pos_m) : substr($app_code_only_m, $pos_m);
+w1_ok(
+    'M6 list_accessible_guests_for_actor() uses the shared resolve_event_actor_context() gate directly (no independent resolve_context() call of its own)',
+    strpos($body_m, 'resolve_event_actor_context') !== false && strpos($body_m, 'PGE_Event_Access_Authorization::resolve_context') === false
+);
+
+// ══════════════════════════════════════════════════════════════
 // Final report
 // ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+// Section N — PRE-AUTHORITY phase-based collapse follow-up (Phase
+// H1C-EC1 follow-up security review).
+//
+// Section M above proved and closed the 'not_found' half of the
+// resolve_context() Event-ID Enumeration Oracle. A follow-up review
+// found the shared gate (resolve_event_actor_context()) was collapsing
+// ONLY the 'not_found' WP_Error code, while every OTHER resolve_context()
+// WP_Error -- most notably 'database_error' from an ambiguous/duplicated
+// membership row for this same actor at a REAL event (exactly what the
+// pre-existing F1/L12 tests exercise via actor 66 at event 200) -- was
+// passed through unchanged. That database_error is still raised strictly
+// BEFORE the owner/admin vs. active-collaborator vs. deny branch is ever
+// reached, i.e. PRE-AUTHORITY exactly like not_found, so it must ALSO
+// collapse to not_authorized. This section proves Case A (nonexistent
+// event) and Case B (a real, existing event where this actor's own
+// membership row is ambiguous) are publicly indistinguishable. F1/L12
+// below are updated in lockstep to expect not_authorized rather than
+// database_error/server_error, per this corrected privacy invariant.
+// ══════════════════════════════════════════════════════════════
+
+function w1_ambiguous_membership_fixture()
+{
+    w1_reset_db();
+    w1_event(300, 1); // owner = user 1, a fresh event distinct from Sections L/M's event 200
+    // Actor 8 gets TWO active membership rows for the SAME (event, user)
+    // pair -> Repository's get_membership_for_user() ("... LIMIT 2")
+    // fails closed with database_error before the owner/admin vs.
+    // active-collaborator vs. deny branch is ever reached.
+    w1_membership(300, 8, 'manager');
+    w1_membership(300, 8, 'viewer');
+    return ['owner' => 1, 'ambiguous_actor' => 8];
+}
+
+$w1_nonexistent_event_id_n = 888888;
+
+// N1 — Application Service layer.
+$fn = w1_ambiguous_membership_fixture();
+$code_existing = w1_code($S::list_accessible_guests_for_actor(300, $fn['ambiguous_actor']));
+$code_missing = w1_code($S::list_accessible_guests_for_actor($w1_nonexistent_event_id_n, $fn['ambiguous_actor']));
+w1_ok('N1 ambiguous-membership actor on the REAL event 300 is not_authorized, NOT a distinct database_error', $code_existing === 'not_authorized');
+w1_ok('N1 ambiguous-membership actor on a NONEXISTENT event is ALSO not_authorized', $code_missing === 'not_authorized');
+w1_ok('N1: existing (ambiguous-membership) vs nonexistent-event are publicly indistinguishable (identical WP_Error code)', $code_existing === $code_missing);
+
+// N2 — AJAX layer: full public JSON response is byte-for-byte identical.
+$GLOBALS['w1_current_user_id'] = $fn['ambiguous_actor'];
+$resp_existing = w1_ajax_request(['nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => 300]);
+$resp_missing = w1_ajax_request(['nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => $w1_nonexistent_event_id_n]);
+w1_ok('N2 AJAX ambiguous-membership actor: real-event response is not_authorized, never database_error/server_error', $resp_existing['success'] === false && $resp_existing['data']['reason'] === 'not_authorized');
+w1_ok('N2 AJAX ambiguous-membership actor: nonexistent-event response is ALSO not_authorized', $resp_missing['success'] === false && $resp_missing['data']['reason'] === 'not_authorized');
+w1_ok('N2 full public response (reason AND message) is byte-for-byte identical between the real ambiguous-membership event and a nonexistent event', $resp_existing['data'] === $resp_missing['data']);
+
+// N3 — Actor spoofing.
+$GLOBALS['w1_current_user_id'] = $fn['ambiguous_actor'];
+$resp = w1_ajax_request([
+    'nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => 300,
+    'actor_user_id' => $fn['owner'], 'user_id' => $fn['owner'], 'owner_id' => $fn['owner'], 'manager_id' => $fn['owner'],
+]);
+w1_ok('N3 actor spoof remains impossible for the ambiguous-membership actor — still not_authorized', $resp['success'] === false && $resp['data']['reason'] === 'not_authorized');
+
+// N4 — Regression sanity: the real Owner of the same event 300 is
+// unaffected by actor 8's corrupted membership row.
+$GLOBALS['w1_current_user_id'] = $fn['owner'];
+$resp = w1_ajax_request(['nonce' => w1_nonce('pge_event_manage_nonce'), 'event_id' => 300]);
+w1_ok('N4 the real Owner of event 300 can still read normally — unaffected by actor 8\'s ambiguous membership row', $resp['success'] === true && isset($resp['data']['items']));
+
+// N5 — Zero $wpdb write calls across this entire new section too.
+w1_ok('N5 zero $wpdb write calls occurred across this entire Section N', $wpdb->write_calls === 0);
+
+// N6 — Source-level: resolve_event_actor_context() must not special-case
+// on a specific WP_Error code.
+$app_source_full_n = file_get_contents(PGE_PATH . 'includes/class-pge-event-access-application-service.php');
+$pos_n = strpos($app_source_full_n, 'function resolve_event_actor_context');
+$next_pos_n = strpos($app_source_full_n, 'function ', $pos_n + 10);
+$body_n = $next_pos_n !== false ? substr($app_source_full_n, $pos_n, $next_pos_n - $pos_n) : substr($app_source_full_n, $pos_n);
+w1_ok(
+    'N6 resolve_event_actor_context() does not special-case on get_error_code() (every WP_Error collapses, not just one code)',
+    strpos($body_n, 'get_error_code') === false
+);
 
 echo "\nH1C-W1: {$passed}/" . ($passed + $failed) . " passed\n";
 if ($failed > 0) {

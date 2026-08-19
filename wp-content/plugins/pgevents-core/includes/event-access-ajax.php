@@ -57,6 +57,22 @@ if (!function_exists('pge_event_access_public_error')) {
     {
         $code = ($error instanceof WP_Error) ? (string) $error->get_error_code() : '';
 
+        // Phase H1C-EC1 — Event-Context Enumeration Privacy Hardening: the
+        // 'not_found' branch below is now DEAD CODE for this read use case
+        // on purpose, kept only for defense in depth. Before this fix,
+        // PGE_Event_Access_Application_Service::list_accessible_guests_for_actor()
+        // could return a raw 'not_found' straight from context resolution
+        // for a NONEXISTENT event_id — landing here in this same
+        // 'invalid_event' bucket, distinct from the 'not_authorized' bucket
+        // below that an existing-but-denied event_id gets. That made the
+        // two publicly distinguishable: an Event-ID existence oracle. The
+        // fix lives entirely in the Application Service's shared
+        // resolve_event_actor_context() helper, which now collapses every
+        // context-resolution failure to not_authorized before this
+        // function ever sees a result — a nonexistent event_id therefore
+        // reaches this function as 'not_authorized', not 'not_found', and
+        // takes the same branch below as any other denial. This function
+        // required no behavioral change.
         if (in_array($code, ['invalid_input', 'not_found'], true)) {
             return ['message' => 'مناسبة غير صالحة', 'reason' => 'invalid_event'];
         }
@@ -198,9 +214,18 @@ if (!function_exists('pge_event_access_public_write_error')) {
      *
      * Every denial reason (stranger, revoked membership, forged context,
      * out-of-scope, wrong-operation-for-role such as a Manager attempting
-     * assign) collapses to the same public 'not_authorized' bucket. No
-     * message here ever contains SQL, a table name, a membership id, or a
-     * guest phone/name.
+     * assign, OR event_id not referring to an existing event) collapses to
+     * the same public 'not_authorized' bucket. That last case is the
+     * Phase H1C-EC1 Event-Context Enumeration Privacy Hardening fix: the
+     * Application Service's shared resolve_event_actor_context() helper
+     * now collapses every context-resolution failure — including a
+     * nonexistent event_id — to not_authorized BEFORE any of the three
+     * write use cases' own capability decision, so 'not_found' below can
+     * only ever arrive from a genuine POST-authority Repository lookup (an
+     * invalid/archived/cross-event group_id, or an unresolvable guest — see
+     * the note above), reachable only by an actor who already passed that
+     * capability decision. No message here ever contains SQL, a table
+     * name, a membership id, or a guest phone/name.
      */
     function pge_event_access_public_write_error($error)
     {
@@ -406,11 +431,21 @@ add_action('wp_ajax_pge_event_access_unassign_guest', 'pge_event_access_unassign
  * group_id. membership_id/group_id are still parsed as strict positive
  * integers here in this handler before the Application Service call (same
  * as event_id, below) — that parsing reveals nothing about whether either id
- * actually exists, so it carries no enumeration risk. This AJAX layer never
- * references the Authorization class directly by name — it calls only
+ * actually exists, so it carries no enumeration risk (Group-ID/Membership-ID
+ * enumeration resistance specifically). This AJAX layer never references
+ * the Authorization class directly by name — it calls only
  * PGE_Event_Access_Application_Service, exactly like every other handler in
  * this file (Section 9's fixed architecture: AJAX -> Application Service ->
  * Authorization -> Repository).
+ *
+ * Event-Context Enumeration Privacy Hardening (Phase H1C-EC1): the
+ * paragraph above does NOT by itself prove Event-ID enumeration
+ * resistance — a real gap here was found and fixed, the same family
+ * H1C-W4 closed for its own four write methods: a denied actor's event_id
+ * previously could distinguish "exists but I'm not authorized" from "does
+ * not exist". The fix lives entirely in the Application Service's shared
+ * resolve_event_actor_context() helper — see its docblock. This AJAX
+ * layer required no behavioral change for the fix itself.
  */
 
 if (!function_exists('pge_event_access_public_group_access_write_error')) {
@@ -426,9 +461,11 @@ if (!function_exists('pge_event_access_public_group_access_write_error')) {
      * under this phase's own "no unrelated refactor" instruction.
      *
      * Every denial reason (stranger, revoked membership, forged context,
-     * or simply not Owner/Admin) collapses to the same public
-     * 'not_authorized' bucket. No message here ever contains SQL, a table
-     * name, a membership id, or a guest phone/name.
+     * simply not Owner/Admin, OR event_id not referring to an existing
+     * event) collapses to the same public 'not_authorized' bucket — the
+     * last case per the Phase H1C-EC1 fix noted in the handler docblock
+     * above. No message here ever contains SQL, a table name, a
+     * membership id, or a guest phone/name.
      */
     function pge_event_access_public_group_access_write_error($error)
     {
@@ -536,3 +573,274 @@ if (!function_exists('pge_event_access_revoke_group_access_handler')) {
     }
 }
 add_action('wp_ajax_pge_event_access_revoke_group_access', 'pge_event_access_revoke_group_access_handler');
+
+/**
+ * H1C-W4 — Owner/Admin Group Lifecycle Write Wiring: four authenticated
+ * AJAX actions (create/rename/archive/set_default), same conventions as the
+ * H1C-W2/W3 write handlers above.
+ *
+ * Registered wp_ajax_ ONLY — never wp_ajax_nopriv_, same as every handler
+ * in this file (a dedicated source-level W4 test asserts no
+ * wp_ajax_nopriv_pge_event_access_{create,rename,archive,set_default}_group
+ * hook exists anywhere in this file).
+ *
+ * Actor identity: actor_user_id is read exclusively via
+ * pge_event_access_write_request_context() — the same shared helper every
+ * other write handler in this file uses, reading get_current_user_id()
+ * only. There is no $_POST['actor_user_id']/['user_id']/['owner_id'] read
+ * anywhere in this file; a client-sent field of that name is silently
+ * ignored, which a dedicated "actor spoof" test in the W4 suite verifies
+ * end-to-end.
+ *
+ * This is an Owner/Admin-only operation (the Authorization Core's
+ * can_manage_event_structure() capability check takes no group-scoping
+ * parameter at all — see the Application Service docblock for the full
+ * contract), so exactly like the H1C-W3 handlers above there is no
+ * group-scoped actor to reason about here: a Manager/Viewer/Revoked/
+ * Stranger caller is rejected by role before any existence-sensitive
+ * Repository lookup of group_id. group_id (and, for CREATE, the name
+ * fields) are still parsed/read here in each handler before the
+ * Application Service call (same as event_id) — that parsing reveals
+ * nothing about whether either actually exists, so it carries no
+ * enumeration risk. This AJAX layer never references the Authorization
+ * class directly by name — it calls only
+ * PGE_Event_Access_Application_Service, exactly like every other handler
+ * in this file (Section 9's fixed architecture: AJAX -> Application
+ * Service -> Authorization -> Repository).
+ *
+ * create_group's $make_default parameter is deliberately NOT exposed here
+ * — this phase's AJAX surface stays at exactly what create/rename/archive/
+ * set_default need; making a newly created group the default is reachable
+ * by composing CREATE then SET DEFAULT, via the already-dedicated
+ * set_default endpoint, without adding a second way to reach the same
+ * effect from a single endpoint.
+ *
+ * Event-Context Enumeration Privacy Fix Pass: the paragraph above proves
+ * only Group-ID enumeration resistance (group_id parsing reveals nothing
+ * about group existence) — it does NOT by itself prove Event-ID
+ * enumeration resistance, and a real gap here was found and fixed: a
+ * denied actor's event_id previously could distinguish "exists but I'm not
+ * authorized" (not_authorized) from "does not exist" (not_found), because
+ * the Authorization Core's context-resolution step checks event existence
+ * before any role decision. The fix lives entirely in
+ * PGE_Event_Access_Application_Service::resolve_group_structure_authority()
+ * — see its docblock — which now collapses every context-resolution
+ * failure to not_authorized before this handler ever sees a result. This
+ * AJAX layer required no change for the fix itself.
+ */
+
+if (!function_exists('pge_event_access_read_group_name')) {
+    /**
+     * Reads a $_POST field intended as a group name WITHOUT
+     * sanitize_text_field(). Repository's own normalize_group_name_input()
+     * is the sole authority on what a valid group name looks like (trims/
+     * collapses whitespace, rejects '<'/'>' and control characters,
+     * enforces a 191-codepoint cap) — running sanitize_text_field() here
+     * first would silently strip '<'/'>' via strip_tags() before Repository
+     * ever sees them, defeating that exact check and changing observable
+     * behavior with no contract change behind it. wp_unslash() alone
+     * reverses WordPress's own magic-quotes escaping of $_POST and changes
+     * nothing else. A missing field returns null; a non-string field (e.g.
+     * a $_POST['name'][] array) passes through UNCHANGED — the caller's own
+     * is_string() gate (and, redundantly, Application Service's) rejects it
+     * as invalid_input before any Repository call, exactly like a malformed
+     * group_id would be rejected by strict-positive-int parsing.
+     */
+    function pge_event_access_read_group_name($field)
+    {
+        if (!array_key_exists($field, $_POST)) return null;
+        return wp_unslash($_POST[$field]);
+    }
+}
+
+if (!function_exists('pge_event_access_public_group_write_error')) {
+    /**
+     * Collapses an Application Service group-lifecycle write-use-case
+     * WP_Error into a small, fixed, enumeration-resistant public shape —
+     * the group-lifecycle counterpart of pge_event_access_public_write_error()
+     * and pge_event_access_public_group_access_write_error() above. Kept
+     * separate on purpose: this domain's reachable codes differ again
+     * (invalid_name, duplicate — see
+     * PGE_Event_Access_Application_Service::map_group_write_result()'s own
+     * docblock for the exact, reviewed mapping), and the existing functions
+     * back already-tested handlers and must not change under this phase's
+     * own "no unrelated refactor" instruction.
+     *
+     * Every denial reason (stranger, revoked membership, forged context,
+     * simply not Owner/Admin, OR event_id not referring to an existing
+     * event) collapses to the same public 'not_authorized' bucket. That
+     * last case — a nonexistent event_id — is the Event-Context
+     * Enumeration Privacy Fix Pass this phase's independent review found
+     * and fixed: PGE_Event_Access_Application_Service's shared
+     * resolve_group_structure_authority() gate now maps EVERY
+     * resolve_context() WP_Error (not just an authorization denial) to
+     * this same 'not_authorized' code before it ever reaches this
+     * function, so 'not_found' can only ever arrive here from a
+     * POST-authority Repository lookup (a missing/cross-event group_id,
+     * reachable only by an actor who already proved Owner/Admin authority
+     * — see that method's own docblock). No message here ever contains
+     * SQL, a table name, a group id, or a raw exception message.
+     */
+    function pge_event_access_public_group_write_error($error)
+    {
+        $code = ($error instanceof WP_Error) ? (string) $error->get_error_code() : '';
+
+        if ($code === PGE_Event_Access_Application_Service::REASON_NOT_AUTHORIZED) {
+            return ['message' => 'ليس لديك صلاحية لتنفيذ هذا الإجراء', 'reason' => 'not_authorized'];
+        }
+        if ($code === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT || $code === 'invalid_input') {
+            return ['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input'];
+        }
+        if ($code === 'invalid_name') {
+            return ['message' => 'اسم المجموعة غير صالح', 'reason' => 'invalid_name'];
+        }
+        if ($code === 'not_found') {
+            return ['message' => 'لم يتم العثور على العنصر المطلوب', 'reason' => 'not_found'];
+        }
+        if ($code === 'invalid_state') {
+            return ['message' => 'حالة العنصر الحالية لا تسمح بهذا الإجراء', 'reason' => 'invalid_state'];
+        }
+        if ($code === 'duplicate') {
+            return ['message' => 'يوجد بالفعل عنصر بنفس الاسم', 'reason' => 'duplicate'];
+        }
+        if ($code === 'concurrent_update') {
+            return ['message' => 'تم تغيير الحالة أثناء تنفيذ العملية، يرجى إعادة المحاولة', 'reason' => 'concurrent_update'];
+        }
+        if ($code === 'write_unavailable') {
+            return ['message' => 'الخدمة غير متاحة حالياً، يرجى المحاولة لاحقاً', 'reason' => 'write_unavailable'];
+        }
+
+        // database_error / guest_data_error / anything else unrecognized —
+        // a single generic bucket, no internal detail.
+        return ['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error'];
+    }
+}
+
+if (!function_exists('pge_event_access_send_group_write_result')) {
+    function pge_event_access_send_group_write_result($result)
+    {
+        if ($result instanceof WP_Error) {
+            wp_send_json_error(pge_event_access_public_group_write_error($result));
+        }
+        if (!is_array($result) || !array_key_exists('changed', $result) || !array_key_exists('group', $result) || !is_array($result['group'])) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        wp_send_json_success([
+            'changed' => $result['changed'],
+            'group' => $result['group'],
+        ]);
+    }
+}
+
+if (!function_exists('pge_event_access_create_group_handler')) {
+    function pge_event_access_create_group_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $name = pge_event_access_read_group_name('name');
+
+        if ($event_id === null || !is_string($name)) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::create_group_for_actor(
+            $event_id,
+            $actor_user_id,
+            $name
+        );
+
+        pge_event_access_send_group_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_create_group', 'pge_event_access_create_group_handler');
+
+if (!function_exists('pge_event_access_rename_group_handler')) {
+    function pge_event_access_rename_group_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $group_id = pge_event_access_strict_positive_int($_POST['group_id'] ?? null);
+        $expected_name = pge_event_access_read_group_name('expected_name');
+        $new_name = pge_event_access_read_group_name('new_name');
+
+        if ($event_id === null || $group_id === null || !is_string($expected_name) || !is_string($new_name)) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::rename_group_for_actor(
+            $event_id,
+            $actor_user_id,
+            $group_id,
+            $expected_name,
+            $new_name
+        );
+
+        pge_event_access_send_group_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_rename_group', 'pge_event_access_rename_group_handler');
+
+if (!function_exists('pge_event_access_archive_group_handler')) {
+    function pge_event_access_archive_group_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $group_id = pge_event_access_strict_positive_int($_POST['group_id'] ?? null);
+
+        if ($event_id === null || $group_id === null) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::archive_group_for_actor(
+            $event_id,
+            $actor_user_id,
+            $group_id
+        );
+
+        pge_event_access_send_group_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_archive_group', 'pge_event_access_archive_group_handler');
+
+if (!function_exists('pge_event_access_set_default_group_handler')) {
+    function pge_event_access_set_default_group_handler()
+    {
+        $actor_user_id = pge_event_access_write_request_context();
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        $group_id = pge_event_access_strict_positive_int($_POST['group_id'] ?? null);
+
+        if ($event_id === null || $group_id === null) {
+            wp_send_json_error(['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input']);
+        }
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::set_default_group_for_actor(
+            $event_id,
+            $actor_user_id,
+            $group_id
+        );
+
+        pge_event_access_send_group_write_result($result);
+    }
+}
+add_action('wp_ajax_pge_event_access_set_default_group', 'pge_event_access_set_default_group_handler');
