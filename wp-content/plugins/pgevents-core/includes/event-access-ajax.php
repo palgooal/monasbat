@@ -372,6 +372,333 @@ if (!function_exists('pge_event_access_list_audit_handler')) {
 add_action('wp_ajax_pge_event_access_list_audit', 'pge_event_access_list_audit_handler');
 
 /**
+ * H1C-W7 — Owner/Admin Group & Membership Read Wiring: four authenticated,
+ * Owner/Admin-only read AJAX actions (get_group / list_groups /
+ * get_membership / list_memberships), the exact four reads this phase is
+ * scoped to. Same transport conventions as the H1C-W1/H1C-W6 read handlers
+ * above: login check, 'pge_event_manage_nonce' nonce, event_id via
+ * pge_event_access_strict_positive_int() (never a casual (int) cast),
+ * actor identity exclusively from get_current_user_id() — no
+ * $_POST['actor_user_id']/'user_id'/'owner_id'/'manager_id' is ever read
+ * anywhere in these handlers to determine WHO is asking.
+ *
+ * Registered wp_ajax_ ONLY — never wp_ajax_nopriv_, same convention as
+ * every other action in this file.
+ *
+ * group_id/membership_id are strict-positive-int parsed exactly like
+ * event_id, but a malformed value is NOT given its own transport-level
+ * short-circuit — it is passed through as null straight to the
+ * Application Service, whose own upfront shape check
+ * (PGE_Event_Access_Application_Service::valid_scalar_id()) authoritatively
+ * rejects it as invalid_input. This avoids inventing a second,
+ * transport-owned notion of "invalid id" alongside the Application layer's
+ * own.
+ *
+ * list_groups/list_memberships filters are read from distinctly-prefixed
+ * $_POST keys (filter_status / filter_role) via wp_unslash() ONLY — never
+ * sanitize_text_field()/trim()/strtolower()/sanitize_key() — for the exact
+ * H1C-W6 reason: Repository::list_groups()/list_memberships() perform
+ * their own strict exact-match validation against GROUP_STATUSES/
+ * MEMBERSHIP_STATUSES/MEMBERSHIP_ROLES, and this file must never repair a
+ * malformed-but-valid-looking value into one Repository would accept.
+ * Repository::list_memberships() has no user_id filter of its own, so none
+ * is exposed here (Section 6 of the H1C-W7 brief).
+ *
+ * All four handlers call PGE_Event_Access_Application_Service only — never
+ * the Repository or the Authorization Core classes directly. Errors are
+ * mapped with the dedicated pge_event_access_public_read_error() below —
+ * NOT pge_event_access_public_error() (H1C-W1) or
+ * pge_event_access_public_audit_error() (H1C-W6), neither of which is
+ * altered by this phase. Unlike the audit mapper, a post-authority
+ * not_found here is preserved as its own public 'not_found' reason
+ * (Section 3 of the H1C-W7 brief: "missing group/membership must preserve
+ * genuine not_found semantics" for an authorized Owner/Admin) rather than
+ * folded into the generic server_error bucket — a missing group/membership
+ * id, unlike a missing audit event, is an ordinary, expected management
+ * outcome for an actor who already has full read authority over the
+ * event's groups/memberships.
+ */
+if (!function_exists('pge_event_access_public_read_error')) {
+    /**
+     * Collapses a get_group_for_actor()/list_groups_for_actor()/
+     * get_membership_for_actor()/list_memberships_for_actor() WP_Error into
+     * a small, fixed, enumeration-resistant public shape — shared across
+     * all four H1C-W7 use cases since they surface the identical code
+     * family (reviewed against PGE_Event_Access_Application_Service::
+     * map_read_error()'s own documented mapping, not assumed).
+     *
+     *   not_authorized   -> not_authorized (EC1: an existing-but-denied
+     *                       event, a nonexistent event, and a pre-authority
+     *                       context-resolution failure all collapse to this
+     *                       same code before this function ever runs)
+     *   invalid_input    -> invalid_input
+     *   invalid_filter   -> invalid_filter
+     *   read_unavailable -> read_unavailable
+     *   not_found        -> not_found (a genuine post-authority "this
+     *                       group/membership id does not exist" for an
+     *                       actor who already has full read authority)
+     *   database_error   -> server_error
+     *   anything else    -> server_error
+     *
+     * No message here ever contains SQL, a table name, or any guest
+     * phone/name.
+     */
+    function pge_event_access_public_read_error($error)
+    {
+        $code = ($error instanceof WP_Error) ? (string) $error->get_error_code() : '';
+
+        if ($code === PGE_Event_Access_Application_Service::REASON_NOT_AUTHORIZED) {
+            return ['message' => 'ليس لديك صلاحية للوصول إلى هذا العنصر', 'reason' => 'not_authorized'];
+        }
+        if ($code === PGE_Event_Access_Application_Service::REASON_INVALID_INPUT || $code === 'invalid_input') {
+            return ['message' => 'بيانات الطلب غير صالحة', 'reason' => 'invalid_input'];
+        }
+        if ($code === 'invalid_filter') {
+            return ['message' => 'معايير التصفية غير صالحة', 'reason' => 'invalid_filter'];
+        }
+        if ($code === 'read_unavailable') {
+            return ['message' => 'الخدمة غير متاحة حالياً، يرجى المحاولة لاحقاً', 'reason' => 'read_unavailable'];
+        }
+        if ($code === 'not_found') {
+            return ['message' => 'لم يتم العثور على العنصر المطلوب', 'reason' => 'not_found'];
+        }
+
+        // database_error / guest_data_error / anything else unrecognized —
+        // a single generic bucket, no internal detail.
+        return ['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error'];
+    }
+}
+
+if (!function_exists('pge_event_access_get_group_handler')) {
+    function pge_event_access_get_group_handler()
+    {
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'غير مصرح', 'reason' => 'not_logged_in']);
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$nonce || !wp_verify_nonce($nonce, 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'رمز الأمان غير صالح', 'reason' => 'invalid_nonce']);
+        }
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        if ($event_id === null) {
+            wp_send_json_error(['message' => 'مناسبة غير صالحة', 'reason' => 'invalid_event']);
+        }
+
+        $group_id = pge_event_access_strict_positive_int($_POST['group_id'] ?? null);
+        $actor_user_id = (int) get_current_user_id();
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::get_group_for_actor($event_id, $actor_user_id, $group_id);
+
+        if ($result instanceof WP_Error) {
+            wp_send_json_error(pge_event_access_public_read_error($result));
+        }
+        if (!is_array($result) || !isset($result['id'])) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        wp_send_json_success([
+            'id' => $result['id'],
+            'event_id' => $result['event_id'],
+            'name' => $result['name'],
+            'name_key' => $result['name_key'],
+            'status' => $result['status'],
+            'is_default' => $result['is_default'],
+            'created_by_user_id' => $result['created_by_user_id'],
+            'created_at' => $result['created_at'],
+            'updated_at' => $result['updated_at'],
+            'archived_at' => $result['archived_at'],
+        ]);
+    }
+}
+add_action('wp_ajax_pge_event_access_get_group', 'pge_event_access_get_group_handler');
+
+if (!function_exists('pge_event_access_list_groups_handler')) {
+    function pge_event_access_list_groups_handler()
+    {
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'غير مصرح', 'reason' => 'not_logged_in']);
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$nonce || !wp_verify_nonce($nonce, 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'رمز الأمان غير صالح', 'reason' => 'invalid_nonce']);
+        }
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        if ($event_id === null) {
+            wp_send_json_error(['message' => 'مناسبة غير صالحة', 'reason' => 'invalid_event']);
+        }
+
+        if (!isset($_POST['page']) || $_POST['page'] === '') {
+            $page = 1;
+        } else {
+            $page = pge_event_access_strict_positive_int($_POST['page']);
+        }
+
+        if (!isset($_POST['per_page']) || $_POST['per_page'] === '') {
+            $per_page = null;
+        } else {
+            $per_page = pge_event_access_strict_positive_int($_POST['per_page']);
+            if ($per_page === null) $per_page = 0;
+        }
+
+        // filter_status: wp_unslash() ONLY — Repository::list_groups() alone
+        // decides whether the value is a real GROUP_STATUSES member.
+        $filters = [];
+        if (isset($_POST['filter_status']) && $_POST['filter_status'] !== '') {
+            $filters['status'] = wp_unslash($_POST['filter_status']);
+        }
+
+        $actor_user_id = (int) get_current_user_id();
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::list_groups_for_actor($event_id, $actor_user_id, $filters, $page, $per_page);
+
+        if ($result instanceof WP_Error) {
+            wp_send_json_error(pge_event_access_public_read_error($result));
+        }
+        if (!is_array($result) || !isset($result['items'])) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        wp_send_json_success([
+            'items' => $result['items'],
+            'page' => $result['page'],
+            'per_page' => $result['per_page'],
+            'total' => $result['total'],
+            'total_pages' => $result['total_pages'],
+        ]);
+    }
+}
+add_action('wp_ajax_pge_event_access_list_groups', 'pge_event_access_list_groups_handler');
+
+if (!function_exists('pge_event_access_get_membership_handler')) {
+    function pge_event_access_get_membership_handler()
+    {
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'غير مصرح', 'reason' => 'not_logged_in']);
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$nonce || !wp_verify_nonce($nonce, 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'رمز الأمان غير صالح', 'reason' => 'invalid_nonce']);
+        }
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        if ($event_id === null) {
+            wp_send_json_error(['message' => 'مناسبة غير صالحة', 'reason' => 'invalid_event']);
+        }
+
+        $membership_id = pge_event_access_strict_positive_int($_POST['membership_id'] ?? null);
+        $actor_user_id = (int) get_current_user_id();
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::get_membership_for_actor($event_id, $actor_user_id, $membership_id);
+
+        if ($result instanceof WP_Error) {
+            wp_send_json_error(pge_event_access_public_read_error($result));
+        }
+        if (!is_array($result) || !isset($result['id'])) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        wp_send_json_success([
+            'id' => $result['id'],
+            'event_id' => $result['event_id'],
+            'user_id' => $result['user_id'],
+            'role' => $result['role'],
+            'status' => $result['status'],
+            'created_by_user_id' => $result['created_by_user_id'],
+            'activated_at' => $result['activated_at'],
+            'revoked_at' => $result['revoked_at'],
+            'created_at' => $result['created_at'],
+            'updated_at' => $result['updated_at'],
+        ]);
+    }
+}
+add_action('wp_ajax_pge_event_access_get_membership', 'pge_event_access_get_membership_handler');
+
+if (!function_exists('pge_event_access_list_memberships_handler')) {
+    function pge_event_access_list_memberships_handler()
+    {
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'غير مصرح', 'reason' => 'not_logged_in']);
+        }
+
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
+        if (!$nonce || !wp_verify_nonce($nonce, 'pge_event_manage_nonce')) {
+            wp_send_json_error(['message' => 'رمز الأمان غير صالح', 'reason' => 'invalid_nonce']);
+        }
+
+        $event_id = pge_event_access_strict_positive_int($_POST['event_id'] ?? null);
+        if ($event_id === null) {
+            wp_send_json_error(['message' => 'مناسبة غير صالحة', 'reason' => 'invalid_event']);
+        }
+
+        if (!isset($_POST['page']) || $_POST['page'] === '') {
+            $page = 1;
+        } else {
+            $page = pge_event_access_strict_positive_int($_POST['page']);
+        }
+
+        if (!isset($_POST['per_page']) || $_POST['per_page'] === '') {
+            $per_page = null;
+        } else {
+            $per_page = pge_event_access_strict_positive_int($_POST['per_page']);
+            if ($per_page === null) $per_page = 0;
+        }
+
+        // filter_status/filter_role: wp_unslash() ONLY — Repository::
+        // list_memberships() alone decides whether each value is a real
+        // MEMBERSHIP_STATUSES/MEMBERSHIP_ROLES member. No user_id filter is
+        // exposed — Repository::list_memberships() does not define one.
+        $filters = [];
+        if (isset($_POST['filter_status']) && $_POST['filter_status'] !== '') {
+            $filters['status'] = wp_unslash($_POST['filter_status']);
+        }
+        if (isset($_POST['filter_role']) && $_POST['filter_role'] !== '') {
+            $filters['role'] = wp_unslash($_POST['filter_role']);
+        }
+
+        $actor_user_id = (int) get_current_user_id();
+
+        if (!class_exists('PGE_Event_Access_Application_Service')) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        $result = PGE_Event_Access_Application_Service::list_memberships_for_actor($event_id, $actor_user_id, $filters, $page, $per_page);
+
+        if ($result instanceof WP_Error) {
+            wp_send_json_error(pge_event_access_public_read_error($result));
+        }
+        if (!is_array($result) || !isset($result['items'])) {
+            wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
+        }
+
+        wp_send_json_success([
+            'items' => $result['items'],
+            'page' => $result['page'],
+            'per_page' => $result['per_page'],
+            'total' => $result['total'],
+            'total_pages' => $result['total_pages'],
+        ]);
+    }
+}
+add_action('wp_ajax_pge_event_access_list_memberships', 'pge_event_access_list_memberships_handler');
+
+/**
  * H1C-W2 — Collaborator Scoped Guest-Assignment Write Wiring: three
  * authenticated AJAX actions (assign/move/unassign), same conventions as
  * the H1C-W1 read handler above.

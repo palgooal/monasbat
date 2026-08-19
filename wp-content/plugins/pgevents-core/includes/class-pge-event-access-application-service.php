@@ -15,6 +15,21 @@ if (!defined('ABSPATH')) exit;
  * writes"): the fourth and final write surface, added in a still later
  * phase.
  *
+ * As of H1C-W6/H1C-W7, this class also wires Owner/Admin READ use cases:
+ * H1C-W6 added the audit-trail read (Section below "Owner/Admin audit
+ * trail read"), and H1C-W7 added the core group/membership management
+ * reads — get_group/list_groups/get_membership/list_memberships (Section
+ * below "Owner/Admin group & membership reads"). Neither changes the
+ * completed W2-W5 write-surface contract above. W7 deliberately does not
+ * add a collaborator-scoped group read or any guest-detail read — both
+ * remain out of scope. W7's get_group/get_membership return the full
+ * existing normalized Repository management row (e.g. name_key/
+ * created_by_user_id/created_at/updated_at/archived_at for a group;
+ * created_by_user_id/activated_at/revoked_at/created_at/updated_at for a
+ * membership) unfiltered — ACCEPTED AS INTENTIONAL, since these reads are
+ * Owner/Admin-only management surfaces, not a collaborator- or guest-facing
+ * projection.
+ *
  * The first production Application-layer consumer of the H1B Authorization
  * Core (PGE_Event_Access_Authorization / PGE_Event_Access_Authorization_Context)
  * and Repository (PGE_Event_Access_Repository). The original H1C-W1 read
@@ -1860,6 +1875,218 @@ final class PGE_Event_Access_Application_Service
         ];
         $public_code = $map[$code] ?? 'database_error';
         return new WP_Error($public_code, 'Unable to retrieve the requested audit trail.');
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Owner/Admin group & membership reads (Phase H1C-W7)
+    //
+    // Four use cases wiring PGE_Event_Access_Repository::get_group()/
+    // list_groups()/get_membership()/list_memberships() — the exact four
+    // reads this phase is scoped to, nothing else. GROUP reads gate on
+    // can_manage_event_structure(); MEMBERSHIP reads gate on
+    // can_manage_membership() — both verified from Authorization source as
+    // IDENTICAL flat owner_or_admin_only() gates, same as every other
+    // Owner/Admin-only capability in this class. can_view_group() (a
+    // broader, collaborator-scoped capability) is deliberately NOT used
+    // here — a collaborator-scoped group read is a separate, future
+    // decision, out of this phase's scope by explicit instruction.
+    //
+    // Each use case follows the identical shape list_audit_for_actor()
+    // (Phase H1C-W6) already established: strict shape validation of every
+    // id parameter -> resolve_event_actor_context() (EC1, reused
+    // unmodified) -> the correct capability check -> the Repository read,
+    // unfiltered/unmodified -> a small, honest result mapping via
+    // map_read_error() below. No Repository filtering/pagination/
+    // normalization logic is duplicated here.
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * $group_id's shape is validated up front, alongside $event_id/
+     * $actor_user_id, before resolve_event_actor_context() — exactly like
+     * every other id parameter in this class. This is safe pre-authority:
+     * a bare "is this a positive integer" check reveals nothing about
+     * whether that specific group exists or is accessible to any actor,
+     * unlike an existence-sensitive Repository lookup.
+     *
+     * @return array{id:int,event_id:int,name:string,name_key:?string,status:string,is_default:bool,created_by_user_id:int,created_at:string,updated_at:string,archived_at:?string}|WP_Error
+     */
+    public static function get_group_for_actor($event_id, $actor_user_id, $group_id)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id) || !self::valid_scalar_id($group_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_event_structure($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::get_group($event_id, $group_id);
+        return self::map_group_read_result($result);
+    }
+
+    /**
+     * $filters is passed through to PGE_Event_Access_Repository::
+     * list_groups() exactly as given — its only accepted key (status) and
+     * that key's own validation are entirely that method's existing
+     * contract; no filter rule is invented here.
+     *
+     * @return array{items:array,page:int,per_page:int,total:int,total_pages:int}|WP_Error
+     */
+    public static function list_groups_for_actor($event_id, $actor_user_id, array $filters = [], $page = 1, $per_page = null)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_event_structure($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        $pagination = self::validate_pagination($page, $per_page);
+        if ($pagination instanceof WP_Error) return $pagination;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::list_groups($event_id, $filters, $pagination['page'], $pagination['per_page']);
+        return self::map_group_list_read_result($result);
+    }
+
+    /**
+     * @return array{id:int,event_id:int,user_id:int,role:string,status:string,created_by_user_id:int,activated_at:string,revoked_at:?string,created_at:string,updated_at:string}|WP_Error
+     */
+    public static function get_membership_for_actor($event_id, $actor_user_id, $membership_id)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id) || !self::valid_scalar_id($membership_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_membership($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::get_membership($event_id, $membership_id);
+        return self::map_membership_read_result($result);
+    }
+
+    /**
+     * $filters is passed through to PGE_Event_Access_Repository::
+     * list_memberships() exactly as given — its only accepted keys
+     * (status, role) and their own validation are entirely that method's
+     * existing contract. Repository::list_memberships() has no user_id
+     * filter of its own, so none is exposed here.
+     *
+     * @return array{items:array,page:int,per_page:int,total:int,total_pages:int}|WP_Error
+     */
+    public static function list_memberships_for_actor($event_id, $actor_user_id, array $filters = [], $page = 1, $per_page = null)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_event_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_membership($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        $pagination = self::validate_pagination($page, $per_page);
+        if ($pagination instanceof WP_Error) return $pagination;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $result = PGE_Event_Access_Repository::list_memberships($event_id, $filters, $pagination['page'], $pagination['per_page']);
+        return self::map_membership_list_read_result($result);
+    }
+
+    private static function map_group_read_result($result)
+    {
+        if (is_array($result)) {
+            foreach (['id', 'event_id', 'name', 'name_key', 'status', 'is_default', 'created_by_user_id', 'created_at', 'updated_at', 'archived_at'] as $field) {
+                if (!array_key_exists($field, $result)) return self::guest_data_error();
+            }
+            return $result;
+        }
+        return self::map_read_error($result, 'Unable to retrieve the requested group.');
+    }
+
+    private static function map_group_list_read_result($result)
+    {
+        if (is_array($result)) {
+            foreach (['items', 'page', 'per_page', 'total', 'total_pages'] as $field) {
+                if (!array_key_exists($field, $result)) return self::guest_data_error();
+            }
+            if (!is_array($result['items'])) return self::guest_data_error();
+            return $result;
+        }
+        return self::map_read_error($result, 'Unable to retrieve the requested groups.');
+    }
+
+    private static function map_membership_read_result($result)
+    {
+        if (is_array($result)) {
+            foreach (['id', 'event_id', 'user_id', 'role', 'status', 'created_by_user_id', 'activated_at', 'revoked_at', 'created_at', 'updated_at'] as $field) {
+                if (!array_key_exists($field, $result)) return self::guest_data_error();
+            }
+            return $result;
+        }
+        return self::map_read_error($result, 'Unable to retrieve the requested membership.');
+    }
+
+    private static function map_membership_list_read_result($result)
+    {
+        if (is_array($result)) {
+            foreach (['items', 'page', 'per_page', 'total', 'total_pages'] as $field) {
+                if (!array_key_exists($field, $result)) return self::guest_data_error();
+            }
+            if (!is_array($result['items'])) return self::guest_data_error();
+            return $result;
+        }
+        return self::map_read_error($result, 'Unable to retrieve the requested memberships.');
+    }
+
+    /**
+     * Shared post-authority error-code mapping for the four W7 read use
+     * cases above. Reviewed against the ACTUAL get_group()/list_groups()/
+     * get_membership()/list_memberships() source (not assumed): their only
+     * reachable WP_Error codes are schema_not_ready, invalid_input,
+     * not_found, invalid_filter (list_groups/list_memberships only, from
+     * only_filters()/the per-key filter checks), cross_event (a
+     * normalize_group()/normalize_membership() integrity guard), and
+     * database_error — the identical code family list_audit()
+     * (H1C-W6) already surfaces, since every one of these methods shares
+     * the same guard_event()/validate_pagination()/paginate() machinery.
+     *
+     *   invalid_input    -> invalid_input
+     *   invalid_filter   -> invalid_filter
+     *   schema_not_ready -> read_unavailable
+     *   not_found        -> not_found
+     *   cross_event      -> database_error (an internal integrity signal,
+     *                       not a distinct public reason)
+     *   database_error   -> database_error
+     *   anything else    -> database_error (never a raw/unrecognized code
+     *                       reaches a caller)
+     */
+    private static function map_read_error($result, $message)
+    {
+        if (!($result instanceof WP_Error)) return self::guest_data_error();
+
+        $code = (string) $result->get_error_code();
+        $map = [
+            'invalid_input' => 'invalid_input',
+            'invalid_filter' => 'invalid_filter',
+            'schema_not_ready' => 'read_unavailable',
+            'not_found' => 'not_found',
+            'cross_event' => 'database_error',
+            'database_error' => 'database_error',
+        ];
+        $public_code = $map[$code] ?? 'database_error';
+        return new WP_Error($public_code, $message);
     }
 
     // ──────────────────────────────────────────────────────────────
