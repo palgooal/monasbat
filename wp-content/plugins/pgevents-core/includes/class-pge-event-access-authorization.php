@@ -99,6 +99,16 @@ final class PGE_Event_Access_Authorization_Context
     private $membership_status;
     /** @var int[] */
     private $granted_group_ids;
+    /**
+     * @var int|null H1C-W8 (Additional Inviter Quota). NULL for every
+     * ordinary membership and for Owner/Admin (who never have a membership
+     * row consulted at all — see the Owner/Admin membership independence
+     * note above). A strict positive int identifies an Additional Inviter
+     * membership and its configured quota. This field grants no authority
+     * by itself — it is exposed only as data for the quota resolver; every
+     * can_*() decision below is completely unaffected by its value.
+     */
+    private $allocated_quota;
 
     private function __construct(
         int $actor_user_id,
@@ -108,7 +118,8 @@ final class PGE_Event_Access_Authorization_Context
         ?int $membership_id,
         ?string $membership_role,
         ?string $membership_status,
-        array $granted_group_ids
+        array $granted_group_ids,
+        ?int $allocated_quota
     ) {
         $this->actor_user_id = $actor_user_id;
         $this->event_id = $event_id;
@@ -118,6 +129,7 @@ final class PGE_Event_Access_Authorization_Context
         $this->membership_role = $membership_role;
         $this->membership_status = $membership_status;
         $this->granted_group_ids = $granted_group_ids;
+        $this->allocated_quota = $allocated_quota;
     }
 
     /**
@@ -150,7 +162,7 @@ final class PGE_Event_Access_Authorization_Context
         // (event, user) can never suppress or otherwise affect Owner/Admin
         // authority.
         if ($is_admin || $is_owner) {
-            return new self($actor_user_id, $event_id, $is_admin, $is_owner, null, null, null, []);
+            return new self($actor_user_id, $event_id, $is_admin, $is_owner, null, null, null, [], null);
         }
 
         if (!class_exists('PGE_Event_Access_Repository')
@@ -166,6 +178,7 @@ final class PGE_Event_Access_Authorization_Context
         $membership_role = null;
         $membership_status = null;
         $granted_group_ids = [];
+        $allocated_quota = null;
 
         if (is_array($membership)) {
             if (!self::valid_scalar_id($membership['id'] ?? null)
@@ -175,6 +188,17 @@ final class PGE_Event_Access_Authorization_Context
             }
             $membership_id = $membership['id'];
             $membership_status = $membership['status'];
+            // H1C-W8: read straight through from the same already-fetched
+            // Repository row — no extra query. NULL stays NULL (ordinary
+            // membership); anything else must already be a valid positive
+            // int, since PGE_Event_Access_Repository::normalize_membership()
+            // itself fails closed with database_error() on any other stored
+            // shape before this code ever runs.
+            $quota_value = array_key_exists('allocated_quota', $membership) ? $membership['allocated_quota'] : null;
+            if ($quota_value !== null) {
+                if (!self::valid_scalar_id($quota_value)) return self::database_error();
+                $allocated_quota = $quota_value;
+            }
 
             if ($membership_status === 'active') {
                 $membership_role = $membership['role'];
@@ -185,7 +209,7 @@ final class PGE_Event_Access_Authorization_Context
             }
         }
 
-        return new self($actor_user_id, $event_id, $is_admin, $is_owner, $membership_id, $membership_role, $membership_status, $granted_group_ids);
+        return new self($actor_user_id, $event_id, $is_admin, $is_owner, $membership_id, $membership_role, $membership_status, $granted_group_ids, $allocated_quota);
     }
 
     public function actor_user_id(): int
@@ -230,6 +254,18 @@ final class PGE_Event_Access_Authorization_Context
     public function granted_group_ids(): array
     {
         return $this->granted_group_ids;
+    }
+
+    /**
+     * H1C-W8 (Additional Inviter Quota). NULL for every ordinary
+     * membership and for Owner/Admin. Grants no authority by itself — see
+     * the field's own docblock above.
+     *
+     * @return int|null
+     */
+    public function allocated_quota()
+    {
+        return $this->allocated_quota;
     }
 
     public function is_active_collaborator(?string $role = null): bool
@@ -421,6 +457,30 @@ final class PGE_Event_Access_Authorization
     public static function can_assign_guest($context)
     {
         return self::owner_or_admin_only($context);
+    }
+
+    /**
+     * H1C-W8 — Additional Inviter Quota. Deliberately NOT an extension of
+     * can_assign_guest() above, which stays Owner/Admin-only and unchanged
+     * (Section 21's "never browses the unassigned pool" rule is preserved
+     * exactly as-is). This is a narrow, different capability: it answers
+     * only "may this actor create-and-assign a brand-new guest of their
+     * own, via the controlled Additional-Inviter workflow, into the single
+     * group already granted to their own active Manager membership" — it
+     * never grants unassigned-pool visibility, never grants a choice of
+     * group, and is meaningless (and denied) for Owner/Admin/Viewer/a
+     * revoked Manager/a Manager with no membership at all. The caller is
+     * still responsible for verifying the membership is actually
+     * quota-configured (allocated_quota() !== null) and has exactly one
+     * granted group before treating this as an Additional Inviter — this
+     * method alone does not encode either of those product-contract rules,
+     * since they are configuration/state checks, not authority checks.
+     */
+    public static function can_create_scoped_guest($context)
+    {
+        if (!self::is_trusted_context($context)) return self::deny(self::REASON_INVALID_CONTEXT);
+        if ($context->is_active_collaborator('manager')) return self::allow(self::REASON_GRANTED_SCOPE);
+        return self::deny();
     }
 
     /**

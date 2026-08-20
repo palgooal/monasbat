@@ -295,6 +295,13 @@ require_once PGE_PATH . 'includes/class-pge-invitation-export.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-bulk-add.php';
 require_once PGE_PATH . 'includes/invitation-management-ajax.php';
 
+// Phase H1C-W8 (Additional Inviter Quota & Scoped Guest Creation) —
+// Application-layer orchestrator over H1C (Repository/Authorization above)
+// and Invitation creation (Repository/Service above); loaded after both,
+// then its AJAX transport last so every dependency it calls already exists.
+require_once PGE_PATH . 'includes/class-pge-additional-inviter.php';
+require_once PGE_PATH . 'includes/additional-inviter-ajax.php';
+
 // Event Operations — Entry Check-in Supervisors، Phase 10 ("Event
 // Operations" RFC، مُعتمَدة). طبقة تجميع/عرض رقيقة فقط (Orchestration) فوق
 // خدمات مُعتمَدة غير مُعدَّلة في حسابها: PGE_Attendance_Dashboard_Provider

@@ -139,6 +139,62 @@ class PGE_Invitation_Service
     }
 
     /**
+     * ============================================================================
+     * H1C-W8 — Additional Inviter Quota & Scoped Guest Creation
+     * ============================================================================
+     * NOT a second guest-creation implementation. This is create() above,
+     * reused verbatim (same PGE_Invitation_Repository::create() call, same
+     * PGE_Invitation_Management_Audit::record() call, same package-quota
+     * check via pge_resolve_guest_quota_status()) with exactly ONE addition:
+     * an extra, caller-supplied quota check ($inviter_quota_check) that runs
+     * INSIDE the SAME with_invitation_lifecycle_lock() acquisition used by
+     * create() — before the package-quota check, so both ceilings
+     * (Additional Inviter allocation AND event/package guest_limit) are
+     * evaluated under one lock and neither can be raced independently
+     * (Product Contract Sections 2/16/17). $inviter_quota_check is called
+     * with no arguments and must return either ['result' => 'ok'] to
+     * proceed, or any other array shape (e.g. ['result' => 'quota_exceeded',
+     * 'reason' => 'inviter_limit_reached']) to abort before the package
+     * check/creation ever run — that array is returned to the caller
+     * unchanged, using the exact same ['result' => 'quota_exceeded', ...]
+     * shape create() already uses for the package-limit case, so callers
+     * can distinguish the two quota reasons by 'reason' alone.
+     *
+     * This method does not decide authorization, does not resolve which
+     * group a guest belongs to, and does not touch H1C's own SQL tables at
+     * all — see PGE_Event_Access_Application_Service::
+     * create_scoped_guest_for_actor() (class-pge-additional-inviter.php)
+     * for the full orchestration, including the H1C group-assignment step
+     * and its honest atomicity/compensation contract.
+     */
+    public static function create_for_additional_inviter($event_id, $phone, $name, $note, $actor_user_id, callable $inviter_quota_check)
+    {
+        $event_id = (int) $event_id;
+        return self::with_invitation_lifecycle_lock($event_id, function () use ($event_id, $phone, $name, $note, $actor_user_id, $inviter_quota_check) {
+            $inviter_check = $inviter_quota_check();
+            if (!is_array($inviter_check) || ($inviter_check['result'] ?? '') !== 'ok') {
+                return is_array($inviter_check) ? $inviter_check : ['result' => 'error', 'reason' => 'inviter_quota_unavailable'];
+            }
+
+            $quota = function_exists('pge_resolve_guest_quota_status')
+                ? pge_resolve_guest_quota_status($event_id)
+                : ['mode' => 'unlimited', 'limit' => null, 'current' => 0, 'remaining' => null];
+
+            if ($quota['mode'] === 'limited' && (int) $quota['remaining'] <= 0) {
+                return ['result' => 'quota_exceeded', 'reason' => 'guest_limit_reached'];
+            }
+
+            $result = PGE_Invitation_Repository::create($event_id, $phone, $name, $note);
+
+            if (($result['result'] ?? '') === 'created') {
+                PGE_Invitation_Management_Audit::record($event_id, $result['phone'], $actor_user_id, 'created', '');
+            }
+
+            return $result;
+        });
+    }
+
+    /**
      * اسم قفل GET_LOCK مشتق وآمن من event_id وحده. الاسم القديم يبقى كما هو
      * للتوافق مع أي طلب create جارٍ أثناء النشر، لكن نطاقه منذ Phase D1 يشمل
      * كل كتابة create/edit/delete/regenerate_qr لدورة الدعوة ضمن المناسبة نفسها.

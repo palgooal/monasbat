@@ -30,6 +30,7 @@ class PGE_Event_Access_Repository
         'membership_reactivated',
         'membership_role_changed',
         'membership_revoked',
+        'membership_quota_changed',
         'group_access_granted',
         'group_access_revoked',
         'guest_group_assigned',
@@ -262,6 +263,23 @@ class PGE_Event_Access_Repository
             if ($membership['status'] !== 'active') return self::invalid_state();
             if ($membership['role'] !== $expected_role) return self::concurrent_update();
             if ($expected_role === $new_role) return ['changed' => false, 'membership' => $membership];
+
+            // H1C-W8 Fix Pass 2 — if this transition would leave the
+            // membership satisfying the Additional-Inviter predicate
+            // (active + manager + allocated_quota IS NOT NULL — e.g. a
+            // Viewer with a quota already set on it transitioning to
+            // Manager), it must pass the same one-group + exclusivity
+            // guard as every other path that can construct that
+            // predicate. Evaluated against the membership's state AFTER
+            // the role change, not before. A transition OUT of manager,
+            // or on a membership with allocated_quota = NULL, is never a
+            // candidate and is entirely unaffected — no role is ever
+            // auto-changed, no quota is ever auto-cleared, no access is
+            // ever auto-touched by this guard; it only ever fails closed.
+            $candidate_after = $membership; $candidate_after['role'] = $new_role;
+            $conflict = self::guard_quota_inviter_shape($event_id, $memberships, $candidate_after);
+            if ($conflict instanceof WP_Error) return $conflict;
+
             $now = current_time('mysql', true);
             $table = self::table('memberships');
             if ($table instanceof WP_Error) return $table;
@@ -334,6 +352,31 @@ class PGE_Event_Access_Repository
             if ($access_rows instanceof WP_Error) return $access_rows;
             if ($membership['status'] === 'active') return $membership['role'] === $role ? ['changed' => false, 'membership' => $membership] : self::invalid_state();
             if ($access_rows !== []) return self::database_error();
+
+            // H1C-W8 Fix Pass — group exclusivity guard, scoped to
+            // quota-enabled memberships only (allocated_quota !== null),
+            // exactly as Section 6 requires. Honest note on reachability:
+            // under the CURRENT architecture this specific check can never
+            // actually fire, because revoke_membership() unconditionally
+            // deletes every access row for the membership it revokes, and
+            // the "$access_rows !== []" integrity check directly above
+            // already guarantees $access_rows is empty by the time
+            // execution reaches here — so there is no group left to check
+            // a conflict against. It is kept as real, correct defense-in-
+            // depth against any future change that loosens that
+            // guarantee (e.g. a revoke variant that preserves access), not
+            // as a currently-reachable code path. It does NOT close the
+            // related two-step gap (reactivate with zero groups, then a
+            // separate grant_group_access() call) — see the Final Report.
+            if ($membership['allocated_quota'] !== null) {
+                foreach ($access_rows as $access) {
+                    $conflict = self::ensure_no_active_quota_inviter_for_group(
+                        $event_id, $memberships, $access['group_id'], $membership_id
+                    );
+                    if ($conflict instanceof WP_Error) return $conflict;
+                }
+            }
+
             $now = current_time('mysql', true);
             $table = self::table('memberships');
             if ($table instanceof WP_Error) return $table;
@@ -346,6 +389,182 @@ class PGE_Event_Access_Repository
             $audit = self::insert_audit($event_id, $actor_user_id, 'membership_reactivated', 'membership', $membership_id, ['previous_role' => $membership['role'], 'new_role' => $role], $now);
             if ($audit instanceof WP_Error) return $audit;
             return ['changed' => true, 'membership' => $after];
+        });
+    }
+
+    /**
+     * H1C-W8 — Additional Inviter Quota. Owner/Admin-only CAS mutation of a
+     * single membership's allocated_quota, following the identical
+     * expected/new compare-and-swap shape change_membership_role() already
+     * uses. $expected_quota/$new_quota are each either null (no quota
+     * configured) or a strict positive int — 0 is never accepted (see
+     * valid_id()). Setting $new_quota to null reverts the membership to an
+     * ordinary (non-Additional-Inviter) H1C membership; it does not revoke
+     * the membership or touch group access/guest assignments.
+     */
+    public static function set_membership_quota($event_id, $membership_id, $expected_quota, $new_quota, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($membership_id) || !self::valid_id($actor_user_id)) return self::invalid_input();
+        if ($expected_quota !== null && !self::valid_id($expected_quota)) return self::invalid_input();
+        if ($new_quota !== null && !self::valid_id($new_quota)) return self::invalid_input();
+
+        return self::with_event_transaction(function () use ($event_id, $membership_id, $expected_quota, $new_quota, $actor_user_id) {
+            $memberships = self::lock_memberships($event_id);
+            if ($memberships instanceof WP_Error) return $memberships;
+            $membership = self::find_locked_membership_by_id($memberships, $membership_id);
+            if ($membership === null) return self::not_found();
+            if ($membership['status'] !== 'active') return self::invalid_state();
+            if ($membership['allocated_quota'] !== $expected_quota) return self::concurrent_update();
+            if ($expected_quota === $new_quota) return ['changed' => false, 'membership' => $membership];
+
+            // H1C-W8 Fix Pass — raising a membership to quota-enabled (or
+            // changing an already quota-enabled membership's quota value)
+            // must never leave a half-configured or group-conflicting
+            // Additional Inviter. This block runs ONLY when $new_quota is
+            // non-null: setting quota back to NULL (removing Additional-
+            // Inviter semantics) never needs these checks, never touches
+            // role/group access, and never "fixes" configuration silently.
+            if ($new_quota !== null) {
+                if ($membership['role'] !== 'manager') return self::invalid_state();
+                $access_rows = self::lock_membership_access($event_id, $membership_id);
+                if ($access_rows instanceof WP_Error) return $access_rows;
+                if (count($access_rows) !== 1) return self::invalid_state();
+                $conflict = self::ensure_no_active_quota_inviter_for_group(
+                    $event_id, $memberships, $access_rows[0]['group_id'], $membership_id
+                );
+                if ($conflict instanceof WP_Error) return $conflict;
+            }
+
+            $now = current_time('mysql', true);
+            $table = self::table('memberships');
+            if ($table instanceof WP_Error) return $table;
+
+            if ($expected_quota === null) {
+                $where_sql = 'allocated_quota IS NULL';
+                $where_args = [];
+            } else {
+                $where_sql = 'allocated_quota = %d';
+                $where_args = [$expected_quota];
+            }
+            if ($new_quota === null) {
+                $set_sql = 'allocated_quota = NULL';
+                $set_args = [];
+            } else {
+                $set_sql = 'allocated_quota = %d';
+                $set_args = [$new_quota];
+            }
+
+            $updated = self::mutation_query(
+                "UPDATE $table SET $set_sql, updated_at = %s WHERE event_id = %d AND id = %d AND status = %s AND $where_sql",
+                array_merge($set_args, [$now, $event_id, $membership_id, 'active'], $where_args)
+            );
+            if ($updated instanceof WP_Error) return $updated;
+            if ($updated !== 1) return $updated === 0 ? self::concurrent_update() : self::database_error();
+
+            $after = self::read_membership_inside_transaction($event_id, $membership_id);
+            if ($after instanceof WP_Error) return $after;
+            if ($after['allocated_quota'] !== $new_quota || $after['status'] !== 'active' || $after['updated_at'] !== $now) {
+                return self::database_error();
+            }
+            $audit = self::insert_audit($event_id, $actor_user_id, 'membership_quota_changed', 'membership', $membership_id, ['previous_quota' => $expected_quota, 'new_quota' => $new_quota], $now);
+            if ($audit instanceof WP_Error) return $audit;
+            return ['changed' => true, 'membership' => $after];
+        });
+    }
+
+    /**
+     * H1C-W8 — Additional Inviter Quota. Owner/Admin-only, all-or-nothing
+     * creation of a Manager membership PLUS exactly one group grant PLUS its
+     * quota, in a single with_event_transaction() (same transaction
+     * primitive create_group()/grant_group_access() already use) — no
+     * partially-configured Additional Inviter can ever be observed by any
+     * other request: either the membership row, the access row, and both
+     * audit rows all commit together, or none of them do (the transaction
+     * rolls back on any WP_Error returned from inside the callback, exactly
+     * like every other with_event_transaction() caller in this file).
+     *
+     * Deliberately composed from the exact same locking/insert/audit
+     * primitives create_membership() and grant_group_access() already use
+     * (lock_groups, lock_memberships, the find_locked_ helpers,
+     * mutation_query, insert_audit, the read_..._inside_transaction
+     * helpers) rather than calling those two methods as separate
+     * transactions — this is what makes the whole operation genuinely
+     * atomic instead of "two atomic steps that could still be observed
+     * half-done between them."
+     */
+    public static function create_additional_inviter_membership($event_id, $user_id, $group_id, $allocated_quota, $actor_user_id)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        if (!self::valid_id($user_id) || !self::valid_id($group_id) || !self::valid_id($actor_user_id) || !self::valid_id($allocated_quota)) {
+            return self::invalid_input();
+        }
+        $user = self::require_user($user_id);
+        if ($user instanceof WP_Error) return $user;
+
+        return self::with_event_transaction(function () use ($event_id, $user_id, $group_id, $allocated_quota, $actor_user_id) {
+            $groups = self::lock_groups($event_id);
+            if ($groups instanceof WP_Error) return self::write_storage_error($groups);
+            $memberships = self::lock_memberships($event_id);
+            if ($memberships instanceof WP_Error) return $memberships;
+
+            $group = self::find_locked_group_by_id($groups, $group_id);
+            if ($group === null) return self::not_found();
+            if ($group['status'] !== 'active') return self::invalid_state();
+            if (self::find_locked_membership_by_user($memberships, $user_id) !== null) return self::duplicate_membership();
+
+            // H1C-W8 Fix Pass — group exclusivity: this is a brand-new
+            // membership, so there is no membership_id to except yet.
+            $conflict = self::ensure_no_active_quota_inviter_for_group($event_id, $memberships, $group_id, null);
+            if ($conflict instanceof WP_Error) return $conflict;
+
+            $now = current_time('mysql', true);
+            $table = self::table('memberships');
+            if ($table instanceof WP_Error) return $table;
+            global $wpdb;
+            $wpdb->insert_id = 0;
+            $inserted = self::mutation_query(
+                "INSERT INTO $table (event_id, user_id, role, status, allocated_quota, created_by_user_id, activated_at, revoked_at, created_at, updated_at) VALUES (%d, %d, %s, %s, %d, %d, %s, NULL, %s, %s)",
+                [$event_id, $user_id, 'manager', 'active', $allocated_quota, $actor_user_id, $now, $now, $now]
+            );
+            if ($inserted instanceof WP_Error) {
+                $existing = self::read_membership_for_user_inside_transaction($event_id, $user_id);
+                return is_array($existing) ? self::duplicate_membership() : $inserted;
+            }
+            if ($inserted !== 1) return self::database_error();
+            $membership_id = $wpdb->insert_id ?? null;
+            if (!is_int($membership_id) || $membership_id <= 0) return self::database_error();
+
+            $membership = self::read_membership_inside_transaction($event_id, $membership_id);
+            if ($membership instanceof WP_Error) return $membership;
+            if ($membership['role'] !== 'manager' || $membership['status'] !== 'active' || $membership['allocated_quota'] !== $allocated_quota) {
+                return self::database_error();
+            }
+            $audit = self::insert_audit($event_id, $actor_user_id, 'membership_created', 'membership', $membership_id, ['role' => 'manager', 'allocated_quota' => $allocated_quota], $now);
+            if ($audit instanceof WP_Error) return $audit;
+
+            $access_table = self::table('access');
+            if ($access_table instanceof WP_Error) return $access_table;
+            $wpdb->insert_id = 0;
+            $access_inserted = self::mutation_query(
+                "INSERT INTO $access_table (event_id, membership_id, group_id, granted_by_user_id, created_at) VALUES (%d, %d, %d, %d, %s)",
+                [$event_id, $membership_id, $group_id, $actor_user_id, $now]
+            );
+            if ($access_inserted instanceof WP_Error) return $access_inserted;
+            if ($access_inserted !== 1) return self::database_error();
+            $access_id = $wpdb->insert_id ?? null;
+            if (!is_int($access_id) || $access_id <= 0) return self::database_error();
+
+            $access_after = self::read_access_relation_inside_transaction($event_id, $membership_id, $group_id);
+            if ($access_after instanceof WP_Error) return $access_after;
+            if ($access_after === null || $access_after['id'] !== $access_id) return self::database_error();
+
+            $access_audit = self::insert_audit($event_id, $actor_user_id, 'group_access_granted', 'group_access', $access_id, ['membership_id' => $membership_id, 'group_id' => $group_id], $now);
+            if ($access_audit instanceof WP_Error) return $access_audit;
+
+            return ['changed' => true, 'membership' => $membership, 'group_id' => $group_id];
         });
     }
 
@@ -368,6 +587,15 @@ class PGE_Event_Access_Repository
             $relation = self::lock_access_relation($event_id, $membership_id, $group_id);
             if ($relation instanceof WP_Error) return $relation;
             if ($relation !== null) return ['changed' => false, 'membership_id' => $membership_id, 'group_id' => $group_id, 'has_access' => true];
+
+            // H1C-W8 Fix Pass 2 — this grant would put a NEW group onto
+            // $membership; if that membership is (or would remain) a
+            // quota-enabled Additional-Inviter candidate, it must still
+            // satisfy the one-group + exclusivity invariant afterwards.
+            // Generic (allocated_quota = NULL) memberships are unaffected.
+            $conflict = self::guard_quota_inviter_shape($event_id, $memberships, $membership, $group_id);
+            if ($conflict instanceof WP_Error) return $conflict;
+
             $now = current_time('mysql', true);
             $table = self::table('access');
             if ($table instanceof WP_Error) return $table;
@@ -1170,6 +1398,120 @@ class PGE_Event_Access_Repository
         return $out;
     }
 
+    /**
+     * H1C-W8 Fix Pass — Additional Inviter group exclusivity. Locks every
+     * access row for a single GROUP (across all memberships that hold it),
+     * the mirror-image of lock_membership_access() (which locks every
+     * access row for a single MEMBERSHIP across all groups it holds).
+     * FOR UPDATE, same convention as every other lock_* helper in this
+     * class — callers must already hold with_event_transaction().
+     */
+    private static function lock_group_access($event_id, $group_id)
+    {
+        $table = self::table('access');
+        if ($table instanceof WP_Error) return $table;
+        $rows = self::read_results("SELECT * FROM $table WHERE event_id = %d AND group_id = %d ORDER BY id FOR UPDATE", [$event_id, $group_id]);
+        if ($rows instanceof WP_Error) return $rows;
+        $out = []; $seen = [];
+        foreach ($rows as $row) {
+            $access = self::normalize_access($row, $event_id, null, $group_id);
+            if ($access instanceof WP_Error || isset($seen[$access['id']])) return self::database_error();
+            $seen[$access['id']] = true; $out[] = $access;
+        }
+        return $out;
+    }
+
+    /**
+     * H1C-W8 Fix Pass — Additional Inviter group exclusivity invariant:
+     * ONE GROUP -> AT MOST ONE ACTIVE, quota-enabled (allocated_quota IS
+     * NOT NULL, role=manager, status=active) Additional Inviter. This is
+     * an Additional-Inviter-specific rule ONLY — it does not restrict how
+     * many ordinary (non-quota) H1C memberships share a group, which stays
+     * exactly as unrestricted as it always has been (W1-W7 unchanged).
+     *
+     * Shared by the three Repository call sites that can put a
+     * quota-enabled membership onto a group: create_additional_inviter_
+     * membership(), set_membership_quota() (when raising a membership to
+     * quota-enabled), and reactivate_membership() (when reactivating a
+     * membership that already carries a quota and still holds group
+     * access). $locked_memberships must already be the caller's
+     * lock_memberships() result for this event (same transaction, same
+     * lock) — this helper does not lock memberships itself, only the
+     * group's access rows, to avoid re-locking what the caller already
+     * holds.
+     *
+     * @param array $locked_memberships Result of lock_memberships($event_id).
+     * @param int $group_id Group to check for an existing active quota inviter.
+     * @param int|null $except_membership_id Exclude this membership from the
+     *        conflict check (the membership being created/updated/reactivated
+     *        itself, when it may already legitimately hold this group).
+     * @return WP_Error|null WP_Error('quota_group_conflict', ...) if another
+     *         active quota-enabled inviter already holds this group; null if
+     *         no conflict.
+     */
+    private static function ensure_no_active_quota_inviter_for_group($event_id, array $locked_memberships, $group_id, $except_membership_id = null)
+    {
+        $group_access = self::lock_group_access($event_id, $group_id);
+        if ($group_access instanceof WP_Error) return $group_access;
+        foreach ($group_access as $access) {
+            $candidate_id = $access['membership_id'];
+            if ($except_membership_id !== null && $candidate_id === $except_membership_id) continue;
+            $candidate = self::find_locked_membership_by_id($locked_memberships, $candidate_id);
+            // An access row referencing a membership not present in this
+            // event's own locked membership set is a storage-integrity
+            // failure, not a "no conflict" — fail closed rather than skip.
+            if ($candidate === null) return self::database_error();
+            if ($candidate['status'] === 'active' && $candidate['role'] === 'manager' && $candidate['allocated_quota'] !== null) {
+                return self::quota_group_conflict();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * H1C-W8 Fix Pass 2 (Mutation-Closure Audit) — shared guard for every
+     * remaining mutation path that can cause a membership to newly satisfy
+     * the Additional-Inviter predicate (status=active AND role=manager AND
+     * allocated_quota IS NOT NULL): grant_group_access() and
+     * change_membership_role(). (create_additional_inviter_membership()
+     * and set_membership_quota() already enforce this directly, from Fix
+     * Pass 1 — deliberately left untouched here, not routed through this
+     * helper, to avoid an unnecessary refactor of already-verified code.)
+     *
+     * $membership is the CANDIDATE'S state as it would be AFTER the
+     * mutation under evaluation (e.g. with 'role' already set to the new
+     * role for change_membership_role()) — never the pre-mutation row.
+     * $additional_group_id is a group about to be granted that is NOT yet
+     * reflected in the membership's locked access rows (grant_group_
+     * access()'s own target group); pass null when the mutation does not
+     * itself add a group (change_membership_role()), so only the
+     * membership's EXISTING access rows are considered.
+     *
+     * Enforces, ONLY when the resulting membership is a quota-enabled
+     * candidate: exactly one granted group (the MVP one-group-per-inviter
+     * rule — 0 or >1 both fail closed with invalid_state(), matching the
+     * exact shape guard set_membership_quota() already uses), and the
+     * group-exclusivity invariant on that one group via the existing
+     * ensure_no_active_quota_inviter_for_group(). A non-candidate
+     * membership (allocated_quota IS NULL, or not an active manager) is
+     * entirely unrestricted — generic H1C behavior is unchanged.
+     *
+     * @return WP_Error|null
+     */
+    private static function guard_quota_inviter_shape($event_id, array $locked_memberships, array $membership, $additional_group_id = null)
+    {
+        if ($membership['status'] !== 'active' || $membership['role'] !== 'manager' || $membership['allocated_quota'] === null) {
+            return null;
+        }
+        $access_rows = self::lock_membership_access($event_id, $membership['id']);
+        if ($access_rows instanceof WP_Error) return $access_rows;
+        $group_ids = array_map(fn($row) => (int) $row['group_id'], $access_rows);
+        if ($additional_group_id !== null) $group_ids[] = (int) $additional_group_id;
+        $group_ids = array_values(array_unique($group_ids));
+        if (count($group_ids) !== 1) return self::invalid_state();
+        return self::ensure_no_active_quota_inviter_for_group($event_id, $locked_memberships, $group_ids[0], (int) $membership['id']);
+    }
+
     private static function lock_access_relation($event_id, $membership_id, $group_id)
     {
         $table = self::table('access');
@@ -1264,7 +1606,7 @@ class PGE_Event_Access_Repository
     {
         $pairs = [
             'group_created' => 'group', 'group_renamed' => 'group', 'default_group_changed' => 'group', 'group_archived' => 'group',
-            'membership_created' => 'membership', 'membership_role_changed' => 'membership', 'membership_revoked' => 'membership', 'membership_reactivated' => 'membership',
+            'membership_created' => 'membership', 'membership_role_changed' => 'membership', 'membership_revoked' => 'membership', 'membership_reactivated' => 'membership', 'membership_quota_changed' => 'membership',
             'group_access_granted' => 'group_access', 'group_access_revoked' => 'group_access',
             'guest_group_assigned' => 'guest_assignment', 'guest_group_moved' => 'guest_assignment', 'guest_group_unassigned' => 'guest_assignment',
         ];
@@ -1610,7 +1952,7 @@ class PGE_Event_Access_Repository
     private static function normalize_membership($row, $event_id)
     {
         if (!is_array($row)) return self::database_error();
-        foreach (['id', 'event_id', 'user_id', 'role', 'status', 'created_by_user_id', 'activated_at', 'revoked_at', 'created_at', 'updated_at'] as $key) {
+        foreach (['id', 'event_id', 'user_id', 'role', 'status', 'created_by_user_id', 'activated_at', 'revoked_at', 'created_at', 'updated_at', 'allocated_quota'] as $key) {
             if (!array_key_exists($key, $row)) return self::database_error();
         }
         $id = self::db_positive_int($row['id'] ?? null);
@@ -1631,6 +1973,19 @@ class PGE_Event_Access_Repository
             || ($row['status'] === 'revoked' && !self::required_string($row['revoked_at']))) {
             return self::database_error();
         }
+        // H1C-W8: allocated_quota is NULL for every ordinary membership
+        // (unchanged W1-W7 shape) or a strict positive integer for an
+        // Additional Inviter. Any other stored value (0, negative, a
+        // non-numeric string) is a storage-integrity failure, not a valid
+        // "unlimited"/"unset" convention — 0 is deliberately never treated
+        // as unlimited here (Product Contract Section 8).
+        $quota_raw = $row['allocated_quota'];
+        if ($quota_raw === null) {
+            $quota = null;
+        } else {
+            $quota = self::db_positive_int($quota_raw);
+            if ($quota === null) return self::database_error();
+        }
         return [
             'id' => $id,
             'event_id' => $row_event,
@@ -1642,6 +1997,7 @@ class PGE_Event_Access_Repository
             'revoked_at' => $row['revoked_at'],
             'created_at' => $row['created_at'],
             'updated_at' => $row['updated_at'],
+            'allocated_quota' => $quota,
         ];
     }
 
@@ -1912,6 +2268,19 @@ class PGE_Event_Access_Repository
     private static function duplicate_membership()
     {
         return new WP_Error('duplicate_membership', 'An event host membership already exists.');
+    }
+
+    /**
+     * H1C-W8 Fix Pass — the target group already has another active,
+     * quota-enabled Additional Inviter. Deliberately reveals nothing about
+     * WHICH membership/user holds it — only that the group's exclusivity
+     * slot is occupied, which the caller (already Owner/Admin, already
+     * operating on this specific group) is entitled to know without that
+     * being an enumeration/privacy leak.
+     */
+    private static function quota_group_conflict()
+    {
+        return new WP_Error('quota_group_conflict', 'This group already has an active Additional Inviter.');
     }
 
     private static function invalid_state()

@@ -218,6 +218,8 @@ function w5_membership($event_id, $user_id, $role, $status = 'active')
         'id' => $id, 'event_id' => $event_id, 'user_id' => $user_id, 'role' => $role, 'status' => $status,
         'created_by_user_id' => 1, 'activated_at' => $now, 'revoked_at' => $status === 'revoked' ? $now : null,
         'created_at' => $now, 'updated_at' => $now,
+        // H1C-W8: additive nullable column now present on every real row.
+        'allocated_quota' => null,
     ];
     return $id;
 }
@@ -357,6 +359,9 @@ function w5_dispatch_mutation($sql)
             'id' => $id, 'event_id' => (int) $m[1], 'user_id' => (int) $m[2], 'role' => $m[3], 'status' => $m[4],
             'created_by_user_id' => (int) $m[5], 'activated_at' => $m[6], 'revoked_at' => null,
             'created_at' => $m[7], 'updated_at' => $m[8],
+            // H1C-W8: ordinary create_membership() never sets this column;
+            // it stays at its DEFAULT NULL, matching the additive schema.
+            'allocated_quota' => null,
         ];
         return ['handled' => true, 'result' => 1, 'insert_id' => $id];
     }

@@ -181,6 +181,8 @@ function a2_membership($event_id, $user_id, $role, $status = 'active')
         'revoked_at' => $status === 'revoked' ? $now : null,
         'created_at' => $now,
         'updated_at' => $now,
+        // H1C-W8: additive nullable column now present on every real row.
+        'allocated_quota' => null,
     ];
     return $id;
 }
@@ -481,6 +483,10 @@ $GLOBALS['a2_db']['memberships'][$bad_id] = [
     'id' => $bad_id, 'event_id' => 200, 'user_id' => 65, 'role' => 'superuser', 'status' => 'active',
     'created_by_user_id' => 1, 'activated_at' => '2026-01-01 00:00:00', 'revoked_at' => null,
     'created_at' => '2026-01-01 00:00:00', 'updated_at' => '2026-01-01 00:00:00',
+    // H1C-W8: present so this row's ONLY corruption is the malformed role
+    // (the thing C8 actually intends to test), not an incidental missing-
+    // column failure that happens to share the same database_error code.
+    'allocated_quota' => null,
 ];
 a2_ok('C8 malformed role fails closed via Repository propagation, never becomes Viewer', a2_code($A::resolve_context(200, 65)) === 'database_error');
 
@@ -508,6 +514,8 @@ $GLOBALS['a2_db']['memberships'][$admin_corrupt_id] = [
     'id' => $admin_corrupt_id, 'event_id' => 200, 'user_id' => 90, 'role' => 'not-a-real-role', 'status' => 'active',
     'created_by_user_id' => 1, 'activated_at' => '2026-01-01 00:00:00', 'revoked_at' => null,
     'created_at' => '2026-01-01 00:00:00', 'updated_at' => '2026-01-01 00:00:00',
+    // H1C-W8: present so this row's ONLY corruption is the malformed role.
+    'allocated_quota' => null,
 ];
 $ctx_admin_with_corruption = $A::resolve_context(200, 90);
 a2_ok('C11 (FIX C) admin with a malformed H1B membership row still resolves as admin', $ctx_admin_with_corruption instanceof PGE_Event_Access_Authorization_Context && $ctx_admin_with_corruption->is_admin() === true);

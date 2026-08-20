@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) exit;
  */
 class PGE_Event_Access_Schema
 {
-    const SCHEMA_VERSION = '1.1.0';
+    const SCHEMA_VERSION = '1.2.0';
     const VERSION_OPTION = 'pge_event_access_schema_version';
     const HEALTH_OPTION = 'pge_event_access_schema_health';
     const LAST_ATTEMPT_OPTION = 'pge_event_access_schema_last_attempt';
@@ -529,6 +529,20 @@ class PGE_Event_Access_Schema
                     'revoked_at'         => self::column('DATETIME NULL DEFAULT NULL', '/^datetime(?:\(0\))?$/', true, null),
                     'created_at'         => self::column('DATETIME NOT NULL', '/^datetime(?:\(0\))?$/', false),
                     'updated_at'         => self::column('DATETIME NOT NULL', '/^datetime(?:\(0\))?$/', false),
+                    // H1C-W8 (Additional Inviter Quota) — additive, nullable.
+                    // NULL = ordinary H1C membership (no additional-inviter
+                    // quota configured); a strict positive integer = the
+                    // membership is an Additional Inviter with that quota.
+                    // 0 is never a valid stored value — see Repository's
+                    // valid_id()/set_membership_quota()/
+                    // create_additional_inviter_membership() guards. Every
+                    // membership row created before W8 has no value for
+                    // this column and reads back as NULL automatically
+                    // (MySQL's default behavior for a newly added nullable
+                    // column with no explicit DEFAULT write on old rows) —
+                    // their W1-W7 behavior is unaffected, since nothing in
+                    // W1-W7 code paths ever reads this column.
+                    'allocated_quota'    => self::column('INT(10) UNSIGNED NULL DEFAULT NULL', '/^int(?:\(10\))? unsigned$/', true, null),
                 ],
                 'indexes' => [
                     'PRIMARY'           => self::index(['id'], true, true),
@@ -636,6 +650,7 @@ class PGE_Event_Access_Schema
                 revoked_at DATETIME NULL DEFAULT NULL,
                 created_at DATETIME NOT NULL,
                 updated_at DATETIME NOT NULL,
+                allocated_quota INT(10) UNSIGNED NULL DEFAULT NULL,
                 PRIMARY KEY (id),
                 UNIQUE KEY event_user (event_id, user_id),
                 KEY event_status_role (event_id, status, role, id),

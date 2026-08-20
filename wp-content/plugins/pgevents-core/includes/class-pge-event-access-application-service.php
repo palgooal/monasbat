@@ -1105,6 +1105,11 @@ final class PGE_Event_Access_Application_Service
             'not_found' => 'not_found',
             'invalid_state' => 'invalid_state',
             'concurrent_update' => 'concurrent_update',
+            // H1C-W8 Fix Pass 2 — grant_group_access() can now return this
+            // (guard_quota_inviter_shape()'s one-group/exclusivity check).
+            // Without this entry it would silently collapse to the generic
+            // database_error fallback below instead of surfacing correctly.
+            'quota_group_conflict' => 'quota_group_conflict',
             'database_error' => 'database_error',
         ];
         $public_code = $map[$code] ?? 'database_error';
@@ -1749,6 +1754,18 @@ final class PGE_Event_Access_Application_Service
             'invalid_state' => 'invalid_state',
             'duplicate_membership' => 'duplicate',
             'concurrent_update' => 'concurrent_update',
+            // H1C-W8 Fix Pass 2 — change_membership_role() can now return
+            // this (guard_quota_inviter_shape()'s one-group/exclusivity
+            // check, when a role transition would land on the Additional-
+            // Inviter predicate). Also closes a latent Fix-Pass-1 gap: this
+            // shared mapper was never updated when reactivate_membership()
+            // gained its own (currently unreachable — see the Fix Pass 1
+            // report) quota_group_conflict defense-in-depth guard, so that
+            // path would have silently collapsed to database_error too had
+            // it ever fired. Without this entry, either case collapses to
+            // the generic database_error fallback below instead of
+            // surfacing correctly.
+            'quota_group_conflict' => 'quota_group_conflict',
             'database_error' => 'database_error',
         ];
         $public_code = $map[$code] ?? 'database_error';

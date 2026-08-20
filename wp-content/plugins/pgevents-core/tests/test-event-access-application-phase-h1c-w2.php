@@ -196,6 +196,8 @@ function w2_membership($event_id, $user_id, $role, $status = 'active')
         'id' => $id, 'event_id' => $event_id, 'user_id' => $user_id, 'role' => $role, 'status' => $status,
         'created_by_user_id' => 1, 'activated_at' => $now, 'revoked_at' => $status === 'revoked' ? $now : null,
         'created_at' => $now, 'updated_at' => $now,
+        // H1C-W8: additive nullable column now present on every real row.
+        'allocated_quota' => null,
     ];
     return $id;
 }
