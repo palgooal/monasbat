@@ -936,6 +936,74 @@ class PGE_Event_Access_Repository
         );
     }
 
+    /**
+     * H1C-W9: Owner/Admin-facing read of the memberships in one event that
+     * already match the binding Additional Inviter predicate (status =
+     * active, role = manager, allocated_quota IS NOT NULL). Deliberately
+     * NOT built on top of list_memberships()'s generic ['status','role']
+     * filters — allocated_quota is an H1C-Additional-Inviter-specific
+     * concept, not a generic membership filter, and folding it into
+     * list_memberships() would both widen that generic method's contract
+     * and make pagination counts wrong for ordinary (non-quota) callers.
+     * Returns ONLY membership rows (id/user_id/role/status/allocated_quota/
+     * timestamps) via the existing normalize_membership() — no group
+     * association, no display_name, no email. Group association and quota
+     * arithmetic are resolved by the caller (PGE_Additional_Inviter, via
+     * its existing resolve_quota_status()), never by this Repository.
+     */
+    public static function list_additional_inviter_memberships($event_id, $page = 1, $per_page = self::DEFAULT_PER_PAGE)
+    {
+        $guard = self::guard_event($event_id);
+        if ($guard instanceof WP_Error) return $guard;
+        $pagination = self::validate_pagination($page, $per_page);
+        if ($pagination instanceof WP_Error) return $pagination;
+
+        $table = self::table('memberships');
+        if ($table instanceof WP_Error) return $table;
+        return self::paginate(
+            $table,
+            'event_id = %d AND status = %s AND role = %s AND allocated_quota IS NOT NULL',
+            [$event_id, 'active', 'manager'],
+            'ORDER BY id ASC',
+            $pagination,
+            function ($row) use ($event_id) { return self::normalize_membership($row, $event_id); }
+        );
+    }
+
+    /**
+     * H1C-W9: cross-event self-discoverability read — every membership
+     * belonging to $user_id, across ALL events, that already matches the
+     * same Additional Inviter predicate as list_additional_inviter_
+     * memberships() above. Deliberately NOT event-scoped: guard_event()
+     * does not apply here (there is no single $event_id to check against
+     * a post type), and this method takes no event_id parameter of any
+     * kind — the only scoping input is $user_id, which the caller
+     * (PGE_Additional_Inviter) is required to source exclusively from the
+     * authenticated actor, never from client-supplied input.
+     */
+    public static function list_additional_inviter_memberships_for_user($user_id, $page = 1, $per_page = self::DEFAULT_PER_PAGE)
+    {
+        if (!class_exists('PGE_Event_Access_Schema')
+            || !method_exists('PGE_Event_Access_Schema', 'is_ready')
+            || !PGE_Event_Access_Schema::is_ready()) {
+            return new WP_Error('schema_not_ready', 'Event access storage is not ready.');
+        }
+        if (!self::valid_id($user_id)) return self::invalid_input();
+        $pagination = self::validate_pagination($page, $per_page);
+        if ($pagination instanceof WP_Error) return $pagination;
+
+        $table = self::table('memberships');
+        if ($table instanceof WP_Error) return $table;
+        return self::paginate(
+            $table,
+            'user_id = %d AND status = %s AND role = %s AND allocated_quota IS NOT NULL',
+            [$user_id, 'active', 'manager'],
+            'ORDER BY event_id ASC, id ASC',
+            $pagination,
+            function ($row) { return self::normalize_membership($row, (int) ($row['event_id'] ?? 0)); }
+        );
+    }
+
     public static function list_group_ids_for_membership($event_id, $membership_id)
     {
         $guard = self::guard_event($event_id);

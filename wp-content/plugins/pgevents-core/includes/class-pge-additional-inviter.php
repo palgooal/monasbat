@@ -180,6 +180,159 @@ final class PGE_Additional_Inviter
     }
 
     // ──────────────────────────────────────────────────────────────
+    // H1C-W9: Owner/Admin — list an event's Additional Inviters
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Read-only. Reuses the same resolve_actor_context()/can_manage_
+     * membership() EC1-collapsing authorization pattern as create_
+     * additional_inviter_for_actor()/set_additional_inviter_quota_for_
+     * actor() above (a real-but-unauthorized event is indistinguishable
+     * from a nonexistent one — both collapse to not_authorized() before
+     * this method ever touches the Repository), and resolve_quota_status()
+     * per row for group/quota data — no quota arithmetic is duplicated
+     * here. A row that fails resolve_quota_status() (corrupt/misconfigured
+     * membership — Section 9/11) is skipped, never surfaced as a partial
+     * item and never allowed to fail the whole list.
+     *
+     * @return array{ok:true,items:array,page:int,per_page:int,total:int,total_pages:int}|WP_Error
+     */
+    public static function list_additional_inviters_for_owner($event_id, $actor_user_id, $page = 1, $per_page = null)
+    {
+        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)) {
+            return self::invalid_input();
+        }
+
+        $context = self::resolve_actor_context($event_id, $actor_user_id);
+        if ($context instanceof WP_Error) return $context;
+
+        $decision = PGE_Event_Access_Authorization::can_manage_membership($context);
+        if (empty($decision['allowed'])) return self::not_authorized();
+
+        $pagination = self::validate_list_pagination($page, $per_page);
+        if ($pagination instanceof WP_Error) return $pagination;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $page_result = PGE_Event_Access_Repository::list_additional_inviter_memberships(
+            $event_id, $pagination['page'], $pagination['per_page']
+        );
+        if ($page_result instanceof WP_Error) return self::map_read_list_error($page_result);
+        if (!is_array($page_result) || !isset($page_result['items']) || !is_array($page_result['items'])
+            || !isset($page_result['page'], $page_result['per_page'], $page_result['total'], $page_result['total_pages'])) {
+            return self::guest_data_error();
+        }
+
+        $items = [];
+        foreach ($page_result['items'] as $membership) {
+            if (!is_array($membership) || !isset($membership['id'], $membership['role'])) continue;
+            $status = self::resolve_quota_status($event_id, $membership['id']);
+            if ($status instanceof WP_Error) continue;
+
+            $items[] = [
+                'membership_id' => $status['membership_id'],
+                'user_id' => $status['user_id'],
+                'display_name' => self::resolve_display_name($status['user_id']),
+                'group_id' => $status['group_id'],
+                'group_name' => $status['group_name'],
+                'role' => $membership['role'],
+                'status' => $status['membership_status'],
+                'allocated_quota' => $status['allocated'],
+                'occupied' => $status['occupied'],
+                'available' => $status['available'],
+                'attending' => $status['attending'],
+                'pending' => $status['pending'],
+                'declined' => $status['declined'],
+                'cancelled' => $status['cancelled'],
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'items' => $items,
+            'page' => $page_result['page'],
+            'per_page' => $page_result['per_page'],
+            'total' => $page_result['total'],
+            'total_pages' => $page_result['total_pages'],
+        ];
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // H1C-W9: self-discoverability — events where the current user is
+    // an active Additional Inviter
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Read-only. No event_id parameter, no per-event authorization check —
+     * this is unconditionally the actor's own data, scoped entirely by
+     * $actor_user_id at the query itself (PGE_Event_Access_Repository::
+     * list_additional_inviter_memberships_for_user()). The AJAX transport
+     * layer is required to source $actor_user_id exclusively from
+     * get_current_user_id(); this method accepts it as a parameter like
+     * every other method in this class but performs no authorization
+     * decision of its own beyond that identity being a real, positive
+     * user id — there is no "denied" outcome for reading one's own data,
+     * only "no qualifying events" (an empty, still-successful items list).
+     *
+     * @return array{ok:true,items:array,page:int,per_page:int,total:int,total_pages:int}|WP_Error
+     */
+    public static function list_my_additional_inviter_events($actor_user_id, $page = 1, $per_page = null)
+    {
+        if (!self::valid_scalar_id($actor_user_id)) return self::invalid_input();
+
+        $pagination = self::validate_list_pagination($page, $per_page);
+        if ($pagination instanceof WP_Error) return $pagination;
+
+        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
+        $page_result = PGE_Event_Access_Repository::list_additional_inviter_memberships_for_user(
+            $actor_user_id, $pagination['page'], $pagination['per_page']
+        );
+        if ($page_result instanceof WP_Error) return self::map_read_list_error($page_result);
+        if (!is_array($page_result) || !isset($page_result['items']) || !is_array($page_result['items'])
+            || !isset($page_result['page'], $page_result['per_page'], $page_result['total'], $page_result['total_pages'])) {
+            return self::guest_data_error();
+        }
+
+        $items = [];
+        foreach ($page_result['items'] as $membership) {
+            if (!is_array($membership) || !isset($membership['id'], $membership['event_id'])) continue;
+            $event_id = $membership['event_id'];
+
+            // Skip (never crash the rest of the list) rather than fail
+            // closed the whole request — same discipline as the Owner
+            // list above and as resolve_quota_status()'s own Section 9/11
+            // misconfiguration handling.
+            $status = self::resolve_quota_status($event_id, $membership['id']);
+            if ($status instanceof WP_Error) continue;
+
+            $event_title = self::resolve_event_title($event_id);
+            if ($event_title === null) continue; // event vanished between the two reads
+
+            $items[] = [
+                'event_id' => $event_id,
+                'event_title' => $event_title,
+                'group_id' => $status['group_id'],
+                'group_name' => $status['group_name'],
+                'allocated' => $status['allocated'],
+                'occupied' => $status['occupied'],
+                'available' => $status['available'],
+                'attending' => $status['attending'],
+                'pending' => $status['pending'],
+                'declined' => $status['declined'],
+                'cancelled' => $status['cancelled'],
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'items' => $items,
+            'page' => $page_result['page'],
+            'per_page' => $page_result['per_page'],
+            'total' => $page_result['total'],
+            'total_pages' => $page_result['total_pages'],
+        ];
+    }
+
+    // ──────────────────────────────────────────────────────────────
     // Quota status reads (Owner/Admin explicit target; Manager self-read)
     // ──────────────────────────────────────────────────────────────
 
@@ -576,6 +729,98 @@ final class PGE_Additional_Inviter
         if ($context instanceof WP_Error) return self::not_authorized();
         if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
         return $context;
+    }
+
+    /**
+     * H1C-W9: safe WP user display-name resolution for list rows. Follows
+     * the same instanceof WP_User + display_name convention already used
+     * elsewhere in the plugin (PGE_Supervisor_Portal_Bootstrap's host-name
+     * resolution) rather than inventing a new one. A deleted/missing WP
+     * user, or any unexpected shape, never crashes the list — it falls
+     * back to a fixed, safe placeholder string instead.
+     */
+    private static function resolve_display_name($user_id)
+    {
+        if (!function_exists('get_userdata')) return 'مستخدم غير متاح';
+        try {
+            $user = get_userdata($user_id);
+        } catch (Throwable $e) {
+            return 'مستخدم غير متاح';
+        }
+        if ($user instanceof WP_User && is_string($user->display_name ?? null) && $user->display_name !== '') {
+            return $user->display_name;
+        }
+        return 'مستخدم غير متاح';
+    }
+
+    /**
+     * H1C-W9: safe event-title resolution for the self-discoverability
+     * list. Returns null (row skipped by the caller) rather than an empty
+     * string if the event post cannot be resolved at all — this can only
+     * happen from a genuine race (the event was deleted in the narrow
+     * window between the membership read and this call), since resolve_
+     * quota_status() already confirmed the event exists via guard_event()
+     * moments earlier.
+     *
+     * @return string|null
+     */
+    private static function resolve_event_title($event_id)
+    {
+        if (!function_exists('get_post')) return null;
+        try {
+            $post = get_post($event_id);
+        } catch (Throwable $e) {
+            return null;
+        }
+        if (!is_object($post) || !isset($post->post_title) || !is_string($post->post_title)) return null;
+        return $post->post_title;
+    }
+
+    /**
+     * H1C-W9: local mirror of PGE_Event_Access_Application_Service::
+     * validate_pagination() — that method is private to a different class
+     * and cannot be called from here, so the identical shape (missing
+     * per_page -> Repository::DEFAULT_PER_PAGE, same MAX_PER_PAGE cap) is
+     * reproduced rather than duplicated with different semantics.
+     *
+     * @return array{page:int,per_page:int}|WP_Error
+     */
+    private static function validate_list_pagination($page, $per_page)
+    {
+        if ($per_page === null) {
+            $per_page = class_exists('PGE_Event_Access_Repository')
+                ? PGE_Event_Access_Repository::DEFAULT_PER_PAGE
+                : 20;
+        }
+        $max_per_page = class_exists('PGE_Event_Access_Repository') ? PGE_Event_Access_Repository::MAX_PER_PAGE : 100;
+        if (!self::valid_scalar_id($page) || !self::valid_scalar_id($per_page) || $per_page > $max_per_page) {
+            return self::invalid_input();
+        }
+        return ['page' => $page, 'per_page' => $per_page];
+    }
+
+    /**
+     * H1C-W9: translates a Repository-level WP_Error from either new list
+     * primitive into a small, fixed public code — the read-path
+     * counterpart of map_create_inviter_result()/map_set_quota_result()
+     * above. schema_not_ready maps to a distinct 'read_unavailable' (not
+     * the write-path's 'write_unavailable') since these two new methods
+     * are pure reads. Anything else (not_found/database_error/cross_event/
+     * any other code) is an internal-only detail and never surfaced —
+     * both list methods have already fully established authority (or, for
+     * the self list, need none beyond a real actor id) before the
+     * Repository is ever called, so a Repository-level not_found here can
+     * only be a genuine race/anomaly, not a legitimate denial state.
+     */
+    private static function map_read_list_error($error)
+    {
+        if (!($error instanceof WP_Error)) return self::guest_data_error();
+        $code = (string) $error->get_error_code();
+        if ($code === 'invalid_input' || $code === 'invalid_filter') return self::invalid_input();
+        if ($code === 'schema_not_ready') {
+            return new WP_Error('read_unavailable', 'Additional Inviter list is not available right now.');
+        }
+        return self::guest_data_error();
     }
 
     private static function valid_scalar_id($value): bool
