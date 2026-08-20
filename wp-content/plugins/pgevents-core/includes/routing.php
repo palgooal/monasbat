@@ -35,6 +35,15 @@ add_action('init', function () {
     // جلسة مشرف مستقلة).
     add_rewrite_rule('event-manage/([0-9]+)/operations/?$', 'index.php?pge_action=event_operations&event_id=$matches[1]', 'top');
 
+    // 9. إدارة مجموعات الضيوف للمضيف (H1C-UI-1 — Group Management UI
+    // Integration): monasbat.test/event-manage/{ID}/groups/ — نفس فلسفة
+    // مسارات supervisors/invitations/operations أعلاه تماماً (معرِّف مناسبة
+    // في الرابط، تفويض مضيف عادي عبر pge_event_guests_user_can_manage()
+    // للعرض فقط، لا جلسة مشرف مستقلة). الصلاحية الأمنية الفعلية لكل عملية
+    // (قراءة/إنشاء مجموعة) تبقى حصراً عند PGE_Event_Access_Application_Service
+    // عبر includes/event-access-ajax.php — هذا المسار لا يقرر شيئاً أمنياً.
+    add_rewrite_rule('event-manage/([0-9]+)/groups/?$', 'index.php?pge_action=event_groups&event_id=$matches[1]', 'top');
+
     // 2. مسار لوحة التحكم الرئيسية: monasbat.test/dashboard/
     add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
     add_rewrite_rule('^login/?$', 'index.php?pge_action=login', 'top');
@@ -840,6 +849,21 @@ add_filter('template_include', function ($template) {
         $plugin_operations_template = PGE_PATH . 'templates/event-operations.php';
         if (file_exists($plugin_operations_template)) {
             return $plugin_operations_template;
+        }
+    }
+
+    // إدارة مجموعات الضيوف للمضيف (H1C-UI-1) — نفس نمط theme-first/
+    // plugin-fallback المُتَّبع لـevent_supervisors/event_invitations/
+    // event_operations حرفياً.
+    if ($action === 'event_groups') {
+        $theme_groups_template = locate_template('page-event-groups.php');
+        if ($theme_groups_template && file_exists($theme_groups_template)) {
+            return $theme_groups_template;
+        }
+
+        $plugin_groups_template = PGE_PATH . 'templates/event-groups.php';
+        if (file_exists($plugin_groups_template)) {
+            return $plugin_groups_template;
         }
     }
 
