@@ -1,6 +1,10 @@
 # Decision Log
 
-> سجل تاريخي فقط — لا يحتوي أي قرارات حالية. يُستخدم فقط إذا اعتُمِد قرار جديد مستقبلاً.
+> سجل تراكمي الإضافة فقط (Append-Only) للقرارات المعمارية المعتمدة نهائياً، بترتيب
+> صدورها زمنياً. هذا السجل **ليس** مصدر الحقيقة التشغيلي أو التصميمي للنظام، ولا يُغني عن
+> الكود الفعلي، الاختبارات القائمة، أو وثائق التصميم الحالية (مثل ENTRY-SUPERVISORS-DESIGN.md
+> أو أي وثيقة تصميم H1C مستقبلية) — عند أي تعارض، يُرجَع دوماً لتلك المصادر أولاً، ويُعامَل هذا
+> السجل كسياق قرار تاريخي مرجعي فقط.
 
 ---
 
@@ -368,6 +372,141 @@ Phase H1C-GR1 — Relational Guest Read Projection (لم تبدأ، لا Schema/
 pge_event_guests_save_map()، بينما يبقى _pge_invited_guests (Post Meta) هو
 مصدر الحقيقة (Source-of-Truth Model 1). لا ترحيل كامل عن Post Meta (تم استبعاد
 هذا الخيار صراحة لعدم تناسبه مع حجم المشكلة الفعلي في هذه المرحلة).
+
+== تحديث لاحق (2026-08-21): إنجاز H1C-GR1 — لا تغيير على نص القرار الأصلي أعلاه ==
+
+Phase H1C-GR1 اكتملت وأصبحت مُستهلَكة فعلياً في الكود القائم — هذا يُصحِّح الوصف
+"لم تبدأ" أعلاه فقط، ولا يمس بقية القرار (الموافقة على قبول H1C-W1 كما كان
+وقتها، وتوثيق الفجوة كـTechnical Debt، تبقى وقائع تاريخية صحيحة كما وردت).
+تحقُّق فعلي من الكود الحالي (لا استنتاج): includes/class-pge-event-guest-read-
+projection-schema.php وincludes/class-pge-event-guest-read-projection.php
+موجودتان فعلياً، ومُحمَّلتان صراحة في pgevents-core.php قبل Authorization/
+Application Service. مسار قراءة المتعاونين (Manager/Viewer) في
+PGE_Event_Access_Application_Service لم يعد يستدعي pge_event_guests_get_map()
+إطلاقاً — أصبح يستدعي PGE_Event_Guest_Read_Projection::get_guests_by_phones()
+مباشرة (طبقة علائقية مُشتقّة تُقرأ بالهاتف المصرَّح به فقط)، مع
+rebuild_event()/is_ready() كآلية إعادة بناء واستعادة عند الحاجة. أي: القيد
+الموصوف أعلاه ضمن "الصياغة المعتمدة لوصف السلوك الحالي" (Storage/PII
+scoping = NO لهذا المسار تحديداً) أصبح الآن NO→YES لمسار المتعاونين. لا تحقق
+تم من أي مسار آخر خارج هذا المسار ضمن هذا التحديث — لا يُفترَض حسمه.
+_pge_invited_guests (Post Meta) لا يزال Source-of-Truth كما تقرر أصلاً (Model
+1، بلا ترحيل كامل)، مطابقاً تماماً لما كان مخطَّطاً في نص القرار الأصلي.
+Status (لهذا التحديث فقط): Resolved.
+```
+
+---
+
+```
+Decision ID: DEC-005
+Date: 2026-08-21
+Title: نموذج "الداعي الإضافي" (Additional Inviter) — عضوية Event Access، لا نظام تفويض موازٍ
+Reason: احتاج H1C-W8/W9/W10 حسم كيف يُمثَّل "الداعي الإضافي" معمارياً. القرار المعتمد: لا
+كيان أو نظام تفويض جديد — الداعي الإضافي هو ببساطة عضوية موجودة أصلاً في
+PGE_Event_Access_Repository تحقق الشرط الثلاثي معاً: status = active AND role = manager AND
+allocated_quota IS NOT NULL، مقيَّدة (Scoped) بمجموعة واحدة (group) بالضبط لكل عضوية. هذا
+الثلاثي هو الفيصل الوحيد المعتمد لتمييز "مدير عادي" عن "داعٍ إضافي" في كل نقاط الفحص القائمة
+داخل class-pge-event-access-repository.php — لا عمود/حقل منفصل is_additional_inviter في قاعدة
+البيانات، ولا جدول جديد. أي مسار مستقبلي يحتاج التمييز بين الاثنين يجب أن يستخدم نفس هذا
+الثلاثي، لا يخترع فحصاً موازياً.
+Approved By: Project Owner
+Affected Documents: includes/class-pge-event-access-repository.php
+Status: Approved
+```
+
+```
+Decision ID: DEC-006
+Date: 2026-08-21
+Title: نمط "انهيار السلطة قبل الفحص" (EC1) — عدم كشف وجود المورد عبر رسالة الخطأ
+Reason: عبر طبقات Application المتعددة (class-pge-event-access-application-service.php،
+class-pge-additional-inviter-onboarding.php) تقرر أن أي WP_Error صادر من resolve_context()/
+resolve_event_actor_context() — سواء كان السبب "المستخدم غير مخوَّل لمورد موجود فعلاً" أو
+"المورد (event_id) غير موجود أصلاً" — ينهار إلى نفس نتيجة not_authorized الخارجية تماماً، بلا
+أي تمييز في الرسالة أو رمز الحالة يسمح لطرف خارجي باستنتاج ما إذا كان المورد موجوداً أصلاً.
+يُنفَّذ هذا عبر دالة resolve_actor_context() محلية (مُكرَّرة عمداً في كل Class من طبقة
+Application تحتاجه)، لا عبر Helper مشترك واحد، لتفادي اقتران غير مرغوب بين الطبقات.
+Approved By: Project Owner
+Affected Documents: includes/class-pge-event-access-application-service.php,
+includes/class-pge-additional-inviter-onboarding.php
+Status: Approved
+```
+
+```
+Decision ID: DEC-007
+Date: 2026-08-21
+Title: بنية دعوة انضمام "الداعي الإضافي" (H1C-W10 Onboarding) — التوكن كسلطة وحيدة، والتسليم عبر wp_mail() مباشرة
+Reason: احتاج H1C-W10 حسم كيف تُدار دعوة انضمام مستخدم (موجود أو جديد) كداعٍ إضافي. القرارات
+المعتمدة مجتمعة:
+(أ) التوكن الخام (bin2hex(random_bytes(32))، 64 حرف hex) هو السلطة الوحيدة على الدعوة — لا
+يُخزَّن أبداً، فقط SHA-256 hash الخاص به. المعاينة (GET، preview_onboarding_token()) لا تُنفِّذ
+أي UPDATE مطلقاً (Link Preview Safety، بنفس فلسفة templates/supervisor-login-confirm.php).
+الإتمام (POST، finish_completion()) لا يستهلك التوكن إلا بعد نجاح إنشاء العضوية فعلياً — لا
+استهلاك مبكر يُفشِل عملية لاحقة بلا رجعة.
+(ب) حساب WP جديد يُنشأ عبر wp_create_user() لا يُحذَف ولا يُراجَع (Rollback) أبداً عند فشل
+إنشاء العضوية لاحقاً في نفس الطلب — يسمح هذا بإعادة محاولة آمنة دون تكرار إنشاء حسابات.
+(ج) **محصور حصراً بمسار إتمام دعوة الانضمام المُتحقَّق منه (W10 Onboarding Completion) بعد
+اجتياز التسلسل الكامل**: (1) التحقق من التوكن الخام مقابل الـSHA-256 hash المخزَّن، (2) التحقق
+من أن صف الدعوة لا يزال pending وغير منتهي الصلاحية، (3) إعادة التحقق من صف الدعوة نفسه عند
+لحظة الإتمام فعلياً (لا وثوق بما سبق)، (4) اجتياز ثوابت العضوية/المجموعة (membership/group
+invariants) في PGE_Event_Access_Repository — فقط عندها actor_user_id المُمرَّر لـ
+PGE_Event_Access_Repository::create_additional_inviter_membership() هو Audit Attribution فقط
+(يُسجَّل من هوية الداعي الأصلي وقت إنشاء الدعوة)، لا فحص تفويض؛ الفحص الفعلي الوحيد هو إعادة
+التحقق من صف الدعوة نفسه عند الإتمام كما ورد أعلاه. **هذا القرار لا يُعامَل كإذن عام** لتمرير
+actor ID تاريخي إلى أي كتابة عضوية أخرى في Repository من أي مسار كود آخر، أو بلا اجتياز نفس
+سلسلة التحقق الأربع أعلاه بالكامل — نطاقه محصور بهذا المسار المُتحقَّق منه وحده. هذا ليس
+"انتحال جلسة" (Session Impersonation) لأن لا جلسة تُنتحَل — فقط إسناد Audit لعملية أثبتت الدعوة
+الأصلية صلاحيتها وقت إنشائها، ضمن هذا المسار المحدد فقط. لا تغيير على السلوك الفعلي للكود —
+توضيح نطاق توثيقي فقط.
+(د) التسليم البريدي لهذه الدعوة يستخدم wp_mail() مباشرة (includes/class-pge-additional-
+inviter-onboarding.php) — بمعزل تام عن أنبوب Reminder/Thank-You الموثَّق في
+MESSAGING-ARCHITECTURE.md. قرار نطاق (Scope) لا سهو: لا حاجة موثَّقة لجدولة/قوالب/تتبع حالة
+تسليم على مستوى Messaging Pipeline لدعوة تُرسَل مرة واحدة عند إنشائها.
+
+== توضيح مصطلحات (لا قرار جديد، فقط لمنع الالتباس) ==
+
+"Invitation" تُستخدَم في وثائق ومشروع Monasbat بمعنيين مختلفين تماماً، ثبت التباسهما فعلياً
+أثناء مراجعة التوثيق (DOCS-REVIEW-1)، يجب عدم الخلط بينهما مستقبلاً:
+
+1. "Guest Invitation" (دعوة الضيف) — السجل الأقدم من Phase 9، المرتبط بـ_pge_invited_guests
+   (Post Meta)، الموثَّق في INVITATION-QR-ARCHITECTURE.md وINVITATION-BULK-ADD.md
+   وINVITATION-EXPORT.md وINVITATION-GUEST-LIMIT-ENFORCEMENT.md — دورة حياته بلا علاقة
+   إطلاقاً بـH1C.
+
+2. "Additional Inviter Onboarding Invitation" (دعوة انضمام الداعي الإضافي) — سجل جديد بالكامل
+   من H1C-W10 (جدول مستقل، توكن SHA-256، دورة حياة منفصلة تماماً: pending → consumed/expired/
+   revoked)، لا علاقة له بالسجل أعلاه ولا يُخزَّن في _pge_invited_guests.
+
+عند الإشارة لأي منهما في وثائق مستقبلية أو مراجعات كود، يُستخدَم المصطلح الكامل ("دعوة
+الضيف" أو "دعوة انضمام الداعي الإضافي") لا "دعوة" وحدها.
+Approved By: Project Owner
+Affected Documents: includes/class-pge-additional-inviter-onboarding.php,
+includes/additional-inviter-onboarding-ajax.php, docs/MESSAGING-ARCHITECTURE.md (بالتمييز فقط،
+بلا تعديل على محتواها)
+Status: Approved
+```
+
+```
+Decision ID: DEC-008
+Date: 2026-08-21
+Title: حدود واجهة الخدمة الذاتية لـ"الداعي الإضافي" (H1C-UI-2 / REAL-USER-FIX-1)
+Reason: احتاج H1C-UI-2 وREAL-USER-FIX-1 حسم حدود واجهة المستخدم بين المالك (Owner) والداعي
+الإضافي، كقرار معماري/منتجي مجرَّد — التفاصيل التنفيذية الدقيقة (أسماء الملفات، إجراءات AJAX
+المحددة، حقول الإسقاط، آلية بوابة العرض داخل كل Template) تخص وثيقة تصميم H1C مستقبلية
+(H1C-EVENT-ACCESS-DESIGN.md)، لا هذا السجل، وقد تتغير دون أن يتغير القرار أدناه. المبادئ
+الدائمة المعتمدة:
+(أ) المالك/الأدمن هو من يدير "فريق الدعوة" (Invitation Team) بالكامل؛ الداعي الإضافي لا يصل
+لهذه الإدارة إطلاقاً، ويُخدَم عبر تجربة خدمة ذاتية منفصلة تماماً ("دعواتي" / My Invitations)
+لا عبر نفس شاشة المالك بصلاحيات مخفَّضة.
+(ب) التفويض الفعلي يبقى خادمي المصدر بالكامل (Backend-Driven) في كل الحالات — لا Template يُعيد
+تنفيذ منطق تفويض أو يفترضه من مجرد عرض الواجهة.
+(ج) وصول الداعي الإضافي لبيانات الضيوف مقيَّد النطاق (Scoped) تبعاً لنفس إسقاط/صلاحيات المدير
+(Manager projection/capabilities) القائمة أصلاً — واجهة الخدمة الذاتية لا توسِّع ولا تتجاوز هذا
+النطاق.
+(د) وجهة إعادة التوجيه بعد نجاح الانضمام تُشتَق حصراً من سياق الحدث (event context) الموثوق
+خادمياً — لا تُقبَل أبداً وجهة أو هوية حدث من مدخلات العميل (Client-Supplied) لهذا الغرض.
+Approved By: Project Owner
+Affected Documents: منظومة واجهة "الداعي الإضافي" في H1C (الملفات والإجراءات التنفيذية الدقيقة
+تُوثَّق لاحقاً في H1C-EVENT-ACCESS-DESIGN.md، لا تُجمَّد هنا)
+Status: Approved
 ```
 
 ---
