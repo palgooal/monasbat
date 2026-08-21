@@ -468,7 +468,13 @@ final class PGE_Additional_Inviter_Onboarding
         // what actually prevents two memberships for the same user.
 
         self::log_lifecycle_event('onboarding_invitation_consumed', $invitation_id, $event_id, $group_id, $allocated_quota, $target_user_id);
-        return ['ok' => true, 'membership_id' => $membership_id];
+        // REAL-USER-FIX-1: event_id is returned alongside membership_id so
+        // the AJAX layer can build a server-derived post-success redirect
+        // (to /event-manage/{event_id}/my-invitations/) — sourced entirely
+        // from $row['event_id'] (the validated invitation this call just
+        // consumed), never from client input. No new trust boundary: the
+        // same $event_id already governed every check above in this method.
+        return ['ok' => true, 'membership_id' => $membership_id, 'event_id' => $event_id];
     }
 
     /**

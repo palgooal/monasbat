@@ -157,6 +157,19 @@ nocache_headers();
                     if (data && data.success) {
                         formWrap.style.display = 'none';
                         showMsg('تم الانضمام بنجاح.', false);
+                        // REAL-USER-FIX-1: redirect_url is built server-side
+                        // (see includes/additional-inviter-onboarding-ajax.php)
+                        // from the completed invitation's own event_id — never
+                        // client-supplied. Show the success message briefly,
+                        // then move the user straight to their new "دعواتي"
+                        // screen. If redirect_url is absent for any reason,
+                        // the success message above remains the only outcome
+                        // (never turned into an error).
+                        if (data.data && typeof data.data.redirect_url === 'string' && data.data.redirect_url !== '') {
+                            window.setTimeout(function () {
+                                window.location.href = data.data.redirect_url;
+                            }, 900);
+                        }
                     } else {
                         var reason = data && data.data && data.data.message ? data.data.message : 'تعذّر إتمام الانضمام حالياً.';
                         showMsg(reason, true);

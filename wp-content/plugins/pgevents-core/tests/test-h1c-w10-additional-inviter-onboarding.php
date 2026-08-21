@@ -104,6 +104,10 @@ function nocache_headers() {}
 function status_header($code) {}
 function home_url($path = '') { return 'https://example.test' . $path; }
 function admin_url($path = '') { return 'https://example.test/wp-admin/' . $path; }
+// REAL-USER-FIX-1: minimal WP core mock — real WordPress always provides
+// esc_url_raw(); this fake just needs to be a harmless pass-through for the
+// already-well-formed home_url()-built URL the handler passes through it.
+function esc_url_raw($url) { return (string) $url; }
 function rawurlencode_test_helper($v) { return rawurlencode($v); }
 function wp_mail($to, $subject, $body) {
     if (!empty($GLOBALS['w10_mail_should_fail'])) return false;
@@ -830,6 +834,78 @@ $users_before_retry = count($GLOBALS['w10_users_by_email']);
 $r2 = PGE_Additional_Inviter_Onboarding::complete_with_new_account(w10_token(1), 'longenoughpw', 'Retry');
 ok('K3d. Retry with the SAME token resolves the now-existing account (no second wp_create_user call) and succeeds', is_array($r2) && $r2['ok'] === true && count($GLOBALS['w10_users_by_email']) === $users_before_retry);
 ok('K3e. The membership created on retry belongs to the SAME (originally-created) user, not a new duplicate account', isset($db->memberships[1]) && $db->memberships[1]['user_id'] === '900');
+
+// ============================================================================
+// L — REAL-USER-FIX-1: server-derived post-success redirect_url
+// ============================================================================
+
+// L1: success response carries the correct redirect_url, built entirely
+// from the completed invitation's own (server-side) event_id — proven with
+// a non-default event_id (77, not the fixtures' usual 10) so this cannot
+// pass by coincidence against a hardcoded value.
+$db = fresh([], [w10_group(1, 'active', 77)], [], [w10_invitation(1, ['event_id' => '77', 'invitee_email' => 'redirect1@example.com'])], 77);
+$GLOBALS['w10_nonce_valid'] = true;
+$GLOBALS['w10_logged_in'] = false;
+$_POST = ['token' => w10_token(1), 'mode' => 'new', 'password' => 'longenoughpw', 'display_name' => 'Redirect Test', 'nonce' => 'ok'];
+try {
+    pge_additional_inviter_onboarding_complete_handler();
+    $threw = false;
+} catch (PGE_W10_JsonSignal $e) {
+    $threw = true;
+    $payload = $e->payload;
+}
+ok('L1. Successful completion response is success=true with a redirect_url', $threw && $payload['success'] === true && isset($payload['data']['redirect_url']));
+ok('L1b. redirect_url is built from the invitation\'s own event_id (77), via home_url(), pointing at my-invitations/', $threw && $payload['data']['redirect_url'] === 'https://example.test/event-manage/77/my-invitations/');
+ok('L1c. Success response never echoes membership_id/group_id/quota (Section 6 discipline unchanged)', $threw && !array_key_exists('membership_id', $payload['data']) && !array_key_exists('group_id', $payload['data']) && !array_key_exists('allocated_quota', $payload['data']));
+
+// L2: a forged event_id/redirect_url in $_POST must be completely ignored —
+// the handler never reads either field from the client for this action.
+// Same fixture as L1 (event_id=77) but the request additionally carries
+// attacker-controlled event_id/redirect_url values; the response must still
+// point at event 77, never at the forged event id or the forged URL.
+$db = fresh([], [w10_group(1, 'active', 77)], [], [w10_invitation(1, ['event_id' => '77', 'invitee_email' => 'redirect2@example.com'])], 77);
+$_POST = [
+    'token' => w10_token(1), 'mode' => 'new', 'password' => 'longenoughpw', 'display_name' => 'Redirect Test 2', 'nonce' => 'ok',
+    'event_id' => '999999', 'redirect_url' => 'https://evil.example/hijack',
+];
+try {
+    pge_additional_inviter_onboarding_complete_handler();
+    $threw = false;
+} catch (PGE_W10_JsonSignal $e) {
+    $threw = true;
+    $payload = $e->payload;
+}
+ok('L2. A forged $_POST[event_id]/$_POST[redirect_url] cannot redirect the client anywhere else', $threw && $payload['success'] === true
+    && $payload['data']['redirect_url'] === 'https://example.test/event-manage/77/my-invitations/'
+    && strpos($payload['data']['redirect_url'], '999999') === false
+    && strpos($payload['data']['redirect_url'], 'evil.example') === false);
+unset($_POST);
+
+// L3: static source check — the handler this suite just executed above
+// never even reads $_POST['event_id'] or $_POST['redirect_url'] as an
+// identity/destination claim (L1/L2 prove the runtime behavior; this proves
+// there is no dead/bypassable code path that could read them either).
+$onboarding_ajax_source = file_get_contents(PGE_PATH . 'includes/additional-inviter-onboarding-ajax.php');
+ok('L3. additional-inviter-onboarding-ajax.php never reads $_POST[\'redirect_url\']', strpos($onboarding_ajax_source, "\$_POST['redirect_url']") === false);
+ok('L3b. pge_additional_inviter_onboarding_complete_handler() never reads $_POST[\'event_id\']', (function () use ($onboarding_ajax_source) {
+    $start = strpos($onboarding_ajax_source, 'function pge_additional_inviter_onboarding_complete_handler');
+    $end = strpos($onboarding_ajax_source, "\n}\n", $start);
+    $body = substr($onboarding_ajax_source, $start, $end - $start);
+    return strpos($body, "\$_POST['event_id']") === false;
+})());
+
+// L4: the join template performs the redirect when redirect_url is present,
+// and the existing "تم الانضمام بنجاح." fallback message is unconditional
+// (still shown even when a redirect follows, and remains the only outcome
+// when redirect_url is absent — success is never turned into an error).
+$join_template_source = file_get_contents(PGE_PATH . 'templates/additional-inviter-onboarding-join.php');
+$success_msg_pos = strpos($join_template_source, "showMsg('تم الانضمام بنجاح.', false);");
+$redirect_check_pos = strpos($join_template_source, 'data.data.redirect_url');
+$redirect_assign_pos = strpos($join_template_source, 'window.location.href = data.data.redirect_url');
+ok('L4. Template still shows the success message unconditionally on data.success', $success_msg_pos !== false);
+ok('L4b. Template checks data.data.redirect_url AFTER showing the success message (fallback-first)', $redirect_check_pos !== false && $redirect_check_pos > $success_msg_pos);
+ok('L4c. Template assigns window.location.href = data.data.redirect_url to perform the redirect', $redirect_assign_pos !== false);
+ok('L4d. Redirect is gated behind a typeof/non-empty check, not run unconditionally', strpos($join_template_source, "typeof data.data.redirect_url === 'string'") !== false);
 
 // ============================================================================
 echo "\n==== H1C-W10 RESULT: $pass passed, $fail failed ====\n";

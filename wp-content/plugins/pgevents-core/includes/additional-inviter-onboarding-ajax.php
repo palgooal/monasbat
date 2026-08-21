@@ -270,15 +270,22 @@ if (!function_exists('pge_additional_inviter_onboarding_complete_handler')) {
         if ($result instanceof WP_Error) {
             wp_send_json_error(pge_additional_inviter_onboarding_public_error($result));
         }
-        if (!is_array($result) || !array_key_exists('membership_id', $result)) {
+        if (!is_array($result) || !array_key_exists('membership_id', $result) || !array_key_exists('event_id', $result)) {
             wp_send_json_error(['message' => 'تعذّر تنفيذ العملية حالياً', 'reason' => 'server_error']);
         }
 
-        // Deliberately minimal success shape — no membership_id, group_id,
-        // quota, or any other internal identifier is ever echoed back to
-        // this anonymous-origin request (Section 6's discipline extended
-        // to the completion response too, not just the invite response).
-        wp_send_json_success(['ok' => true]);
+        // REAL-USER-FIX-1: redirect_url is built server-side from
+        // $result['event_id'] — the trusted event_id of the invitation this
+        // call just consumed (PGE_Additional_Inviter_Onboarding::
+        // finish_completion(), sourced from the validated DB row, never
+        // from transport input). This handler reads no event_id or
+        // redirect destination out of the request at all for this purpose.
+        // Deliberately minimal otherwise — no membership_id, group_id,
+        // quota, or any other internal identifier is echoed back to this
+        // anonymous-origin request (Section 6's discipline extended to the
+        // completion response too).
+        $redirect_url = home_url('/event-manage/' . (int) $result['event_id'] . '/my-invitations/');
+        wp_send_json_success(['ok' => true, 'redirect_url' => esc_url_raw($redirect_url)]);
     }
 }
 add_action('wp_ajax_pge_additional_inviter_onboarding_complete', 'pge_additional_inviter_onboarding_complete_handler');
