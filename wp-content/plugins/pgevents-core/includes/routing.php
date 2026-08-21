@@ -44,6 +44,22 @@ add_action('init', function () {
     // عبر includes/event-access-ajax.php — هذا المسار لا يقرر شيئاً أمنياً.
     add_rewrite_rule('event-manage/([0-9]+)/groups/?$', 'index.php?pge_action=event_groups&event_id=$matches[1]', 'top');
 
+    // 11. فريق الدعوة للمضيف (H1C-UI-2 — Invitation Team UI Integration):
+    // monasbat.test/event-manage/{ID}/invitation-team/ — نفس فلسفة مسار
+    // groups/ أعلاه حرفياً (معرِّف مناسبة في الرابط، تفويض مضيف عادي عبر
+    // presentation gate في القالب نفسه للعرض فقط، لا جلسة مشرف مستقلة).
+    // الصلاحية الأمنية الفعلية لكل عملية تبقى حصراً عند AJAX handlers فوق
+    // Application Service — هذا المسار لا يقرر شيئاً أمنياً.
+    add_rewrite_rule('event-manage/([0-9]+)/invitation-team/?$', 'index.php?pge_action=event_invitation_team&event_id=$matches[1]', 'top');
+
+    // 12. "دعواتي" — شاشة الداعي الإضافي الذاتية (H1C-UI-2):
+    // monasbat.test/event-manage/{ID}/my-invitations/ — بخلاف invitation-team/
+    // أعلاه، هذا المسار ليس للمضيف بل للداعي الإضافي نفسه؛ الـPresentation
+    // Gate هنا تسجيل دخول فقط (لا فحص Owner/Admin) — الصلاحية الفعلية (هل
+    // هذا المستخدم داعٍ إضافي فعّال لهذه المناسبة؟) تُحسَم حصراً عبر استدعاء
+    // AJAX من القالب نفسه (pge_additional_inviter_get_my_quota)، لا هنا.
+    add_rewrite_rule('event-manage/([0-9]+)/my-invitations/?$', 'index.php?pge_action=my_invitations&event_id=$matches[1]', 'top');
+
     // 2. مسار لوحة التحكم الرئيسية: monasbat.test/dashboard/
     add_rewrite_rule('^dashboard/?$', 'index.php?pge_action=dashboard', 'top');
     add_rewrite_rule('^login/?$', 'index.php?pge_action=login', 'top');
@@ -997,6 +1013,34 @@ add_filter('template_include', function ($template) {
         $plugin_groups_template = PGE_PATH . 'templates/event-groups.php';
         if (file_exists($plugin_groups_template)) {
             return $plugin_groups_template;
+        }
+    }
+
+    // فريق الدعوة للمضيف (H1C-UI-2) — نفس نمط theme-first/plugin-fallback
+    // المُتَّبع لـevent_groups حرفياً.
+    if ($action === 'event_invitation_team') {
+        $theme_invitation_team_template = locate_template('page-event-invitation-team.php');
+        if ($theme_invitation_team_template && file_exists($theme_invitation_team_template)) {
+            return $theme_invitation_team_template;
+        }
+
+        $plugin_invitation_team_template = PGE_PATH . 'templates/event-invitation-team.php';
+        if (file_exists($plugin_invitation_team_template)) {
+            return $plugin_invitation_team_template;
+        }
+    }
+
+    // "دعواتي" — شاشة الداعي الإضافي الذاتية (H1C-UI-2) — نفس نمط
+    // theme-first/plugin-fallback المُتَّبع أعلاه حرفياً.
+    if ($action === 'my_invitations') {
+        $theme_my_invitations_template = locate_template('page-my-invitations.php');
+        if ($theme_my_invitations_template && file_exists($theme_my_invitations_template)) {
+            return $theme_my_invitations_template;
+        }
+
+        $plugin_my_invitations_template = PGE_PATH . 'templates/my-invitations.php';
+        if (file_exists($plugin_my_invitations_template)) {
+            return $plugin_my_invitations_template;
         }
     }
 

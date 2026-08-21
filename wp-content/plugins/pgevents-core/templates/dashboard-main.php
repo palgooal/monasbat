@@ -509,6 +509,67 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
             </div>
         </section>
 
+        <!-- ══ دعواتي — H1C-UI-2 (Additional Inviter Discoverability) ══════════
+             قسم مستقل تماماً عن نظام الـTabs أعلاه (يظهر دائماً بصرف النظر عن
+             التبويب النشط) — استدعاء واحد فقط لـpge_additional_inviter_list_
+             my_events (بلا event_id، ذاتي التمركز بالكامل من هوية المستخدم
+             المسجّل دخوله). لا قسم يظهر إطلاقاً إن كانت القائمة فارغة (Section
+             6 من موجز H1C-UI-2: "لا تعرض section أو اعرض empty state صغير"). -->
+        <section id="pgeMyInvitesDiscoverySection" class="hidden mt-6" dir="rtl"
+                 data-nonce="<?php echo esc_attr(wp_create_nonce('pge_event_manage_nonce')); ?>"
+                 data-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
+                 aria-labelledby="myInvitesDiscoveryHeading">
+          <h2 id="myInvitesDiscoveryHeading" class="text-sm font-extrabold text-foreground mb-2">دعواتي</h2>
+          <div id="pgeMyInvitesDiscoveryGrid" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+        </section>
+        <script>
+        (function () {
+          'use strict';
+          var section = document.getElementById('pgeMyInvitesDiscoverySection');
+          var grid = document.getElementById('pgeMyInvitesDiscoveryGrid');
+          if (!section || !grid) return;
+
+          function escapeHtml(str) {
+            return String(str == null ? '' : str).replace(/[&<>"']/g, function (c) {
+              return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+          }
+
+          var body = new URLSearchParams();
+          body.set('action', 'pge_additional_inviter_list_my_events');
+          body.set('nonce', section.getAttribute('data-nonce'));
+          body.set('page', '1');
+          body.set('per_page', '50');
+
+          fetch(section.getAttribute('data-ajax-url'), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+          }).then(function (res) { return res.json(); }).then(function (json) {
+            if (!json || !json.success) return;
+            var items = (json.data && json.data.items) || [];
+            if (items.length === 0) return;
+
+            items.forEach(function (item) {
+              var card = document.createElement('div');
+              card.className = 'min-w-0 rounded-3xl border border-border bg-white p-5 shadow-sm';
+              card.innerHTML =
+                '<div class="text-sm font-extrabold text-foreground truncate">' + escapeHtml(item.event_title) + '</div>' +
+                '<div class="mt-1 text-xs text-foreground/60">' + escapeHtml(item.group_name || '—') + '</div>' +
+                '<div class="mt-3 grid grid-cols-2 gap-2 text-center">' +
+                  '<div class="rounded-2xl bg-secondary/60 p-2.5 ring-1 ring-border"><div class="text-base font-extrabold text-foreground">' + escapeHtml(item.allocated) + '</div><div class="mt-0.5 text-[10px] text-foreground/65">الحصة</div></div>' +
+                  '<div class="rounded-2xl bg-secondary/60 p-2.5 ring-1 ring-border"><div class="text-base font-extrabold text-primary">' + escapeHtml(item.available) + '</div><div class="mt-0.5 text-[10px] text-foreground/65">المتاح</div></div>' +
+                '</div>' +
+                '<a href="' + escapeHtml('<?php echo esc_url(home_url('/event-manage/')); ?>' + item.event_id + '/my-invitations/') + '" class="mt-4 flex h-11 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-white transition-colors hover:bg-primary-hover">إدارة دعواتي</a>';
+              grid.appendChild(card);
+            });
+
+            section.classList.remove('hidden');
+          }).catch(function () { /* فشل صامت — القسم يبقى مخفياً */ });
+        })();
+        </script>
+
         <!-- Overview -->
         <div id="dashboardPanelOverview" class="dashboard-panel mt-4">
             <section class="grid gap-4 lg:grid-cols-12">

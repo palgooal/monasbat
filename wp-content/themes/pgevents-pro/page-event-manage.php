@@ -40,6 +40,9 @@ $operations_url  = home_url('/event-manage/' . $event_id . '/operations/');
 // H1C-UI-1 (Group Management UI Integration): نفس نمط الروابط الثلاثة أعلاه
 // حرفياً — رابط فقط، بلا أي منطق جديد.
 $groups_url      = home_url('/event-manage/' . $event_id . '/groups/');
+// H1C-UI-2 (Invitation Team UI Integration): نفس نمط الروابط أعلاه حرفياً —
+// رابط فقط، بلا أي منطق جديد. مسار مستقل عن مشرفي الدخول (supervisors_url).
+$invitation_team_url = home_url('/event-manage/' . $event_id . '/invitation-team/');
 $wa_templates    = function_exists('pge_wa_get_templates') ? pge_wa_get_templates($event_id) : [];
 $wa_tpl_invite   = $wa_templates['invite']  ?? '';
 $wa_tpl_yes      = $wa_templates['yes']     ?? '';
@@ -344,6 +347,11 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
         <a href="<?= esc_url($groups_url) ?>" id="navGroupsLink" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
           <span aria-hidden="true">🗂️</span> مجموعات الضيوف
         </a>
+        <!-- H1C-UI-2: نفس تنسيق الروابط أعلاه حرفياً، رابط جديد فقط — مستقل
+             عن "مشرفو الدخول" تماماً (نظامان منفصلان). -->
+        <a href="<?= esc_url($invitation_team_url) ?>" id="navInvitationTeamLink" class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">✉️</span> فريق الدعوة
+        </a>
       </div>
     </div>
 
@@ -642,6 +650,10 @@ body footer.border-t, body footer[class*="border"], footer[class] { display:none
         <!-- H1C-UI-1: نفس تنسيق الروابط أعلاه حرفياً، رابط جديد فقط. -->
         <a href="<?= esc_url($groups_url) ?>" id="navGroupsLinkMobile" class="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
           <span aria-hidden="true">🗂️</span> مجموعات الضيوف
+        </a>
+        <!-- H1C-UI-2: نفس تنسيق الروابط أعلاه حرفياً، رابط جديد فقط. -->
+        <a href="<?= esc_url($invitation_team_url) ?>" id="navInvitationTeamLinkMobile" class="flex h-11 items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-bold text-foreground/80 transition-colors hover:bg-secondary/50">
+          <span aria-hidden="true">✉️</span> فريق الدعوة
         </a>
       </div>
 
