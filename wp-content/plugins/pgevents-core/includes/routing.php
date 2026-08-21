@@ -98,6 +98,23 @@ add_action('init', function () {
     // الرابط تماماً كسابقيه (جلسة المشرف تُعرِّف المناسبة بذاتها).
     add_rewrite_rule('^supervisor/checkin/?$', 'index.php?pge_action=supervisor_checkin', 'top');
 
+    // 10. H1C-W10 (Additional Inviter Onboarding Backend) — الصفحة العامة
+    // الوحيدة المسموح بها لهذه المرحلة (استثناء صريح من "لا UI/template
+    // changes"، القسم 19 من موجز H1C-W10): monasbat.test/additional-inviter/
+    // join/{token}/ — التوكن الخام (64 حرف hex، bin2hex(random_bytes(32)))
+    // هو المُعرِّف الوحيد في الرابط، بلا معرِّف مناسبة/مجموعة/مستخدم. يعيد
+    // استخدام query var الموجود فعلاً `pge_token` (مسجَّل أدناه أصلاً من أجل
+    // /supervisor/accept/{token}/) بدل تسجيل متغيّر جديد. نفس فلسفة
+    // GET-preview/POST-confirms المعتمَدة في /supervisor/login/{token}/
+    // أعلاه (Login RFC) — لكن هنا: GET يعرض القالب فقط عبر template_redirect
+    // (معاينة بحتة، بلا أي أثر جانبي)، بينما الإتمام الفعلي (POST) لا يحدث
+    // على هذا المسار إطلاقاً بل عبر إجراء AJAX عام واحد فقط
+    // (pge_additional_inviter_onboarding_complete، مسجَّل wp_ajax_nopriv_ —
+    // راجع includes/additional-inviter-onboarding-ajax.php) يستدعيه القالب
+    // نفسه. هذا يتجنّب ازدواج منطق الاستهلاك بين routing.php وAJAX (بخلاف
+    // مسار /supervisor/login/ الذي يستهلك التوكن هنا مباشرة).
+    add_rewrite_rule('^additional-inviter/join/([^/]+)/?$', 'index.php?pge_action=additional_inviter_onboarding_join&pge_token=$matches[1]', 'top');
+
 });
 
 /**
@@ -764,6 +781,122 @@ add_action('template_redirect', function () {
 
     $error_page = $decision['error'];
     pge_render_supervisor_accept_error($error_page['title'], $error_page['message'], $error_page['http_status']);
+}, 1);
+
+/**
+ * ============================================================================
+ * H1C-W10 — Additional Inviter Onboarding — Public Join Route
+ * ============================================================================
+ * monasbat.test/additional-inviter/join/{token}/ — see the add_rewrite_rule()
+ * comment above for the full route rationale. This handler is READ-ONLY: it
+ * never consumes the token, never creates an account, never creates a
+ * membership. It only decides which template to render (the join form, or a
+ * generic error page) based on PGE_Additional_Inviter_Onboarding::
+ * preview_onboarding_token() — the exact same GET-safe preview method the
+ * template itself could call again, reused here once so the template stays a
+ * pure view. The actual state-changing completion happens exclusively
+ * through the wp_ajax_nopriv_pge_additional_inviter_onboarding_complete
+ * action the rendered template's form posts to (includes/additional-inviter-
+ * onboarding-ajax.php) — never through this route, on GET or POST alike.
+ */
+
+if (!function_exists('pge_additional_inviter_onboarding_token_shape_valid')) {
+    /**
+     * Same pure shape check as pge_supervisor_accept_token_shape_valid()
+     * above, reproduced here rather than reused across features (that one
+     * is a Supervisor-specific helper) — bin2hex(random_bytes(32)) always
+     * produces 64 lowercase hex chars.
+     */
+    function pge_additional_inviter_onboarding_token_shape_valid(string $raw_token): bool
+    {
+        return (bool) preg_match('/^[a-f0-9]{64}$/', $raw_token);
+    }
+}
+
+if (!function_exists('pge_render_additional_inviter_onboarding_error')) {
+    /**
+     * Generic RTL error page for this route only — never exposes the raw
+     * token, an invitation id, an event id, or any internal/database
+     * detail. Deliberately a separate, neutrally-branded renderer rather
+     * than reusing pge_render_supervisor_accept_error() (that one is
+     * explicitly "بوابة المشرف"-branded and belongs to a different
+     * feature).
+     */
+    function pge_render_additional_inviter_onboarding_error(string $title, string $message, int $http_status): void
+    {
+        status_header($http_status);
+        nocache_headers();
+        ?>
+<!DOCTYPE html>
+<html <?php language_attributes(); ?> dir="rtl">
+<head>
+    <meta charset="<?php bloginfo('charset'); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><?php echo esc_html($title); ?></title>
+    <?php wp_head(); ?>
+    <style>
+        body { font-family: sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .pge-ai-card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 32px; max-width: 420px; text-align: center; }
+        .pge-ai-card h1 { font-size: 20px; margin: 0 0 12px; }
+        .pge-ai-card p { color: #555; line-height: 1.7; }
+    </style>
+</head>
+<body>
+    <div class="pge-ai-card">
+        <h1><?php echo esc_html($title); ?></h1>
+        <p><?php echo esc_html($message); ?></p>
+    </div>
+    <?php wp_footer(); ?>
+</body>
+</html>
+        <?php
+        exit;
+    }
+}
+
+add_action('template_redirect', function () {
+    $action = get_query_var('pge_action');
+    if ($action !== 'additional_inviter_onboarding_join') return;
+
+    if (!class_exists('PGE_Additional_Inviter_Onboarding')) {
+        pge_render_additional_inviter_onboarding_error('تعذّر فتح الصفحة', 'تعذّر تحميل صفحة الدعوة حالياً. حاول لاحقاً.', 503);
+    }
+
+    $raw_token_from_url = (string) get_query_var('pge_token');
+    $raw_token_from_url = rawurldecode($raw_token_from_url);
+
+    if (!pge_additional_inviter_onboarding_token_shape_valid($raw_token_from_url)) {
+        pge_render_additional_inviter_onboarding_error(
+            'رابط غير صالح',
+            'رابط الدعوة غير صالح. تأكد من نسخ الرابط بالكامل، أو اطلب رابطاً جديداً من المضيف.',
+            400
+        );
+    }
+
+    // Pure read — see PGE_Additional_Inviter_Onboarding::
+    // preview_onboarding_token()'s own docblock: never mutates anything,
+    // safe to run on a plain GET even if fetched by an email client's
+    // link-preview/security scanner.
+    $preview_result = PGE_Additional_Inviter_Onboarding::preview_onboarding_token($raw_token_from_url);
+
+    if ($preview_result instanceof WP_Error) {
+        // invalid_token (not-found/expired/already-consumed/revoked, all
+        // collapsed together by design) is the only error code this
+        // method can actually return — a generic message either way.
+        pge_render_additional_inviter_onboarding_error(
+            'انتهت صلاحية الدعوة',
+            'رابط الدعوة هذا لم يعد صالحاً. قد يكون مستخدَماً مسبقاً أو منتهي الصلاحية. تواصل مع المضيف للحصول على دعوة جديدة.',
+            410
+        );
+    }
+
+    $pge_ai_join_token = $raw_token_from_url;
+    $pge_ai_join_preview = $preview_result;
+    $pge_ai_join_complete_nonce = wp_create_nonce('pge_additional_inviter_onboarding_complete');
+    $pge_ai_join_ajax_url = admin_url('admin-ajax.php');
+
+    require PGE_PATH . 'templates/additional-inviter-onboarding-join.php';
+    exit;
 }, 1);
 
 /**

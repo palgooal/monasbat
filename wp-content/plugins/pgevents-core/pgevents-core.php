@@ -302,6 +302,18 @@ require_once PGE_PATH . 'includes/invitation-management-ajax.php';
 require_once PGE_PATH . 'includes/class-pge-additional-inviter.php';
 require_once PGE_PATH . 'includes/additional-inviter-ajax.php';
 
+// Phase H1C-W10 (Additional Inviter Onboarding Backend) — an isolated new
+// table/schema + a new orchestrator over it, loaded right after W8/W9
+// above so it can reuse their shared AJAX helpers
+// (pge_event_access_write_request_context, pge_additional_inviter_read_
+// pagination, pge_event_access_strict_positive_int) without redefining
+// them. Loaded before includes/routing.php (further below) since the new
+// public onboarding-join route added there calls
+// PGE_Additional_Inviter_Onboarding::preview_onboarding_token() directly.
+require_once PGE_PATH . 'includes/class-pge-additional-inviter-onboarding-schema.php';
+require_once PGE_PATH . 'includes/class-pge-additional-inviter-onboarding.php';
+require_once PGE_PATH . 'includes/additional-inviter-onboarding-ajax.php';
+
 // Event Operations — Entry Check-in Supervisors، Phase 10 ("Event
 // Operations" RFC، مُعتمَدة). طبقة تجميع/عرض رقيقة فقط (Orchestration) فوق
 // خدمات مُعتمَدة غير مُعدَّلة في حسابها: PGE_Attendance_Dashboard_Provider
