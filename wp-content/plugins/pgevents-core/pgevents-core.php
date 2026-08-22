@@ -150,6 +150,12 @@ require_once PGE_PATH . 'includes/class-pge-message-batch.php';
 // الملف نفسه لتفاصيل القرار المعماري الكامل.
 require_once PGE_PATH . 'includes/class-pge-invitation-send-ledger.php';
 
+// D2-W2 ("Invitation Send State / Sendability Read Contract" — قراءة فقط، بلا
+// أثر جانبي): يُركِّب حالة/قابلية إرسال الدعوة فوق current_state()/find_by_id()
+// العامتين أعلاه بلا أي تعديل عليهما. لا Authorization، لا Quota. راجع توثيق
+// الملف نفسه للقرار الموثَّق حول ambiguous_transport_error.
+require_once PGE_PATH . 'includes/class-pge-invitation-send-state.php';
+
 // طبقة عرض/إعادة تشكيل رقيقة إضافية لبحث الحضور اليدوي — Entry Check-in
 // Supervisors، Phase 7 ("Supervisor Check-in User Interface" RFC). تستهلك
 // نفس PGE_Guest_Resolution_Service أعلاه (قراءة فقط، بلا تعديل) وتُسقِط
