@@ -525,6 +525,59 @@ final class PGE_Event_Access_Authorization
         return self::deny();
     }
 
+    /**
+     * Model D2 (DEC-009) — scoped invitation-sending authorization, added
+     * for D2-W3. A single, narrow, D2-specific capability — deliberately
+     * NOT an extension of can_create_scoped_guest() or any other generic
+     * Manager capability above (widening a generic Manager capability for
+     * this is explicitly out of scope). Plain Manager — an active
+     * collaborator with role=manager who is not quota-configured, or whose
+     * membership is misconfigured with zero or more than one granted group
+     * — is denied here even when $guest_group_id matches one of their
+     * granted groups. This deliberately differs from can_view_guest()/
+     * can_unassign_guest() above, which only require has_group_access():
+     * D2 sending authority additionally requires the full Additional
+     * Inviter predicate from DEC-005 (status=active AND role=manager AND
+     * allocated_quota IS NOT NULL) plus the "exactly one granted group"
+     * invariant (H1C-EVENT-ACCESS-DESIGN.md §5) — a misconfigured
+     * membership with zero or more than one granted group fails closed
+     * here exactly as it does for quota reads
+     * (PGE_Additional_Inviter::resolve_quota_status()).
+     *
+     * $guest_group_id must be the guest's CURRENT assigned group id (int),
+     * or null if the guest is currently unassigned — never derived from
+     * historical guest-creator identity, which this method has no
+     * parameter for and never consults (DEC-009's core rule: authority
+     * follows the actor's CURRENT scope, not who created the guest).
+     * Per H1C-EVENT-ACCESS-DESIGN.md §9 ("Sending Responsibility"):
+     * Owner/Admin may send to an eligible unassigned guest — unconditional
+     * operational backstop, regardless of $guest_group_id; an Additional
+     * Inviter may never send to an unassigned guest, since no current
+     * group scope exists to prove authority — $guest_group_id === null is
+     * therefore fail-closed on the Additional Inviter branch below.
+     *
+     * This method answers authorization only — it says nothing about
+     * current invitation-send state (not_sent/send_requested/
+     * provider_accepted/failed/ambiguous_transport_error) or whether the
+     * requested intent (normal/resend) is valid for that state; that is
+     * PGE_Invitation_Send_State's and the D2-W3 Application layer's
+     * responsibility, composed on top of this decision, never inside it.
+     */
+    public static function can_send_guest_invitation($context, $guest_group_id)
+    {
+        if (!self::is_trusted_context($context)) return self::deny(self::REASON_INVALID_CONTEXT);
+        if ($context->is_admin()) return self::allow(self::REASON_ADMIN);
+        if ($context->is_owner()) return self::allow(self::REASON_OWNER);
+        if ($guest_group_id !== null
+            && $context->is_active_collaborator('manager')
+            && $context->allocated_quota() !== null
+            && count($context->granted_group_ids()) === 1
+            && $context->has_group_access($guest_group_id)) {
+            return self::allow(self::REASON_GRANTED_SCOPE);
+        }
+        return self::deny();
+    }
+
     // ──────────────────────────────────────────────────────────────
     // Guest projection (Sections 16-17, 28, 30-31)
     // ──────────────────────────────────────────────────────────────

@@ -317,6 +317,15 @@ require_once PGE_PATH . 'includes/invitation-management-ajax.php';
 require_once PGE_PATH . 'includes/class-pge-additional-inviter.php';
 require_once PGE_PATH . 'includes/additional-inviter-ajax.php';
 
+// D2-W3 ("Scoped Invitation Send Authorization / Application Contract" —
+// تفويض + تنسيق فقط، بلا كتابة/طابور/نقل): يُركِّب فوق Authorization Core
+// أعلاه (can_send_guest_invitation() الجديدة)، Invitation Repository،
+// Event Access Repository، وحالة D2-W2 (class-pge-invitation-send-state.php،
+// محمَّلة أعلاه) — بلا تعديل على أي منها. محمَّل هنا (بعد كل تبعياته
+// مباشرة) لأنه لا يحتاج شيئاً من H1C-W10 أدناه. راجع توثيق الملف نفسه
+// للقرار الحَكَمي حول مطابقة النيّة (Intent) مقابل حالة الإرسال.
+require_once PGE_PATH . 'includes/class-pge-invitation-send-application.php';
+
 // Phase H1C-W10 (Additional Inviter Onboarding Backend) — an isolated new
 // table/schema + a new orchestrator over it, loaded right after W8/W9
 // above so it can reuse their shared AJAX helpers
