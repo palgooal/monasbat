@@ -310,4 +310,51 @@ class PGE_Message_Log
 
         return is_array($rows) ? $rows : [];
     }
+
+    /**
+     * كل سجلات مناسبة+هاتف معيَّن من نوع رسالة معيَّن، الأقدم أولاً — الاستعلام
+     * الوحيد الذي يُصفِّي بمستوى الهاتف على مستوى قاعدة البيانات (D2-W1: لا
+     * استعلام حالي يفعل ذلك). الهاتف يُطبَّع عبر pge_norm_phone() قبل
+     * الاستعلام (نفس اصطلاح create_pending()). ترفض message_type غير معروف
+     * (تعيد مصفوفة فارغة، لا استثناء) — بنفس عقد query_by_event_type() تماماً.
+     * Tracking فقط، بلا قرار Business Logic هنا (راجع توثيق الملف أعلاه) —
+     * تُستخدَم من PGE_Invitation_Send_Ledger (D2-W1) لاشتقاق حالة الإرسال
+     * الحالية واتخاذ قرار Claim، لكن ذلك القرار نفسه يبقى في تلك الطبقة حصراً.
+     *
+     * @return array<int,array>
+     */
+    public static function query_by_event_type_and_phone($event_id, $message_type, $guest_phone): array
+    {
+        $event_id = (int) $event_id;
+        if ($event_id <= 0) {
+            return [];
+        }
+
+        $normalized_type = PGE_Message_Type::normalize($message_type);
+        if ($normalized_type === null) {
+            return [];
+        }
+
+        $guest_phone = function_exists('pge_norm_phone')
+            ? pge_norm_phone($guest_phone)
+            : preg_replace('/\D+/', '', (string) $guest_phone);
+        if ($guest_phone === '') {
+            return [];
+        }
+
+        global $wpdb;
+        $table = self::table_name();
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM $table WHERE event_id = %d AND message_type = %s AND guest_phone = %s ORDER BY id ASC",
+                $event_id,
+                $normalized_type,
+                $guest_phone
+            ),
+            ARRAY_A
+        );
+
+        return is_array($rows) ? $rows : [];
+    }
 }

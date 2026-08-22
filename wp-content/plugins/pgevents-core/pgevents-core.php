@@ -141,6 +141,15 @@ require_once PGE_PATH . 'includes/class-pge-message-log.php';
 require_once PGE_PATH . 'includes/class-pge-thank-you-claim.php';
 require_once PGE_PATH . 'includes/class-pge-message-batch.php';
 
+// D2-W1 ("Durable Invitation Ledger Integration" — Foundation فقط، بلا إرسال
+// فعلي): طبقة Claim/تتبّع ذرية لإرسال الدعوة (message_type=invitation) فوق
+// pge_message_log القائم أعلاه — بلا جدول جديد. تعتمد قراءةً فقط على
+// PGE_Invitation_Repository::get_invitation() (مُحمَّلة أدناه لاحقاً في هذا
+// الملف؛ استدعاؤها يحدث فقط داخل أجسام الدوال وقت التنفيذ الفعلي، بعد اكتمال
+// كل التحميل — لا مشكلة ترتيب). راجع docs/DECISION-LOG.md § DEC-009 وتوثيق
+// الملف نفسه لتفاصيل القرار المعماري الكامل.
+require_once PGE_PATH . 'includes/class-pge-invitation-send-ledger.php';
+
 // طبقة عرض/إعادة تشكيل رقيقة إضافية لبحث الحضور اليدوي — Entry Check-in
 // Supervisors، Phase 7 ("Supervisor Check-in User Interface" RFC). تستهلك
 // نفس PGE_Guest_Resolution_Service أعلاه (قراءة فقط، بلا تعديل) وتُسقِط
