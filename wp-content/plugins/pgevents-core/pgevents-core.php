@@ -350,6 +350,17 @@ require_once PGE_PATH . 'includes/class-pge-invitation-send-queue.php';
 // السطر. لا تعديل على أي من D2-W1 حتى D2-W5 أو Authorization Core.
 require_once PGE_PATH . 'includes/class-pge-invitation-send-worker.php';
 
+// D2-W7 ("Worker Scheduling / Queue Consumption Orchestration"): أول
+// مُستدعٍ إنتاجي فعلي لكل من PGE_Invitation_Send_Queue::
+// find_queued_pending_attempts()/re_enqueue_recoverable() (D2-W5) و
+// PGE_Invitation_Send_Worker::process_log_id() (D2-W6) عبر WP-Cron ذاتي
+// التكرار (Hook واحد فقط pge_invitation_send_worker_run، لا Watchdog
+// منفصل). لا نقل/تخويل/إنهاء دفتر يُنفَّذ هنا بنفسه إطلاقاً — راجع توثيق
+// رأس الملف نفسه لتفصيل الحدود الصارمة. محمَّل هنا مباشرة بعد D2-W6 لأنه
+// يعتمد فقط على PGE_Invitation_Send_Queue/PGE_Invitation_Send_Worker
+// المحمَّلتين أعلاه بالفعل. لا تعديل على أي من D2-W1 حتى D2-W6.
+require_once PGE_PATH . 'includes/class-pge-invitation-send-orchestrator.php';
+
 // Phase H1C-W10 (Additional Inviter Onboarding Backend) — an isolated new
 // table/schema + a new orchestrator over it, loaded right after W8/W9
 // above so it can reuse their shared AJAX helpers

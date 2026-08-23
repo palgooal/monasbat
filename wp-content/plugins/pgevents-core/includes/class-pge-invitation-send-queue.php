@@ -230,6 +230,19 @@ class PGE_Invitation_Send_Queue
         // طابور منطقي واحد فقط ينتج مهما تكرر النداء لنفس log_id.
         $added = add_option(self::queue_option_key($normalized_log_id), $item, '', false);
         if ($added) {
+            // D2-W7 Fix Pass 1 — إشارة داخلية فقط (Work-Available Signal):
+            // تُطلَق حصراً هنا (إنشاء عنصر طابور جديد فعلياً)، أبداً عند
+            // already_queued الـIdempotent أدناه — تحل قيداً صادقاً وثَّقه
+            // تقرير D2-W7 النهائي (لا مسار إيقاظ Bootstrap مُثبَت بعد
+            // enqueue ناجح). هذا الملف لا يستدعي أي مُنسِّق مباشرة ولا
+            // يعرف بوجوده إطلاقاً — do_action() قياسية بحتة، طبقة Hook
+            // داخلية فقط (يستمع PGE_Invitation_Send_Orchestrator وحده إن
+            // كان محمَّلاً). مُحاطة بـfunction_exists() فقط كي تبقى ملفات
+            // اختبار D2-W5 القائمة (التي لا تُعرِّف do_action()) تعمل دون
+            // أي تعديل عليها.
+            if (function_exists('do_action')) {
+                do_action('pge_invitation_send_work_available', $normalized_log_id);
+            }
             return self::result_shape(self::RESULT_QUEUED, $normalized_log_id, $item, null);
         }
 
@@ -348,5 +361,48 @@ class PGE_Invitation_Send_Queue
         }
 
         return $results;
+    }
+
+    /**
+     * D2-W7 — قراءة استرداد محدودة إضافية (Additive فقط، لا تعديل على أي
+     * دالة قائمة أعلاه): المتممة الحرفية لـfind_recoverable_pending_
+     * attempts() — بدلاً من إعادة المحاولات **اليتيمة** (غير المُمثَّلة بعمل
+     * طابور)، تُعيد محاولات دعوة معلّقة (pending) **المُمثَّلة فعلاً** بعنصر
+     * طابور نشط حالياً. هذه هي "العمل المُطابَر" الفعلي الذي يستهلكه أي
+     * منسِّق/Worker (D2-W7 PGE_Invitation_Send_Orchestrator تحديداً) —
+     * قراءة بحتة، بلا أي أثر جانبي، بلا إنشاء/إزالة عنصر طابور، بلا استدعاء
+     * Worker/Transport/Authorization من هنا إطلاقاً (تبقى تلك حصراً مسؤولية
+     * المستدعي). نفس حدود find_recoverable_pending_attempts() تماماً: محدودة
+     * العدد دوماً (MAX_RECOVERY_LIMIT)، نفس مصدر الاستعلام الأساسي
+     * (PGE_Message_Log::query_pending_by_type() — الفهرس القائم فعلاً على
+     * status، لا فهرس/Schema جديد).
+     *
+     * @return array<int,array> صفوف pge_message_log الخام المُمثَّلة بعمل طابور نشط.
+     */
+    public static function find_queued_pending_attempts($limit = 50): array
+    {
+        $normalized_limit = is_scalar($limit) ? (int) $limit : 50;
+        $normalized_limit = max(1, min(self::MAX_RECOVERY_LIMIT, $normalized_limit));
+
+        if (!class_exists('PGE_Message_Log') || !class_exists('PGE_Message_Type')) {
+            return [];
+        }
+
+        $pending_rows = PGE_Message_Log::query_pending_by_type(PGE_Message_Type::INVITATION, $normalized_limit);
+
+        $queued = [];
+        foreach ($pending_rows as $row) {
+            $log_id = isset($row['id']) ? (int) $row['id'] : 0;
+            if ($log_id <= 0) {
+                continue;
+            }
+            if (!self::is_queued($log_id)) {
+                // يتيمة (بلا عمل طابور نشط) — ليست "عملاً مُطابَراً"، خارج نطاق هذه الدالة (راجع find_recoverable_pending_attempts()).
+                continue;
+            }
+            $queued[] = $row;
+        }
+
+        return $queued;
     }
 }
