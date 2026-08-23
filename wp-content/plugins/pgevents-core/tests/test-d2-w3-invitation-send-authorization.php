@@ -577,34 +577,207 @@ check('W1. لا تغيير على أي صف message_log بعد استدعاءا�
 check('W2. لا قفل مأخوذ إطلاقاً عبر authorize_send_for_actor() (لا GET_LOCK)', $wpdb->held_locks, $locks_before);
 
 // ══════════════════════════════════════════════════════════════════════
-// X. لا اعتماد على AJAX/UI/Worker/Queue/Cartat/UltraMsg/كتابة داخل الملف
-// الجديد نفسه — الفحص على الكود التنفيذي فقط (بعد تجريد التعليقات)، لأن
-// توثيق الملف يشرح عمداً لماذا لا يُستدعى أي من claim()/GET_LOCK/Queue/
-// Cartat/UltraMsg هنا — نفس منهجية D2-W2 المُصحَّحة تماماً.
+// X. حدود المرحلة (Phase Boundary) داخل class-pge-invitation-send-
+// application.php — مُصحَّحة في D2-W4 Fix Pass 1.
+//
+// ملاحظة تصحيح مهمة: النسخة الأصلية من X1 (D2-W3) كانت تفحص أن الملف
+// **كله** لا يحتوي "::claim(" إطلاقاً — قيد كان صحيحاً حصراً طالما ظل
+// الملف تفويضاً/قراءة بحتة بلا أي طفرة (نطاق D2-W3 الأصلي). في D2-W4
+// أُضيفت request_send_for_actor() **عمداً وبموافقة صريحة** كحدود الطفرة
+// الوحيدة المعتمدة فوق PGE_Invitation_Send_Ledger::claim() — فالقيد
+// القديم على مستوى الملف كله أصبح مُتجاوَزاً (Stale) بحكم التصميم، لا
+// خللاً. العقد الحقيقي الذي يجب أن يبقى صحيحاً إلى الأبد ليس "لا claim()
+// في الملف إطلاقاً" بل: (أ) authorize_send_for_actor() تبقى قراءة/تفويض
+// بحتاً بلا أي طفرة، (ب) request_send_for_actor() فقط هي حدود الطفرة
+// المعتمدة، (ج) لا يوجد أي مسار طفرة آخر مُكرَّر أو مُسرَّب في أي تابع
+// آخر بالملف. الفحوصات أدناه تُثبِت هذا العقد على مستوى **متن كل تابع
+// على حدة** (مطابقة أقواس عبر token_get_all، لا بحثاً نصياً ساذجاً على
+// الملف كله ولا افتراضاً بترتيب التوابع) — فتبقى صحيحة وحسّاسة لأي مستقبل
+// يُدخل مسار طفرة إضافياً بالخطأ في تابع آخر، بينما تسمح بالمسار الوحيد
+// المعتمد صراحة.
 // ══════════════════════════════════════════════════════════════════════
+
+/**
+ * يستخرج المتن الحرفي (Body) لتابع واحد بالاسم من كود مصدر مُجرَّد من
+ * التعليقات مسبقاً — عبر مطابقة الأقواس المعقوفة { } على مستوى التوكِنات
+ * (token_get_all)، وليس بحثاً نصياً ساذجاً عن نهاية افتراضية (كالاعتماد
+ * على "التابع التالي" الذي كان سيُخطئ لو تغيّر ترتيب التوابع لاحقاً).
+ * يُعيد null إن لم يُعثر على التابع بالاسم المطلوب كتعريف توابع حقيقي —
+ * بعد function مباشرة، وليس مجرد نص "method_name(" داخل استدعاء أو تعليق.
+ */
+function x_extract_method_body($stripped_code, $method_name)
+{
+    $tokens = token_get_all($stripped_code);
+    $n = count($tokens);
+    for ($i = 0; $i < $n; $i++) {
+        $tok = $tokens[$i];
+        if (!is_array($tok) || $tok[0] !== T_STRING || $tok[1] !== $method_name) {
+            continue;
+        }
+        $j = $i - 1;
+        while ($j >= 0 && is_array($tokens[$j]) && $tokens[$j][0] === T_WHITESPACE) {
+            $j--;
+        }
+        if ($j < 0 || !is_array($tokens[$j]) || $tokens[$j][0] !== T_FUNCTION) {
+            continue; // اسم مطابق لكنه ليس تعريف تابع (مثلاً استدعاء عادي)
+        }
+
+        $open = -1;
+        for ($k = $i + 1; $k < $n; $k++) {
+            $val = is_array($tokens[$k]) ? $tokens[$k][1] : $tokens[$k];
+            if ($val === '{') { $open = $k; break; }
+            if ($val === ';') { $open = -1; break; } // تعريف بلا متن — غير متوقَّع هنا
+        }
+        if ($open === -1) {
+            continue;
+        }
+
+        $depth = 0;
+        $close = -1;
+        for ($m = $open; $m < $n; $m++) {
+            $val = is_array($tokens[$m]) ? $tokens[$m][1] : $tokens[$m];
+            if ($val === '{') {
+                $depth++;
+            } elseif ($val === '}') {
+                $depth--;
+                if ($depth === 0) { $close = $m; break; }
+            }
+        }
+        if ($close === -1) {
+            continue;
+        }
+
+        $body = '';
+        for ($p = $open; $p <= $close; $p++) {
+            $body .= is_array($tokens[$p]) ? $tokens[$p][1] : $tokens[$p];
+        }
+        return $body;
+    }
+    return null;
+}
+
+/**
+ * يُعيد أسماء كل التوابع المُعرَّفة فعلياً (function ...() {...}) في كود
+ * مصدر مُجرَّد من التعليقات — يُستخدم لفحص "لا تابع آخر" ديناميكياً، بلا
+ * الحاجة لسرد أسماء كل التوابع الحالية والمستقبلية يدوياً.
+ */
+function x_list_method_names($stripped_code)
+{
+    $tokens = token_get_all($stripped_code);
+    $n = count($tokens);
+    $names = [];
+    for ($i = 0; $i < $n; $i++) {
+        if (is_array($tokens[$i]) && $tokens[$i][0] === T_FUNCTION) {
+            $j = $i + 1;
+            while ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_WHITESPACE) {
+                $j++;
+            }
+            if ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_STRING) {
+                $names[] = $tokens[$j][1];
+            }
+        }
+    }
+    return array_values(array_unique($names));
+}
 
 $app_src = file_get_contents(__DIR__ . '/../includes/class-pge-invitation-send-application.php');
 $app_code_only = pge_strip_php_comments($app_src);
 
-$forbidden_terms_x = [
+// X1. authorize_send_for_actor() نفسها تبقى تفويضاً/قراءة للحالة بحتة —
+// بلا أي طفرة إطلاقاً (مطابقة على متن التابع فقط، المُستخرَج بمطابقة
+// الأقواس أعلاه — لا على الملف كله).
+$authorize_body = x_extract_method_body($app_code_only, 'authorize_send_for_actor');
+$readonly_forbidden = [
+    '::claim(', '::finalize_success(', '::finalize_failure(',
+    'GET_LOCK', 'RELEASE_LOCK', '->insert(', '->update(',
+    'wp_ajax_', 'add_action', 'add_filter', 'wp_send_json',
+    'Cartat', 'UltraMsg', 'Queue', 'Worker',
+];
+$readonly_found = [];
+foreach ($readonly_forbidden as $term) {
+    if ($authorize_body !== null && strpos($authorize_body, $term) !== false) {
+        $readonly_found[] = $term;
+    }
+}
+check_true('X1. authorize_send_for_actor() موجود ويبقى تفويضاً/قراءة حالة بحتة فقط — بلا claim/finalize/GET_LOCK/insert/update/queue/worker/Cartat/UltraMsg/AJAX داخل متنه الفعلي', $authorize_body !== null && empty($readonly_found));
+
+// X2. request_send_for_actor() هي حدود الطفرة الوحيدة المعتمدة — يجب أن
+// تستدعي claim() فعلياً، وإلا فهي بلا جدوى فعلياً كحدود مطالبة.
+$request_body = x_extract_method_body($app_code_only, 'request_send_for_actor');
+check_true('X2. request_send_for_actor() موجود ويستدعي PGE_Invitation_Send_Ledger::claim() فعلياً كحدود الطفرة المعتمدة الوحيدة', $request_body !== null && strpos($request_body, '::claim(') !== false);
+
+// X3. لكن request_send_for_actor() نفسها لا تتجاوز حدودها المصرَّح بها:
+// لا finalize_success/finalize_failure (خارج نطاق D2-W4 بالكامل)، ولا
+// GET_LOCK/RELEASE_LOCK/insert/update مباشرة (تلك داخلية للـLedger نفسها
+// فقط، تُستدعى عبر claim() لا مباشرة)، ولا Queue/Worker/Cartat/UltraMsg/
+// AJAX أياً كان شكلها.
+$request_forbidden = [
+    '::finalize_success(', '::finalize_failure(',
+    'GET_LOCK', 'RELEASE_LOCK', '->insert(', '->update(',
+    'wp_ajax_', 'add_action', 'add_filter', 'wp_send_json',
+    'Cartat', 'UltraMsg', 'Queue', 'Worker',
+];
+$request_found = [];
+foreach ($request_forbidden as $term) {
+    if ($request_body !== null && strpos($request_body, $term) !== false) {
+        $request_found[] = $term;
+    }
+}
+check_true('X3. request_send_for_actor() لا تتجاوز claim() نفسها: لا finalize/GET_LOCK/RELEASE_LOCK/insert/update مباشرة، ولا Queue/Worker/Cartat/UltraMsg/AJAX داخل متنها', empty($request_found));
+
+// X4. مسار طفرة claim() واحد فقط حرفياً في كامل الملف — إثبات أنه غير
+// مُكرَّر أو مُسرَّب لأي مكان آخر.
+$claim_occurrences = substr_count($app_code_only, '::claim(');
+check('X4. "::claim(" يظهر مرة واحدة فقط حرفياً في كامل الملف (لا تكرار/تسرُّب لمسار الطفرة)', $claim_occurrences, 1);
+
+// X5. تحقُّق ديناميكي على كل توابع الكلاس الفعلية (أياً كان اسمها، حالياً
+// أو أي تابع يُضاف مستقبلاً بالخطأ): لا يجوز أن يحتوي متن أي تابع
+// claim()/finalize_*()/Queue/Worker/Cartat/UltraMsg، عدا استثناء واحد
+// وحيد مصرَّح به صراحة: request_send_for_actor() تحديدااً لـ"::claim("
+// فقط دون سواها من المصطلحات.
+$all_methods = x_list_method_names($app_code_only);
+$violations_x5 = [];
+foreach ($all_methods as $method_name) {
+    $body = x_extract_method_body($app_code_only, $method_name);
+    if ($body === null) {
+        continue;
+    }
+    foreach (['::claim(', '::finalize_success(', '::finalize_failure(', 'Queue', 'Worker', 'Cartat', 'UltraMsg'] as $term) {
+        if (strpos($body, $term) === false) {
+            continue;
+        }
+        $is_allowed = ($method_name === 'request_send_for_actor' && $term === '::claim(');
+        if (!$is_allowed) {
+            $violations_x5[] = $method_name . ' :: ' . $term;
+        }
+    }
+}
+check_true('X5. لا تابع آخر بالكلاس (فحص ديناميكي على كل التوابع الفعلية، بلا سرد أسماء يدوي) يحتوي claim/finalize/Queue/Worker/Cartat/UltraMsg، عدا request_send_for_actor() لـ"::claim(" فقط', empty($violations_x5));
+
+// X6. حظر شامل بلا شرط على الملف كله لمصطلحات لا مكان لها هنا إطلاقاً —
+// بصرف النظر عن التابع: GET_LOCK/RELEASE_LOCK/insert/update داخلية
+// للـLedger نفسها فقط ويجب ألا تظهر في طبقة التطبيق مطلقاً مهما كان
+// السياق، وfinalize_*()/AJAX/UI/Cartat/UltraMsg خارج نطاق D2-W3+D2-W4
+// معاً بالكامل ولن تدخل هذا الملف مطلقاً في هذه المرحلة.
+$whole_file_forbidden = [
     'wp_ajax_', 'add_action', 'add_filter',
     'GET_LOCK', 'RELEASE_LOCK',
     '->insert(', '->update(',
-    '::claim(', '::finalize_success(', '::finalize_failure(',
+    '::finalize_success(', '::finalize_failure(',
     'Cartat', 'UltraMsg',
     'wp_send_json',
 ];
-$forbidden_found_x = [];
-foreach ($forbidden_terms_x as $term) {
+$whole_file_found = [];
+foreach ($whole_file_forbidden as $term) {
     if (strpos($app_code_only, $term) !== false) {
-        $forbidden_found_x[] = $term;
+        $whole_file_found[] = $term;
     }
 }
-check_true('X1. لا AJAX/UI/Worker/Queue/Cartat/UltraMsg/كتابة داخل الكود التنفيذي لـclass-pge-invitation-send-application.php', empty($forbidden_found_x));
+check_true('X6. لا AJAX/UI/GET_LOCK/RELEASE_LOCK/insert/update مباشرة/finalize_*()/Cartat/UltraMsg في أي مكان من الملف كله، بصرف النظر عن التابع', empty($whole_file_found));
 
 $auth_src = file_get_contents(__DIR__ . '/../includes/class-pge-event-access-authorization.php');
 $auth_code_only = pge_strip_php_comments($auth_src);
-check_true('X2. القدرة الجديدة can_send_guest_invitation() نفسها لا تحتوي أي I/O (لا $wpdb، لا current_user_can) — فحص على كامل الملف كونه Authorization Core الأصلي أصلاً بلا I/O', strpos($auth_code_only, '$wpdb') === false && strpos($auth_code_only, 'current_user_can') === false);
+check_true('X7. القدرة can_send_guest_invitation() (Authorization Core) لا تحتوي أي I/O (لا $wpdb، لا current_user_can) — الملف نفسه بلا I/O أصلاً، ولم يُعدَّل إطلاقاً في D2-W4 (راجع تقرير D2-W4 Fix Pass 1)', strpos($auth_code_only, '$wpdb') === false && strpos($auth_code_only, 'current_user_can') === false);
 
 // ── ملخص ────────────────────────────────────────────────────────────────
 

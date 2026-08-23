@@ -125,11 +125,123 @@ if (!defined('ABSPATH')) exit;
  * الحاجة، يُعاد النظر فيه بموجب مدخل منتجي صريح لا تخمين هنا.
  *
  * ============================================================================
- * النطاق (D2-W3 فقط)
+ * D2-W4 — "Authorized Claim / Send Request Mutation Contract" (إضافة، بلا
+ * تعديل على أي شيء أعلاه من D2-W3)
  * ============================================================================
- * لا إرسال فعلي، لا Queue/Worker، لا AJAX/UI، لا Cartat/UltraMsg. لا Caller
- * إنتاجي يستخدم هذه الطبقة بعد. تختبرها حصراً
- * tests/test-d2-w3-invitation-send-authorization.php.
+ * request_send_for_actor() أدناه هي حدود الطفرة (Mutation Boundary) الوحيدة
+ * في هذا الملف — الطريقة الوحيدة هنا التي تكتب أي شيء، وكتابتها الوحيدة
+ * المسموحة هي تفويض مباشر لـPGE_Invitation_Send_Ledger::claim() (D2-W1
+ * الذرية القائمة فعلاً، غير مُعدَّلة هنا إطلاقاً). لا finalize_success()، لا
+ * finalize_failure()، لا طابور/عامل، لا Cartat/UltraMsg، لا AJAX/UI، لا
+ * تكرار جماعي (Bulk) — إرسال ضيف واحد فقط، تماماً كما يُحتِّم DEC-009 ("سجل
+ * دائم واحد... الأداة الأساسية... إرسال ضيف واحد مُصرَّح به، وليست 'إرسال
+ * الكل'").
+ *
+ * ========================================================================
+ * الترتيب الحتمي (يطابق القسم 3 من موجز D2-W4 حرفياً)
+ * ========================================================================
+ * 1) التحقق الشكلي من المدخلات — بلا تكرار منطق: يُفوَّض بالكامل لنفس
+ *    الفحص الموجود أصلاً داخل authorize_send_for_actor() (الخطوة 1 هناك) —
+ *    استدعاء واحد فقط أدناه يُغطّي هذا تماماً، لا نسخة موازية هنا (القسم 5
+ *    من الموجز: "Do not duplicate authorization logic").
+ * 2-3) حلّ تفويض/حالة **طازجة تماماً** عبر D2-W3 — استدعاء واحد فعلي حقيقي
+ *    لـself::authorize_send_for_actor() في كل مرة تُستدعى فيها
+ *    request_send_for_actor()، لا تخزين مؤقّت (Cache)، لا قبول نتيجة
+ *    تفويض جاهزة كمعامل من المستدعي إطلاقاً — القاعدة الأهم في هذه المرحلة
+ *    حرفياً: **لا يُعامَل أي نتيجة authorized سابقة كرمز صلاحية (Capability
+ *    Token) قابل لإعادة الاستخدام**. توقيع الدالة نفسه لا يقبل نتيجة
+ *    تفويض جاهزة كمعامل أصلاً — لا طريقة لتفويت هذه الخطوة حتى لو أراد
+ *    مستدعٍ مستقبلي ذلك.
+ *
+ *    القسمان 2 و3 من الموجز (خطوتان منفصلتان اسمياً: "resolve fresh
+ *    authorization" ثم "immediately before mutation, re-resolve... if
+ *    needed") **يتّحدان هنا في استدعاء واحد فقط، بقرار معماري موثَّق
+ *    صراحة، لا سهواً**: بين نهاية استدعاء authorize_send_for_actor() وبداية
+ *    استدعاء claim() أدناه لا يوجد أي I/O إضافي، لا استعلام قاعدة بيانات
+ *    آخر، لا زمن انتظار (Latency) — سطرا PHP متزامنان تماماً بلا أي فاصل
+ *    فعلي. استدعاء ثانٍ منفصل لنفس resolve_context()/can_send_guest_
+ *    invitation()/PGE_Invitation_Send_State::resolve() هنا لن يقرأ شيئاً
+ *    مختلفاً عملياً عن الاستدعاء الأول (نفس اللحظة الزمنية تقريباً، بلا أي
+ *    عملية خارجية تتداخل بينهما داخل نفس الطلب المتزامن) — فلا فائدة حقيقية
+ *    من التكرار، فقط استعلامان مضاعفان بلا حماية إضافية فعلية. لذلك "if
+ *    needed" في نص الموجز محسومة هنا بـ"غير محتاجة" — الاستدعاء الوحيد
+ *    الموجود فعلياً **هو نفسه** الفحص "مباشرة قبل الطفرة" المطلوب، لأنه
+ *    يقع فعلياً مباشرة قبل استدعاء claim() بلا أي فاصل. هذا يبقى متّسقاً
+ *    تماماً مع القسم 4 من الموجز ("fresh auth immediately before claim" —
+ *    وليس "استدعاءين منفصلين لتفويض متطابق").
+ * 4) استدعاء PGE_Invitation_Send_Ledger::claim() الفعلية — فقط إن كانت
+ *    نتيجة الخطوة 2-3 أعلاه authorized بالضبط؛ أي نتيجة أخرى (not_authorized/
+ *    invalid_state/already_sent/already_in_progress/resend_required/
+ *    not_found) تُعاد كما هي فوراً بلا أي استدعاء لـclaim() إطلاقاً — لا
+ *    داعي لمحاولة مطالبة (Claim) لطلب مرفوض أصلاً من طبقة التفويض.
+ * 5) تطبيع نتيجة claim() الخام إلى نتيجة تطبيقية واحدة مستقرة — راجع
+ *    map_claim_result() أدناه لكل قرار تفصيلي.
+ * 6) إعادة هوية المحاولة المُطالَب بها الدائمة (الحد الأدنى فقط — القسم 7
+ *    من الموجز) عند النجاح فقط.
+ *
+ * ========================================================================
+ * القسم 4 من الموجز — تحليل صريح لسباقات وقت الطلب (Request-Time TOCTOU)
+ * ========================================================================
+ * T1) الداعي يرى الضيف → T2) الضيف يُنقَل خارج مجموعة الداعي → T3) الداعي
+ *     يضغط إرسال → **رفض**. مضمون بالفعل: الخطوة 2-3 أعلاه تقرأ
+ *     PGE_Event_Access_Repository::get_guest_assignment() طازجة تماماً وقت
+ *     الطلب نفسه، لا وقت ما رآه الداعي على الشاشة سابقاً — أي نقل حدث قبل
+ *     هذه القراءة يُكتشَف فوراً ويُرفَض عبر can_send_guest_invitation().
+ * T1) الداعي يرى الضيف → T2) الداعي يُلغى → T3) الداعي يضغط إرسال →
+ *     **رفض**. نفس المنطق: resolve_context() طازج يقرأ حالة العضوية
+ *     الحالية فعلياً، لا حالة مخبَّأة.
+ * T1) التفويض ينجح → T2) فاعل آخر يُطالِب (Claim) بنفس الضيف → T3) هذا
+ *     الطلب يصل إلى claim() → **نتيجة حصر (Dedup) السجل هي الفائزة؛ لا صف
+ *     مكرَّر يُنشَأ**. مضمون بالكامل عبر GET_LOCK الذرية داخل
+ *     PGE_Invitation_Send_Ledger::claim() نفسها (D2-W1، غير مُعدَّلة هنا) —
+ *     أياً كان الفاعل الذي يصل للقفل أولاً يُنشئ الصف؛ الفاعل الآخر يُعاد
+ *     قراءة السجل الفعلي *داخل* القفل نفسه فيُعاد already_sent/
+ *     already_in_progress بحسب حالة السجل الفعلية عندها، لا صف ثانٍ.
+ *     الاختبار O أدناه يُثبِت هذا صراحة (فاعلان، سجل واحد فقط).
+ *
+ * **لا محاولة لجعل التفويض ومطالبة السجل معاملة عابرة للجداول (Cross-Table
+ * Transaction) واحدة** — Event Access (عضوية/تخصيص مجموعة) وpge_message_log
+ * مساران تخزين/قراءة منفصلان تماماً في هذا المشروع، ولا حدود معاملة مشتركة
+ * آمنة ورخيصة موجودة فعلياً بينهما تُبرِّر هذا التعقيد. **سباق متبقٍّ حقيقي
+ * وموثَّق صراحة، لا مخفي**: نافذة زمنية (ولو دقيقة جداً، بلا أي I/O إضافي
+ * بينهما في هذا التصميم تحديداً) تفصل قراءة التفويض/التخصيص عن الالتزام
+ * الفعلي في claim() — تغيّر تخصيص/عضوية قد يقع نظرياً بين اللحظتين (تعديل
+ * من طلب HTTP متزامن آخر تماماً، لا من داخل هذا الطلب نفسه). **هذا متوقَّع
+ * ومقبول بموجب الدفاع المتعدد الطبقات (Defense in Depth) المعتمد أصلاً في
+ * DEC-009**: "إعادة التحقق من التفويض عند وقت تنفيذ العامل (Worker execution
+ * time)، لا عند وقت إدخال الطلب في الطابور فقط" — طلب دائم (Durable Request)
+ * قد يُنشَأ هنا في D2-W4 ثم يصبح لاحقاً غير مخوَّل قبل التنفيذ الفعلي؛ ذلك
+ * العامل المستقبلي (غير المُنفَّذ هنا إطلاقاً) هو من يجب أن يرفض النقل
+ * ويُنهي/يُلغي تلك المحاولة عندها — **ليست مسؤولية D2-W4 ولا فشلاً فيه**،
+ * هذا سلوك معماري متوقَّع وموثَّق مسبقاً، لا يُخفى هنا.
+ *
+ * ========================================================================
+ * القسم 9 من الموجز — النيّة (Normal/Resend) لا تُحوَّل صامتة إطلاقاً
+ * ========================================================================
+ * request_send_for_actor() تُمرِّر $intent كما وصلت حرفياً إلى كل من
+ * authorize_send_for_actor() وPGE_Invitation_Send_Ledger::claim() — لا
+ * تحويل، لا قيمة افتراضية بديلة مخفية. القرارات الناتجة (مطابقة تماماً
+ * لمصفوفة القسم 9 في الموجز، مُشتقّة كاملة من D2-W3 + خريطة claim() أدناه):
+ *   normal + not_sent/failed      → مؤهَّل للمطالبة → claim() فعلياً.
+ *   normal + provider_accepted    → محجوب قبل/عند المطالبة كـalready_sent
+ *                                    (D2-W3 يمنع استدعاء claim() أصلاً).
+ *   normal + ambiguous            → محجوب كـresend_required (D2-W3 يمنع
+ *                                    استدعاء claim() أصلاً).
+ *   resend + provider_accepted    → مطالبة (Claim) بمحاولة جديدة فعلياً.
+ *   resend + ambiguous            → مطالبة (Claim) بمحاولة جديدة واعية
+ *                                    فعلياً.
+ *   resend + not_sent/failed      → invalid_state (D2-W3 يمنع استدعاء
+ *                                    claim() أصلاً — قرار حَكَمي موثَّق هناك).
+ *   pending (أي نيّة)              → already_in_progress (D2-W3 يمنع
+ *                                    استدعاء claim() أصلاً).
+ *
+ * ========================================================================
+ * النطاق (D2-W3 وD2-W4 معاً في هذا الملف)
+ * ========================================================================
+ * لا إرسال فعلي، لا Queue/Worker، لا AJAX/UI، لا Cartat/UltraMsg، لا إرسال
+ * جماعي. لا Caller إنتاجي يستخدم هذه الطبقة بعد. يختبرها
+ * tests/test-d2-w3-invitation-send-authorization.php (D2-W3) و
+ * tests/test-d2-w4-invitation-send-request.php (D2-W4).
  */
 final class PGE_Invitation_Send_Application
 {
@@ -153,6 +265,12 @@ final class PGE_Invitation_Send_Application
 
     /** لا ضيف بهذا الهاتف في هذه المناسبة حالياً — راجع تحذير EC1/Oracle الموثَّق أعلاه في رأس الملف قبل أي تعرّض خارجي مستقبلي. */
     public const RESULT_NOT_FOUND = 'not_found';
+
+    /** D2-W4: مطالبة (Claim) جديدة نجحت فعلياً عبر PGE_Invitation_Send_Ledger::claim() — طلب إرسال دائم قائم الآن، بلا أي إرسال فعلي بعد. نفس المصطلح الحرفي 'claimed' من claim() نفسها. */
+    public const RESULT_CLAIMED = 'claimed';
+
+    /** D2-W4: فشل تقني في طبقة المطالبة نفسها (قفل لم يُؤخَذ، فشل إنشاء صف، إلخ) — لا يُبلَّغ كنجاح إطلاقاً، ولا يُسرِّب تفاصيل قاعدة البيانات الخام. */
+    public const RESULT_ERROR = 'error';
 
     /**
      * العقد الوحيد لهذه الطبقة — قراءة/تحقق طلب بالكامل، بلا أي أثر جانبي:
@@ -241,6 +359,147 @@ final class PGE_Invitation_Send_Application
         // 8) مطابقة النيّة المطلوبة مقابل حالة الإرسال — راجع توثيق مفصَّل
         // في رأس الملف.
         return self::evaluate_intent_against_state($send_state, $intent, $context, $guest_group_id);
+    }
+
+    /**
+     * D2-W4 — حدود الطفرة (Mutation Boundary) الوحيدة في هذا الملف. راجع
+     * توثيق رأس الملف (قسم D2-W4) للترتيب الحتمي الكامل ولتحليل TOCTOU.
+     *
+     * الكتابة الوحيدة المسموحة: تفويض مباشر لـPGE_Invitation_Send_Ledger::
+     * claim() — لا شيء آخر يُكتَب هنا إطلاقاً. لا finalize_*()، لا قفل
+     * إضافي خاص بهذه الطبقة (القفل الذري بالكامل من مسؤولية claim() نفسها).
+     *
+     * القاعدة الأهم (القسم 3 من الموجز): **لا نتيجة تفويض سابقة تُعامَل
+     * كرمز صلاحية قابل لإعادة الاستخدام** — كل استدعاء لهذه الدالة يُجري
+     * تفويضاً طازجاً تماماً عبر authorize_send_for_actor() فور استدعائه؛
+     * لا معامل في التوقيع يقبل نتيجة تفويض جاهزة من المستدعي إطلاقاً.
+     *
+     * @param mixed  $event_id
+     * @param mixed  $guest_phone
+     * @param mixed  $actor_user_id راجع تحذير هوية الفاعل في توثيق D2-W3
+     *                              أعلاه — داخلي/اختباري فقط، لا AJAX بعد.
+     * @param string $intent        PGE_Invitation_Send_Ledger::INTENT_NORMAL
+     *                              (افتراضي) أو ::INTENT_RESEND — يُمرَّر
+     *                              كما وصل حرفياً، بلا أي تحويل صامت.
+     * @return array{result:string,reason:?string,event_id?:int,actor_user_id?:int,intent?:string,log_id?:int,batch_id?:?string,state?:string}
+     */
+    public static function request_send_for_actor(
+        $event_id,
+        $guest_phone,
+        $actor_user_id,
+        $intent = PGE_Invitation_Send_Ledger::INTENT_NORMAL
+    ): array {
+        // 1) التحقق الشكلي + 2-3) تفويض/حالة طازجة تماماً — استدعاء واحد
+        // فعلي حقيقي، بلا أي تخزين مؤقّت، بلا أي نتيجة جاهزة من المستدعي.
+        // راجع توثيق رأس الملف لماذا يُغطّي هذا الاستدعاء الوحيد أيضاً
+        // متطلب "immediately before mutation" (لا فاصل I/O بينه وبين
+        // claim() أدناه).
+        $auth = self::authorize_send_for_actor($event_id, $guest_phone, $actor_user_id, $intent);
+
+        $normalized_event_id = is_scalar($event_id) ? (int) $event_id : 0;
+        $normalized_actor_user_id = is_scalar($actor_user_id) ? (int) $actor_user_id : 0;
+        $normalized_intent = is_scalar($intent) ? (string) $intent : '';
+
+        if (($auth['result'] ?? null) !== self::RESULT_AUTHORIZED) {
+            // غير مخوَّل، أو النيّة/الحالة لا تسمح بالمتابعة أصلاً (already_
+            // sent/already_in_progress/resend_required/invalid_state/
+            // not_found) — نفس رمز D2-W3 حرفياً، بلا أي استدعاء لـclaim().
+            return self::request_result(
+                (string) ($auth['result'] ?? self::RESULT_NOT_AUTHORIZED),
+                $normalized_event_id,
+                $normalized_actor_user_id,
+                $normalized_intent,
+                isset($auth['reason']) ? $auth['reason'] : null
+            );
+        }
+
+        // 4) استدعاء claim() الفعلية — فقط الآن، بعد تفويض طازج ناجح تماماً.
+        // نفس $guest_phone الخام يُمرَّر كما وصل — claim() تُطبِّعه بنفسها
+        // (pge_norm_phone()، نفس القناة التي طبَّعت بها authorize_send_for_
+        // actor() الاسم أعلاه بالفعل — عملية Idempotent، لا تعارض).
+        if (!class_exists('PGE_Invitation_Send_Ledger')) {
+            return self::request_result(self::RESULT_ERROR, $normalized_event_id, $normalized_actor_user_id, $normalized_intent, 'dependency_unavailable');
+        }
+
+        $claim = PGE_Invitation_Send_Ledger::claim($event_id, $guest_phone, $actor_user_id, $intent);
+
+        // 5-6) تطبيع نتيجة claim() الخام إلى نتيجة تطبيقية واحدة مستقرة.
+        return self::map_claim_result($claim, $normalized_event_id, $normalized_actor_user_id, $normalized_intent);
+    }
+
+    /**
+     * تطبيع نتيجة PGE_Invitation_Send_Ledger::claim() الخام (D2-W1) إلى
+     * عقد نتيجة D2-W4 المستقر — دالة نقية بحتة، بلا أي قراءة/كتابة إضافية.
+     * لا تُسرِّب أي تفاصيل قاعدة بيانات خام (رسائل $wpdb->last_error، إلخ) —
+     * فقط رموز النتيجة الثابتة أدناه + سبب نصي داخلي قصير عند الحاجة.
+     *
+     * القسم 6 من الموجز: "Do not leak guest existence externally... design
+     * the result shape so a future AJAX layer can collapse not_found and
+     * not_authorized without ambiguity" — كلا الرمزين هنا (المُعاد من
+     * authorize_send_for_actor() في حال not_authorized/not_found، انظر
+     * request_send_for_actor() أعلاه) يبقيان نصّين مسطَّحين متمايزين داخلياً
+     * فقط (['result' => 'not_found'] أو ['result' => 'not_authorized'])
+     * بلا أي حقل إضافي يُميِّز بينهما دلالياً بأكثر من قيمة 'result' نفسها
+     * — طيّهما لنفس القيمة الخارجية الواحدة لاحقاً (طبقة AJAX/D2-W5+) هو
+     * مجرد شرط `if (in_array($result, ['not_found','not_authorized'], true))
+     * { $result = 'not_authorized'; }` بسيط، بلا أي إعادة هيكلة.
+     */
+    private static function map_claim_result(array $claim, int $event_id, int $actor_user_id, string $intent): array
+    {
+        $code = is_scalar($claim['result'] ?? null) ? (string) $claim['result'] : '';
+
+        if ($code === 'claimed') {
+            $log_id = isset($claim['log_id']) ? (int) $claim['log_id'] : 0;
+            if ($log_id <= 0) {
+                // دفاعي بحت: claim() لا تُعيد 'claimed' فعلياً بلا log_id
+                // صالح في أي مسار حقيقي موجود — لكن هذه الطبقة لا تُبلِّغ
+                // نجاحاً أبداً بلا هوية محاولة دائمة حقيقية قابلة للاستخدام
+                // (القسم U/T من الموجز: "DB claim failure does not report
+                // success").
+                return self::request_result(self::RESULT_ERROR, $event_id, $actor_user_id, $intent, 'claimed_without_log_id');
+            }
+            return [
+                'result' => self::RESULT_CLAIMED,
+                'reason' => null,
+                'event_id' => $event_id,
+                'actor_user_id' => $actor_user_id,
+                'intent' => $intent,
+                'log_id' => $log_id,
+                'batch_id' => isset($claim['batch_id']) && is_scalar($claim['batch_id']) ? (string) $claim['batch_id'] : null,
+                'state' => 'send_requested',
+            ];
+        }
+
+        // القسم 4 من الموجز، السيناريو الثالث: فاعل آخر طالَب (Claim) بنفس
+        // الضيف بين تفويضنا الطازج وlحظة claim() هنا — نتيجة الحصر (Dedup)
+        // من D2-W1 نفسها هي الفائزة، لا صف مكرَّر يُنشَأ من جانبنا.
+        if ($code === 'already_sent') {
+            return self::request_result(self::RESULT_ALREADY_SENT, $event_id, $actor_user_id, $intent, isset($claim['reason']) ? $claim['reason'] : null);
+        }
+        if ($code === 'already_in_progress') {
+            return self::request_result(self::RESULT_ALREADY_IN_PROGRESS, $event_id, $actor_user_id, $intent, isset($claim['reason']) ? $claim['reason'] : null);
+        }
+        if ($code === 'invalid_state') {
+            return self::request_result(self::RESULT_INVALID_STATE, $event_id, $actor_user_id, $intent, isset($claim['reason']) ? $claim['reason'] : null);
+        }
+
+        // 'error' الصريحة، أو أي رمز غير متوقَّع دفاعياً — لا تُبلَّغ أبداً
+        // كنجاح. لا نُمرِّر reason الخام من claim() هنا حرفياً لو كان قد
+        // يحمل تفاصيل قاعدة بيانات داخلية (lock_not_acquired/log_create_
+        // failed/stale_claim_close_failed تبقى آمنة الإفصاح داخلياً — أسماء
+        // ثابتة معروفة من D2-W1 نفسها، لا رسالة $wpdb خام مطلقاً).
+        return self::request_result(self::RESULT_ERROR, $event_id, $actor_user_id, $intent, isset($claim['reason']) ? $claim['reason'] : 'claim_failed');
+    }
+
+    private static function request_result(string $code, int $event_id, int $actor_user_id, string $intent, $reason = null): array
+    {
+        return [
+            'result' => $code,
+            'reason' => $reason,
+            'event_id' => $event_id,
+            'actor_user_id' => $actor_user_id,
+            'intent' => $intent,
+        ];
     }
 
     /**
