@@ -178,18 +178,26 @@ narrower, configuration-gated use of the same authorization surface.
 authorization above — a template gate controls what loads visually, not what a request is
 permitted to do.
 
-**APPROVED D2 TARGET — NOT YET IMPLEMENTED (DEC-009):** a new, narrower authorization concept —
-scoped sending — is approved as a future addition. It will let an Additional Inviter trigger
-sends restricted to guests currently assigned to their own granted group, via the shared D2
-sending pipeline (§9), with Owner/Admin retaining an unconditional, event-wide operational
-bypass. This does not exist in code today, and building it must not widen any generic Manager
-capability elsewhere in this table — it is a single new, narrowly-scoped check, layered the same
-way as the checks above. **Authorization for this capability must be re-evaluated at the moment
-each send is actually executed by the asynchronous worker, not only when the send request is
-first created/enqueued** — an actor authorized at request time but no longer authorized (revoked
-membership, lost qualifying Additional-Inviter status, or lost the relevant group scope) by
-execution time must not have that send proceed under their authority. This applies before the
-transport call, not as a guarantee of cancelling a request already transmitted to the provider.
+**BACKEND: IMPLEMENTED (D2-W1 through D2-W7, DEC-009). USER-FACING CALLER: NOT IMPLEMENTED
+YET.** A new, narrower authorization concept — scoped sending — exists in code today, layered
+the same way as the checks above and without widening any generic Manager capability elsewhere
+in this table:
+
+- `PGE_Event_Access_Authorization::can_send_guest_invitation()` exists and is the actual
+  capability check — it lets an Additional Inviter trigger sends restricted to guests currently
+  assigned to their own granted group, with Owner/Admin retaining an unconditional, event-wide
+  operational bypass.
+- Scoped send authorization (request-time) exists via `PGE_Invitation_Send_Application`
+  (D2-W3/D2-W4) — the shared D2 sending pipeline (§9).
+- **Execution-time reauthorization exists**: `PGE_Invitation_Send_Worker` (D2-W6) calls
+  `can_send_guest_invitation()` again, fresh, at the moment each send is actually executed by
+  the asynchronous worker — not only when the send request was first created/enqueued. An actor
+  authorized at request time but no longer authorized (revoked membership, lost qualifying
+  Additional-Inviter status, or lost the relevant group scope) by execution time does not have
+  that send proceed under their authority. This applies before the transport call, not as a
+  guarantee of cancelling a request already transmitted to the provider.
+- **What does not exist yet: no AJAX action, no UI element, no user-facing caller of any kind
+  invokes this pipeline in production** — see §9 for the full backend/caller distinction.
 
 **EC1** (DEC-006): every Application-layer class that resolves an actor/event context does so
 through a local `resolve_actor_context()`-style helper that collapses "not authorized" and
@@ -273,10 +281,17 @@ distinction was confirmed important from real-user testing.
 
 ### Sending Responsibility (Model D2)
 
-**CURRENT IMPLEMENTATION: none.** No sending capability exists for the Additional Inviter today
-(see §6, §10). Everything in this subsection is the **APPROVED D2 TARGET — NOT YET
-IMPLEMENTED** (DEC-009, refined by its 2026-08-22 technical-decisions update); none of it
-describes current behavior.
+**Backend pipeline: implemented (D2-W1 through D2-W7 — see
+`MESSAGING-ARCHITECTURE.md` §8 for the full architectural writeup).** The durable ledger,
+execution-time reauthorization, operational queue, Cron-driven orchestrator, and Cartat-transport
+worker described below all exist in code and are tested. **No user-facing sending capability
+exists yet for either Owner/Admin or the Additional Inviter (see §6, §10)** — nothing in the
+product today calls the pipeline's entry point (`request_send_for_actor()`); there is no UI
+screen, no AJAX action, no bulk-send surface. Everything in this subsection therefore remains
+the **APPROVED D2 TARGET architecture, backend-complete but not yet reachable by any user
+action** (DEC-009, refined by its 2026-08-22 technical-decisions update, technical completion
+noted in DECISION-LOG.md's 2026-08-23 addendum); the authorization/state rules below describe
+what the built pipeline enforces, not a live product capability.
 
 Core rule: sending authority follows the actor's **current** authorized event/group scope, not
 the historical creator of the guest — the immutable guest-creation audit trail and the mutable
@@ -335,18 +350,21 @@ eligible/not-yet-sent guests) are composed **over this same primitive** — they
 separate authorization or ledger semantics. The exact bulk UX/UI is not decided by this
 document.
 
-**Durable send state — approved technical direction:** the existing transient per-event
-queue/report state is not a sufficient source of truth for Model D2. The approved direction is
-to reuse the existing `pge_message_log` table (`message_type = invitation`, currently unused for
-this purpose) as an immutable attempt/history ledger — not a new D2-specific messaging table.
-Durable guest identity is the event plus the normalized guest phone, using the same
-lifecycle-fencing fields already present on that table where applicable. Sending state must
-distinguish at least: `not_sent`, `queued` / `send_requested`, `provider_accepted` (or an
-equivalent truthful provider-success signal), and `failed`. This is always distinct from RSVP
-state — the two are never conflated. No state may claim delivery confirmation unless the
-provider genuinely exposes verified delivery, and a manual WhatsApp-link click is never treated
-as proof of sending. Exact schema details (indexes, migrations) are an implementation task, not
-decided here.
+**Durable send state — approved technical direction, now implemented:** the existing transient
+per-event queue/report state was not a sufficient source of truth for Model D2. The approved
+direction — reuse the existing `pge_message_log` table (`message_type = invitation`) as an
+immutable attempt/history ledger, not a new D2-specific messaging table — is exactly what was
+built. Durable guest identity is the event plus the normalized guest phone, using the same
+lifecycle-fencing fields already present on that table. The state names sketched here at
+decision time (`not_sent`, `queued` / `send_requested`, `provider_accepted`, `failed`) were
+placeholders; the actual implemented column contract is `pending` / `sent` / `failed` /
+`ambiguous_transport_error` / `cancelled` — see `MESSAGING-ARCHITECTURE.md` §8.3 for the
+authoritative current vocabulary and exact semantics (`sent` means provider-accepted, not
+handset-delivery; `cancelled` means the attempt ended before any transport call). This remains
+always distinct from RSVP state — the two are never conflated. No state may claim delivery
+confirmation unless the provider genuinely exposes verified delivery, and a manual WhatsApp-link
+click is never treated as proof of sending. No new table/migration was needed — the existing
+`VARCHAR(30)` status column absorbed the additional value.
 
 **Duplicate/resend:** an already successfully-sent guest must not be silently re-sent by
 repeating the normal send action; that is a no-op/conflict, not a duplicate attempt. **Explicit
@@ -373,8 +391,10 @@ separately from sending state.
 | My Invitations | `/event-manage/{event_id}/my-invitations/` (`templates/my-invitations.php`) | Additional Inviter | Self-service quota summary, add-guest form (no group selector), read-only scoped guest list. | `pge_additional_inviter_get_my_quota`, `pge_additional_inviter_create_guest`, `pge_event_access_list_guests`. |
 | Onboarding join | `/additional-inviter/join/{token}/` (`templates/additional-inviter-onboarding-join.php`) | Public/anonymous (token-bearing) | Preview the invitation (masked email, event title), then complete via existing/new account. | `pge_additional_inviter_onboarding_complete` (nopriv). |
 
-No screen above has a guest-sending action for the Additional Inviter today. A scoped sending
-capability on "My Invitations" is approved but not yet implemented (Model D2, §9, DEC-009).
+No screen above has a guest-sending action for the Additional Inviter today. The backend D2
+pipeline that a scoped sending capability on "My Invitations" would call into is implemented
+(§9), but the UI action itself — on this screen or anywhere else — is not yet built (Model D2,
+§9, DEC-009).
 
 ---
 
@@ -423,14 +443,18 @@ load bearing.
   group id, quota) are not exposed by either.
 - An Additional Inviter cannot select an arbitrary group when creating a scoped guest — the
   group is always resolved server-side from their own single granted membership.
-- **APPROVED D2 TARGET — NOT YET IMPLEMENTED (DEC-009):** once Additional Inviter sending
-  exists, actor identity for every send must still be preserved even when Owner/Admin uses their
-  unconditional backstop authority to send on an inviter's behalf — this is operational
-  recovery/oversight, never session impersonation of the inviter. The same applies to the
-  underlying send primitive itself: actor identity, event/resource authorization, guest
-  resolution, and current group-scope re-validation are all server-side for every send, single
-  or composed into a bulk operation — no client-supplied authorization or scope is ever trusted
-  (§9).
+- **Implemented backend guarantees (D2-W1 through D2-W7, DEC-009):** actor identity for every
+  send is preserved even when Owner/Admin uses their unconditional backstop authority to send on
+  an inviter's behalf — this is operational recovery/oversight, never session impersonation of
+  the inviter (`actor_user_id` is recorded on every `pge_message_log` row). The underlying send
+  primitive itself resolves actor identity, event/resource authorization, and guest resolution
+  entirely server-side for every send. Current group-scope is re-validated twice: once at request
+  time (`PGE_Invitation_Send_Application`, D2-W3/D2-W4) and again fresh at worker execution time
+  (`PGE_Invitation_Send_Worker`, D2-W6, calling `can_send_guest_invitation()` a second time
+  immediately before transport) — no client-supplied authorization or scope is ever trusted (§9).
+  **Not yet true in practice: no user-facing AJAX/UI caller exists that lets anyone actually
+  trigger a send**, single or bulk — these guarantees describe what the backend enforces once a
+  caller exists, not a live product capability today (§9).
 
 ---
 
@@ -442,10 +466,12 @@ load bearing.
   skips when rendering — the displayed total and the rendered row count can differ in that
   edge case.
 
-### Resolved by DEC-009 (Model D2 — approved direction, not yet implemented)
+### Resolved by DEC-009 (Model D2 — backend implemented D2-W1 through D2-W7; no UI/AJAX caller yet)
 
-- ~~Can an Additional Inviter send invitations/messages to their own guests?~~ — Yes, planned:
-  scoped to their currently-authorized group, via the shared D2 pipeline (§9).
+- ~~Can an Additional Inviter send invitations/messages to their own guests?~~ — Yes: the backend
+  capability is implemented, scoped to their currently-authorized group, via the shared D2
+  pipeline (§9). The product/UI capability — an actual button or action a user can trigger — is
+  still pending; no caller exists yet.
 - ~~Who owns sending responsibility: Owner only, Additional Inviter, or both?~~ — Both: the
   Additional Inviter within current scope, Owner/Admin as an unconditional backstop (§9).
 - ~~Is a send request's authorization still valid if the inviter's status changes before an
@@ -460,8 +486,9 @@ load bearing.
   send is the fundamental primitive; bulk operations compose over it (§9).
 - ~~What is the durable-ledger technical direction for D2 sending state?~~ — Reuse
   `pge_message_log` (`message_type = invitation`) as an immutable attempt/history ledger, keyed
-  by event + normalized phone; no new D2-specific messaging table (§9). Exact schema/indexes
-  remain an implementation task, not decided here.
+  by event + normalized phone; no new D2-specific messaging table (§9). The durable-ledger
+  implementation is complete; current storage/index details are documented in
+  `MESSAGING-ARCHITECTURE.md` §8 and the production Message Log implementation.
 
 ### Open UX/Product questions (not decided here)
 
@@ -498,8 +525,9 @@ load bearing.
   attribution; Owner/Admin remain an unconditional backstop. Refined 2026-08-22 with approved
   technical decisions: execution-time authorization revalidation, one shared Owner/Inviter
   target pipeline, Cartat-first provider scope, a single-guest send primitive with bulk composed
-  over it, and a `pge_message_log`-based durable ledger direction. Approved direction; not yet
-  implemented (§9).
+  over it, and a `pge_message_log`-based durable ledger direction. **Backend pipeline implemented
+  (D2-W1 through D2-W7, technical completion noted in DECISION-LOG.md's 2026-08-23 addendum) —
+  no UI/AJAX caller exists yet for either Owner/Admin or the Additional Inviter (§9)**.
 
 ---
 
