@@ -34,20 +34,46 @@ class PGE_Message_Log
      * وليس حالة رسالة بحد ذاتها — لا علاقة له بهذا الجدول.
      * لا 'already_sent': نتيجة Claim (راجع class-pge-thank-you-claim.php)
      * وليست حالة سجل — سجل لا يُنشأ أصلاً إن كانت الرسالة مُرسَلة سلفاً.
+     *
+     * ========================================================================
+     * D2-W6A — إضافة cancelled (Additive فقط، بلا Migration/Schema Change)
+     * ========================================================================
+     * عمود `status` هو VARCHAR(30) عادي (راجع class-pge-messaging-schema.php)
+     * — ليس ENUM، فقيمة نصية جديدة لا تتطلب أي ALTER TABLE/dbDelta. `cancelled`
+     * تعني حصراً: "أُنهيت المحاولة قبل أي محاولة نقل فعلية إطلاقاً" — مختلفة
+     * جوهرياً عن `failed` (رفض صريح من المزوّد بعد محاولة نقل فعلية) وعن
+     * `ambiguous_transport_error` (نقل غامض بعد محاولة نقل فعلية أو احتمال
+     * حدوثها) — استخدامها بعد بدء send_text()/send_media() خطأ منطقي دائماً.
+     * **عمداً غير مُضافة إلى TERMINAL_FAILURE_STATUSES أدناه** — ذلك الثابت
+     * يعني حرفياً "فشل" (يُستهلَك في PGE_Invitation_Send_State::resolve()
+     * لحساب latest_failure_status)، و'cancelled' ليست فشلاً بالمعنى نفسه؛
+     * خلطها هناك كان سيُنتج latest_failure_status='cancelled' بينما state ما
+     * زالت غير مُحدَّثة لتمييزها (راجع توثيق D2-W1 current_state() ومحدودية
+     * D2-W6A الموثَّقة صراحة هناك). لذلك mark_cancelled() أدناه طبقة مستقلة
+     * تماماً بمنطقها الذري الخاص، لا إعادة استخدام لـmark_failed().
+     * لا عمود "سبب" (reason) منفصل في هذا الجدول إطلاقاً — لم يُضَف عمود جديد
+     * في هذه المهمة (خارج النطاق صراحة)، فالتمييز بين أسباب cancelled
+     * المختلفة (تخويل ساقط، دورة حياة مختلفة، ...) يبقى متاحاً فقط في نتيجة
+     * الاستدعاء اللحظية (Worker result array)، لا في الصف الدائم نفسه — قيد
+     * موثَّق صراحة، لا مخفي (راجع تقرير D2-W6A).
      */
     const STATUS_PENDING = 'pending';
     const STATUS_SENT = 'sent';
     const STATUS_FAILED = 'failed';
     const STATUS_AMBIGUOUS_TRANSPORT_ERROR = 'ambiguous_transport_error';
 
+    /** D2-W6A — إنهاء ما قبل النقل (Pre-Transport Termination). راجع التوثيق أعلاه. */
+    const STATUS_CANCELLED = 'cancelled';
+
     const ALLOWED_STATUSES = [
         self::STATUS_PENDING,
         self::STATUS_SENT,
         self::STATUS_FAILED,
         self::STATUS_AMBIGUOUS_TRANSPORT_ERROR,
+        self::STATUS_CANCELLED,
     ];
 
-    /** حالات نهائية صالحة لإنهاء سجل pending (كل ما عدا pending نفسها). */
+    /** حالات "فشل" نهائية صالحة لـmark_failed() فقط — cancelled ليست ضمنها عمداً (راجع التوثيق أعلاه). */
     const TERMINAL_FAILURE_STATUSES = [
         self::STATUS_FAILED,
         self::STATUS_AMBIGUOUS_TRANSPORT_ERROR,
@@ -243,6 +269,46 @@ class PGE_Message_Log
             self::table_name(),
             [
                 'status' => $status,
+            ],
+            [
+                'id'     => $log_id,
+                'status' => self::STATUS_PENDING,
+            ],
+            ['%s'],
+            ['%d', '%s']
+        );
+
+        return $updated !== false && $updated > 0;
+    }
+
+    /**
+     * D2-W6A — إنهاء سجل pending بإلغاء ما قبل النقل (Pre-Transport
+     * Cancellation): pending → cancelled، ذرياً بنفس شرط mark_sent()/
+     * mark_failed() تماماً (WHERE id=%d AND status='pending'). طبقة مستقلة
+     * تماماً عن mark_failed() — لا تُشارك تحققها من TERMINAL_FAILURE_STATUSES
+     * (راجع توثيق رأس الملف لسبب عدم ضمّ cancelled إلى ذلك الثابت عمداً).
+     * يستدعيها المستدعي **فقط** قبل أي محاولة نقل فعلية على الإطلاق — لا
+     * ضمانة/تحقّق داخلي هنا يمنع سوء استخدام لاحق بعد بدء النقل؛ تلك
+     * المسؤولية تبقى على المستدعي (PGE_Invitation_Send_Ledger::
+     * finalize_cancelled()) وعلى العامل (PGE_Invitation_Send_Worker)، اللذين
+     * يضمنان صراحة عدم استدعاء Cartat إطلاقاً على هذا المسار.
+     *
+     * @param int $log_id
+     * @return bool
+     */
+    public static function mark_cancelled($log_id): bool
+    {
+        $log_id = (int) $log_id;
+        if ($log_id <= 0) {
+            return false;
+        }
+
+        global $wpdb;
+
+        $updated = $wpdb->update(
+            self::table_name(),
+            [
+                'status' => self::STATUS_CANCELLED,
             ],
             [
                 'id'     => $log_id,

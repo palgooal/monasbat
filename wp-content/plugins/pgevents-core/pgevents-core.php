@@ -338,6 +338,18 @@ require_once PGE_PATH . 'includes/additional-inviter-ajax.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-send-application.php';
 require_once PGE_PATH . 'includes/class-pge-invitation-send-queue.php';
 
+// D2-W6 ("Worker-Time Reauthorization + Cartat Transport Execution" — تنفيذ
+// محاولة واحدة فقط): يقرأ فقط من pge_message_log (عبر PGE_Message_Log::
+// find_by_id()) ويستدعي مباشرة PGE_Event_Access_Authorization/PGE_Event_
+// Access_Repository لإعادة تخويل طازجة وقت التنفيذ (بلا إعادة استدعاء D2-W3/
+// D2-W2 — راجع توثيق الملف نفسه)، ثم PGE_Message_Content_Resolver لبناء
+// الرسالة، ثم PGE_Cartat_Transport للنقل الفعلي، ثم PGE_Invitation_Send_
+// Ledger::finalize_success()/finalize_failure() وPGE_Invitation_Send_Queue::
+// remove() لإنهاء المحاولة وتنظيف الطابور. محمَّل هنا مباشرة بعد D2-W5 لأنه
+// يعتمد على كل الطبقات المذكورة أعلاه، المحمَّلة جميعها بالفعل قبل هذا
+// السطر. لا تعديل على أي من D2-W1 حتى D2-W5 أو Authorization Core.
+require_once PGE_PATH . 'includes/class-pge-invitation-send-worker.php';
+
 // Phase H1C-W10 (Additional Inviter Onboarding Backend) — an isolated new
 // table/schema + a new orchestrator over it, loaded right after W8/W9
 // above so it can reuse their shared AJAX helpers

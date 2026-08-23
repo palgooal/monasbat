@@ -590,6 +590,40 @@ foreach ($boundary_files as $bf) {
 }
 check_true('S1. لا إشارة إلى PGE_Invitation_Send_Ledger في أي طبقة AJAX/UI/Routing/Transport بعد', !$leak_found);
 
+// ══════════════════════════════════════════════════════════════════════
+// T — D2-W6A Fix Pass 1: cancelled حالة صريحة أولى الدرجة على مستوى D2-W1
+//     مباشرة (current_state()/claim())، مستقلة عن اختبار التركيب في D2-W3/
+//     D2-W4. finalize_cancelled() تُستدعى هنا كما يستدعيها العامل فعلياً —
+//     قبل أي نقل، لا بعده.
+// ══════════════════════════════════════════════════════════════════════
+
+seed_invitation(9301, '966500009301', '2026-08-22 09:00:00');
+$t1_claim = PGE_Invitation_Send_Ledger::claim(9301, '966500009301', 9001, PGE_Invitation_Send_Ledger::INTENT_NORMAL);
+check_true('T0. تهيئة: claim() الأولي ينجح', ($t1_claim['result'] ?? null) === 'claimed');
+check_true('T0b. تهيئة: finalize_cancelled() ينجح', PGE_Invitation_Send_Ledger::finalize_cancelled($t1_claim['log_id']));
+
+// A (من قائمة الاختبار المطلوبة): أحدث محاولة cancelled → current_state = cancelled صراحةً.
+check('T1. current_state() بعد finalize_cancelled = cancelled صراحةً (لا not_sent)', PGE_Invitation_Send_Ledger::current_state(9301, '966500009301')['state'] ?? null, PGE_Message_Log::STATUS_CANCELLED);
+
+// G/H/I: cancelled ليست failed، ليست ambiguous_transport_error، ليست provider_accepted.
+check_true('T2. cancelled ليست failed', ($wpdb->message_log[$t1_claim['log_id']]['status'] ?? null) !== PGE_Message_Log::STATUS_FAILED);
+check_true('T3. cancelled ليست ambiguous_transport_error', ($wpdb->message_log[$t1_claim['log_id']]['status'] ?? null) !== PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR);
+check_true('T4. cancelled ليست sent/provider_accepted', ($wpdb->message_log[$t1_claim['log_id']]['status'] ?? null) !== PGE_Message_Log::STATUS_SENT);
+check('T5. القيمة الفعلية المخزَّنة = cancelled بالضبط', $wpdb->message_log[$t1_claim['log_id']]['status'] ?? null, PGE_Message_Log::STATUS_CANCELLED);
+
+// F: cancelled + resend → invalid_state، لا سجل جديد.
+$t_resend = PGE_Invitation_Send_Ledger::claim(9301, '966500009301', 9001, PGE_Invitation_Send_Ledger::INTENT_RESEND);
+check('T6. cancelled + resend: invalid_state (لا معنى لإعادة إرسال محاولة لم تُرسَل قط)', $t_resend['result'] ?? null, 'invalid_state');
+check('T7. سبب الرفض = resend_not_applicable_after_cancelled', $t_resend['reason'] ?? null, 'resend_not_applicable_after_cancelled');
+check_true('T8. resend المرفوض لم يُنشئ أي سجل جديد', count(PGE_Message_Log::query_by_event_type_and_phone(9301, PGE_Message_Type::INVITATION, '966500009301')) === 1);
+
+// C/D/E: cancelled + normal → مطالبة جديدة فعلية (claimed)، سجل مستقل غير قابل للتعديل، القديم دون تغيير.
+$t_normal = PGE_Invitation_Send_Ledger::claim(9301, '966500009301', 9001, PGE_Invitation_Send_Ledger::INTENT_NORMAL);
+check('T9. cancelled + normal: claimed (محاولة إرسال جديدة عادية بكل معنى الكلمة)', $t_normal['result'] ?? null, 'claimed');
+check_true('T10. المحاولة الجديدة سجل مستقل مختلف عن سجل الإلغاء الأصلي', ($t_normal['log_id'] ?? 0) !== ($t1_claim['log_id'] ?? -1));
+check('T11. سجل الإلغاء الأصلي يبقى cancelled دون أي تعديل (تاريخ غير قابل للتغيير)', $wpdb->message_log[$t1_claim['log_id']]['status'] ?? null, PGE_Message_Log::STATUS_CANCELLED);
+check('T12. current_state() يعكس الآن أحدث محاولة (الجديدة، pending) لا الإلغاء الأقدم', PGE_Invitation_Send_Ledger::current_state(9301, '966500009301')['state'] ?? null, 'send_requested');
+
 // ── خاتمة: توازن الأقفال ────────────────────────────────────────────────
 
 check_true('Z1. لا قفل مأخوذ يبقى محجوزاً بعد نهاية كامل الاختبار', empty($wpdb->held_locks));

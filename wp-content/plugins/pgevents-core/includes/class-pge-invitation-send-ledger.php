@@ -272,7 +272,21 @@ class PGE_Invitation_Send_Ledger
                 // failed لأغراض القفل/الحصر فقط، لا لأغراض العرض هنا).
                 $state = PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR;
                 break;
+            case PGE_Message_Log::STATUS_CANCELLED:
+                // D2-W6A Fix Pass 1: حالة صريحة أولى الدرجة (First-Class) —
+                // لم تعد تقع ضمن default أدناه. القرار المنتجي المؤجَّل الذي
+                // وثَّقه D2-W6A الأصلي (finalize_cancelled() أدناه) محسوم
+                // الآن صراحة: 'cancelled' تعني أن المحاولة أُنشئت بصلاحية،
+                // لكن أُنهيت قبل أي محاولة نقل فعلية إطلاقاً — لا رسالة وصلت
+                // للمزوّد قط. راجع sendability_for_state() في D2-W2
+                // (class-pge-invitation-send-state.php) للقابلية الكاملة
+                // (normal_send_allowed=true, resend_required=false).
+                $state = PGE_Message_Log::STATUS_CANCELLED;
+                break;
             default:
+                // دفاعي بحت — لا حالة أخرى مُتوقَّعة فعلياً من عقد
+                // PGE_Message_Log الحالي (sent/pending/failed/ambiguous/
+                // cancelled كلها مُصنَّفة صراحة أعلاه).
                 $state = 'not_sent';
                 break;
         }
@@ -381,9 +395,40 @@ class PGE_Invitation_Send_Ledger
                     && !PGE_Message_Log::mark_failed((int) ($latest['id'] ?? 0))) {
                     return ['result' => 'error', 'reason' => 'stale_claim_close_failed'];
                 }
+            } elseif ($latest_status === PGE_Message_Log::STATUS_CANCELLED) {
+                // ========================================================
+                // D2-W6A Fix Pass 1 — معاملة صريحة أولى الدرجة لـcancelled،
+                // لا Fallthrough افتراضي بعد الآن (خلافاً لتوثيق D2-W6A
+                // الأصلي، محسوم الآن صراحة).
+                // ========================================================
+                // Normal: 'cancelled' تعني أن Cartat لم يُستدعَ إطلاقاً لهذه
+                // المحاولة (راجع finalize_cancelled() أدناه/class-pge-
+                // message-log.php::mark_cancelled()) — فمحاولة Normal تالية
+                // هي فعلياً محاولة إرسال جديدة عادية بكل معنى الكلمة، بنفس
+                // درجة قابلية إعادة المحاولة التي يستحقها 'failed' (رفض صريح
+                // بعد نقل فعلي) — إن لم يكن أكثر تحفّظاً. تُتابَع أدناه
+                // مباشرة لإنشاء محاولة جديدة، تماماً كما لو كانت failed.
+                //
+                // Resend: يُرفَض صراحة هنا — 'resend' دلالياً مخصَّص لمحاولة
+                // سابقة قد تكون وصلت فعلاً للمزوّد (provider_accepted) أو
+                // نتيجتها غامضة (ambiguous_transport_error)، حيث يلزم قرار
+                // واعٍ صريح بإعادة الإرسال. محاولة أُلغيت قبل أي نقل فعلياً
+                // لا تحمل هذا الغموض إطلاقاً — تحويل نيّة Resend الصريحة
+                // للمستخدم صامتاً إلى Normal هنا كان سيُخفي تلك النيّة، لذلك
+                // يُعامَل تعارض حالة/نيّة صريح (invalid_state)، لا تفويضاً
+                // ضمنياً.
+                if ($intent === self::INTENT_RESEND) {
+                    return [
+                        'result' => 'invalid_state',
+                        'reason' => 'resend_not_applicable_after_cancelled',
+                        'lifecycle_started_at' => $lifecycle_started_at,
+                    ];
+                }
+                // intent === normal: تُتابَع أدناه مباشرة لإنشاء محاولة جديدة.
             }
             // $latest_status === STATUS_FAILED (أو لا صفوف إطلاقاً بعد): إعادة
-            // محاولة (Retry) مسموحة دوماً — تُتابَع مباشرة لإنشاء محاولة جديدة.
+            // محاولة (Retry) مسموحة دوماً — تُتابَع مباشرة لإنشاء محاولة جديدة،
+            // بصرف النظر عن النيّة (نفس سلوك موجود مسبقاً، بلا تعديل هنا).
 
             $resolved_batch_id = is_scalar($batch_id) ? trim((string) $batch_id) : '';
             if ($resolved_batch_id === '') {
@@ -462,5 +507,48 @@ class PGE_Invitation_Send_Ledger
         }
 
         return PGE_Message_Log::mark_failed($log_id, $status);
+    }
+
+    /**
+     * D2-W6A — إنهاء محاولة أُوقفت قبل أي محاولة نقل فعلية إطلاقاً (Pre-
+     * Transport Cancellation): pending → cancelled، عبر التفويض المباشر
+     * لـPGE_Message_Log::mark_cancelled() (نفس منطق finalize_success()/
+     * finalize_failure() أعلاه تماماً — نفس تحقّق هوية النوع، لا قفل/إعادة
+     * تحقّق إضافيين). المستدعي الوحيد المقصود حالياً:
+     * PGE_Invitation_Send_Worker — **قبل** أي استدعاء لـsend_text()/
+     * send_media() على الإطلاق، أبداً بعده (راجع توثيق mark_cancelled() في
+     * class-pge-message-log.php لتفصيل هذا الشرط).
+     *
+     * ========================================================================
+     * D2-W6A Fix Pass 1 — 'cancelled' أصبحت حالة صريحة أولى الدرجة (محسومة،
+     * لا مؤجَّلة بعد الآن)
+     * ========================================================================
+     * القرار المنتجي الذي أجَّله D2-W6A الأصلي صراحة الآن محسوم: current_state()
+     * أعلاه تُعيد state='cancelled' صراحةً (لا 'not_sent' عبر fallback)،
+     * وPGE_Invitation_Send_State::resolve() (D2-W2) تُعرِّف قابليتها صراحة —
+     * normal_send_allowed=true، resend_required=false، in_progress=false.
+     * المعنى المعتمد: لا نقل فعلي حدث قط قبل الإلغاء، فمطالبة Normal تالية هي
+     * محاولة إرسال جديدة عادية تماماً (بنفس معاملة 'failed')، بينما Resend
+     * صريح بعدها يُرفَض (invalid_state) — Resend دلالياً مخصَّص لمحاولة سابقة
+     * قد تكون وصلت فعلاً للمزوّد أو نتيجتها غامضة، لا لمحاولة لم تُرسَل
+     * إطلاقاً. راجع claim() أعلاه للتطبيق الصريح، وتقرير D2-W6A Fix Pass 1
+     * للتفصيل الكامل.
+     *
+     * @param int $log_id
+     * @return bool
+     */
+    public static function finalize_cancelled($log_id): bool
+    {
+        $log_id = (int) $log_id;
+        if ($log_id <= 0) {
+            return false;
+        }
+
+        $log = PGE_Message_Log::find_by_id($log_id);
+        if (!$log || (string) ($log['message_type'] ?? '') !== PGE_Message_Type::INVITATION) {
+            return false;
+        }
+
+        return PGE_Message_Log::mark_cancelled($log_id);
     }
 }

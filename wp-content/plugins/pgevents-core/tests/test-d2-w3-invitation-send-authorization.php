@@ -533,6 +533,25 @@ check('T1. حصة=10: authorized', $t1['result'] ?? null, PGE_Invitation_Send_Ap
 check('T2. حصة=1000 (نفس التركيب، قيمة مختلفة تماماً): authorized كذلك', $t2['result'] ?? null, PGE_Invitation_Send_Application::RESULT_AUTHORIZED);
 
 // ══════════════════════════════════════════════════════════════════════
+// Y. D2-W6A Fix Pass 1 — cancelled (حالة صريحة أولى الدرجة منذ الآن، لا
+//    Fallthrough افتراضي). يتحقّق أن التركيب القائم فعلياً فوق أعلام D2-W2
+//    (normal_send_allowed/resend_required) ينتج السلوك الصحيح تلقائياً —
+//    بلا أي تعديل على class-pge-invitation-send-application.php نفسه.
+// ══════════════════════════════════════════════════════════════════════
+
+seed_invitation(EVT, '966500000104', '2026-08-22 09:00:00');
+seed_assignment(EVT, '966500000104', GROUP_1);
+$y_claim = PGE_Invitation_Send_Ledger::claim(EVT, '966500000104', 9001, PGE_Invitation_Send_Ledger::INTENT_NORMAL);
+check_true('Y0. تهيئة: claim() الأولي ينجح', ($y_claim['result'] ?? null) === 'claimed');
+check_true('Y0b. تهيئة: finalize_cancelled() ينجح (Cartat لم يُستدعَ إطلاقاً هنا)', PGE_Invitation_Send_Ledger::finalize_cancelled($y_claim['log_id']));
+
+$y_normal = PGE_Invitation_Send_Application::authorize_send_for_actor(EVT, '966500000104', 9001, 'normal');
+check('Y1. cancelled + normal: authorized (نفس معاملة failed)', $y_normal['result'] ?? null, PGE_Invitation_Send_Application::RESULT_AUTHORIZED);
+
+$y_resend = PGE_Invitation_Send_Application::authorize_send_for_actor(EVT, '966500000104', 9001, 'resend');
+check('Y2. cancelled + resend: invalid_state (لا معنى لإعادة إرسال محاولة لم تُرسَل قط)', $y_resend['result'] ?? null, PGE_Invitation_Send_Application::RESULT_INVALID_STATE);
+
+// ══════════════════════════════════════════════════════════════════════
 // U. هوية المُنشئ التاريخي لا تُستخدَم إطلاقاً — تأكيد إضافي عبر توقيع
 // الدالة نفسها (لا معامل لهوية منشئ أصلاً) + الاختباران I/J أعلاه فعلياً.
 // ══════════════════════════════════════════════════════════════════════

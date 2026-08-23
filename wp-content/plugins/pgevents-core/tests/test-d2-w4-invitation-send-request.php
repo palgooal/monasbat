@@ -643,6 +643,30 @@ $w_repeat = PGE_Invitation_Send_Application::request_send_for_actor(EVT, '966500
 check('W1. طلب normal مكرَّر بعد نجاح فعلي: already_sent، لا مطالبة جديدة صامتة', $w_repeat['result'] ?? null, PGE_Invitation_Send_Application::RESULT_ALREADY_SENT);
 check('W2. صف واحد فقط لهذا الضيف رغم الطلب المكرَّر', count_rows_for_phone(EVT, '966500000017'), 1);
 
+// ══════════════════════════════════════════════════════════════════════
+// X. D2-W6A Fix Pass 1 — cancelled (حالة صريحة أولى الدرجة). يتحقّق أن
+//    request_send_for_actor() (التي تستدعي claim() فعلياً، لا مجرَّد قراءة
+//    حالة) تُنتج مطالبة جديدة فعلية بعد cancelled + normal، وترفض resend
+//    صراحةً بلا أي مطالبة جديدة — بلا أي تعديل على هذا الملف نفسه.
+// ══════════════════════════════════════════════════════════════════════
+
+seed_invitation(EVT, '966500000018', '2026-08-22 09:00:00');
+seed_assignment(EVT, '966500000018', GROUP_1);
+$x_claim = PGE_Invitation_Send_Ledger::claim(EVT, '966500000018', 9001, PGE_Invitation_Send_Ledger::INTENT_NORMAL);
+check_true('X0. تهيئة: claim() الأولي ينجح', ($x_claim['result'] ?? null) === 'claimed');
+check_true('X0b. تهيئة: finalize_cancelled() ينجح (Cartat لم يُستدعَ إطلاقاً هنا)', PGE_Invitation_Send_Ledger::finalize_cancelled($x_claim['log_id']));
+
+$x_resend = PGE_Invitation_Send_Application::request_send_for_actor(EVT, '966500000018', 9001, 'resend');
+check('X1. cancelled + resend: invalid_state، لا مطالبة جديدة', $x_resend['result'] ?? null, PGE_Invitation_Send_Application::RESULT_INVALID_STATE);
+check('X2. لا صف جديد أُضيف بعد resend المرفوض (يبقى صف واحد فقط)', count_rows_for_phone(EVT, '966500000018'), 1);
+check('X3. الصف الأصلي المُلغى يبقى دون تغيير (status لا يزال cancelled)', $wpdb->message_log[$x_claim['log_id']]['status'], PGE_Message_Log::STATUS_CANCELLED);
+
+$x_normal = PGE_Invitation_Send_Application::request_send_for_actor(EVT, '966500000018', 9001, 'normal');
+check('X4. cancelled + normal: محاولة جديدة claimed فعلياً', $x_normal['result'] ?? null, PGE_Invitation_Send_Application::RESULT_CLAIMED);
+check('X5. صف ثانٍ مستقل أُضيف فعلياً (الآن صفّان لنفس الضيف)', count_rows_for_phone(EVT, '966500000018'), 2);
+check_true('X6. log_id الجديد يختلف عن log_id الأصلي المُلغى', ($x_normal['log_id'] ?? null) !== ($x_claim['log_id'] ?? null));
+check('X7. الصف الأصلي المُلغى يبقى دون تغيير بعد إنشاء الصف الجديد (immutable)', $wpdb->message_log[$x_claim['log_id']]['status'], PGE_Message_Log::STATUS_CANCELLED);
+
 // ── ملخص ────────────────────────────────────────────────────────────────
 
 echo "\n";

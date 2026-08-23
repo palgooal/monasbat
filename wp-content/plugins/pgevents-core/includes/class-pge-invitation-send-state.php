@@ -72,6 +72,20 @@ if (!defined('ABSPATH')) exit;
  * لا كتابة هنا إطلاقاً (لا claim/finalize/إنشاء صف/إعادة محاولة)، ولا
  * GET_LOCK — قراءة محضة، بلا حاجة موضوعية لأي قفل قراءة. تختبرها حصراً
  * tests/test-d2-w2-invitation-send-state.php.
+ *
+ * ============================================================================
+ * D2-W6A Fix Pass 1 — قرار cancelled (يُقارَن بقرار ambiguous_transport_error
+ * أعلاه، عمداً معاكس تماماً)
+ * ============================================================================
+ * `cancelled` تعني — بضمان صارم من طبقة D2-W1 (راجع PGE_Invitation_Send_
+ * Ledger::finalize_cancelled()/PGE_Message_Log::mark_cancelled()) — أن Cartat
+ * لم يُستدعَ إطلاقاً لهذه المحاولة. لا غموض حول وصول الرسالة للمزوّد، خلافاً
+ * جوهرياً عن `ambiguous_transport_error`. لذلك القرار هنا معاكس تماماً:
+ * `normal_send_allowed = true` (محاولة Normal تالية هي إرسال جديد عادي بكل
+ * معنى الكلمة، بنفس معاملة `failed`)، `resend_required = false` (لا معنى
+ * لـ"إعادة إرسال" رسالة لم تُرسَل قط). راجع claim() (D2-W1) للتطبيق المتَّسق:
+ * intent=resend صريح بعد cancelled يُرفَض هناك بـinvalid_state — لا يُحوَّل
+ * صامتاً لـnormal ولا يُسمَح ضمنياً هنا.
  */
 class PGE_Invitation_Send_State
 {
@@ -95,7 +109,8 @@ class PGE_Invitation_Send_State
      *   latest_failure_status:?string
      * }
      *   state: 'not_sent' | 'send_requested' | 'provider_accepted' | 'failed'
-     *        | 'ambiguous_transport_error' (كل هذه فقط عند ok=true)
+     *        | 'ambiguous_transport_error' | 'cancelled' (D2-W6A Fix Pass 1
+     *          — كل هذه فقط عند ok=true)
      *        | 'not_found' | 'invalid' (عند ok=false — نفس اصطلاح Fail-Closed
      *          الداخلي المستخدَم أصلاً في PGE_Invitation_Send_Ledger).
      */
@@ -201,6 +216,20 @@ class PGE_Invitation_Send_State
             case PGE_Message_Log::STATUS_AMBIGUOUS_TRANSPORT_ERROR: // 'ambiguous_transport_error'
                 // قرار مقصود، غير افتراضي — راجع القسم الموثَّق أعلاه في رأس الملف.
                 return ['normal_send_allowed' => false, 'resend_required' => true, 'in_progress' => false];
+
+            case PGE_Message_Log::STATUS_CANCELLED: // 'cancelled' — D2-W6A Fix Pass 1
+                // حالة صريحة أولى الدرجة (First-Class)، محسومة الآن لا
+                // مؤجَّلة: 'cancelled' تعني أن Cartat لم يُستدعَ إطلاقاً لهذه
+                // المحاولة (راجع PGE_Invitation_Send_Ledger::finalize_cancelled()
+                // وPGE_Message_Log::mark_cancelled()) — لا غموض حول ما إذا
+                // كانت الرسالة وصلت فعلاً للمزوّد، خلافاً تماماً لـ
+                // ambiguous_transport_error أعلاه. لذلك: مطالبة Normal تالية
+                // = محاولة إرسال جديدة عادية تماماً (بنفس معاملة 'failed')،
+                // لا "إعادة إرسال" رسالة قد تكون وصلت. Resend صريح غير مناسب
+                // هنا دلالياً (لا شيء "يُعاد إرساله") — resend_required=false
+                // عمداً؛ claim() (D2-W1) ترفض intent=resend صراحةً بعد
+                // cancelled بـinvalid_state، فلا تعارض بين الطبقتين.
+                return ['normal_send_allowed' => true, 'resend_required' => false, 'in_progress' => false];
 
             default:
                 // دفاعي بحت — لا حالة أخرى مُتوقَّعة فعلياً من current_state().

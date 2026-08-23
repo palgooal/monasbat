@@ -465,6 +465,23 @@ check_true('L1. لا إشارة إلى Authorization/Access/Quota/AJAX داخل 
 check_true('L2. لا GET_LOCK/RELEASE_LOCK داخل الملف الجديد (قراءة محضة)', strpos($state_code_only, 'GET_LOCK') === false && strpos($state_code_only, 'RELEASE_LOCK') === false);
 check_true('L3. لا wpdb->insert()/wpdb->update() داخل الملف الجديد (لا كتابة)', strpos($state_code_only, '->insert(') === false && strpos($state_code_only, '->update(') === false);
 
+// ══════════════════════════════════════════════════════════════════════
+// M. D2-W6A Fix Pass 1 — cancelled → قابلية معاكسة تماماً لـambiguous_
+//    transport_error (القسم E أعلاه): لا غموض هنا — Cartat لم يُستدعَ إطلاقاً.
+// ══════════════════════════════════════════════════════════════════════
+
+seed_invitation(6008, '966500001008', '2026-08-22 09:00:00');
+$m_claim = PGE_Invitation_Send_Ledger::claim(6008, '966500001008', 508, 'normal');
+check_true('M0. finalize_cancelled() ينجح (Cartat لم يُستدعَ إطلاقاً هنا)', PGE_Invitation_Send_Ledger::finalize_cancelled($m_claim['log_id']));
+$m = PGE_Invitation_Send_State::resolve(6008, '966500001008');
+check('M1. state = cancelled (حالة صريحة أولى الدرجة، لا not_sent)', $m['state'] ?? null, PGE_Message_Log::STATUS_CANCELLED);
+check('M2. normal_send_allowed = true (لا نقل فعلي حدث، إرسال جديد عادي بكل معنى الكلمة)', $m['normal_send_allowed'] ?? null, true);
+check('M3. resend_required = false (لا معنى لإعادة إرسال محاولة لم تُرسَل قط)', $m['resend_required'] ?? null, false);
+check('M4. in_progress = false', $m['in_progress'] ?? null, false);
+check('M5. latest_failure_status = null (cancelled عمداً خارج TERMINAL_FAILURE_STATUSES)', array_key_exists('latest_failure_status', $m) ? $m['latest_failure_status'] : 'MISSING_KEY', null);
+check('M6. latest_attempt.status يعكس cancelled بدقة', $m['latest_attempt']['status'] ?? null, PGE_Message_Log::STATUS_CANCELLED);
+check('M7. latest_actor_user_id = 508', $m['latest_actor_user_id'] ?? null, 508);
+
 // ── ملخص ────────────────────────────────────────────────────────────────
 
 echo "\n";
