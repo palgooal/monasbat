@@ -312,6 +312,48 @@ class PGE_Message_Log
     }
 
     /**
+     * D2-W5 ("Durable Queue Integration Contract") — قراءة استرداد محدودة
+     * (Bounded Recovery Read): كل سجلات 'pending' من نوع رسالة معيَّن عبر
+     * كل المناسبات، الأقدم أولاً، بحد أقصى $limit صف. تعتمد على فهرس
+     * `KEY status (status)` القائم فعلاً في Schema (راجع
+     * class-pge-messaging-schema.php وdocs/MESSAGING-ARCHITECTURE.md §4.1)
+     * — استعلام مُقيَّد وليس مسحاً غير محدود؛ لا فهرس جديد ولا Schema Change
+     * مطلوب لهذه الإضافة. ترفض message_type غير معروف (تعيد مصفوفة فارغة،
+     * لا استثناء) — بنفس عقد query_by_event_type()/query_by_event_type_and_
+     * phone() تماماً. Tracking فقط، بلا قرار Business Logic هنا — تُستخدَم
+     * من PGE_Invitation_Send_Queue (D2-W5) لإيجاد محاولات دعوة معلّقة غير
+     * مُمثَّلة بعمل طابور نشط، لكن قرار "ماذا يُفعَل بها" يبقى في تلك الطبقة
+     * حصراً.
+     *
+     * @return array<int,array>
+     */
+    public static function query_pending_by_type($message_type, $limit = 100): array
+    {
+        $normalized_type = PGE_Message_Type::normalize($message_type);
+        if ($normalized_type === null) {
+            return [];
+        }
+
+        $limit = is_scalar($limit) ? (int) $limit : 100;
+        $limit = max(1, min(1000, $limit));
+
+        global $wpdb;
+        $table = self::table_name();
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM $table WHERE status = %s AND message_type = %s ORDER BY id ASC LIMIT %d",
+                self::STATUS_PENDING,
+                $normalized_type,
+                $limit
+            ),
+            ARRAY_A
+        );
+
+        return is_array($rows) ? $rows : [];
+    }
+
+    /**
      * كل سجلات مناسبة+هاتف معيَّن من نوع رسالة معيَّن، الأقدم أولاً — الاستعلام
      * الوحيد الذي يُصفِّي بمستوى الهاتف على مستوى قاعدة البيانات (D2-W1: لا
      * استعلام حالي يفعل ذلك). الهاتف يُطبَّع عبر pge_norm_phone() قبل

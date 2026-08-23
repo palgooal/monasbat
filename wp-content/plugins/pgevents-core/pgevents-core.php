@@ -323,8 +323,20 @@ require_once PGE_PATH . 'includes/additional-inviter-ajax.php';
 // Event Access Repository، وحالة D2-W2 (class-pge-invitation-send-state.php،
 // محمَّلة أعلاه) — بلا تعديل على أي منها. محمَّل هنا (بعد كل تبعياته
 // مباشرة) لأنه لا يحتاج شيئاً من H1C-W10 أدناه. راجع توثيق الملف نفسه
-// للقرار الحَكَمي حول مطابقة النيّة (Intent) مقابل حالة الإرسال.
+// للقرار الحَكَمي حول مطابقة النيّة (Intent) مقابل حالة الإرسال. D2-W4
+// ("Authorized Claim / Send Request Mutation Contract") أُضيفت كتابع جديد
+// (request_send_for_actor()) داخل نفس الملف أعلاه — بلا require_once إضافي.
+//
+// D2-W5 ("Durable Queue Integration Contract" — Enqueue فقط، بلا نقل/
+// Worker/AJAX/UI): يقرأ فقط من pge_message_log (عبر PGE_Message_Log::find_
+// by_id()/query_pending_by_type() الجديدة أعلاه) بعد أن ينتج D2-W4 مطالبة
+// دائمة ناجحة (log_id) — لا اعتماد على D2-W3/D2-W4 أنفسهما، ولا تعديل عليهما
+// أو على Authorization Core. محمَّل هنا مباشرة بعد D2-W4 لأنه يعتمد فقط على
+// PGE_Message_Log/PGE_Message_Type المحمَّلتين أعلاه بالفعل. راجع توثيق
+// الملف نفسه لتفاصيل قرار الديمومة (WordPress Options غير Autoloaded، نفس
+// نمط PGE_Thank_You_Batch_Store) وحدود العامل (لا Worker في هذه المرحلة).
 require_once PGE_PATH . 'includes/class-pge-invitation-send-application.php';
+require_once PGE_PATH . 'includes/class-pge-invitation-send-queue.php';
 
 // Phase H1C-W10 (Additional Inviter Onboarding Backend) — an isolated new
 // table/schema + a new orchestrator over it, loaded right after W8/W9
