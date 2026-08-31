@@ -744,7 +744,13 @@
 				var full_width = $selector.data( 'full-width' );
 				var toggle_icon = $( '.elementor-element-' + id + ' nav' ).data( 'toggle-icon' );
 
-				$( '.elementor-element-' + id).find( '.hfe-nav-menu-icon' ).html( hfe_sanitize_icon_html( toggle_icon ) );
+				// Only swap the icon when the layout actually provides one. The
+				// flyout layout omits data-toggle-icon/data-close-icon, so the
+				// value is undefined there; passing it through would empty the
+				// hamburger icon. See hfe_sanitize_icon_html above.
+				if ( 'string' === typeof toggle_icon ) {
+					$( '.elementor-element-' + id).find( '.hfe-nav-menu-icon' ).html( hfe_sanitize_icon_html( toggle_icon ) );
+				}
 
 				$this.removeClass( 'hfe-active-menu' );
 				$this.attr( 'aria-expanded', 'false' );
@@ -763,8 +769,12 @@
 				var full_width = $selector.data( 'full-width' );
 				var close_icon = $( '.elementor-element-' + id + ' nav' ).data( 'close-icon' );
 
-				$( '.elementor-element-' + id).find( '.hfe-nav-menu-icon' ).html( hfe_sanitize_icon_html( close_icon ) );
-				
+				// See note above: skip the swap when the layout (e.g. flyout)
+				// does not define a close icon, otherwise the icon is emptied.
+				if ( 'string' === typeof close_icon ) {
+					$( '.elementor-element-' + id).find( '.hfe-nav-menu-icon' ).html( hfe_sanitize_icon_html( close_icon ) );
+				}
+
 				$this.addClass( 'hfe-active-menu' );
 				$this.attr( 'aria-expanded', 'true' );
 

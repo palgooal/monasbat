@@ -132,6 +132,10 @@ class Widgets_Loader {
 		//Showing Pro Widgets
 		add_filter('elementor/editor/localize_settings', [$this, 'uae_promote_pro_elements']);
 
+		// Elementor 4.x reads the promotion card CTA from the `v4Promotions` editor config.
+		// Priority 15 so it runs after Elementor's own add_v4_promotions_data() at 10.
+		add_filter( 'elementor/editor/localize_settings', [ $this, 'uae_add_pro_widget_promotion_data' ], 15 );
+
 		// Refresh the cart fragments.
 		if ( class_exists( 'woocommerce' ) ) {
 
@@ -262,25 +266,13 @@ class Widgets_Loader {
 	}
 	
 	/**
-	 * List pro widgets
+	 * Returns the UAE Pro widgets promoted in the Elementor editor panel.
 	 *
-	 * @since v3.1.4
+	 * @since 2.9.3
+	 * @return array
 	 */
-	public function uae_promote_pro_elements( $config ) {
-
-		if(defined( 'UAEL_VER' )){
-			return $config;
-		}
-		
-
-		$promotion_widgets = [];
-
-		if ( isset( $config['promotionWidgets'] ) ) {
-			$promotion_widgets = $config['promotionWidgets'];
-		}
-		$combine_array = array_merge( $promotion_widgets, 
-		
-		[
+	public static function get_promoted_pro_widgets() {
+		return [
 			[ 'name' => 'uael-advanced-heading', 'title' => __( 'Advanced Heading', 'header-footer-elementor' ), 'icon' => 'hfe-icon-advanced-heading', 'categories' => '["hfe-widgets"]' ],
 			[ 'name' => 'uael-modal-popup', 'title' => __( 'Modal Popup', 'header-footer-elementor' ), 'icon' => 'hfe-icon-modal-popup', 'categories' => '["hfe-widgets"]' ],
 			[ 'name' => 'uael-content-toggle', 'title' => __( 'Content Toggle', 'header-footer-elementor' ), 'icon' => 'hfe-icon-content-toggle', 'categories' => '["hfe-widgets"]' ],
@@ -318,10 +310,66 @@ class Widgets_Loader {
 			[ 'name' => 'uael-video', 'title' => __( 'Video', 'header-footer-elementor' ), 'icon' => 'hfe-icon-video', 'categories' => '["hfe-widgets"]' ],
 			[ 'name' => 'uael-video-gallery', 'title' => __( 'Video Gallery', 'header-footer-elementor' ), 'icon' => 'hfe-icon-video-gallery', 'categories' => '["hfe-widgets"]' ],
 			[ 'name' => 'uael-welcome-music', 'title' => __( 'Welcome Music', 'header-footer-elementor' ), 'icon' => 'hfe-icon-welcome-music', 'categories' => '["hfe-widgets"]' ],
-		]
-		);
+		];
+	}
 
-		$config['promotionWidgets'] = $combine_array;
+	/**
+	 * List pro widgets
+	 *
+	 * @since v3.1.4
+	 */
+	public function uae_promote_pro_elements( $config ) {
+
+		if(defined( 'UAEL_VER' )){
+			return $config;
+		}
+
+
+		$promotion_widgets = [];
+
+		if ( isset( $config['promotionWidgets'] ) ) {
+			$promotion_widgets = $config['promotionWidgets'];
+		}
+
+		$config['promotionWidgets'] = array_merge( $promotion_widgets, self::get_promoted_pro_widgets() );
+
+		return $config;
+	}
+
+	/**
+	 * Add promotion card data for UAE pro widgets.
+	 *
+	 * Since Elementor 4.x, clicking a promoted widget in the panel renders a React
+	 * card whose CTA link is resolved from the `v4Promotions` editor config instead
+	 * of the legacy promotion dialog. Elementor's own PHP promotion filters reject
+	 * URLs outside elementor.com, so the UAE upgrade URL is injected here per widget.
+	 *
+	 * @since 2.9.3
+	 * @param array $config Elementor editor localize settings.
+	 * @return array
+	 */
+	public function uae_add_pro_widget_promotion_data( $config ) {
+
+		if ( defined( 'UAEL_VER' ) ) {
+			return $config;
+		}
+
+		$promotions = ( isset( $config['v4Promotions'] ) && is_array( $config['v4Promotions'] ) ) ? $config['v4Promotions'] : [];
+
+		foreach ( self::get_promoted_pro_widgets() as $widget ) {
+			$utm_medium = sanitize_title( $widget['title'] ) . '-promo';
+
+			$promotions[ $widget['name'] ] = [
+				/* translators: %s: Widget title. */
+				'title'   => sprintf( __( '%s Widget', 'header-footer-elementor' ), $widget['title'] ),
+				/* translators: %s: Widget title. */
+				'content' => sprintf( __( 'Use %s widget and other UAE Pro features to extend your toolbox with more control and flexibility.', 'header-footer-elementor' ), $widget['title'] ),
+				'ctaText' => __( 'Upgrade Now', 'header-footer-elementor' ),
+				'ctaUrl'  => 'https://ultimateelementor.com/pricing/?utm_source=plugin-editor&utm_medium=' . $utm_medium . '&utm_campaign=uae-upgrade',
+			];
+		}
+
+		$config['v4Promotions'] = $promotions;
 
 		return $config;
 	}

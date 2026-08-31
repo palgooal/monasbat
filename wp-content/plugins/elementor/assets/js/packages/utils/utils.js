@@ -357,7 +357,7 @@ function createTranslate({
 }) {
   return (key, ...args) => {
     const appConfig = window.elementorAppConfig;
-    const remoteStrings = appConfig?.[configKey]?.translations;
+    const remoteStrings = Object.fromEntries(Object.entries(appConfig?.[configKey]?.translations ?? {}).filter(([, value]) => 'string' === typeof value && '' !== value.trim()));
     const strings = {
       ...defaultStrings,
       ...remoteStrings

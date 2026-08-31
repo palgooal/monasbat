@@ -371,11 +371,22 @@ class HFE_Settings_Page {
 			}
 			$theme_option = get_option( 'hfe_compatibility_option', '1' );
 	
+			// Load the build-time generated dependency list so React and ReactDOM are always
+			// resolved to the versions WordPress supplies (never bundled). This keeps the
+			// admin app compatible with future WordPress React upgrades (e.g. React 19).
+			$asset_file = HFE_DIR . 'build/main.asset.php';
+			$main_asset = file_exists( $asset_file )
+				? require $asset_file
+				: [
+					'dependencies' => [ 'react', 'react-dom', 'wp-element', 'wp-dom-ready', 'wp-api-fetch', 'wp-i18n' ],
+					'version'      => HFE_VER,
+				];
+
 			wp_enqueue_script(
 				'header-footer-elementor-react-app',
 				HFE_URL . 'build/main.js',
-				[ 'wp-element', 'wp-dom-ready', 'wp-api-fetch' ],
-				HFE_VER,
+				$main_asset['dependencies'],
+				$main_asset['version'],
 				true
 			);
 

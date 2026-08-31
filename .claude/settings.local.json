@@ -7,7 +7,21 @@
       "Bash(echo \"exit code: $?\")",
       "Bash(php \"C:/Users/lenovo/AppData/Local/Temp/claude/f--laragon-www-monasbat/913c411a-46ea-4f6c-a68c-c7f72edacef0/scratchpad/test_constants.php\")",
       "Bash(echo \"diff --check exit: $?\")",
-      "Bash(php \"C:/Users/lenovo/AppData/Local/Temp/claude/f--laragon-www-monasbat/913c411a-46ea-4f6c-a68c-c7f72edacef0/scratchpad/test_normalize_plan_type.php\")"
+      "Bash(php \"C:/Users/lenovo/AppData/Local/Temp/claude/f--laragon-www-monasbat/913c411a-46ea-4f6c-a68c-c7f72edacef0/scratchpad/test_normalize_plan_type.php\")",
+      "Bash(php test-checkin-engine.php)",
+      "Bash(powershell -NoProfile -Command \"Get-Process git -ErrorAction SilentlyContinue | Format-Table Id,StartTime,Path\")",
+      "Bash(tasklist)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='git.exe'\")",
+      "PowerShell(Get-Process -Name git -ErrorAction SilentlyContinue)",
+      "Bash(cd /f/laragon/www/monasbat *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git diff-tree *)",
+      "Bash(git push *)",
+      "Bash(git rev-list *)"
+    ],
+    "additionalDirectories": [
+      "F:\\laragon\\www\\monasbat\\.git"
     ]
   },
   "hooks": {

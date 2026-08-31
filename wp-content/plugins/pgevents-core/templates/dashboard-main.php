@@ -14,6 +14,27 @@ get_header();
 $current_user = wp_get_current_user();
 $user_id = $current_user->ID;
 
+// E2E-01 FIX PASS 2 (Registration Success Feedback UX): استهلاك مرة واحدة
+// لعلامة نجاح التسجيل الذاتي — تُنشَأ حصراً في page-register.php فور نجاح
+// التسجيل (مستقلة تماماً عن نتيجة البريد الترحيبي هناك). المفتاح خاص بهذا
+// المستخدم فقط (مبني من $user_id الحالي، لا من أي مدخل زائر)، لذا لا يمكن
+// لمستخدم آخر رؤيته، ولا يكفي رابط علني وحده (مثل ?registered=1) — عرض
+// الإشعار أدناه يعتمد فقط على قيمة get_transient() هذه، لا على أي
+// $_GET/$_REQUEST. يُحذف فوراً عند القراءة، فلا يظهر إلا مرة واحدة، وينتهي
+// تلقائياً خلال 5 دقائق حتى لو لم يُستهلَك إطلاقاً.
+//
+// (ملاحظة تصحيحية: هذا هو المستهلِك الوحيد الصحيح — /dashboard/ يُوجَّه عبر
+// routing.php مباشرةً إلى هذا الملف [templates/dashboard-main.php]، وليس
+// إلى page-dashboard.php في الثيم، والذي لا يُستخدَم إطلاقاً لهذا المسار.
+// أُزيلت الإضافة المكافئة من page-dashboard.php لتفادي وجود أكثر من مستهلِك
+// واحد.)
+$pge_show_registration_success = false;
+$pge_registration_success_key = 'pge_registration_success_' . $user_id;
+if (get_transient($pge_registration_success_key)) {
+    $pge_show_registration_success = true;
+    delete_transient($pge_registration_success_key);
+}
+
 /**
  * Helpers — تُحمَّل من helpers.php تلقائياً، هذا احتياطي فقط
  */
@@ -283,6 +304,17 @@ $host_display_name = $current_user->display_name ?: $current_user->user_login;
     </header>
 
     <div class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+
+        <?php if ($pge_show_registration_success): ?>
+        <!-- E2E-01: إشعار نجاح تسجيل مرة واحدة (يُستهلَك أعلاه في PHP) -->
+        <div role="status" dir="rtl" class="mb-6 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-emerald-800 sm:px-5">
+            <span aria-hidden="true" class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm text-emerald-700">✓</span>
+            <div class="text-sm leading-6">
+                <p class="font-bold">تم إنشاء حسابك بنجاح</p>
+                <p class="mt-0.5 text-emerald-700">مرحباً بك! يمكنك الآن اختيار باقتك والبدء في إنشاء مناسبتك.</p>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <!-- Welcome hero — مضغوطة الحجم، مع لمسة زخرفية واحدة خفيفة تحافظ على هوية حلوة -->
         <section class="relative overflow-hidden rounded-[28px] border border-border bg-white p-4 shadow-[0_14px_40px_-18px_rgba(45,25,20,0.10)] sm:p-5">

@@ -1,0 +1,287 @@
+diff --git a/wp-content/plugins/pgevents-core/includes/class-pge-event-access-application-service.php b/wp-content/plugins/pgevents-core/includes/class-pge-event-access-application-service.php
+index e2721997..9a3a2927 100644
+--- a/wp-content/plugins/pgevents-core/includes/class-pge-event-access-application-service.php
++++ b/wp-content/plugins/pgevents-core/includes/class-pge-event-access-application-service.php
+@@ -2,16 +2,23 @@
+ if (!defined('ABSPATH')) exit;
+ 
+ /**
+- * H1C-W1 — Collaborator Read-Only Application Wiring.
++ * H1C-W1 — Collaborator Read-Only Application Wiring (original scope of
++ * this file). H1C-W2 — Collaborator Scoped Guest-Assignment Write Wiring
++ * (Section below "Collaborator scoped guest-assignment writes"): the first
++ * writes this class performs, added in a later phase.
+  *
+  * The first production Application-layer consumer of the H1B Authorization
+  * Core (PGE_Event_Access_Authorization / PGE_Event_Access_Authorization_Context)
+- * and Repository (PGE_Event_Access_Repository). Read-only: this class calls
+- * no write/mutation method on either dependency (create_group/rename_group/
+- * archive_group/set_default_group/create_membership/change_membership_role/
+- * revoke_membership/reactivate_membership/grant_group_access/
+- * revoke_group_access/assign_guest_to_group/move_guest_to_group/
+- * unassign_guest_from_group are never referenced here).
++ * and Repository (PGE_Event_Access_Repository). The original H1C-W1 read
++ * paths above remain read-only exactly as before — they still call no
++ * write/mutation method on either dependency. As of H1C-W2, this class ALSO
++ * calls exactly three Repository mutation methods, and only those three:
++ * assign_guest_to_group / move_guest_to_group / unassign_guest_from_group
++ * (see the dedicated section below). Every other write/mutation method
++ * (create_group/rename_group/archive_group/set_default_group/
++ * create_membership/change_membership_role/revoke_membership/
++ * reactivate_membership/grant_group_access/revoke_group_access) is still
++ * never referenced here and remains out of scope for this class.
+  *
+  * Architecture (Section 6 of the H1C-W1 brief):
+  *
+@@ -403,6 +410,251 @@ final class PGE_Event_Access_Application_Service
+         return self::guest_data_error();
+     }
+ 
++    // ──────────────────────────────────────────────────────────────
++    // Collaborator scoped guest-assignment writes (Phase H1C-W2)
++    // ──────────────────────────────────────────────────────────────
++
++    /**
++     * H1C-W2 — Collaborator Scoped Guest-Assignment Write Wiring.
++     *
++     * Architecture (unchanged from H1C-W1): Transport (AJAX) resolves the
++     * actor from the real WordPress session and hands in $actor_user_id
++     * explicitly; this class is still not HTTP/session/nonce-aware. Every
++     * write use case below follows the same fixed order:
++     *
++     *   1. strict scalar input validation (REASON_INVALID_INPUT, before any
++     *      Authorization/Repository call);
++     *   2. PGE_Event_Access_Authorization::resolve_context() — a fresh,
++     *      point-in-time trusted context, resolved fresh for this call (no
++     *      caller-supplied context is ever accepted, exactly like H1C-W1);
++     *   3. the matching H1C-A2 can_*_guest() decision, using the actual
++     *      group ids involved — NEVER "actor has *a* granted group", always
++     *      the specific group(s) this operation touches;
++     *   4. only on an explicit allow, the matching H1B
++     *      PGE_Event_Access_Repository mutation method — Repository is
++     *      never invoked when the decision is deny (Section 10/36 of the
++     *      H1C-W2 brief: a Repository mutation must never even be attempted
++     *      for a denied actor, not merely have its result discarded).
++     *
++     * Because authorization and mutation happen inside the same call with no
++     * intervening read-then-later-write gap, resolve_context() is called
++     * exactly once per use case — that single resolution already satisfies
++     * the "authorization must be resolved immediately before mutation"
++     * requirement (H1C-A2's TOCTOU contract is about a caller that reads
++     * once and mutates later; that pattern does not exist here).
++     *
++     * H1B state-machine semantics (no-op/concurrent_update/repair rules) are
++     * never re-implemented here — every one of these methods calls straight
++     * through to the real, already-tested H1B Repository method and only
++     * translates its result/error into the small public contract below.
++     *
++     * Success shape (never contains PII — phone/name/note/code are never
++     * read or returned by any method in this section):
++     *   ['ok' => true, 'changed' => bool, 'assignment_id' => ?int,
++     *    'group_id' => ?int, 'has_assignment' => bool]
++     * — an exact passthrough of PGE_Event_Access_Repository's own
++     * assignment_write_result() shape, plus the 'ok' marker.
++     *
++     * Failure is always a WP_Error with one of a small, fixed set of reason
++     * codes (Section 15 of the brief, reviewed against the ACTUAL
++     * PGE_Event_Access_Repository error codes rather than invented ahead of
++     * time — see map_repository_write_error() below for the exact mapping
++     * and the one deliberate collapse it documents):
++     *   not_authorized, invalid_input, not_found, ambiguous_guest,
++     *   invalid_group, concurrent_update, write_unavailable, database_error.
++     *
++     * GR1 interaction: none. Guest identity (name/note/code) is never read
++     * or written by any method here, and PGE_Event_Access_Repository's
++     * assign/move/unassign methods never call pge_event_guests_save_map()
++     * or reference PGE_Event_Guest_Read_Projection at all — an assignment
++     * mutation is not a guest-identity mutation (Section 25). This class
++     * still never calls pge_event_guests_save_map() itself, for the same
++     * reason.
++     */
++
++    /**
++     * Use case: Manager/Owner/Admin performs the INITIAL assignment of an
++     * already-invited guest into a group. Per the actual, verified H1C-A2
++     * contract, this is Owner/Admin ONLY — PGE_Event_Access_Authorization::
++     * can_assign_guest() takes no group parameter and is owner_or_admin_only
++     * (initial assignment requires unassigned-pool visibility, which
++     * collaborators never have — Section 21 of the A2 brief, re-verified
++     * directly against the live can_assign_guest() source and its own A2
++     * test suite (A2 tests G3/K5) before this method was written, per
++     * Section 2/9 of the H1C-W2 brief's explicit instruction not to assume a
++     * Manager permission that does not actually exist in code). A Manager
++     * calling this method is always REASON_NOT_AUTHORIZED, regardless of
++     * granted scope on the target group.
++     *
++     * @return array{ok:true,changed:bool,assignment_id:?int,group_id:?int,has_assignment:bool}|WP_Error
++     */
++    public static function assign_guest_to_group_for_actor($event_id, $actor_user_id, $guest_phone, $group_id)
++    {
++        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
++            || !self::valid_scalar_id($group_id) || !self::valid_guest_phone($guest_phone)) {
++            return self::invalid_input();
++        }
++
++        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
++        if ($context instanceof WP_Error) return $context;
++        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
++
++        $decision = PGE_Event_Access_Authorization::can_assign_guest($context);
++        if (empty($decision['allowed'])) return self::not_authorized();
++
++        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
++        $result = PGE_Event_Access_Repository::assign_guest_to_group($event_id, $guest_phone, $group_id, $actor_user_id);
++        return self::map_repository_write_result($result);
++    }
++
++    /**
++     * Use case: move an already-assigned guest from one group to another.
++     * $expected_group_id is the caller's asserted CURRENT group (optimistic
++     * concurrency — Section 22, never dropped or auto-detected) and is used
++     * BOTH as the H1B Repository's concurrency precondition AND as the
++     * authorization "source group" per the real, verified can_move_guest()
++     * contract, which requires the actor to hold granted access to BOTH the
++     * source and the target group (A2 tests G7-G11: a granted G1 does not
++     * imply access to any other group, including a same-group no-op move —
++     * re-verified directly against the live source before this method was
++     * written).
++     *
++     * @return array{ok:true,changed:bool,assignment_id:?int,group_id:?int,has_assignment:bool}|WP_Error
++     */
++    public static function move_guest_to_group_for_actor($event_id, $actor_user_id, $guest_phone, $expected_group_id, $new_group_id)
++    {
++        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
++            || !self::valid_scalar_id($expected_group_id) || !self::valid_scalar_id($new_group_id)
++            || !self::valid_guest_phone($guest_phone)) {
++            return self::invalid_input();
++        }
++
++        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
++        if ($context instanceof WP_Error) return $context;
++        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
++
++        $decision = PGE_Event_Access_Authorization::can_move_guest($context, $expected_group_id, $new_group_id);
++        if (empty($decision['allowed'])) return self::not_authorized();
++
++        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
++        $result = PGE_Event_Access_Repository::move_guest_to_group($event_id, $guest_phone, $expected_group_id, $new_group_id, $actor_user_id);
++        return self::map_repository_write_result($result);
++    }
++
++    /**
++     * Use case: remove an assigned guest from its current group.
++     * $expected_group_id is the caller's asserted CURRENT group (Section
++     * 22, required — never optional, never "whichever assignment currently
++     * exists") and is used both as the Repository's concurrency
++     * precondition and as the authorization "current group" per the real
++     * can_unassign_guest() contract.
++     *
++     * Deleted-guest cleanup (Section 32/33): PGE_Event_Access_Repository::
++     * unassign_guest_from_group() deliberately never calls
++     * pge_event_guests_resolve_current_by_phone() — a guest already removed
++     * from Post Meta can still have its stray H1B assignment row cleaned
++     * up. This method preserves that on purpose: authorization here depends
++     * only on event/group/membership context (can_unassign_guest() takes a
++     * group id, never a guest identity), so cleanup remains possible even
++     * when guest identity can no longer be resolved at all (Section 33 —
++     * covered by a dedicated W2 test).
++     *
++     * @return array{ok:true,changed:bool,assignment_id:?int,group_id:?int,has_assignment:bool}|WP_Error
++     */
++    public static function unassign_guest_from_group_for_actor($event_id, $actor_user_id, $guest_phone, $expected_group_id)
++    {
++        if (!self::valid_scalar_id($event_id) || !self::valid_scalar_id($actor_user_id)
++            || !self::valid_scalar_id($expected_group_id) || !self::valid_guest_phone($guest_phone)) {
++            return self::invalid_input();
++        }
++
++        $context = PGE_Event_Access_Authorization::resolve_context($event_id, $actor_user_id);
++        if ($context instanceof WP_Error) return $context;
++        if (!($context instanceof PGE_Event_Access_Authorization_Context)) return self::not_authorized();
++
++        $decision = PGE_Event_Access_Authorization::can_unassign_guest($context, $expected_group_id);
++        if (empty($decision['allowed'])) return self::not_authorized();
++
++        if (!class_exists('PGE_Event_Access_Repository')) return self::guest_data_error();
++        $result = PGE_Event_Access_Repository::unassign_guest_from_group($event_id, $guest_phone, $expected_group_id, $actor_user_id);
++        return self::map_repository_write_result($result);
++    }
++
++    /**
++     * Translates a real PGE_Event_Access_Repository write result into the
++     * small, fixed public write contract. Reviewed against the ACTUAL
++     * Repository error codes (class-pge-event-access-repository.php) rather
++     * than an invented list:
++     *
++     *   invalid_input      -> invalid_input
++     *   schema_not_ready    -> write_unavailable (storage layer not ready;
++     *                          honest, generic, no detail)
++     *   not_found           -> not_found. DELIBERATE COLLAPSE: the
++     *                          Repository returns the exact same WP_Error
++     *                          code/message ('not_found', 'Requested event
++     *                          access record was not found.') both when the
++     *                          guest phone cannot be resolved
++     *                          (require_current_guest()) AND when the
++     *                          target/current group is missing or
++     *                          cross-event (find_locked_group_by_id() /
++     *                          validate_assignment_group_reference()) — the
++     *                          two cases are NOT distinguishable from the
++     *                          Repository's return value alone. Rather than
++     *                          inventing a false distinction (separate
++     *                          'guest_not_found' vs 'invalid_group' codes
++     *                          the storage layer does not actually
++     *                          provide), this mapping stays honest and
++     *                          unifies both under one reason, per the
++     *                          brief's own instruction (Section 15: "وحّد
++     *                          mapping بدل تمرير تفاصيل داخلية").
++     *   ambiguous_guest     -> ambiguous_guest
++     *   invalid_state       -> invalid_group (this one IS unambiguous: it
++     *                          only ever fires for a resolved-but-archived
++     *                          target group)
++     *   concurrent_update   -> concurrent_update
++     *   database_error      -> database_error
++     *   anything else       -> database_error (never a raw/unrecognized
++     *                          code reaches a caller)
++     *
++     * @return array{ok:true,changed:bool,assignment_id:?int,group_id:?int,has_assignment:bool}|WP_Error
++     */
++    private static function map_repository_write_result($result)
++    {
++        if (is_array($result)) {
++            if (!array_key_exists('changed', $result) || !array_key_exists('assignment_id', $result)
++                || !array_key_exists('group_id', $result) || !array_key_exists('has_assignment', $result)) {
++                return self::guest_data_error();
++            }
++            return [
++                'ok' => true,
++                'changed' => (bool) $result['changed'],
++                'assignment_id' => $result['assignment_id'],
++                'group_id' => $result['group_id'],
++                'has_assignment' => (bool) $result['has_assignment'],
++            ];
++        }
++
++        if (!($result instanceof WP_Error)) return self::guest_data_error();
++
++        $code = (string) $result->get_error_code();
++        $map = [
++            'invalid_input' => 'invalid_input',
++            'schema_not_ready' => 'write_unavailable',
++            'not_found' => 'not_found',
++            'ambiguous_guest' => 'ambiguous_guest',
++            'invalid_state' => 'invalid_group',
++            'concurrent_update' => 'concurrent_update',
++            'database_error' => 'database_error',
++        ];
++        $public_code = $map[$code] ?? 'database_error';
++        return new WP_Error($public_code, 'Unable to complete the requested guest-assignment change.');
++    }
++
++    private static function valid_guest_phone($value): bool
++    {
++        return is_string($value) && $value !== '';
++    }
++
+     // ──────────────────────────────────────────────────────────────
+     // Internal helpers
+     // ──────────────────────────────────────────────────────────────

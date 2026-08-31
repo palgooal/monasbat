@@ -215,6 +215,39 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
     }
 
     /**
+     * E2E-02 (Package Catalog CTA → Salla Product): يتحقق أن الرابط https فقط
+     * وله host صالح، بنفس القاعدة الحرفية المستخدَمة فعلاً في
+     * PGE_Package_Details_Widget::get_https_purchase_url() (نُسخة مقصودة، لا
+     * استدعاء عابر للكلاس — كل Widget إليمنتور في هذا المشروع مستقل، بنفس
+     * نمط الاستقلالية المتّبَع مسبقاً بين الأصناف المتوازية الأخرى في هذا
+     * الكود). لا تُستخدَم هذه الدالة إلا لبناء رابط CTA الكتالوج — لا علاقة
+     * لها بمعالجة الـWebhook أو التفعيل إطلاقاً.
+     */
+    private function get_https_purchase_url($url)
+    {
+        if (!is_string($url)) {
+            return '';
+        }
+
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+
+        $parts = wp_parse_url($url);
+        if (
+            !is_array($parts)
+            || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || empty($parts['host'])
+        ) {
+            return '';
+        }
+
+        $sanitized_url = esc_url_raw($url, ['https']);
+        return $sanitized_url !== '' ? $sanitized_url : '';
+    }
+
+    /**
      * يبني مصفوفة الباقات الأربع الثابتة من النظام القديم (mon_packages_settings)
      * بلا أي تغيير في القيم أو المنطق — نفس الكود الذي كان مباشرة داخل render()
      * قبل إضافة وضع Catalog، منقولاً كما هو ضمن مصفوفة موحّدة الشكل
@@ -332,8 +365,22 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
                 $tiers = [];
             }
 
+            // E2E-02 FIX PASS 3 (Package Price Correctness): $priced_tier_count
+            // يُميّز "Tier نشط واحد له سعر" عن "أكثر من Tier نشط له سعر" —
+            // العقد المطلوب: Tier واحد → السعر الفعلي بلا بادئة "ابتداءً من"،
+            // عدة Tiers → أقل سعر منها مع بادئة "ابتداءً من". قبل هذا الإصلاح
+            // كانت has_starting_price تُحسَب فقط من ($min_price !== null)، أي
+            // تظهر البادئة حتى لو كان هناك Tier واحد فقط بسعر محدد — وهذا لا
+            // يطابق العقد المطلوب. هذا لا علاقة له بمشكلة "0 ريال" المُبلَّغ
+            // عنها في halwa_classic — تلك القيمة تُقرَأ حرفياً من عمود
+            // mon_plan_tiers.price كما هو مخزَّن، وقد أُثبِت (راجع التقرير
+            // النهائي) أن normalize_price() في class-pge-catalog.php تسمح
+            // بالصفر عمداً كقيمة صالحة، فلا يوجد أي كود هنا يُنتج صفراً من
+            // العدم أو يقرأ من المستوى الخاطئ (Plan بدل Tier) — لا تغيير على
+            // منطق قراءة/حساب السعر نفسه، فقط على قرار عرض بادئة "ابتداءً من".
             $min_price = null;
             $min_currency = '';
+            $priced_tier_count = 0;
             foreach ($tiers as $tier) {
                 if (!is_array($tier) || ($tier['status'] ?? '') !== 'active') {
                     continue;
@@ -341,6 +388,7 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
                 if (!isset($tier['price']) || !is_numeric($tier['price'])) {
                     continue;
                 }
+                $priced_tier_count++;
                 $tier_price = (float) $tier['price'];
                 if ($min_price === null || $tier_price < $min_price) {
                     $min_price = $tier_price;
@@ -387,15 +435,65 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
                 );
             }
 
+            // E2E-02 FIX PASS 4 (Shared Salla Product Across Tiers):
+            // salla_product_id وsalla_url يعيشان على مستوى الـTier
+            // (mon_plan_tiers)، لا الـPlan — مُثبَت من CREATE TABLE في
+            // class-mon-catalog-schema.php. توضيح المنتج المُثبَت من صاحب
+            // المشروع: باقة Hilwah واحدة (Plan) قد تحوي عدة Tiers/مستويات،
+            // لكن هذه الـTiers قد تنتمي جميعها لمنتج Salla واحد فعلياً —
+            // العميل يختار المستوى/المتغيّر (Variant) داخل صفحة المنتج على
+            // سلة نفسها. أي: تعدّد الـTiers لا يعني تلقائياً تعدّد منتجات
+            // سلة. لذا "عدد Tiers قابلة للشراء" ليس المعيار الصحيح للالتباس
+            // — المعيار الصحيح هو "عدد وجهات منتج سلة الفريدة (Salla Product
+            // URLs) الفعلية بعد إزالة التكرار". الـSKU يبقى (بلا أي تعديل
+            // هنا) هو ما يميّز المستوى المُشترى فعلياً داخل معالج الـWebhook
+            // (Mon_Salla_Handler في class-salla-handler.php) — لا علاقة
+            // لهذا الإصلاح بذلك الجزء إطلاقاً، ولا تغيير على منطقه هناك.
+            //
+            // لكل Tier قابل للشراء (نشط + salla_product_id غير فارغ + رابط
+            // https صالح) نجمع كلاً من الرابط ومعرّف المنتج معاً، ثم نُزيل
+            // التكرار من كل قائمة على حدة. "منتج واحد لا لبس فيه" يُشترَط
+            // فيه الأمران معاً: رابط فريد واحد فقط + معرّف منتج فريد واحد
+            // فقط (تماشياً مع توضيح المهمة: "نفس رابط المنتج + نفس معرّف
+            // المنتج → شراء مباشر مؤكَّد"). إن تطابقت الروابط لكن اختلفت
+            // معرّفات المنتج (تناقض بيانات حقيقي يخالف نموذج "منتج واحد
+            // بمستويات" المفترَض) نبقى فشلاً آمناً (Fail Closed) على الرابط
+            // الداخلي بدل التخمين — لا إضافة لأي حقل ربط جديد، فقط استخدام
+            // الحقول الثلاثة الموجودة فعلاً كما هي.
+            $purchasable_tier_urls = [];
+            $purchasable_tier_product_ids = [];
+            foreach ($tiers as $tier) {
+                if (!is_array($tier) || ($tier['status'] ?? '') !== 'active') {
+                    continue;
+                }
+                $tier_salla_product_id = is_string($tier['salla_product_id'] ?? null)
+                    ? trim($tier['salla_product_id'])
+                    : '';
+                $tier_salla_url = $this->get_https_purchase_url($tier['salla_url'] ?? '');
+                if ($tier_salla_product_id !== '' && $tier_salla_url !== '') {
+                    $purchasable_tier_urls[] = $tier_salla_url;
+                    $purchasable_tier_product_ids[] = $tier_salla_product_id;
+                }
+            }
+            $unique_purchase_urls = array_values(array_unique($purchasable_tier_urls));
+            $unique_purchase_product_ids = array_values(array_unique($purchasable_tier_product_ids));
+            $is_direct_purchase = count($unique_purchase_urls) === 1 && count($unique_purchase_product_ids) === 1;
+            $card_url = $is_direct_purchase ? $unique_purchase_urls[0] : $details_url;
+
             $packages[] = [
                 'plan_key'    => $plan_key,
                 'name'        => (string) ($plan['name'] ?? ''),
                 'price_text'  => $price_text,
                 'currency'    => $currency_text,
                 'features'    => $features,
-                'url'         => $details_url,
+                'url'         => $card_url,
                 'is_featured' => false,
-                'has_starting_price' => ($min_price !== null),
+                // E2E-02 FIX PASS 3: بادئة "ابتداءً من" فقط عند وجود أكثر من
+                // Tier نشط مسعَّر (التباس حقيقي في السعر الأدنى)، وليس عند
+                // مجرد وجود سعر واحد — Tier نشط واحد يُعرَض بسعره الفعلي دون
+                // أي بادئة، مطابقةً للعقد المطلوب.
+                'has_starting_price' => ($min_price !== null && $priced_tier_count > 1),
+                'is_direct_purchase' => $is_direct_purchase,
             ];
         }
 
@@ -423,6 +521,12 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
 
         $btn_text = trim((string) ($settings['button_text'] ?? '')) ?: 'اختر هذه الباقة';
         $display_btn_text = $is_catalog ? __('عرض التفاصيل', 'pgevents') : $btn_text;
+        // E2E-02: نص زر مختلف فقط للبطاقات التي أصبح رابطها يفتح منتج Salla
+        // الحقيقي مباشرة (is_direct_purchase === true) — بطاقات الكتالوج التي
+        // بقيت على الرابط الداخلي (تفاصيل/اختيار Tier) تحتفظ بالنص الحالي
+        // "عرض التفاصيل" دون أي تغيير. الوضع اليدوي (manual/legacy) لا يحمل
+        // هذا المفتاح إطلاقاً فيبقى بلا أي تغيير أيضاً.
+        $direct_purchase_btn_text = __('اشترِ الآن', 'pgevents');
         $badge = trim((string) ($settings['featured_badge'] ?? '')) ?: 'الأكثر طلبا';
         $center_catalog_cards = $is_catalog && count($packages) < 4;
 
@@ -454,7 +558,8 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
                 echo '<li class="pge-pkg-feature"><span class="pge-pkg-feature-text">' . esc_html($text) . '</span><span class="pge-pkg-check">✓</span></li>';
             }
             echo '</ul>';
-            echo '<a class="pge-pkg-btn' . ($is_featured ? ' is-featured-btn' : '') . '" href="' . esc_url($pkg['url']) . '">' . esc_html($display_btn_text) . '</a>';
+            $card_btn_text = (!empty($pkg['is_direct_purchase'])) ? $direct_purchase_btn_text : $display_btn_text;
+            echo '<a class="pge-pkg-btn' . ($is_featured ? ' is-featured-btn' : '') . '" href="' . esc_url($pkg['url']) . '">' . esc_html($card_btn_text) . '</a>';
             echo '</article>';
         }
         echo '</div></div>';

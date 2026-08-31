@@ -45105,6 +45105,7 @@ const DateTimeControl = (0,_create_control__WEBPACK_IMPORTED_MODULE_6__.createCo
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   EmailChipsControl: function() { return /* binding */ EmailChipsControl; },
 /* harmony export */   EmailChipsField: function() { return /* binding */ EmailChipsField; }
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
@@ -45116,7 +45117,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _bound_prop_context__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ../../bound-prop-context */ "./packages/packages/libs/editor-controls/src/bound-prop-context/index.ts");
 /* harmony import */ var _components_chips_list__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../../components/chips-list */ "./packages/packages/libs/editor-controls/src/components/chips-list.tsx");
 /* harmony import */ var _components_control_form_label__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../../components/control-form-label */ "./packages/packages/libs/editor-controls/src/components/control-form-label.tsx");
-/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ./utils */ "./packages/packages/libs/editor-controls/src/controls/email-form-action-control/utils.ts");
+/* harmony import */ var _control_actions_control_actions__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ../../control-actions/control-actions */ "./packages/packages/libs/editor-controls/src/control-actions/control-actions.tsx");
+/* harmony import */ var _create_control__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! ../../create-control */ "./packages/packages/libs/editor-controls/src/create-control.tsx");
+/* harmony import */ var _mention_text_area_control__WEBPACK_IMPORTED_MODULE_8__ = __webpack_require__(/*! ../mention-text-area-control */ "./packages/packages/libs/editor-controls/src/controls/mention-text-area-control.tsx");
+/* harmony import */ var _utils__WEBPACK_IMPORTED_MODULE_9__ = __webpack_require__(/*! ./utils */ "./packages/packages/libs/editor-controls/src/controls/email-form-action-control/utils.ts");
 function _extends() { return _extends = Object.assign ? Object.assign.bind() : function (n) { for (var e = 1; e < arguments.length; e++) { var t = arguments[e]; for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]); } return n; }, _extends.apply(null, arguments); }
 
 
@@ -45127,11 +45131,19 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
 
 
 
-// type EmailChip = { label: string; value: string };
 
-const EmailChipsField = ({
-  fieldLabel,
-  placeholder
+
+const isValidRecipient = address => (0,_utils__WEBPACK_IMPORTED_MODULE_9__.isValidEmail)(address) || (0,_utils__WEBPACK_IMPORTED_MODULE_9__.isFormFieldShortcode)(address);
+function resolveMention(raw, suggestions) {
+  if (!raw.startsWith('@')) {
+    return raw;
+  }
+  const match = suggestions.find(suggestion => (0,_mention_text_area_control__WEBPACK_IMPORTED_MODULE_8__.createMentionPattern)(suggestion.value, 'start').test(raw));
+  return match ? `[${match.value}]` : raw;
+}
+const EmailChipsControl = (0,_create_control__WEBPACK_IMPORTED_MODULE_7__.createControl)(({
+  placeholder,
+  suggestions = []
 }) => {
   const {
     value,
@@ -45141,9 +45153,10 @@ const EmailChipsField = ({
   const [inputValue, setInputValue] = (0,react__WEBPACK_IMPORTED_MODULE_0__.useState)('');
   const items = value || [];
   const selectedValues = items.map(item => _elementor_editor_props__WEBPACK_IMPORTED_MODULE_1__.stringPropTypeUtil.extract(item)).filter(val => val !== null);
+  const suggestionOptions = (0,react__WEBPACK_IMPORTED_MODULE_0__.useMemo)(() => suggestions.map(suggestion => `[${suggestion.value}]`), [suggestions]);
   const tryAddChip = raw => {
-    const address = raw.trim();
-    if (!address || selectedValues.includes(address) || !(0,_utils__WEBPACK_IMPORTED_MODULE_6__.isValidEmail)(address)) {
+    const address = resolveMention(raw.trim(), suggestions);
+    if (!address || selectedValues.includes(address) || !isValidRecipient(address)) {
       return;
     }
     setValue([...items, _elementor_editor_props__WEBPACK_IMPORTED_MODULE_1__.stringPropTypeUtil.create(address)]);
@@ -45152,8 +45165,8 @@ const EmailChipsField = ({
   const handleChange = (_, newValue) => {
     const updated = [];
     for (const entry of newValue) {
-      const address = entry.trim();
-      if (!address || !(0,_utils__WEBPACK_IMPORTED_MODULE_6__.isValidEmail)(address)) {
+      const address = resolveMention(entry.trim(), suggestions);
+      if (!address || !isValidRecipient(address)) {
         continue;
       }
       updated.push(_elementor_editor_props__WEBPACK_IMPORTED_MODULE_1__.stringPropTypeUtil.create(address));
@@ -45167,20 +45180,12 @@ const EmailChipsField = ({
     setInputValue('');
   };
   const handleKeyDown = event => {
-    if (_utils__WEBPACK_IMPORTED_MODULE_6__.CHIP_TRIGGER_KEYS.has(event.key) && inputValue.trim()) {
+    if (_utils__WEBPACK_IMPORTED_MODULE_9__.CHIP_TRIGGER_KEYS.has(event.key) && inputValue.trim()) {
       event.preventDefault();
       tryAddChip(inputValue);
     }
   };
-  return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Grid, {
-    container: true,
-    direction: "column",
-    gap: 0.5
-  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Grid, {
-    item: true
-  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_components_control_form_label__WEBPACK_IMPORTED_MODULE_5__.ControlFormLabel, null, fieldLabel)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Grid, {
-    item: true
-  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Autocomplete, {
+  return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_control_actions_control_actions__WEBPACK_IMPORTED_MODULE_6__["default"], null, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Autocomplete, {
     fullWidth: true,
     multiple: true,
     freeSolo: true,
@@ -45194,7 +45199,12 @@ const EmailChipsField = ({
     },
     value: selectedValues,
     onChange: handleChange,
-    options: [],
+    options: suggestionOptions,
+    filterOptions: (options, state) => {
+      const query = state.inputValue.trim().replace(/^@/, '').toLowerCase();
+      return query ? options.filter(option => option.toLowerCase().includes(query)) : options;
+    },
+    filterSelectedOptions: true,
     onBlur: handleBlur,
     getOptionLabel: option => option,
     isOptionEqualToValue: (option, val) => option === val,
@@ -45207,8 +45217,24 @@ const EmailChipsField = ({
       getTagProps: getTagProps,
       values: tagValues
     })
-  })));
-};
+  }));
+});
+const EmailChipsField = ({
+  fieldLabel,
+  placeholder,
+  suggestions
+}) => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Grid, {
+  container: true,
+  direction: "column",
+  gap: 0.5
+}, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Grid, {
+  item: true
+}, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_components_control_form_label__WEBPACK_IMPORTED_MODULE_5__.ControlFormLabel, null, fieldLabel)), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Grid, {
+  item: true
+}, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(EmailChipsControl, {
+  placeholder: placeholder,
+  suggestions: suggestions
+})));
 
 /***/ }),
 
@@ -45307,10 +45333,20 @@ __webpack_require__.r(__webpack_exports__);
 
 const SendToField = ({
   placeholder
-}) => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_email_chips_field__WEBPACK_IMPORTED_MODULE_10__.EmailChipsField, {
-  fieldLabel: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Send to', 'elementor'),
-  placeholder: placeholder
-});
+}) => {
+  const suggestions = (0,_hooks_use_form_field_suggestions__WEBPACK_IMPORTED_MODULE_6__.useFormFieldSuggestions)({
+    inputType: 'email'
+  });
+  return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_bound_prop_context__WEBPACK_IMPORTED_MODULE_4__.PropKeyProvider, {
+    bind: "to"
+  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Stack, {
+    gap: 0.5
+  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_email_chips_field__WEBPACK_IMPORTED_MODULE_10__.EmailChipsField, {
+    fieldLabel: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Send to', 'elementor'),
+    placeholder: placeholder,
+    suggestions: suggestions
+  }), (0,_utils__WEBPACK_IMPORTED_MODULE_12__.shouldShowMentionsInfo)() && /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_editor_ui__WEBPACK_IMPORTED_MODULE_1__.InfoAlert, null, (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Type @ or an email field name to insert its submitted value.', 'elementor'))));
+};
 const SubjectField = () => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_email_field__WEBPACK_IMPORTED_MODULE_11__.EmailField, {
   bind: "subject",
   label: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Email subject', 'elementor'),
@@ -45365,16 +45401,28 @@ const ReplyToField = () => {
     placeholder: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('You can type @ to insert an email field', 'elementor')
   }))));
 };
-const CcField = () => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_bound_prop_context__WEBPACK_IMPORTED_MODULE_4__.PropKeyProvider, {
-  bind: "cc"
-}, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_email_chips_field__WEBPACK_IMPORTED_MODULE_10__.EmailChipsField, {
-  fieldLabel: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Cc', 'elementor')
-}));
-const BccField = () => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_bound_prop_context__WEBPACK_IMPORTED_MODULE_4__.PropKeyProvider, {
-  bind: "bcc"
-}, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_email_chips_field__WEBPACK_IMPORTED_MODULE_10__.EmailChipsField, {
-  fieldLabel: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Bcc', 'elementor')
-}));
+const CcField = () => {
+  const suggestions = (0,_hooks_use_form_field_suggestions__WEBPACK_IMPORTED_MODULE_6__.useFormFieldSuggestions)({
+    inputType: 'email'
+  });
+  return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_bound_prop_context__WEBPACK_IMPORTED_MODULE_4__.PropKeyProvider, {
+    bind: "cc"
+  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_email_chips_field__WEBPACK_IMPORTED_MODULE_10__.EmailChipsField, {
+    fieldLabel: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Cc', 'elementor'),
+    suggestions: suggestions
+  }));
+};
+const BccField = () => {
+  const suggestions = (0,_hooks_use_form_field_suggestions__WEBPACK_IMPORTED_MODULE_6__.useFormFieldSuggestions)({
+    inputType: 'email'
+  });
+  return /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_bound_prop_context__WEBPACK_IMPORTED_MODULE_4__.PropKeyProvider, {
+    bind: "bcc"
+  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_email_chips_field__WEBPACK_IMPORTED_MODULE_10__.EmailChipsField, {
+    fieldLabel: (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_3__.__)('Bcc', 'elementor'),
+    suggestions: suggestions
+  }));
+};
 const MetaDataField = () => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_bound_prop_context__WEBPACK_IMPORTED_MODULE_4__.PropKeyProvider, {
   bind: "meta-data"
 }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_2__.Stack, {
@@ -45468,11 +45516,9 @@ const EmailFormActionControl = (0,_create_control__WEBPACK_IMPORTED_MODULE_7__.c
     setValue: setValue
   }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_ui__WEBPACK_IMPORTED_MODULE_3__.Stack, {
     gap: 2
-  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_components_control_label__WEBPACK_IMPORTED_MODULE_6__.ControlLabel, null, label ? label + ' ' + (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('settings', 'elementor') : (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('Email settings', 'elementor')), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_bound_prop_context__WEBPACK_IMPORTED_MODULE_5__.PropKeyProvider, {
-    bind: "to"
-  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_fields__WEBPACK_IMPORTED_MODULE_8__.SendToField, {
+  }, /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_components_control_label__WEBPACK_IMPORTED_MODULE_6__.ControlLabel, null, label ? label + ' ' + (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('settings', 'elementor') : (0,_wordpress_i18n__WEBPACK_IMPORTED_MODULE_4__.__)('Email settings', 'elementor')), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_fields__WEBPACK_IMPORTED_MODULE_8__.SendToField, {
     placeholder: toPlaceholder
-  })), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_fields__WEBPACK_IMPORTED_MODULE_8__.SubjectField, null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_fields__WEBPACK_IMPORTED_MODULE_8__.MessageField, null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_fields__WEBPACK_IMPORTED_MODULE_8__.FromEmailField, null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(AdvancedSettings, null)));
+  }), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_fields__WEBPACK_IMPORTED_MODULE_8__.SubjectField, null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_fields__WEBPACK_IMPORTED_MODULE_8__.MessageField, null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_fields__WEBPACK_IMPORTED_MODULE_8__.FromEmailField, null), /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(AdvancedSettings, null)));
 });
 const AdvancedSettings = () => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.createElement(_elementor_editor_ui__WEBPACK_IMPORTED_MODULE_2__.CollapsibleContent, {
   defaultOpen: false
@@ -45496,6 +45542,7 @@ const AdvancedSettings = () => /*#__PURE__*/react__WEBPACK_IMPORTED_MODULE_0__.c
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
 /* harmony export */   CHIP_TRIGGER_KEYS: function() { return /* binding */ CHIP_TRIGGER_KEYS; },
+/* harmony export */   isFormFieldShortcode: function() { return /* binding */ isFormFieldShortcode; },
 /* harmony export */   isValidEmail: function() { return /* binding */ isValidEmail; },
 /* harmony export */   shouldShowMentionsInfo: function() { return /* binding */ shouldShowMentionsInfo; }
 /* harmony export */ });
@@ -45509,6 +45556,10 @@ const MIN_PRO_VERSION_FOR_MENTIONS = '4.1.0';
 const CHIP_TRIGGER_KEYS = new Set([' ', ',']);
 function isValidEmail(email) {
   return _elementor_schema__WEBPACK_IMPORTED_MODULE_0__.z.string().email().safeParse(email).success;
+}
+const FORM_FIELD_SHORTCODE_PATTERN = /^\[[^[\]]+]$/;
+function isFormFieldShortcode(value) {
+  return FORM_FIELD_SHORTCODE_PATTERN.test(value);
 }
 const shouldShowMentionsInfo = () => {
   if (!(0,_elementor_utils__WEBPACK_IMPORTED_MODULE_1__.hasProInstalled)()) {
@@ -47898,7 +47949,8 @@ function getCssDimensionProps(label, isSiteRtl) {
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   MentionTextAreaControl: function() { return /* binding */ MentionTextAreaControl; }
+/* harmony export */   MentionTextAreaControl: function() { return /* binding */ MentionTextAreaControl; },
+/* harmony export */   createMentionPattern: function() { return /* binding */ createMentionPattern; }
 /* harmony export */ });
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "react");
 /* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);

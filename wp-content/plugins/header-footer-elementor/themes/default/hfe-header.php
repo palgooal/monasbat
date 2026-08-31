@@ -37,8 +37,8 @@ if ( ! empty( $hfe_skip_link_target ) && ! empty( $hfe_skip_link_text ) ) {
 	// screen-reader-text CSS, which off-list themes may not define.
 	?>
 	<style id="hfe-skip-link-style">
-		.hfe-skip-link{position:absolute;left:-9999px;top:0;z-index:100000;padding:0.75em 1.5em;background:#fff;color:#0073aa;font-size:14px;text-decoration:underline;border-radius:0 0 3px 0;}
-		.hfe-skip-link:focus{left:0;outline:2px solid #0073aa;outline-offset:-2px;}
+		.hfe-skip-link{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap;}
+		.hfe-skip-link:focus{position:fixed;top:0;inset-inline-start:0;width:auto;height:auto;margin:0;padding:0.75em 1.5em;overflow:visible;clip:auto;clip-path:none;white-space:normal;z-index:100000;background:#fff;color:#0073aa;font-size:14px;text-decoration:underline;border-radius:0 0 3px 0;outline:2px solid #0073aa;outline-offset:-2px;}
 	</style>
 	<?php
 	printf(

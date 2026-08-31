@@ -2571,6 +2571,26 @@ require_once PGE_PATH . 'includes/event-guests.php';
 // أضف هذا السطر هنا (مهم جداً لحل خطأ 500)
 require_once PGE_PATH . 'includes/class-mon-events-users.php';
 
+// E2E-01 (Registration Welcome Email): بريد ترحيبي معاملاتي واحد لحساب
+// عميل عادي عند نجاح التسجيل الذاتي العام (page-register.php في القالب
+// النشط يستدعي PGE_Registration_Email::send_welcome() صراحة من مسار
+// النجاح فقط — لا Hook عريض على user_register). مستقل تماماً عن Salla/
+// Cartat/UltraMsg/D2/Reminder/Thank You وعن بريد Additional Inviter
+// الترحيبي (class-pge-additional-inviter-onboarding.php) — راجع توثيق
+// رأس الملف نفسه لتفصيل الحدود. محمَّل هنا مباشرة بعد class-mon-events-
+// users.php لأنه أيضاً معنيّ بدورة حياة حساب المستخدم، قبل تحميل مزوّدي
+// المراسلة (Salla/Cartat) أدناه لتفادي أي إيحاء بأن هذا البريد يمر عبرهم.
+require_once PGE_PATH . 'includes/class-pge-registration-email.php';
+
+// E2E-02 FIX PASS 5 (Post-Purchase Activation Email): بريد معاملاتي واحد
+// بالضبط لكل طلب Salla عند نجاح تفعيل باقة Catalog — يُستدعى صراحة فقط من
+// Mon_Salla_Handler::process_catalog_match() بعد نجاح activate_catalog_tier()
+// فعلياً (راجع توثيق رأس الملف نفسه للحدود وضمان "مرة واحدة بالضبط").
+// محمَّل هنا قبل class-salla-handler.php مباشرة، بنفس منطق ترتيب التحميل
+// أعلاه (قبل مزوّدي المراسلة أدناه) رغم عدم اعتماد PHP الفعلي على ترتيب
+// include لاستدعاء static method لاحقاً — فقط لثبات الاصطلاح.
+require_once PGE_PATH . 'includes/class-pge-package-activation-email.php';
+
 // 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)
 require_once PGE_PATH . 'includes/class-salla-handler.php';
 

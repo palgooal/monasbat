@@ -438,6 +438,11 @@ class HFE_Settings_Api {
 			return new WP_Error( 'invalid_params', __( 'Invalid parameters.', 'header-footer-elementor' ), [ 'status' => 400 ] );
 		}
 
+		// Capture prior toggle state before overwriting, to detect first-enable milestones.
+		$was_abilities_enabled = ! empty( $current['enable_abilities'] );
+		$was_server_enabled    = ! empty( $current['dedicated_server'] );
+		$was_angie_enabled     = ! empty( $current['angie_enabled'] );
+
 		foreach ( $allowed_keys as $key ) {
 			if ( ! isset( $params[ $key ] ) ) {
 				continue;
@@ -454,6 +459,32 @@ class HFE_Settings_Api {
 		}
 
 		update_option( 'uae_mcp_settings', $current );
+
+		// Track the first time each AI Tools toggle is switched on as a milestone
+		// event. Dedup in HFE_Analytics_Events::track() ensures each fires once per
+		// site lifecycle, giving an install-to-enable funnel without any usage detail.
+		// Skip when UAE Pro is active: Pro owns the AI Tools settings UI and is the
+		// single source for these events on dual-plugin sites (see HFE_Analytics).
+		if ( ! defined( 'UAEL_PRO' ) && class_exists( 'HFE_Analytics_Events' ) ) {
+			$install_time       = (int) get_option( 'uae_usage_installed_time', 0 );
+			$days_since_install = $install_time > 0 ? (int) floor( ( time() - $install_time ) / DAY_IN_SECONDS ) : 0;
+
+			$toggle_events = [
+				'enable_abilities' => [ 'was' => $was_abilities_enabled, 'event' => 'abilities_enabled' ],
+				'dedicated_server' => [ 'was' => $was_server_enabled, 'event' => 'mcp_server_enabled' ],
+				'angie_enabled'    => [ 'was' => $was_angie_enabled, 'event' => 'angie_enabled' ],
+			];
+
+			foreach ( $toggle_events as $key => $meta ) {
+				if ( ! $meta['was'] && ! empty( $current[ $key ] ) ) {
+					HFE_Analytics_Events::track(
+						$meta['event'],
+						'yes',
+						[ 'days_since_install' => (string) $days_since_install ]
+					);
+				}
+			}
+		}
 
 		return new WP_REST_Response(
 			[

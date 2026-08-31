@@ -130,6 +130,8 @@ class HFE_Admin {
 
 		add_action( 'add_meta_boxes', [ $this, 'ehf_register_metabox' ] );
 		add_action( 'save_post', [ $this, 'ehf_save_meta' ] );
+		add_action( 'wp_ajax_hfe_save_template_meta', [ $this, 'ajax_save_template_meta' ] );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_template_meta_save_script' ] );
 		add_action( 'admin_notices', [ $this, 'location_notice' ] );
 		add_action( 'template_redirect', [ $this, 'block_template_frontend' ] );
 		add_filter( 'single_template', [ $this, 'load_canvas_template' ] );
@@ -532,20 +534,20 @@ class HFE_Admin {
 		$setting_location = $this->is_pro_active() ? 'uaepro' : 'hfe';
 		
 		$labels = [
-			'name'               => esc_html__( 'Elementor Header & Footer Builder', 'header-footer-elementor' ),
-			'singular_name'      => esc_html__( 'Elementor Header & Footer Builder', 'header-footer-elementor' ),
-			'menu_name'          => esc_html__( 'Elementor Header & Footer Builder', 'header-footer-elementor' ),
-			'name_admin_bar'     => esc_html__( 'Elementor Header & Footer Builder', 'header-footer-elementor' ),
-			'add_new'            => esc_html__( 'Add New', 'header-footer-elementor' ),
-			'add_new_item'       => esc_html__( 'Add New', 'header-footer-elementor' ),
-			'new_item'           => esc_html__( 'New Template', 'header-footer-elementor' ),
-			'edit_item'          => esc_html__( 'Edit Template', 'header-footer-elementor' ),
-			'view_item'          => esc_html__( 'View Template', 'header-footer-elementor' ),
-			'all_items'          => esc_html__( 'View All', 'header-footer-elementor' ),
-			'search_items'       => esc_html__( 'Search Templates', 'header-footer-elementor' ),
-			'parent_item_colon'  => esc_html__( 'Parent Templates:', 'header-footer-elementor' ),
-			'not_found'          => esc_html__( 'No Templates found.', 'header-footer-elementor' ),
-			'not_found_in_trash' => esc_html__( 'No Templates found in Trash.', 'header-footer-elementor' ),
+			'name'               => __( 'Elementor Header & Footer Builder', 'header-footer-elementor' ),
+			'singular_name'      => __( 'Elementor Header & Footer Builder', 'header-footer-elementor' ),
+			'menu_name'          => __( 'Elementor Header & Footer Builder', 'header-footer-elementor' ),
+			'name_admin_bar'     => __( 'Elementor Header & Footer Builder', 'header-footer-elementor' ),
+			'add_new'            => __( 'Add New', 'header-footer-elementor' ),
+			'add_new_item'       => __( 'Add New', 'header-footer-elementor' ),
+			'new_item'           => __( 'New Template', 'header-footer-elementor' ),
+			'edit_item'          => __( 'Edit Template', 'header-footer-elementor' ),
+			'view_item'          => __( 'View Template', 'header-footer-elementor' ),
+			'all_items'          => __( 'View All', 'header-footer-elementor' ),
+			'search_items'       => __( 'Search Templates', 'header-footer-elementor' ),
+			'parent_item_colon'  => __( 'Parent Templates:', 'header-footer-elementor' ),
+			'not_found'          => __( 'No Templates found.', 'header-footer-elementor' ),
+			'not_found_in_trash' => __( 'No Templates found in Trash.', 'header-footer-elementor' ),
 		];
 
 		$args = [
@@ -809,27 +811,100 @@ class HFE_Admin {
 			return;
 		}
 
-		$target_locations = Astra_Target_Rules_Fields::get_format_rule_value( $_POST, 'bsf-target-rules-location' );
-		$target_exclusion = Astra_Target_Rules_Fields::get_format_rule_value( $_POST, 'bsf-target-rules-exclusion' );
+		$this->save_template_meta( $post_id, $_POST );
+	}
+
+	/**
+	 * Persist the template metabox values.
+	 *
+	 * Shared by the classic post form save and the AJAX save triggered
+	 * before the "Edit with Elementor" button navigates to the editor.
+	 *
+	 * @since 2.9.3
+	 * @param int   $post_id Post ID being saved.
+	 * @param array $data    Raw request data (slashed, same shape as $_POST).
+	 * @return void
+	 */
+	private function save_template_meta( $post_id, $data ) {
+		$target_locations = Astra_Target_Rules_Fields::get_format_rule_value( $data, 'bsf-target-rules-location' );
+		$target_exclusion = Astra_Target_Rules_Fields::get_format_rule_value( $data, 'bsf-target-rules-exclusion' );
 		$target_users     = [];
 
-		if ( isset( $_POST['bsf-target-rules-users'] ) ) {
-			$target_users = array_map( 'sanitize_text_field', wp_unslash( $_POST['bsf-target-rules-users'] ) );
+		if ( isset( $data['bsf-target-rules-users'] ) && is_array( $data['bsf-target-rules-users'] ) ) {
+			$target_users = array_map( 'sanitize_text_field', wp_unslash( $data['bsf-target-rules-users'] ) );
 		}
 
 		update_post_meta( $post_id, 'ehf_target_include_locations', $target_locations );
 		update_post_meta( $post_id, 'ehf_target_exclude_locations', $target_exclusion );
 		update_post_meta( $post_id, 'ehf_target_user_roles', $target_users );
 
-		if ( isset( $_POST['ehf_template_type'] ) ) {
-			update_post_meta( $post_id, 'ehf_template_type', sanitize_text_field( wp_unslash( $_POST['ehf_template_type'] ) ) );
+		if ( isset( $data['ehf_template_type'] ) ) {
+			update_post_meta( $post_id, 'ehf_template_type', sanitize_text_field( wp_unslash( $data['ehf_template_type'] ) ) );
 		}
 
-		if ( isset( $_POST['display-on-canvas-template'] ) ) {
-			update_post_meta( $post_id, 'display-on-canvas-template', sanitize_text_field( wp_unslash( $_POST['display-on-canvas-template'] ) ) );
+		if ( isset( $data['display-on-canvas-template'] ) ) {
+			update_post_meta( $post_id, 'display-on-canvas-template', sanitize_text_field( wp_unslash( $data['display-on-canvas-template'] ) ) );
 		} else {
 			delete_post_meta( $post_id, 'display-on-canvas-template' );
 		}
+	}
+
+	/**
+	 * Save the template metabox settings via AJAX.
+	 *
+	 * The "Edit with Elementor" button navigates to the Elementor editor
+	 * without submitting the post form, so `save_post` never receives the
+	 * metabox nonce and unsaved Template Type / Display Rules are lost.
+	 * The admin script posts the metabox fields here before navigating.
+	 *
+	 * @since 2.9.3
+	 * @return void
+	 */
+	public function ajax_save_template_meta() {
+		check_ajax_referer( 'ehf_meta_nounce', 'ehf_meta_nounce' );
+
+		$post_id = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0;
+
+		if ( ! $post_id || 'elementor-hf' !== get_post_type( $post_id ) ) {
+			wp_send_json_error( 'invalid_post' );
+		}
+
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			wp_send_json_error( 'permission_denied' );
+		}
+
+		$this->save_template_meta( $post_id, $_POST );
+
+		wp_send_json_success();
+	}
+
+	/**
+	 * Enqueue the script that saves metabox settings before "Edit with Elementor" navigates away.
+	 *
+	 * Loaded only on the elementor-hf post edit screens.
+	 *
+	 * @since 2.9.3
+	 * @param string $hook Current admin page hook.
+	 * @return void
+	 */
+	public function enqueue_template_meta_save_script( $hook ) {
+		if ( 'post.php' !== $hook && 'post-new.php' !== $hook ) {
+			return;
+		}
+
+		$screen = get_current_screen();
+
+		if ( ! $screen || 'elementor-hf' !== $screen->post_type ) {
+			return;
+		}
+
+		wp_enqueue_script(
+			'hfe-template-meta-save',
+			HFE_URL . 'assets/js/hfe-template-meta-save.js',
+			[ 'jquery' ],
+			HFE_VER,
+			true
+		);
 	}
 
 	/**

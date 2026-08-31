@@ -111,6 +111,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     do_action('wp_login', $registered_user->user_login, $registered_user);
                 }
 
+                // E2E-01: بريد ترحيبي معاملاتي واحد لهذا الحساب الجديد فقط.
+                // استدعاء صريح من مسار نجاح التسجيل الذاتي العام حصراً — لا
+                // Hook عريض. فشل الإرسال لا يُفشِل التسجيل ولا الجلسة
+                // (القيمة المُعادة غير مُتحقَّق منها هنا عمداً؛ راجع توثيق
+                // PGE_Registration_Email::send_welcome() لتفصيل ذلك).
+                if (class_exists('PGE_Registration_Email')) {
+                    PGE_Registration_Email::send_welcome($new_user_id);
+                }
+
+                // E2E-01 (Registration Success Feedback UX): علامة نجاح
+                // مرة واحدة، خاصة بهذا المستخدم فقط (مفتاحها مبني من
+                // $new_user_id نفسه)، تُستهلَك وتُحذف فور أول عرض للوحة
+                // التحكم (راجع page-dashboard.php). مستقلة تماماً عن نتيجة
+                // send_welcome() أعلاه — لا قيمة مُعادة منها تُقرَأ هنا، ولا
+                // شرط عليها؛ شرط إنشاء هذه العلامة الوحيد هو الوصول الفعلي
+                // لهذه النقطة من الكود، أي بعد نجاح إنشاء الحساب وكتابة
+                // usermeta وتأسيس الجلسة فعلياً بالفعل. القيمة المُخزَّنة
+                // عدد صحيح ثابت (1) فقط — لا بريد، لا هاتف، لا user_id
+                // ظاهر في أي HTML، لا Token. تنتهي صلاحيتها تلقائياً خلال
+                // 5 دقائق حتى لو لم تُستهلَك (لا تبقى إلى الأبد).
+                set_transient('pge_registration_success_' . $new_user_id, 1, MINUTE_IN_SECONDS * 5);
+
                 wp_safe_redirect($redirect_to);
                 exit;
             }

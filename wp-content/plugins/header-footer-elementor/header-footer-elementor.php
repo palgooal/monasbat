@@ -7,14 +7,14 @@
  * Author URI:  https://www.brainstormforce.com/
  * Text Domain: header-footer-elementor
  * Domain Path: /languages
- * Version: 2.9.2
+ * Version: 2.9.3
  * Elementor tested up to: 4.2
  * Elementor Pro tested up to: 4.2
  *
  * @package         header-footer-elementor
  */
 
-define( 'HFE_VER', '2.9.2' );
+define( 'HFE_VER', '2.9.3' );
 define( 'HFE_FILE', __FILE__ );
 define( 'HFE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'HFE_URL', plugins_url( '/', __FILE__ ) );
@@ -47,11 +47,15 @@ function hfe_plugin_activation() {
 	update_option( 'uae_lite_is_activated', 'yes' );
 	update_option( 'hfe_start_onboarding', true );
 
-	// Track plugin activation event.
-	require_once HFE_DIR . 'inc/class-hfe-analytics-events.php';
-	$bsf_referrers = get_option( 'bsf_product_referers', [] );
-	$source        = ! empty( $bsf_referrers['header-footer-elementor'] ) ? $bsf_referrers['header-footer-elementor'] : 'self';
-	HFE_Analytics_Events::track( 'plugin_activated', HFE_VER, [ 'source' => $source ] );
+	/*
+	 * The `plugin_activated` event is intentionally NOT tracked here.
+	 *
+	 * Starter Templates (astra-sites) writes `bsf_product_referers` AFTER the
+	 * plugin is activated, so reading the referer inside the activation hook
+	 * records the source as `self` instead of the real installer. It is now
+	 * tracked on a deferred, throttled admin-load pass in HFE_Analytics
+	 * (inc/class-hfe-analytics.php) once the referer option is populated.
+	 */
 }
 
 register_activation_hook( HFE_FILE, 'hfe_plugin_activation' );

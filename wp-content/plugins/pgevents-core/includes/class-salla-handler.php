@@ -619,6 +619,28 @@ class Mon_Salla_Handler
 
         if ($action === 'activate') {
             update_user_meta($user->ID, '_created_via_salla', 'yes');
+
+            // E2E-02 FIX PASS 5 (Post-Purchase Activation Email): يُستدعى هنا
+            // حصراً — بعد نجاح activate_catalog_tier() فعلياً (لا WP_Error)،
+            // وفي مسار activate فقط (لا deactivate/cancellation إطلاقاً).
+            // العدّ الدقيق "مرة واحدة لكل Salla order" (بما فيه حماية إعادة
+            // إرسال نفس الـWebhook idempotent) مُطبَّق بالكامل داخل دالة
+            // send() الثابتة لهذا الصنف نفسها (قفل MySQL
+            // GET_LOCK + علامة usermeta بمعرّف الطلب) — لا حاجة لأي تمييز
+            // هنا بين "تفعيل جديد فعلاً" و"تكرار طلب مطابق تماماً"، لأن
+            // النتيجتين تصلان إلى نفس $order_id، والعلامة تتكفّل بذلك. فشل
+            // الإرسال (أو تخطّيه) لا يُغيّر نتيجة هذه الدالة إطلاقاً — القيمة
+            // المُعادة من send() غير مُتحقَّق منها هنا عمداً، ونجاح تفعيل
+            // الباقة أعلاه (وبالتالي استجابة الـWebhook HTTP) مستقل تماماً
+            // عنها.
+            if (class_exists('PGE_Package_Activation_Email')) {
+                PGE_Package_Activation_Email::send(
+                    absint($user->ID),
+                    $plan_id,
+                    $tier_id,
+                    $order_id
+                );
+            }
         }
 
         $this->log_catalog_event(

@@ -4,7 +4,7 @@ Tags: page builder, editor, landing page, drag-and-drop, elementor,
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 4.2.1
+Stable tag: 4.2.3
 Beta tag: 4.2.0-beta2
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
@@ -359,6 +359,15 @@ If you want to contribute, go to our [Elementor GitHub Repository](https://githu
 6. **Motion Effects** - Add entrance animations and transitions to any element in your website to captivate visitors.
 
 == Changelog ==
+
+= 4.2.3 - 2026-08-19 =
+
+* Fix: Improved code security enforcement in template handling
+* Fix: Invalid style properties prevent pages from being published
+
+= 4.2.2 - 2026-08-06 =
+
+* Fix: Editor top bar integrations may not appear in non-English languages
 
 = 4.2.1 - 2026-07-28 =
 

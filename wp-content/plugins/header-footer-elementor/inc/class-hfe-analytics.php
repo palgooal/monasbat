@@ -77,10 +77,16 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 				add_action( 'elementor/editor/after_save', [ $this, 'track_first_widget_on_save' ], 10, 2 );
 			}
 
+			// Plugin version change detection — must run before the throttle gate so plugin updates are never missed between the daily checks.
+			$hfe_tracked_version = get_option( 'hfe_tracked_version', '' );
+			if ( ! empty( $hfe_tracked_version ) && HFE_VER !== $hfe_tracked_version ) {
+				delete_transient( 'hfe_state_events_checked' );
+			}
+
 			// Detect state-based events only in admin context, throttled to once per day.
+			// The transient is set inside detect_state_events() only after the HFE_Analytics_Events class is confirmed loaded, so the pass retries on the next admin load if the class is not ready.
 			if ( is_admin() && false === get_transient( 'hfe_state_events_checked' ) ) {
 				$this->detect_state_events();
-				set_transient( 'hfe_state_events_checked', 1, DAY_IN_SECONDS );
 			}
 		}
 
@@ -138,15 +144,9 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 				'onboarding_analytics' => get_option( 'hfe_onboarding_analytics', [] ),
             ];
 
-			// AI Tools (MCP) adoption — the three master toggles only. No usage detail, no user data.
-			$mcp_settings = get_option( 'uae_mcp_settings', [] );
-			$mcp_settings = is_array( $mcp_settings ) ? $mcp_settings : [];
-
-			$stats_data['plugin_data']['uae']['mcp'] = [
-				'abilities_enabled'  => ! empty( $mcp_settings['enable_abilities'] ) ? 'yes' : 'no',
-				'mcp_server_enabled' => ! empty( $mcp_settings['dedicated_server'] ) ? 'yes' : 'no',
-				'angie_enabled'      => ! empty( $mcp_settings['angie_enabled'] ) ? 'yes' : 'no',
-			];
+			// AI Tools (MCP) adoption is tracked as one-time events (abilities_enabled /
+			// mcp_server_enabled / angie_enabled), not as payload here — a nested
+			// plugin_data.uae.mcp object is dropped by the analytics ingestion pipeline.
 
             $template_counts = wp_count_posts( 'elementor-hf' );
             $stats_data['plugin_data']['uae']['numeric_values'] = [
@@ -292,9 +292,18 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 		 * Uses dedup in HFE_Analytics_Events::track() — safe to call repeatedly.
 		 *
 		 * @since 2.8.6
+		 * @since 2.9.3 Added retry guard, throttle transient and deferred plugin_activated tracking.
 		 * @return void
 		 */
 		private function detect_state_events() {
+			// Retry guard: bail without throttling if the events class is not available yet, so the pass runs again on the next admin load.
+			if ( ! class_exists( 'HFE_Analytics_Events' ) ) {
+				return;
+			}
+
+			// Class is available — set the throttle transient so this only runs once per day.
+			set_transient( 'hfe_state_events_checked', 1, DAY_IN_SECONDS );
+
 			// Read pushed + pending once to avoid repeated get_option calls per event.
 			$pushed  = get_option( 'hfe_usage_events_pushed', [] );
 			$pushed  = is_array( $pushed ) ? $pushed : [];
@@ -335,6 +344,42 @@ if ( ! class_exists( 'HFE_Analytics' ) ) {
 					);
 				}
 			}
+
+			// plugin_activated: recorded on a deferred admin load (not in the activation hook) so the referer written by Starter Templates after activation is already available. Dedup in track() keeps this to a single event.
+			$bsf    = get_option( 'bsf_product_referers', [] );
+			$source = ! empty( $bsf['header-footer-elementor'] ) ? sanitize_text_field( $bsf['header-footer-elementor'] ) : 'self';
+			HFE_Analytics_Events::track( 'plugin_activated', HFE_VER, [ 'source' => $source ] );
+
+			// AI Tools toggles: backfill a one-time enable event for sites that already
+			// have a toggle ON (enabled before real-time tracking shipped). Dedup keeps
+			// this once-per-site; new enables are tracked live in update_mcp_settings().
+			// backfill=1 marks these so funnel analysis can exclude them (enable time
+			// is unknown, so no days_since_install is recorded).
+			//
+			// Skip when UAE Pro is active: Pro owns the AI Tools settings UI (Lite's
+			// settings page is not registered when Pro is active) and its bsf_core_stats
+			// filter runs last, overwriting Lite's plugin_data.uae block. Letting Lite
+			// also emit these events would only produce a copy that Pro then clobbers.
+			// Pro is the single source for these events on dual-plugin sites.
+			if ( ! defined( 'UAEL_PRO' ) ) {
+				$mcp_settings = get_option( 'uae_mcp_settings', [] );
+				$mcp_settings = is_array( $mcp_settings ) ? $mcp_settings : [];
+
+				$mcp_toggle_events = [
+					'enable_abilities' => 'abilities_enabled',
+					'dedicated_server' => 'mcp_server_enabled',
+					'angie_enabled'    => 'angie_enabled',
+				];
+
+				foreach ( $mcp_toggle_events as $setting_key => $event_name ) {
+					if ( ! in_array( $event_name, $tracked_names, true ) && ! empty( $mcp_settings[ $setting_key ] ) ) {
+						HFE_Analytics_Events::track( $event_name, 'yes', [ 'backfill' => '1' ] );
+					}
+				}
+			}
+
+			// Record the tracked version so a later plugin update re-opens the throttle gate above.
+			update_option( 'hfe_tracked_version', HFE_VER );
 		}
 
 		/**

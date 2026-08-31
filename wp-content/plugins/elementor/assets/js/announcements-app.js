@@ -235,6 +235,9 @@ var eventsConfig = {
     wpAdmin: 'wpadmin',
     wpDash: 'wpdash'
   },
+  windowNames: {
+    sidebarMenu: 'sidebar_menu'
+  },
   targetTypes: {
     dropdownItem: 'dropdown_item',
     button: 'button',
@@ -246,7 +249,8 @@ var eventsConfig = {
     searchWidget: 'search_widget',
     wpDashAdminMenuItem: 'wpdash_admin_menu_item',
     wpDashEditorMenu: 'wpdash_editor_menu',
-    wpDashSubMenuItem: 'wpdash_sub_menu_item'
+    wpDashSubMenuItem: 'wpdash_sub_menu_item',
+    link: 'link'
   },
   interactionResults: {
     actionSelected: 'action_selected',
@@ -264,7 +268,10 @@ var eventsConfig = {
     upgradeNow: 'upgrade_now',
     elementorSideMenuOpened: 'elementor_side_menu_opened',
     editorSubMenuOpened: 'wpdash_editor_sub_menu_opened',
-    themeBuilderPromotionWindow: 'theme_builder_promotion_window'
+    themeBuilderPromotionWindow: 'theme_builder_promotion_window',
+    pageOpened: 'page_opened',
+    expanded: 'expanded',
+    collapsed: 'collapsed'
   },
   targetNames: {
     publishDropdown: {
@@ -533,7 +540,9 @@ var eventsConfig = {
       widgetPanelSearch: 'widget_panel_search',
       wpDashElementorMenuClick: 'wpdash_elementor_menu_click',
       wpDashEditorSubMenuHover: 'wpdash_editor_sub_menu_hover',
-      wpDashThemeBuilderClick: 'wpdash_theme_builder_click'
+      wpDashThemeBuilderClick: 'wpdash_theme_builder_click',
+      sidebarMenuItemClicked: 'sidebar_menu_item_clicked',
+      sidebarMenuGroupToggled: 'sidebar_menu_group_toggled'
     },
     interactions: {
       created: 'interactions_created'
