@@ -251,6 +251,8 @@ public function handle_salla_notification($request) {
 
 **الحل:** احذف `class-mon-salla-api.php` بالكامل.
 
+> تأكيد إضافي من تدقيق 2026-08-31 (توافق Salla Orders API): هذا الملف (اليوم بامتداد `.disabled`) لا يزال كوداً ميتاً غير قابل للوصول، وحذفه غير مرتبط بإيقاف Orders API — يبقى بنداً P1 مستقلاً (راجع قسم «تدقيق توافق Orders API — إغلاق 2026-08-31» أدناه).
+
 ---
 
 #### [ ] #7 — ملف `helpers.php` فارغ ومستدعى
@@ -500,6 +502,21 @@ if (!$this->is_valid_signature($payload, $signature)) {
 - **Cache طبقي** للهيدرز `X-RateLimit-*` لتفادي تجاوز الحد
 - استخدامات محتملة: التحقق من الطلب بعد الـ Webhook، جلب تفاصيل العميل، نشر منتجات
 
+### تدقيق توافق Orders API — إغلاق 2026-08-31
+
+**الحالة: CLOSED — PASS WITH NOTES**
+
+تدقيق كامل لتأثير إيقاف سلة للسلوك القديم في Orders API (`expanded=true` في List Orders، والاستجابة الموسّعة القديمة في Order Details) على هذا المشروع، بتاريخ 31 أغسطس 2026. السجل الكامل: `salla-orders-api-deprecation-audit-2026-08-31.md` (جذر المشروع). الملخص مُدرَج أيضاً في `docs/integrations/SALLA.md`.
+
+**النتيجة:** لا استدعاء فعلي لـ List Orders أو Order Details في الكود الحالي، لا استخدام لـ `expanded=true` ولا لـ `format=light`، معالجة البوكيهات/الباقات تعتمد بالكامل على حمولة الـ Webhook (`order.created` / `order.updated` / `order.payment.updated` / `order.status.updated`)، ومطابقة المنتج/الباقة ومنع التكرار (idempotency) يعتمدان على حقول تلك الحمولة (`items[]`، `sku`، `product.id`/`product_id`، `order.id`) لا على أي استجابة من Orders API. لا حاجة لأي ترحيل إنتاجي (P0) قبل 1 سبتمبر 2026.
+
+هذا لا يعني أن حمولة الـ Webhook نفسها مضمونة الثبات للأبد — فقط أن توافق Orders API الحالي (المذكور أعلاه) لا يتأثر بها.
+
+**بندان مستقبليان منفصلان (P1) نتجا عن التدقيق — لم يُنفَّذا في مهمة التدقيق ولا في مهمة التوثيق هذه:**
+
+- **P1 — اختبار انحدار (Regression) لمسار الـ Webhook:** إضافة اختبار تكاملي يُمرِّر حمولة Webhook واقعية عبر مسار معالجة البوكيهات/الباقات الفعلي (`Mon_Salla_Handler` → `classify_order_items()` → `process_catalog_match()` → `Mon_Events_Users`)، يغطي على الأقل: `order.created`، `order.status.updated`، شكل الحمولة المسطّح (`data` مباشرة)، شكل الحمولة المتداخل (`data.order`)، جوال/بريد العميل، `items`، `sku`، `product_id`، `amounts`، `order.id`، نتيجة التفعيل، وتكرار التسليم (idempotency عند إعادة إرسال نفس الـ Webhook). لم يُنفَّذ هذا الاختبار بعد.
+- **P1 — تنظيف المعالج الميت:** `wp-content/plugins/pgevents-core/includes/class-mon-salla-api.php.disabled` لا يزال كوداً ميتاً غير قابل للوصول (راجع البند #6 أعلاه). حذفه النهائي يبقى مهمة مستقلة لاحقة، ولم يُحذف في هذا التدقيق ولا في مهمة التوثيق هذه.
+
 ---
 
 ## خارطة العمل (Roadmap)
@@ -619,5 +636,6 @@ if (!$this->is_valid_signature($payload, $signature)) {
 | 2026-04-29 | **المرحلة الثالثة (تشديد الأمان):** #3 XSS في pge_bio — #11 HMAC على cookie الضيف (3 ملفات) — nonce لـ pge_checkin_submit | Claude (Cowork) |
 | 2026-04-29 | **المرحلة الرابعة (تنظيف معماري):** تعطيل class-mon-salla-api.php و single-event.php — helpers.php يحوي pge_norm_phone / pge_event_guests_norm_phone / pge_get_invited_phones / pge_normalize_invite_code / pge_generate_invite_code / pge_is_host_or_admin — حذف init flush المكرر | Claude (Cowork) |
 | 2026-04-30 | **إصلاح حرج (مكتشف من اختبار سلة الحقيقي):** إضافة `order.status.updated` إلى switch في class-salla-handler.php — هذا هو الحدث الفعلي الذي يُفعّل الباقة عند إكمال الطلب (كان مفقوداً). البنية مختلفة: بيانات الطلب في `data.order` وليس `data` مباشرة | Claude (Cowork) |
+| 2026-08-31 | **تدقيق توافق Orders API (إيقاف `expanded=true` والاستجابة الموسّعة القديمة اعتباراً من 1 سبتمبر 2026):** CLOSED — PASS WITH NOTES. لا استدعاء فعلي لـ List Orders/Order Details، معالجة البوكيهات تعتمد بالكامل على الـ Webhook. وُثِّق الإغلاق في `docs/integrations/SALLA.md` وهنا، وسُجِّل بندان P1 منفصلان (اختبار انحدار الـ Webhook، وتنظيف `class-mon-salla-api.php.disabled`) دون تنفيذهما. السجل الكامل: `salla-orders-api-deprecation-audit-2026-08-31.md` | Claude (Cowork) |
 
 > عند معالجة أي بند، حدّث الـ checkbox من `[ ]` إلى `[x]` وأضف صفاً جديداً هنا بالتاريخ ووصف التغيير.
