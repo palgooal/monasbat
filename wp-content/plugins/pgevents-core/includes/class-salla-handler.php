@@ -7,6 +7,8 @@ if (!defined('ABSPATH')) exit;
  */
 class Mon_Salla_Handler
 {
+    private const SALLA_PLUS_CUSTOMER_GROUP_ID = 225189340;
+
     private $webhook_secret;
     private $client_id;
     private $client_secret;
@@ -60,11 +62,11 @@ class Mon_Salla_Handler
             case 'order.created':
             case 'order.updated':
             case 'order.payment.updated':
-                return $this->handle_order_event($event_data);
+                return $this->handle_order_event($event_data, $merchant_id);
 
             // تحديث حالة الطلب — البيانات داخل data.order
             case 'order.status.updated':
-                return $this->handle_order_event($event_data['order'] ?? []);
+                return $this->handle_order_event($event_data['order'] ?? [], $merchant_id);
 
             // تجديد التوكن (كل 14 يوم)
             case 'app.store.authorize':
@@ -88,7 +90,7 @@ class Mon_Salla_Handler
     }
 
     // ── معالج أحداث الطلبات (order.*) ─────────────────────────────────────
-    private function handle_order_event($order_data)
+    private function handle_order_event($order_data, $merchant_id)
     {
         if (empty($order_data)) {
             return new WP_REST_Response(['message' => 'No Data'], 200);
@@ -100,10 +102,10 @@ class Mon_Salla_Handler
         $deactivation_statuses = ['canceled', 'cancelled', 'refunded', 'returned'];
 
         if (in_array($status_slug, $activation_statuses, true)) {
-            $this->process_user_and_plan($order_data);
+            $this->process_user_and_plan($order_data, $merchant_id);
             return new WP_REST_Response(['status' => 'success', 'message' => 'Package Activated'], 200);
         } elseif (in_array($status_slug, $deactivation_statuses, true)) {
-            $this->process_order_deactivation($order_data);
+            $this->process_order_deactivation($order_data, $merchant_id);
             return new WP_REST_Response(['status' => 'deactivated', 'message' => 'Package Revoked'], 200);
         }
 
@@ -212,20 +214,20 @@ class Mon_Salla_Handler
         return hash_equals((string)$computed_signature, (string)$signature);
     }
 
-    private function process_user_and_plan($order_data)
+    private function process_user_and_plan($order_data, $merchant_id)
     {
-        $this->process_order_packages($order_data, 'activate');
+        $this->process_order_packages($order_data, 'activate', $merchant_id);
     }
 
-    private function process_order_deactivation($order_data)
+    private function process_order_deactivation($order_data, $merchant_id)
     {
-        $this->process_order_packages($order_data, 'deactivate');
+        $this->process_order_packages($order_data, 'deactivate', $merchant_id);
     }
 
     /**
      * يصنّف عناصر الطلب مرة واحدة ثم يطبّق أولوية Catalog أو Legacy.
      */
-    private function process_order_packages($order_data, $action)
+    private function process_order_packages($order_data, $action, $merchant_id)
     {
         $order_id = $this->extract_order_id($order_data);
         $matches = $this->classify_order_items($order_data, $order_id, $action);
@@ -252,7 +254,7 @@ class Mon_Salla_Handler
 
         if ($catalog_count === 1) {
             $catalog_match = reset($matches['catalog']);
-            $this->process_catalog_match($order_data, $catalog_match, $order_id, $action);
+            $this->process_catalog_match($order_data, $catalog_match, $order_id, $action, $merchant_id);
             return;
         }
 
@@ -443,7 +445,7 @@ class Mon_Salla_Handler
         return $matches;
     }
 
-    private function process_catalog_match($order_data, $match, $order_id, $action)
+    private function process_catalog_match($order_data, $match, $order_id, $action, $merchant_id)
     {
         $tier = $match['tier'];
         $plan = $match['plan'];
@@ -484,6 +486,7 @@ class Mon_Salla_Handler
             return;
         }
 
+        $customer_id = $this->extract_customer_id($order_data);
         $customer_mobile = $this->extract_customer_mobile($order_data);
         $customer_email = $this->extract_customer_email($order_data);
         $customer_name = $this->extract_customer_name($order_data);
@@ -587,6 +590,8 @@ class Mon_Salla_Handler
             return;
         }
 
+        $this->persist_salla_customer_id_mapping($user, $customer_id, $order_id);
+
         if ($action === 'activate') {
             $result = Mon_Events_Users::activate_catalog_tier(
                 absint($user->ID),
@@ -618,6 +623,10 @@ class Mon_Salla_Handler
         }
 
         if ($action === 'activate') {
+            if (($plan['plan_key'] ?? '') === 'halwa_plus') {
+                $this->add_plus_customer_to_salla_group($merchant_id, $customer_id, $user, $order_id);
+            }
+
             update_user_meta($user->ID, '_created_via_salla', 'yes');
 
             // E2E-02 FIX PASS 5 (Post-Purchase Activation Email): يُستدعى هنا
@@ -722,6 +731,125 @@ class Mon_Salla_Handler
 
         $email = sanitize_email((string) $email);
         return is_email($email) ? $email : '';
+    }
+
+    private function extract_customer_id($order_data)
+    {
+        if (!is_array($order_data) || !isset($order_data['customer']) || !is_array($order_data['customer'])) {
+            return 0;
+        }
+
+        $customer_id = $order_data['customer']['id'] ?? null;
+        if (!is_scalar($customer_id) || is_bool($customer_id)) {
+            return 0;
+        }
+
+        $customer_id = filter_var($customer_id, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        return $customer_id === false ? 0 : (int) $customer_id;
+    }
+
+    private function persist_salla_customer_id_mapping($user, $customer_id, $order_id)
+    {
+        if (!$user instanceof WP_User || $customer_id <= 0) {
+            return 'skipped';
+        }
+
+        $user_id = absint($user->ID);
+        if ($user_id === 0) {
+            return 'skipped';
+        }
+
+        $meta_key = '_pge_salla_customer_id';
+        if (!metadata_exists('user', $user_id, $meta_key)) {
+            if (update_user_meta($user_id, $meta_key, $customer_id) === false) {
+                $this->log_catalog_event('salla_customer_id_mapping_failed', [
+                    'order_id'                  => $order_id,
+                    'user_id'                   => $user_id,
+                    'incoming_salla_customer_id' => $customer_id,
+                    'error_code'                => 'update_user_meta_failed',
+                ]);
+                return 'failed';
+            }
+
+            return 'stored';
+        }
+
+        $existing_customer_id = get_user_meta($user_id, $meta_key, true);
+        $existing_customer_id = is_scalar($existing_customer_id) && !is_bool($existing_customer_id)
+            ? filter_var($existing_customer_id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            : false;
+
+        if ($existing_customer_id !== false && (int) $existing_customer_id === $customer_id) {
+            return 'unchanged';
+        }
+
+        $this->log_catalog_event('salla_customer_id_mapping_conflict', [
+            'order_id'                   => $order_id,
+            'user_id'                    => $user_id,
+            'existing_salla_customer_id' => $existing_customer_id === false ? 0 : (int) $existing_customer_id,
+            'incoming_salla_customer_id' => $customer_id,
+        ]);
+
+        return 'conflict';
+    }
+
+    private function add_plus_customer_to_salla_group($merchant_id, $customer_id, $user, $order_id)
+    {
+        $merchant_id = is_scalar($merchant_id) && !is_bool($merchant_id)
+            ? filter_var($merchant_id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            : false;
+        $customer_id = is_scalar($customer_id) && !is_bool($customer_id)
+            ? filter_var($customer_id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            : false;
+        $user_id = $user instanceof WP_User ? absint($user->ID) : 0;
+
+        $context = [
+            'order_id'          => $order_id,
+            'user_id'           => $user_id,
+            'merchant_id'       => $merchant_id === false ? 0 : (int) $merchant_id,
+            'salla_customer_id' => $customer_id === false ? 0 : (int) $customer_id,
+            'group_id'          => self::SALLA_PLUS_CUSTOMER_GROUP_ID,
+        ];
+
+        if ($merchant_id === false || $customer_id === false) {
+            $context['error_code'] = $merchant_id === false
+                ? 'invalid_salla_merchant_id'
+                : 'invalid_salla_customer_id';
+            $this->log_catalog_event('salla_plus_group_sync_skipped', $context);
+            return 'skipped';
+        }
+
+        if (!class_exists('PGE_Salla_Membership_Sync_Store')) {
+            $context['error_code'] = 'salla_sync_store_unavailable';
+            $this->log_catalog_event('salla_plus_group_sync_failed', $context);
+            return 'failed';
+        }
+
+        $result = PGE_Salla_Membership_Sync_Store::request_member(
+            (int) $merchant_id,
+            (int) $customer_id,
+            self::SALLA_PLUS_CUSTOMER_GROUP_ID
+        );
+
+        if (!is_array($result) || ($result['result'] ?? '') === 'error') {
+            $context['error_code'] = is_array($result)
+                ? (string) ($result['reason'] ?? 'salla_sync_persistence_failed')
+                : 'salla_sync_persistence_failed';
+            $this->log_catalog_event('salla_plus_group_sync_failed', $context);
+            return 'failed';
+        }
+
+        if (($result['result'] ?? '') !== 'satisfied'
+            && class_exists('PGE_Salla_Membership_Sync_Worker')) {
+            PGE_Salla_Membership_Sync_Worker::schedule_worker(1);
+            PGE_Salla_Membership_Sync_Worker::ensure_recovery_scheduled();
+        }
+
+        $this->log_catalog_event('salla_plus_group_sync_queued', $context);
+        return (string) ($result['result'] ?? 'pending');
     }
 
     private function extract_customer_mobile($order_data)
@@ -988,7 +1116,7 @@ class Mon_Salla_Handler
 
     private function log_catalog_event($code, $context = [])
     {
-        $allowed_keys = ['order_id', 'product_id', 'sku', 'plan_id', 'tier_id', 'user_id', 'error_code', 'quantity', 'resolution_method', 'mobile_last4'];
+        $allowed_keys = ['order_id', 'product_id', 'sku', 'plan_id', 'tier_id', 'user_id', 'error_code', 'quantity', 'resolution_method', 'mobile_last4', 'existing_salla_customer_id', 'incoming_salla_customer_id', 'merchant_id', 'salla_customer_id', 'group_id'];
         $safe_context = [];
 
         foreach ($allowed_keys as $key) {

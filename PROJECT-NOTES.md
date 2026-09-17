@@ -1,5 +1,13 @@
 # دفتر ملاحظات مشروع مناسبات (Monasbat)
 
+> 2026-09-18: Durable Salla Plus group convergence is implemented through
+> `wp_pge_salla_membership_sync`. Internal Plus activation is authoritative;
+> the webhook persists `desired_state=member`, and a lease/CAS-protected cron
+> worker performs Salla convergence with bounded retry and Customer Details
+> reconciliation for ambiguous transport outcomes. Group removal remains
+> deferred until an official endpoint and an all-active-Plus-entitlements
+> resolver are verified. See `docs/integrations/SALLA.md`.
+
 > **المرجع المركزي للقرارات الفنية وخطة العمل**
 > آخر تحديث: 2026-04-28
 > الفريق: شركة بال قول

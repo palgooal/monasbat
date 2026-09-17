@@ -82,3 +82,38 @@
 - **لا حاجة لأي ترحيل إنتاجي (P0 migration) قبل 1 سبتمبر 2026** — النظام لا يعتمد أصلاً على السلوك المُزال.
 
 **ملاحظة مهمة — لا تُفهَم خطأً:** هذا لا يعني أن حمولة الـ Webhook نفسها مضمونة الثبات إلى الأبد؛ التوافق الحالي المذكور أعلاه خاص بواجهة Orders API فقط (List/Details)، ولا يُشكّل تأكيداً بأن حمولات الـ Webhook لن تتغيّر مستقبلاً. تغطية اختبارية لعقد الـ Webhook (webhook contract regression coverage) تبقى بنداً منفصلاً لم يُنفَّذ بعد (راجع بند P1 — اختبار انحدار الـ Webhook في `PROJECT-NOTES.md`).
+
+## Durable Plus customer-group synchronization (2026-09-18)
+
+Hilwah is the source of truth for Plus entitlement. After a successful internal
+`halwa_plus` activation, the webhook records `desired_state=member` in
+`wp_pge_salla_membership_sync`; it does not wait for a Salla HTTP mutation.
+
+- Ownership: one mutable row per `(merchant_id, salla_customer_id, group_id)`,
+  enforced by `membership_identity`. Replayed webhooks reuse that row.
+- State: `desired_revision` versions the desired state. A worker claim records
+  both an opaque `attempt_token` and `attempt_revision`; finalization requires
+  status, token, and revision to match, so stale workers cannot overwrite a
+  reclaimed attempt or a newer desired-state mutation.
+- Worker: bounded batches are driven by single-event WP-Cron ticks. A deduped
+  15-minute recovery event is re-armed from `init`; the SQL row, not cron, is
+  authoritative. Expired five-minute processing leases are reclaimable.
+- Retry: transport failures, HTTP 429, and HTTP 5xx use persisted bounded
+  exponential backoff (60 seconds through 3600 seconds). HTTP 400/401/403/422
+  become terminal diagnostic failures and are not blindly retried.
+- Ambiguity: after an add transport failure, and before repeating an ambiguous
+  mutation, the worker reads the documented Customer Details endpoint
+  `GET /admin/v2/customers/{customer}`. Its `data.groups` membership is the
+  authority; deprecated `order.customer.groups` is never used.
+- Security: synchronization rows store identifiers, state, timestamps, and
+  sanitized error codes only. OAuth tokens, client secrets, webhook secrets,
+  raw response bodies, email, and mobile are never stored or logged here.
+- Scope: only `plan_key=halwa_plus` activation creates desired membership.
+  Activation email and entitlement remain independent of sync persistence or
+  Salla availability.
+
+Future `desired_state=not_member` is intentionally reserved but not executed.
+Removal must not occur until Salla's official remove-membership endpoint is
+verified. It must also use an entitlement resolver: a customer remains a member
+while any active Plus event/entitlement exists, so one event ending is never
+sufficient by itself to request removal.

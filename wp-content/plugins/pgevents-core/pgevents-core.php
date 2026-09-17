@@ -2591,6 +2591,14 @@ require_once PGE_PATH . 'includes/class-pge-registration-email.php';
 // include لاستدعاء static method لاحقاً — فقط لثبات الاصطلاح.
 require_once PGE_PATH . 'includes/class-pge-package-activation-email.php';
 
+// Durable Salla membership desired state: schema/store precede the worker;
+// OAuth and Customer Groups transport precede the worker; all precede handler.
+require_once PGE_PATH . 'includes/class-pge-salla-sync-schema.php';
+require_once PGE_PATH . 'includes/class-pge-salla-token-manager.php';
+require_once PGE_PATH . 'includes/class-pge-salla-customer-groups-service.php';
+require_once PGE_PATH . 'includes/class-pge-salla-membership-sync-store.php';
+require_once PGE_PATH . 'includes/class-pge-salla-membership-sync-worker.php';
+
 // 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)
 require_once PGE_PATH . 'includes/class-salla-handler.php';
 
