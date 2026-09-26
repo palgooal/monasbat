@@ -42,7 +42,14 @@ function pge_save_event_meta($post_id)
 {
     if (!isset($_POST['pge_event_nonce']) || !wp_verify_nonce($_POST['pge_event_nonce'], 'pge_save_event_meta')) return;
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
-    if (isset($_POST['pge_event_date'])) update_post_meta($post_id, '_pge_event_date', sanitize_text_field($_POST['pge_event_date']));
+    if (isset($_POST['pge_event_date'])) {
+        $event_date = sanitize_text_field($_POST['pge_event_date']);
+        if (class_exists('PGE_Catalog_Event_Lifecycle_Service')) {
+            PGE_Catalog_Event_Lifecycle_Service::update_event_date($post_id, $event_date);
+        } else {
+            update_post_meta($post_id, '_pge_event_date', $event_date);
+        }
+    }
     if (isset($_POST['pge_event_location'])) update_post_meta($post_id, '_pge_event_location', esc_url_raw($_POST['pge_event_location']));
     if (isset($_POST['pge_event_address']))  update_post_meta($post_id, '_pge_event_address',  sanitize_text_field($_POST['pge_event_address']));
     if (isset($_POST['pge_host_phone'])) update_post_meta($post_id, '_pge_host_phone', sanitize_text_field($_POST['pge_host_phone']));

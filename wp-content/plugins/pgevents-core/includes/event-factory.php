@@ -479,7 +479,7 @@ if (!function_exists('pge_resolve_event_quota_status')) {
 
         $used_query = new WP_Query(array(
             'post_type'      => 'pge_event',
-            'post_status'    => array('publish', 'draft', 'pending'),
+            'post_status'    => array('publish', 'draft', 'pending', 'private'),
             'author'         => $user_id,
             'posts_per_page' => -1,
             'fields'         => 'ids',
@@ -547,7 +547,13 @@ function pge_handle_event_creation()
     // ====================================================================
 
     global $wpdb;
-    $event_creation_lock_name = 'pge_event_create_' . md5((string) $user_id);
+    $package_source = (string) get_user_meta($user_id, '_mon_package_source', true);
+    $catalog_cycle_id = $package_source === 'catalog'
+        ? trim((string) get_user_meta($user_id, '_mon_credit_cycle_id', true))
+        : '';
+    $event_creation_lock_name = $package_source === 'catalog' && $catalog_cycle_id !== ''
+        ? PGE_Catalog_Event_Binding_Service::lock_name($catalog_cycle_id)
+        : 'pge_event_create_' . md5((string) $user_id);
 
     $got_event_creation_lock = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $event_creation_lock_name, 5));
     if ((int) $got_event_creation_lock !== 1) {
@@ -559,6 +565,72 @@ function pge_handle_event_creation()
     };
 
     try {
+        $catalog_activation = null;
+        if ($package_source === 'catalog') {
+            $resolved_activation = PGE_Catalog_Event_Binding_Service::resolve_current($user_id);
+            if (is_wp_error($resolved_activation)) {
+                $release_event_creation_lock();
+                wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
+            }
+            $catalog_activation = $resolved_activation['activation'];
+            if (PGE_Catalog_Event_Binding_Service::lock_name($catalog_activation['activation_id']) !== $event_creation_lock_name) {
+                $release_event_creation_lock();
+                wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
+            }
+            $event_operation_id = isset($_POST['event_creation_operation_id'])
+                ? strtolower(trim((string) wp_unslash($_POST['event_creation_operation_id'])))
+                : '';
+            if (!PGE_Catalog_Event_Binding_Service::valid_operation_id($event_operation_id)) {
+                $release_event_creation_lock();
+                wp_send_json_error('تعذر التحقق من هوية عملية إنشاء المناسبة. يرجى إعادة تحميل الصفحة والمحاولة مرة أخرى.');
+            }
+            $operation_lock_name = PGE_Catalog_Event_Binding_Service::operation_lock_name($event_operation_id);
+            $got_operation_lock = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $operation_lock_name, 5));
+            if ((int) $got_operation_lock !== 1) {
+                $release_event_creation_lock();
+                wp_send_json_error('عملية إنشاء المناسبة نفسها قيد التنفيذ. يرجى المحاولة لاحقاً.');
+            }
+            $release_activation_lock = $release_event_creation_lock;
+            $release_event_creation_lock = function () use ($wpdb, $operation_lock_name, $release_activation_lock) {
+                $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $operation_lock_name));
+                $release_activation_lock();
+            };
+            $operation = PGE_Catalog_Event_Binding_Service::resolve_creation_operation(
+                $catalog_activation,
+                $user_id,
+                $event_operation_id
+            );
+            if (is_wp_error($operation)) {
+                $release_event_creation_lock();
+                wp_send_json_error('تعارضت هوية عملية إنشاء المناسبة مع عملية أخرى.');
+            }
+            if (($operation['result'] ?? '') === 'existing') {
+                $existing_event_id = (int) $operation['event_id'];
+                $binding = PGE_Catalog_Event_Binding_Service::bind_event($catalog_activation, $existing_event_id);
+                if (is_wp_error($binding)) {
+                    $release_event_creation_lock();
+                    wp_send_json_error([
+                        'code' => 'event_binding_recovery_incident',
+                        'message' => 'تعذر استكمال ربط المناسبة الموجودة بأمان. لم تُحذف المناسبة ويمكن إعادة المحاولة.',
+                    ]);
+                }
+                $release_event_creation_lock();
+                wp_send_json_success([
+                    'message' => 'تم إنشاء المناسبة بنجاح!',
+                    'redirect_url' => get_permalink($existing_event_id),
+                    'invite_code' => (string) get_post_meta($existing_event_id, '_pge_invite_code', true),
+                ]);
+            }
+            if (!empty($resolved_activation['binding_consumed'])) {
+                $release_event_creation_lock();
+                wp_send_json_error('تم استخدام هذا التفعيل لإنشاء مناسبة من قبل.');
+            }
+            if (!empty($resolved_activation['existing_event_id'])) {
+                $release_event_creation_lock();
+                wp_send_json_error('تم استخدام هذا التفعيل لإنشاء مناسبة من قبل.');
+            }
+        }
+
         // --- [نظام فحص الحصة] ---
         //
         // pge_get_user_plan_limits_for_events() ما زالت تُستدعى دوماً (Legacy
@@ -568,8 +640,6 @@ function pge_handle_event_creation()
         // pge_resolve_event_quota_status()، Snapshot فقط، بلا أي قراءة لصف
         // الـTier أو Registry أو Feature Resolver).
         $plan_limits = pge_get_user_plan_limits_for_events($user_id);
-        $package_source = (string) get_user_meta($user_id, '_mon_package_source', true);
-
         if ($package_source !== 'catalog') {
             // ---- Legacy: حرفياً بلا أي تغيير عن السلوك الموجود مسبقاً ----
             $allowed_limit = (int) ($plan_limits['events_count'] ?? 0);
@@ -657,7 +727,9 @@ function pge_handle_event_creation()
 
         // 4. إدراج المناسبة في قاعدة البيانات (Commit 4 — ownership meta،
         // بلا أي تغيير في منطقها هنا).
-        $activation_id = (string) get_user_meta($user_id, '_mon_credit_cycle_id', true);
+        $activation_id = $package_source === 'catalog'
+            ? (string) $catalog_activation['activation_id']
+            : (string) get_user_meta($user_id, '_mon_credit_cycle_id', true);
 
         $post_data = array(
             'post_title'   => $title,
@@ -668,6 +740,9 @@ function pge_handle_event_creation()
                 '_pge_event_activation_id' => $activation_id,
             ),
         );
+        if ($package_source === 'catalog') {
+            $post_data['meta_input']['_pge_event_creation_operation_id'] = $event_operation_id;
+        }
 
         $post_id = wp_insert_post($post_data);
 
@@ -692,6 +767,37 @@ function pge_handle_event_creation()
                     wp_delete_post($post_id, true);
                     $release_event_creation_lock();
                     wp_send_json_error($featured_upload->get_error_message());
+                }
+            }
+
+            if ($package_source === 'catalog') {
+                $binding = PGE_Catalog_Event_Binding_Service::bind_event($catalog_activation, $post_id);
+                if (is_wp_error($binding)) {
+                    $binding_code = $binding->get_error_code();
+                    if ($binding_code === 'event_binding_storage_uncertain') {
+                        error_log(sprintf('[catalog_event_binding_recovery_incident] event_id=%d activation_id=%s reason=%s', $post_id, $activation_id, $binding_code));
+                        $release_event_creation_lock();
+                        wp_send_json_error([
+                            'code' => 'event_binding_recovery_incident',
+                            'message' => 'تعذر تأكيد ربط المناسبة. لم تُحذف المناسبة تلقائياً لتجنب فقدان عملية قابلة للاستعادة.',
+                        ]);
+                    }
+                    $compensation = PGE_Catalog_Event_Binding_Service::compensate_new_event(
+                        $post_id,
+                        $activation_id,
+                        $event_operation_id,
+                        true
+                    );
+                    if (($compensation['result'] ?? '') !== 'compensated') {
+                        error_log(sprintf('[catalog_event_binding_recovery_incident] event_id=%d activation_id=%s reason=%s compensation=failed', $post_id, $activation_id, $binding_code));
+                        $release_event_creation_lock();
+                        wp_send_json_error([
+                            'code' => 'event_binding_recovery_incident',
+                            'message' => 'تعذر إكمال ربط المناسبة أو تنظيف المناسبة الجديدة بأمان. يلزم فحص العملية قبل إعادة المحاولة.',
+                        ]);
+                    }
+                    $release_event_creation_lock();
+                    wp_send_json_error('حدث خطأ أثناء إنشاء المناسبة، يرجى المحاولة لاحقاً.');
                 }
             }
 
@@ -749,7 +855,12 @@ function pge_handle_event_update()
         $can_google_map = pge_user_has_feature(get_current_user_id(), 'google_maps');
         $can_header_img = pge_plan_feature_enabled_for_events($plan_limits, 'header_img');
 
-        update_post_meta($event_id, '_pge_event_date',     sanitize_text_field($_POST['event_date']));
+        $event_date = sanitize_text_field($_POST['event_date']);
+        if (class_exists('PGE_Catalog_Event_Lifecycle_Service')) {
+            PGE_Catalog_Event_Lifecycle_Service::update_event_date($event_id, $event_date);
+        } else {
+            update_post_meta($event_id, '_pge_event_date', $event_date);
+        }
         update_post_meta($event_id, '_pge_event_location', $can_google_map ? esc_url_raw($_POST['event_location'] ?? '') : '');
         update_post_meta($event_id, '_pge_event_address',  sanitize_text_field($_POST['event_address'] ?? ''));
         update_post_meta($event_id, '_pge_host_phone',     sanitize_text_field($_POST['host_phone']));

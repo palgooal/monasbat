@@ -198,7 +198,6 @@ add_action('wp_ajax_pge_manual_activation_preview', function () {
     if ($source === 'catalog') {
         $plan_id = absint($_POST['plan_id'] ?? 0);
         $tier_id = absint($_POST['tier_id'] ?? 0);
-
         $plan = class_exists('PGE_Catalog') ? PGE_Catalog::get_plan($plan_id) : null;
         $tier = class_exists('PGE_Catalog') ? PGE_Catalog::get_tier($tier_id) : null;
 
@@ -318,6 +317,10 @@ add_action('wp_ajax_pge_manual_activation_activate', function () {
     if ($source === 'catalog') {
         $plan_id = absint($_POST['plan_id'] ?? 0);
         $tier_id = absint($_POST['tier_id'] ?? 0);
+        $operation_id = isset($_POST['operation_id']) ? strtolower(trim(sanitize_text_field(wp_unslash($_POST['operation_id'])))) : '';
+        if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D', $operation_id)) {
+            wp_send_json_error(['message' => 'معرّف عملية التفعيل غير صالح', 'reason' => 'invalid_operation_id']);
+        }
 
         $plan = class_exists('PGE_Catalog') ? PGE_Catalog::get_plan($plan_id) : null;
         $tier = class_exists('PGE_Catalog') ? PGE_Catalog::get_tier($tier_id) : null;
@@ -349,14 +352,22 @@ add_action('wp_ajax_pge_manual_activation_activate', function () {
             && $current['tier_id'] === $tier_id
         );
 
-        $activation_result = $is_same_tier_reactivation
+        $activation_result = ($is_same_tier_reactivation && !class_exists('PGE_Catalog_Activation_Service'))
             ? Mon_Events_Users::refresh_catalog_tier_snapshot($target_user_id)
-            : Mon_Events_Users::activate_catalog_tier($target_user_id, $plan_id, $tier_id, '');
+            : Mon_Events_Users::activate_catalog_tier(
+                $target_user_id,
+                $plan_id,
+                $tier_id,
+                '',
+                ['source' => 'manual', 'operation_id' => $operation_id]
+            );
 
         if (is_wp_error($activation_result)) {
             $error_message = $activation_result->get_error_message();
         } else {
-            $result_ok = (bool) $activation_result;
+            $result_ok = is_array($activation_result)
+                ? in_array($activation_result['result'] ?? '', ['activated', 'resumed', 'replayed'], true)
+                : (bool) $activation_result;
         }
     } elseif ($source === 'legacy') {
         $plan_key = isset($_POST['plan_key']) ? sanitize_text_field(wp_unslash($_POST['plan_key'])) : '';

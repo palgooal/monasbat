@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) exit;
 /** Database lifecycle for durable Salla customer-group desired state. */
 final class PGE_Salla_Sync_Schema
 {
-    const SCHEMA_VERSION = '1.0.0';
+    const SCHEMA_VERSION = '1.1.0';
     const VERSION_OPTION = 'pge_salla_sync_schema_version';
 
     public static function table_name()
@@ -39,6 +39,9 @@ final class PGE_Salla_Sync_Schema
             last_attempt_at DATETIME NULL,
             last_success_at DATETIME NULL,
             last_error_code VARCHAR(100) NULL,
+            removal_snapshot_groups LONGTEXT NULL,
+            removal_snapshot_revision BIGINT(20) UNSIGNED NULL,
+            removal_snapshot_state VARCHAR(20) NULL,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
             PRIMARY KEY (id),
@@ -51,7 +54,8 @@ final class PGE_Salla_Sync_Schema
         dbDelta($sql);
 
         if (!self::postconditions_hold()) {
-            return false;
+            $wpdb->query("ALTER TABLE $table MODIFY removal_snapshot_groups LONGTEXT NULL, MODIFY removal_snapshot_revision BIGINT(20) UNSIGNED NULL, MODIFY removal_snapshot_state VARCHAR(20) NULL");
+            if (!self::postconditions_hold()) return false;
         }
 
         if ($stored !== self::SCHEMA_VERSION) {
@@ -70,18 +74,26 @@ final class PGE_Salla_Sync_Schema
 
         $found = [];
         foreach ($columns as $column) {
-            $found[] = (string) ($column['Field'] ?? '');
+            $found[(string) ($column['Field'] ?? '')] = $column;
         }
         $required = [
             'id', 'merchant_id', 'salla_customer_id', 'group_id', 'desired_state',
             'desired_revision', 'status', 'attempt_count', 'attempt_token',
             'attempt_revision', 'attempt_started_at', 'next_attempt_at',
             'last_attempt_at', 'last_success_at', 'last_error_code',
+            'removal_snapshot_groups', 'removal_snapshot_revision',
+            'removal_snapshot_state',
             'created_at', 'updated_at',
         ];
-        if (array_diff($required, $found)) {
+        if (array_diff($required, array_keys($found))) {
             return false;
         }
+        $groups = $found['removal_snapshot_groups'];
+        $revision = $found['removal_snapshot_revision'];
+        $state = $found['removal_snapshot_state'];
+        if (strtolower((string) ($groups['Type'] ?? '')) !== 'longtext' || strtoupper((string) ($groups['Null'] ?? '')) !== 'YES') return false;
+        if (!preg_match('/^bigint(?:\(20\))? unsigned$/', strtolower((string) ($revision['Type'] ?? ''))) || strtoupper((string) ($revision['Null'] ?? '')) !== 'YES') return false;
+        if (strtolower((string) ($state['Type'] ?? '')) !== 'varchar(20)' || strtoupper((string) ($state['Null'] ?? '')) !== 'YES') return false;
 
         $indexes = $wpdb->get_results('SHOW INDEX FROM ' . self::table_name(), ARRAY_A);
         if (!is_array($indexes)) {

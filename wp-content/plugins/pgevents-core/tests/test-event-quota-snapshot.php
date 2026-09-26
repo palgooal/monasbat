@@ -5,7 +5,7 @@
  * (Activation Snapshot)، بتنفيذ حقيقي فعلي — لا مرآة منطقية لأي كود إنتاج.
  *
  * يحمّل هذا الملف الكلاسات الحقيقية التالية دون أي تعديل عليها، وينفّذ
- * Mon_Events_Users::activate_catalog_tier() الحقيقية مباشرة (نفس الدالة التي
+ * phase2_test_activate_catalog_tier() الحقيقية مباشرة (نفس الدالة التي
  * عُدِّلت في Commit 3):
  *   - includes/class-pge-catalog.php          (create_tier()/update_tier()/get_tier() الحقيقية)
  *   - includes/class-pge-feature-registry.php  (تعتمد عليها build_tier_features_snapshot() داخلياً)
@@ -332,6 +332,29 @@ require_once __DIR__ . '/../includes/class-pge-feature-registry.php';
 require_once __DIR__ . '/../includes/class-pge-tier-features.php';
 require_once __DIR__ . '/../includes/feature-resolver.php';
 require_once __DIR__ . '/../includes/class-mon-events-users.php';
+class PGE_Catalog_Activation_Service
+{
+    private static $operations=[];
+    public static function activate($user_id,$plan_id,$tier_id,array $context)
+    {
+        $key='salla:'.(string)($context['external_order_id']??'');
+        if(isset(self::$operations[$key]))return ['result'=>'replayed','activation_id'=>self::$operations[$key],'state'=>'active_unbound','replay'=>true];
+        $activation_id=Mon_Events_Users::generate_catalog_activation_id();
+        $projection=Mon_Events_Users::build_catalog_activation_projection($user_id,$plan_id,$tier_id,(string)($context['external_order_id']??''),$activation_id);
+        if(is_wp_error($projection))return $projection;
+        $applied=Mon_Events_Users::apply_catalog_activation_projection($user_id,$projection);
+        if(is_wp_error($applied))return $applied;
+        self::$operations[$key]=$activation_id;
+        return ['result'=>'activated','activation_id'=>$activation_id,'state'=>'active_unbound','replay'=>false];
+    }
+}
+function phase2_test_activate_catalog_tier($user_id,$plan_id,$tier_id,$order_id='')
+{
+    static $sequence=0;
+    if($order_id==='')$order_id='TEST-MANUAL-'.(++$sequence);
+    $result=Mon_Events_Users::activate_catalog_tier($user_id,$plan_id,$tier_id,$order_id,['source'=>'salla','merchant_id'=>1,'external_customer_id'=>(string)$user_id,'external_order_id'=>$order_id]);
+    return is_wp_error($result)?$result:true;
+}
 
 // ── أدوات الاختبار (نفس نمط check()/check_true() القائم فعلاً) ─────────────
 
@@ -400,7 +423,7 @@ check('1. Tier أُنشئ فعلياً بـevent_quota_mode=limited', $tier1['ev
 check('1. Tier أُنشئ فعلياً بـevent_quota_limit=3', $tier1['event_quota_limit'] ?? null, 3);
 
 reset_test_user(9301);
-$result_s1 = Mon_Events_Users::activate_catalog_tier(9301, 1, $tier1['id'], 'ORDER-S1');
+$result_s1 = phase2_test_activate_catalog_tier(9301, 1, $tier1['id'], 'ORDER-S1');
 check_true('1. activate_catalog_tier() نجح (true)', $result_s1 === true);
 check('1. _mon_event_quota_mode = limited', get_user_meta(9301, '_mon_event_quota_mode', true), 'limited');
 check('1. _mon_event_quota_limit = 3 (int)', get_user_meta(9301, '_mon_event_quota_limit', true), 3);
@@ -413,7 +436,7 @@ $tier2 = make_test_tier('s2_idempotency', 2, [
     'event_quota_limit' => 4,
 ]);
 reset_test_user(9302);
-$result_s2_first = Mon_Events_Users::activate_catalog_tier(9302, 1, $tier2['id'], 'ORDER-S2');
+$result_s2_first = phase2_test_activate_catalog_tier(9302, 1, $tier2['id'], 'ORDER-S2');
 check_true('2. أول تفعيل نجح', $result_s2_first === true);
 
 $mode_before_s2 = get_user_meta(9302, '_mon_event_quota_mode', true);
@@ -428,7 +451,7 @@ $wpdb->tiers[$tier2['id']]['event_quota_limit'] = 999;
 
 // نفس المعطيات تماماً (plan_id/tier_id/order_id) — يجب أن يمر عبر فرع
 // "تكرار طلب متطابق" الحالي (return true مبكرة) بلا أي إعادة بناء Snapshot.
-$result_s2_repeat = Mon_Events_Users::activate_catalog_tier(9302, 1, $tier2['id'], 'ORDER-S2');
+$result_s2_repeat = phase2_test_activate_catalog_tier(9302, 1, $tier2['id'], 'ORDER-S2');
 check_true('2. تكرار نفس الطلب (Webhook) يعيد true', $result_s2_repeat === true);
 check('2. _mon_event_quota_mode لم تتغيّر', get_user_meta(9302, '_mon_event_quota_mode', true), $mode_before_s2);
 check('2. _mon_event_quota_limit لم تتغيّر (تبقى 4 رغم تعديل Tier الحيّ إلى 999)', get_user_meta(9302, '_mon_event_quota_limit', true), $limit_before_s2);
@@ -441,7 +464,7 @@ $tier3 = make_test_tier('s3_isolation', 3, [
     'event_quota_limit' => 3,
 ]);
 reset_test_user(9303);
-$result_s3_activate = Mon_Events_Users::activate_catalog_tier(9303, 1, $tier3['id'], 'ORDER-S3A');
+$result_s3_activate = phase2_test_activate_catalog_tier(9303, 1, $tier3['id'], 'ORDER-S3A');
 check_true('3. التفعيل الأول (Limited/3) نجح', $result_s3_activate === true);
 check('3. Snapshot الأول = 3 قبل أي تعديل', get_user_meta(9303, '_mon_event_quota_limit', true), 3);
 
@@ -472,7 +495,7 @@ echo "\n=== السيناريو 4: تفعيل جديد فعلي بعد تعديل
 // نفس المستخدم 9303 ونفس الـTier (تم تعديله للتو إلى limit=5)، لكن بمعطى
 // order_id مختلف — هذا يجعله تفعيلاً جديداً فعلياً (لا يطابق فرع Idempotency
 // أعلاه)، فيجب أن يقرأ صف الـTier الحالي (5) لا القيمة المجمَّدة سابقاً (3).
-$result_s4 = Mon_Events_Users::activate_catalog_tier(9303, 1, $tier3['id'], 'ORDER-S3B');
+$result_s4 = phase2_test_activate_catalog_tier(9303, 1, $tier3['id'], 'ORDER-S3B');
 check_true('4. التفعيل الجديد الفعلي (order_id مختلف) نجح', $result_s4 === true);
 check('4. Snapshot الجديدة تعكس قيمة الـTier الحالية (5)', get_user_meta(9303, '_mon_event_quota_limit', true), 5);
 check('4. _mon_event_quota_mode يبقى limited', get_user_meta(9303, '_mon_event_quota_mode', true), 'limited');
@@ -489,7 +512,7 @@ check('5. Tier أُنشئ فعلياً بـevent_quota_mode=unlimited', $tier5['
 check('5. event_quota_limit طُبِّعت افتراضياً إلى 1 عند الإنشاء', $tier5['event_quota_limit'] ?? null, 1);
 
 reset_test_user(9305);
-$result_s5 = Mon_Events_Users::activate_catalog_tier(9305, 1, $tier5['id'], 'ORDER-S5');
+$result_s5 = phase2_test_activate_catalog_tier(9305, 1, $tier5['id'], 'ORDER-S5');
 check_true('5. activate_catalog_tier() نجح', $result_s5 === true);
 check('5. _mon_event_quota_mode = unlimited', get_user_meta(9305, '_mon_event_quota_mode', true), 'unlimited');
 check('5. _mon_event_quota_limit = 1 (القيمة الرقمية المُتجاهَلة وقت التشغيل)', get_user_meta(9305, '_mon_event_quota_limit', true), 1);
@@ -511,7 +534,7 @@ $tier6 = make_test_tier('s6_regression', 6, [
 // الخام، بصرف النظر عن كيفية وصولها للصف).
 $wpdb->tiers[$tier6['id']]['guest_limit'] = 150;
 reset_test_user(9306);
-$result_s6_first = Mon_Events_Users::activate_catalog_tier(9306, 1, $tier6['id'], 'ORDER-S6A');
+$result_s6_first = phase2_test_activate_catalog_tier(9306, 1, $tier6['id'], 'ORDER-S6A');
 check_true('6. التفعيل الأول نجح', $result_s6_first === true);
 
 check('6. _mon_guest_limit = 150 (سلوك سابق غير مُتأثِّر)', get_user_meta(9306, '_mon_guest_limit', true), 150);
@@ -527,7 +550,7 @@ check('6. Event Quota مكتوبة أيضاً في نفس Snapshot (2)', get_use
 // تفعيل جديد فعلي آخر (order_id مختلف) — credit_cycle_id يجب أن يتغيّر (سلوك
 // سابق موجود مسبقاً، غير مُتأثِّر بإضافة Event Quota) بينما Event Quota أيضاً
 // تُعاد كتابتها بشكل صحيح في نفس الوقت من نفس صف الـTier.
-$result_s6_second = Mon_Events_Users::activate_catalog_tier(9306, 1, $tier6['id'], 'ORDER-S6B');
+$result_s6_second = phase2_test_activate_catalog_tier(9306, 1, $tier6['id'], 'ORDER-S6B');
 check_true('6. التفعيل الثاني الفعلي نجح', $result_s6_second === true);
 $cycle_id_second_s6 = get_user_meta(9306, '_mon_credit_cycle_id', true);
 check_true('6. _mon_credit_cycle_id تغيّر بين تفعيلين فعليين مختلفين (سلوك سابق سليم)', $cycle_id_second_s6 !== $cycle_id_first_s6);
@@ -543,7 +566,7 @@ $tier7 = make_test_tier('s7_together_success', 7, [
     'event_quota_limit' => 6,
 ]);
 reset_test_user(9307);
-Mon_Events_Users::activate_catalog_tier(9307, 1, $tier7['id'], 'ORDER-S7A');
+phase2_test_activate_catalog_tier(9307, 1, $tier7['id'], 'ORDER-S7A');
 check_true(
     '7أ. في المسار الناجح: كلا المفتاحين موجودان معاً (لا أحدهما بمفرده)',
     metadata_exists('user', 9307, '_mon_event_quota_mode') === metadata_exists('user', 9307, '_mon_event_quota_limit')
@@ -565,7 +588,7 @@ $tier7b = make_test_tier('s7_forced_partial_failure', 8, [
 ]);
 reset_test_user(9308);
 set_test_force_update_user_meta_failure(9308, '_mon_event_quota_limit', true);
-$result_s7b = Mon_Events_Users::activate_catalog_tier(9308, 1, $tier7b['id'], 'ORDER-S7B');
+$result_s7b = phase2_test_activate_catalog_tier(9308, 1, $tier7b['id'], 'ORDER-S7B');
 check_true('7ب. فشل كتابة _mon_event_quota_limit المحقون → WP_Error (كما هو متوقع، لا كتمان للخطأ)', is_wp_error($result_s7b));
 check_true('7ب. _mon_event_quota_mode نفسها كُتبت فعلاً قبل نقطة الفشل (سلوك موروث من سياسة لا-Rollback العامة، لا عيب جديد)', metadata_exists('user', 9308, '_mon_event_quota_mode'));
 check_true('7ب. _mon_event_quota_limit لم تُكتب (فشلت فعلياً كما حُقن)', !metadata_exists('user', 9308, '_mon_event_quota_limit'));
@@ -573,7 +596,7 @@ clear_test_force_update_user_meta_failure(9308, '_mon_event_quota_limit');
 
 // 7ج. تأكيد أن الحالة الجزئية أعلاه (7ب) ليست دائمة: تفعيل فعلي جديد لاحق
 // لنفس المستخدم (بلا حقن فشل) يعيد Snapshot متكاملة كاملة كالمعتاد.
-$result_s7c = Mon_Events_Users::activate_catalog_tier(9308, 1, $tier7b['id'], 'ORDER-S7C');
+$result_s7c = phase2_test_activate_catalog_tier(9308, 1, $tier7b['id'], 'ORDER-S7C');
 check_true('7ج. تفعيل فعلي لاحق بلا حقن فشل ينجح', $result_s7c === true);
 check('7ج. _mon_event_quota_mode = limited بعد الإصلاح', get_user_meta(9308, '_mon_event_quota_mode', true), 'limited');
 check('7ج. _mon_event_quota_limit = 9 بعد الإصلاح (كلاهما موجود الآن معاً)', get_user_meta(9308, '_mon_event_quota_limit', true), 9);

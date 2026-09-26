@@ -59,6 +59,25 @@ get_header();
 </div>
 
 <script>
+    const eventOperationStorageKey = <?php echo wp_json_encode(
+        'pge_event_creation_operation:' . get_current_user_id() . ':' . (string) get_user_meta(get_current_user_id(), '_mon_credit_cycle_id', true)
+    ); ?>;
+    function createEventOperationUuid() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+        const bytes = new Uint8Array(16);
+        window.crypto.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        return Array.from(bytes, (byte, index) => ([4, 6, 8, 10].includes(index) ? '-' : '') + byte.toString(16).padStart(2, '0')).join('');
+    }
+    function currentEventOperationId() {
+        let operationId = window.sessionStorage.getItem(eventOperationStorageKey);
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId || '')) {
+            operationId = createEventOperationUuid();
+            window.sessionStorage.setItem(eventOperationStorageKey, operationId);
+        }
+        return operationId;
+    }
     document.getElementById('create-event-form').addEventListener('submit', function(e) {
         e.preventDefault();
         const btn = this.querySelector('button[type="submit"]');
@@ -67,6 +86,7 @@ get_header();
 
         const formData = new FormData(this);
         formData.append('action', 'pge_create_new_event');
+        formData.append('event_creation_operation_id', currentEventOperationId());
 
         fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
             method: 'POST',
@@ -75,6 +95,7 @@ get_header();
         .then(r => r.json())
         .then(data => {
             if (data.success) {
+                window.sessionStorage.removeItem(eventOperationStorageKey);
                 window.location.href = data.data.redirect_url;
             } else {
                 alert(data.data || 'حدث خطأ ما');

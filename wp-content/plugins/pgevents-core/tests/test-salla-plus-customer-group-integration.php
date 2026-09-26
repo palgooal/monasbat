@@ -46,6 +46,7 @@ $GLOBALS['plus_test_user'] = new WP_User(77);
 $GLOBALS['plus_test_meta'] = [];
 $GLOBALS['plus_test_sequence'] = [];
 $GLOBALS['plus_test_activation_result'] = true;
+$GLOBALS['plus_test_activation_contexts'] = [];
 $GLOBALS['plus_test_deactivations'] = 0;
 $GLOBALS['plus_test_sync_result'] = null;
 $GLOBALS['plus_test_sync_calls'] = [];
@@ -80,9 +81,10 @@ function update_user_meta($user_id, $meta_key, $meta_value)
 
 class Mon_Events_Users
 {
-    public static function activate_catalog_tier($user_id, $plan_id, $tier_id, $order_id)
+    public static function activate_catalog_tier($user_id, $plan_id, $tier_id, $order_id, array $context = [])
     {
         $GLOBALS['plus_test_sequence'][] = 'activate';
+        $GLOBALS['plus_test_activation_contexts'][] = $context;
         return $GLOBALS['plus_test_activation_result'];
     }
 
@@ -131,6 +133,7 @@ function reset_plus_test_state()
     $GLOBALS['plus_test_meta'] = [];
     $GLOBALS['plus_test_sequence'] = [];
     $GLOBALS['plus_test_activation_result'] = true;
+    $GLOBALS['plus_test_activation_contexts'] = [];
     $GLOBALS['plus_test_deactivations'] = 0;
     $GLOBALS['plus_test_sync_result'] = null;
     $GLOBALS['plus_test_sync_calls'] = [];
@@ -200,6 +203,12 @@ check('Plus activation persists desired membership once', count($GLOBALS['plus_t
 check('Plus sync receives merchant, customer, and group IDs', $GLOBALS['plus_test_sync_calls'][0], [123, 456, 225189340]);
 check('Plus sync runs after internal activation', $GLOBALS['plus_test_sequence'], ['activate', 'sync', 'email']);
 check('Plus activation creates one durable identity row', count($GLOBALS['plus_test_sync_rows']), 1);
+check('Salla saga receives authoritative origin identity', $GLOBALS['plus_test_activation_contexts'][0], [
+    'source' => 'salla',
+    'merchant_id' => 123,
+    'external_customer_id' => 456,
+    'external_order_id' => 'ORDER-1',
+]);
 
 reset_plus_test_state();
 $GLOBALS['plus_test_activation_result'] = new WP_Error('activation_failed');

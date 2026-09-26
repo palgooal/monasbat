@@ -30,12 +30,15 @@ if (!class_exists('WP_Error')) {
 
 function is_wp_error($value) { return $value instanceof WP_Error; }
 function wp_json_encode($value) { return json_encode($value); }
+class PGE_Salla_Not_Member_Removal_Feature { public static $enabled = true; public static function enabled() { return self::$enabled; } }
 
 $GLOBALS['salla_test_manager_calls'] = [];
 $GLOBALS['salla_test_http_calls'] = [];
 $GLOBALS['salla_test_http_response'] = null;
 $GLOBALS['salla_test_get_calls'] = [];
 $GLOBALS['salla_test_get_response'] = null;
+$GLOBALS['salla_test_put_calls'] = [];
+$GLOBALS['salla_test_put_response'] = null;
 
 function get_option($name, $default = false)
 {
@@ -57,6 +60,12 @@ function wp_remote_get($url, $args = [])
     return $GLOBALS['salla_test_get_response'];
 }
 
+function wp_remote_request($url, $args = [])
+{
+    $GLOBALS['salla_test_put_calls'][] = ['url' => $url, 'args' => $args];
+    return $GLOBALS['salla_test_put_response'];
+}
+
 function wp_remote_retrieve_response_code($response)
 {
     return is_array($response) ? (int) ($response['response']['code'] ?? 0) : 0;
@@ -73,6 +82,7 @@ function reset_salla_test_state()
     $GLOBALS['salla_test_manager_calls'] = [];
     $GLOBALS['salla_test_http_calls'] = [];
     $GLOBALS['salla_test_get_calls'] = [];
+    $GLOBALS['salla_test_put_calls'] = [];
     $GLOBALS['salla_test_http_response'] = [
         'response' => ['code' => 200],
         'body'     => json_encode([
@@ -83,8 +93,9 @@ function reset_salla_test_state()
     ];
     $GLOBALS['salla_test_get_response'] = [
         'response' => ['code' => 200],
-        'body' => json_encode(['status' => 200, 'success' => true, 'data' => ['groups' => [789]]]),
+        'body' => json_encode(['status' => 200, 'success' => true, 'data' => ['groups' => [789], 'first_name' => 'Current']]),
     ];
+    $GLOBALS['salla_test_put_response'] = ['response' => ['code' => 200], 'body' => json_encode(['success' => true])];
 }
 
 $failures = 0;
@@ -262,7 +273,7 @@ check('Customer Details uses documented endpoint', $GLOBALS['salla_test_get_call
 check('Customer Details uses manager token', $GLOBALS['salla_test_get_calls'][0]['args']['headers']['Authorization'] ?? null, 'Bearer manager-access-token');
 
 reset_salla_test_state();
-$GLOBALS['salla_test_get_response']['body'] = json_encode(['status' => 200, 'success' => true, 'data' => ['groups' => [111]]]);
+$GLOBALS['salla_test_get_response']['body'] = json_encode(['status' => 200, 'success' => true, 'data' => ['groups' => [111], 'first_name' => 'Current']]);
 $membership = $service->customer_is_in_group(123, 456, 789);
 check('Customer Details reports absent membership', $membership['is_member'] ?? null, false);
 
@@ -271,6 +282,53 @@ $GLOBALS['salla_test_get_response'] = new WP_Error('http_request_failed', 'simul
 $membership = $service->customer_is_in_group(123, 456, 789);
 check_error('Customer Details transport failure', $membership, 'salla_customer_details_transport_error');
 check('Customer Details transport performs one stub request', count($GLOBALS['salla_test_get_calls']), 1);
+
+reset_salla_test_state();
+$GLOBALS['salla_test_get_response']['body'] = json_encode(['success' => true, 'data' => ['groups' => [['id' => '9'], 7, 9], 'first_name' => 'As Read']]);
+$details = $service->get_customer_details(123, 456);
+check('details normalizes complete unique groups', $details['groups'] ?? null, [7, 9]);
+check('details returns current first_name', $details['first_name'] ?? null, 'As Read');
+check('details explicitly confirms existence', $details['exists'] ?? null, true);
+
+reset_salla_test_state();
+$GLOBALS['salla_test_get_response']['body'] = json_encode(['success' => true, 'data' => ['groups' => [['name' => 'bad']], 'first_name' => 'Current']]);
+check_error('malformed groups fail closed', $service->get_customer_details(123, 456), 'salla_customer_details_malformed_groups');
+
+reset_salla_test_state();
+$GLOBALS['salla_test_get_response']['body'] = json_encode(['success' => true, 'data' => ['groups' => [789]]]);
+check_error('missing first_name fails closed', $service->get_customer_details(123, 456), 'salla_customer_details_missing_update_field');
+
+reset_salla_test_state();
+$GLOBALS['salla_test_get_response'] = ['response' => ['code' => 404], 'body' => '{}'];
+$details = $service->get_customer_details(123, 456);
+check('404 explicitly reports missing customer', $details['exists'] ?? null, false);
+
+reset_salla_test_state();
+$updated = $service->update_customer_groups(123, 456, 'Current Name', [20, 10]);
+check_true('Update Customer succeeds through stub', is_array($updated) && ($updated['success'] ?? false));
+$put = $GLOBALS['salla_test_put_calls'][0] ?? [];
+check('Update Customer uses PUT', $put['args']['method'] ?? null, 'PUT');
+check('Update Customer uses exact replacement payload', json_decode($put['args']['body'] ?? '', true), ['first_name' => 'Current Name', 'groups' => ['20', '10']]);
+
+reset_salla_test_state();
+$service->update_customer_groups(123, 456, 'Current Name', []);
+check('Update Customer supports groups=[]', json_decode($GLOBALS['salla_test_put_calls'][0]['args']['body'] ?? '', true), ['first_name' => 'Current Name', 'groups' => []]);
+$before_guard_calls=count($GLOBALS['salla_test_put_calls']);PGE_Salla_Not_Member_Removal_Feature::$enabled=false;
+check_error('disabled removal transport guard', $service->update_customer_groups(123,456,'Current Name',[]), 'salla_not_member_removal_disabled');
+check('disabled removal guard makes no HTTP',count($GLOBALS['salla_test_put_calls']),$before_guard_calls);PGE_Salla_Not_Member_Removal_Feature::$enabled=true;
+
+reset_salla_test_state();
+$GLOBALS['salla_test_put_response'] = ['response' => ['code' => 401], 'body' => '{}'];
+check_error('Update Customer 401 is explicit', $service->update_customer_groups(123, 456, 'Current', []), 'salla_customer_update_unauthorized');
+check('Update Customer 401 is not replayed', count($GLOBALS['salla_test_put_calls']), 1);
+check('Update Customer 401 does not reacquire token', $GLOBALS['salla_test_manager_calls'], [123]);
+
+foreach (['', '{bad json', json_encode(['success' => false])] as $body) {
+    reset_salla_test_state();
+    $GLOBALS['salla_test_put_response']['body'] = $body;
+    check_error('2xx malformed Update Customer is ambiguous', $service->update_customer_groups(123, 456, 'Current', []), 'salla_customer_update_ambiguous_response');
+    check('ambiguous Update Customer performs one PUT', count($GLOBALS['salla_test_put_calls']), 1);
+}
 
 $service_source = file_get_contents(dirname(__DIR__) . '/includes/class-pge-salla-customer-groups-service.php');
 $plugin_source = file_get_contents(dirname(__DIR__) . '/pgevents-core.php');

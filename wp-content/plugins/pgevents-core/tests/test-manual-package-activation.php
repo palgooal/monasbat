@@ -339,6 +339,30 @@ require_once __DIR__ . '/../includes/class-pge-catalog.php';
 require_once __DIR__ . '/../includes/class-pge-feature-registry.php';
 require_once __DIR__ . '/../includes/class-pge-tier-features.php';
 require_once __DIR__ . '/../includes/class-mon-events-users.php';
+class PGE_Catalog_Activation_Service
+{
+    private static $operations = [];
+    public static function activate($user_id,$plan_id,$tier_id,array $context)
+    {
+        $source=(string)($context['source']??'');
+        $key=$source==='salla'
+            ? 'salla:'.(string)($context['merchant_id']??0).':'.(string)($context['external_order_id']??'')
+            : 'manual:'.(string)($context['operation_id']??'');
+        $identity=[$user_id,$plan_id,$tier_id,$source];
+        if(isset(self::$operations[$key])){
+            return self::$operations[$key]['identity']===$identity
+                ? ['result'=>'replayed','activation_id'=>self::$operations[$key]['activation_id'],'state'=>'active_unbound','replay'=>true]
+                : new WP_Error('idempotency_conflict','conflict');
+        }
+        $activation_id=Mon_Events_Users::generate_catalog_activation_id();
+        $projection=Mon_Events_Users::build_catalog_activation_projection($user_id,$plan_id,$tier_id,(string)($context['external_order_id']??''),$activation_id);
+        if(is_wp_error($projection))return $projection;
+        $applied=Mon_Events_Users::apply_catalog_activation_projection($user_id,$projection);
+        if(is_wp_error($applied))return $applied;
+        self::$operations[$key]=['identity'=>$identity,'activation_id'=>$activation_id];
+        return ['result'=>'activated','activation_id'=>$activation_id,'state'=>'active_unbound','replay'=>false];
+    }
+}
 require_once __DIR__ . '/../includes/class-pge-manual-package-activation-audit.php';
 require_once __DIR__ . '/../includes/manual-package-activation-ajax.php';
 
@@ -355,6 +379,10 @@ function check_true($label, $cond) { check($label, (bool) $cond, true); }
 
 function post_fields(array $extra = [])
 {
+    if (($extra['source'] ?? '') === 'catalog' && !isset($extra['operation_id'])) {
+        $hex = substr(hash('sha256', implode('|', [$extra['target_user_id'] ?? '', $extra['plan_id'] ?? '', $extra['tier_id'] ?? '', $extra['reason'] ?? ''])), 0, 32);
+        $extra['operation_id'] = substr($hex,0,8).'-'.substr($hex,8,4).'-4'.substr($hex,13,3).'-8'.substr($hex,17,3).'-'.substr($hex,20,12);
+    }
     return array_merge(['nonce' => wp_create_nonce('pge_manual_pkg_activation')], $extra);
 }
 function run(callable $handler, array $fields): array
@@ -461,7 +489,7 @@ $manual_meta = $GLOBALS['__test_user_meta'][201];
 
 set_test_user(202, 'webhook-path@example.test');
 reset_test_user(202);
-Mon_Events_Users::activate_catalog_tier(202, $plan['id'], $tier['id'], ''); // محاكاة ما يفعله class-salla-handler.php حرفياً
+Mon_Events_Users::activate_catalog_tier(202, $plan['id'], $tier['id'], '', ['source'=>'manual','operation_id'=>'22222222-2222-4222-8222-222222222222']);
 $webhook_meta = $GLOBALS['__test_user_meta'][202];
 
 // credit_cycle_id مُصمَّم عمداً ليكون فريداً عند كل استدعاء تفعيل حقيقي منفصل

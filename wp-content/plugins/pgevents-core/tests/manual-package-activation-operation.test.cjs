@@ -1,0 +1,16 @@
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const values = new Map();
+global.sessionStorage = {getItem:k=>values.has(k)?values.get(k):null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+let sequence=0;
+global.crypto = {randomUUID:()=>`11111111-1111-4111-8111-${String(++sequence).padStart(12,'0')}`};
+const operation = require(path.join(__dirname,'../assets/js/manual-package-activation-operation.js'));
+const first=operation.getOrCreate('7:2:3:reason');
+assert.equal(operation.getOrCreate('7:2:3:reason'),first,'retry/reload reuses the same operation');
+assert.notEqual(operation.getOrCreate('8:2:3:reason'),first,'changed user creates a new identity');
+const current=operation.getOrCreate('8:2:3:reason');
+operation.complete('different');
+assert.equal(operation.getOrCreate('8:2:3:reason'),current,'unrelated completion cannot clear operation');
+operation.complete('8:2:3:reason');
+assert.notEqual(operation.getOrCreate('8:2:3:reason'),current,'success completes the operation');
+console.log('5/5 passed');

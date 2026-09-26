@@ -1,5 +1,18 @@
 # دفتر ملاحظات مشروع مناسبات (Monasbat)
 
+> 2026-09-26: Phases 1–8 are **CLOSED** after the final independent re-gate:
+> PHP `1124/1124`, JavaScript `17/17`, total `1141/1141`, with Critical `0`
+> and High `0`. H8-01 is closed: a disabled authoritative reconciliation
+> that confirms the Plus group remains present persists the removal snapshot as
+> `retryable`, preventing repeated GET polling until removal is enabled again.
+> The Phase 9 Design/Audit result is **READY WITH NOTES**, and the P9 operational
+> decisions are approved, including `DEC-P9-DEPLOY-01`: deployment must be as
+> atomic as the verified Production layout permits, with maintenance, cron
+> pause, and a schema gate; a release-directory/symlink mechanism is preferred
+> only if Production inspection later proves it suitable. The destructive
+> removal flag remains default-off. No Production deployment, schema upgrade,
+> activation backfill, removal enablement, or Salla mutation has been executed.
+
 > 2026-09-18: Durable Salla Plus group convergence is implemented through
 > `wp_pge_salla_membership_sync`. Internal Plus activation is authoritative;
 > the webhook persists `desired_state=member`, and a lease/CAS-protected cron
@@ -7,6 +20,38 @@
 > reconciliation for ambiguous transport outcomes. Group removal remains
 > deferred until an official endpoint and an all-active-Plus-entitlements
 > resolver are verified. See `docs/integrations/SALLA.md`.
+
+> 2026-09-21: The Catalog limited Event Quota archival invariant is fixed.
+> Archived/private `pge_event` posts remain quota-consuming for their owning
+> `_pge_event_activation_id` (the current `_mon_credit_cycle_id`), so archiving
+> no longer frees capacity within the same activation cycle. Regression Scenario
+> 9 now passes and `test-event-quota-resolution.php` reports 34/34 PASS; the
+> related ownership, diagnostics, enforcement, and snapshot suites also pass.
+> This is a prerequisite fixed before designing the Plus event-end lifecycle;
+> Plus removal and the all-active-Plus-entitlements resolver remain unimplemented.
+
+> 2026-09-23: Final Design Review closed the five Catalog Activation History /
+> Plus Lifecycle design blockers. The approved contracts cover controlled Salla
+> group replacement and reconciliation, verified `groups=[]` replacement
+> semantics, the single verified pre-launch Plus backfill, stable UUID-based
+> manual-operation identity, and terminal Salla refund/cancel tombstones. These
+> are design decisions and behavioral evidence only; no production lifecycle,
+> migration, schema, or backfill was implemented by this documentation update.
+> See `docs/integrations/SALLA.md` for `DEC-SALLA-GROUP-01`,
+> `DEC-PLUS-MIG-01`, `DEC-CATALOG-IDEM-01`, and `DEC-PLUS-REFUND-01`.
+
+> 2026-09-25: Phase 7 removal contract blockers are resolved as design
+> decisions. `DEC-SALLA-REMOVAL-SNAPSHOT-01` requires durable authoritative
+> pre-GET evidence keyed by membership identity and `desired_revision`, with
+> invalidation when desired state returns to `member` and no blind repair after
+> `reconciliation_conflict`. `DEC-SALLA-REMOVAL-401-01` preserves the existing
+> Token Manager policy: removal GET/PUT HTTP 401 returns
+> `unauthorized_after_token_recovery`, without a Phase 7-specific refresh or
+> destructive PUT replay. The future implementation requires durable-snapshot
+> schema support and a Customer Details parser that returns complete normalized
+> groups, current `first_name`, explicit customer existence, and a validated
+> response structure. No removal transport, schema, or parser implementation is
+> included in this documentation update. See `docs/integrations/SALLA.md`.
 
 > **المرجع المركزي للقرارات الفنية وخطة العمل**
 > آخر تحديث: 2026-04-28

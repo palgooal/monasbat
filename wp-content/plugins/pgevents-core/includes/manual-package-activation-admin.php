@@ -79,6 +79,7 @@ function pge_render_manual_package_activation_page()
         </div>
     </div>
 
+    <script src="<?php echo esc_url(PGE_URL . 'assets/js/manual-package-activation-operation.js'); ?>"></script>
     <script>
     (function () {
         var ajaxUrl = <?php echo wp_json_encode($ajax_url); ?>;
@@ -89,6 +90,8 @@ function pge_render_manual_package_activation_page()
             selectedUserActive: false,
             packages: [],
             confirmOverride: false,
+            operationId: '',
+            operationFingerprint: '',
         };
 
         function post(action, extra) {
@@ -277,6 +280,14 @@ function pge_render_manual_package_activation_page()
             if (pkg.source === 'catalog') {
                 payload.plan_id = pkg.plan_id;
                 payload.tier_id = pkg.tier_id;
+                state.operationFingerprint = [state.selectedUserId, pkg.plan_id, pkg.tier_id, reason].join(':');
+                try {
+                    state.operationId = window.PGEManualActivationOperation.getOrCreate(state.operationFingerprint);
+                } catch (e) {
+                    msgBox.innerHTML = '<span style="color:#b91c1c;">تعذر إنشاء معرّف آمن لعملية التفعيل. حدّث المتصفح ثم حاول مجددًا.</span>';
+                    return;
+                }
+                payload.operation_id = state.operationId;
             } else {
                 payload.plan_key = pkg.plan_key;
             }
@@ -289,6 +300,9 @@ function pge_render_manual_package_activation_page()
                 btn.disabled = false;
                 btn.textContent = 'تفعيل الباقة';
                 if (res.success) {
+                    window.PGEManualActivationOperation.complete(state.operationFingerprint);
+                    state.operationId = '';
+                    state.operationFingerprint = '';
                     msgBox.innerHTML = '<div style="background:#f0fdf4; border:1px solid #bbf7d0; color:#16a34a; padding:10px 14px; border-radius:6px;">✅ ' + escapeHtml(res.data.message) + '</div>';
                 } else {
                     msgBox.innerHTML = '<div style="background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; padding:10px 14px; border-radius:6px;">❌ ' + escapeHtml(res.data && res.data.message) + '</div>';

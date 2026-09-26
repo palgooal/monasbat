@@ -2591,12 +2591,29 @@ require_once PGE_PATH . 'includes/class-pge-registration-email.php';
 // include لاستدعاء static method لاحقاً — فقط لثبات الاصطلاح.
 require_once PGE_PATH . 'includes/class-pge-package-activation-email.php';
 
+// Catalog Activation History — durable persistence, activation saga, event
+// binding, lifecycle reconciliation, revocation, and Salla membership
+// projection. The verified pre-launch backfill remains an explicit Phase 9
+// operation and is not performed during bootstrap.
+require_once PGE_PATH . 'includes/class-pge-catalog-activation-schema.php';
+require_once PGE_PATH . 'includes/class-pge-catalog-activation-repository.php';
+require_once PGE_PATH . 'includes/class-pge-catalog-event-binding-repository.php';
+require_once PGE_PATH . 'includes/class-pge-catalog-provider-origin-repository.php';
+require_once PGE_PATH . 'includes/class-pge-catalog-order-revocation-repository.php';
+require_once PGE_PATH . 'includes/class-pge-catalog-order-revocation-service.php';
+require_once PGE_PATH . 'includes/class-pge-catalog-activation-service.php';
+require_once PGE_PATH . 'includes/class-pge-catalog-event-lifecycle-service.php';
+require_once PGE_PATH . 'includes/class-pge-catalog-event-binding-service.php';
+PGE_Catalog_Event_Lifecycle_Service::register();
+
 // Durable Salla membership desired state: schema/store precede the worker;
 // OAuth and Customer Groups transport precede the worker; all precede handler.
 require_once PGE_PATH . 'includes/class-pge-salla-sync-schema.php';
+require_once PGE_PATH . 'includes/class-pge-salla-not-member-removal-feature.php';
 require_once PGE_PATH . 'includes/class-pge-salla-token-manager.php';
 require_once PGE_PATH . 'includes/class-pge-salla-customer-groups-service.php';
 require_once PGE_PATH . 'includes/class-pge-salla-membership-sync-store.php';
+require_once PGE_PATH . 'includes/class-pge-salla-plus-eligibility-resolver.php';
 require_once PGE_PATH . 'includes/class-pge-salla-membership-sync-worker.php';
 
 // 2. المحرك الرئيسي للربط مع سلة (Webhook Handler)

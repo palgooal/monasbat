@@ -117,3 +117,223 @@ Removal must not occur until Salla's official remove-membership endpoint is
 verified. It must also use an entitlement resolver: a customer remains a member
 while any active Plus event/entitlement exists, so one event ending is never
 sufficient by itself to request removal.
+
+## Catalog Activation History / Plus Lifecycle — Final Design Review (2026-09-23)
+
+Status: **DESIGN APPROVED; IMPLEMENTATION NOT INCLUDED IN THIS UPDATE**
+
+This section records the contracts that closed the five Final Implementation
+Design blockers. It does not assert that the lifecycle, schema, migration, or
+backfill has been implemented. The existing 2026-09-18 synchronization scope
+above remains historical evidence of the currently implemented behavior.
+
+### DEC-SALLA-GROUP-01 — Accept Controlled Replacement Race
+
+Plus membership removal will use this controlled replacement sequence:
+
+1. Read authoritative Customer Details from Salla.
+2. Remove only Plus Group ID `225189340` from the group list returned by that
+   pre-GET.
+3. PUT the complete remaining group list together with a recognized, unchanged
+   customer field.
+4. Perform an independent Customer Details GET for reconciliation.
+
+A local identity lock serializes this application's work for the same identity,
+but cannot prevent a concurrent external mutation in Salla. Success therefore
+requires both conditions below:
+
+- Plus Group ID is absent from the reconciliation GET.
+- Every non-target group present in the pre-GET is still present.
+
+Any discrepancy is a `reconciliation_conflict`. The system must not blindly
+repair, recreate, or overwrite non-target groups.
+
+#### Behavioral verification: `groups=[]` — PASS
+
+The controlled Salla test used no logged token, refresh token, client secret,
+webhook secret, or Authorization header.
+
+| Field | Verified value |
+|---|---|
+| Merchant | `392732220` |
+| Test customer | `1888007575` |
+| Test group | `1702339165` |
+| Plus group | `225189340` |
+| Pre-state | `[1702339165]`; Plus absent |
+| Update Customer request | unchanged `first_name` and `groups=[]` |
+| PUT result | HTTP 200 |
+| Independent post-GET | `POST_GROUPS=[]` |
+| Result | `EMPTY_GROUPS=YES` |
+
+This proves that Update Customer replacement semantics also support removing
+the customer's last group. It verifies the API behavior required by the design;
+it does not by itself implement Plus removal.
+
+### DEC-PLUS-MIG-01 — Verified Pre-Launch Backfill
+
+Production inspection produced the following bounded inventory:
+
+| Counter | Value |
+|---|---:|
+| `CATALOG_USERS` | 4 |
+| `CATALOG_ACTIVE` | 4 |
+| `PLUS_ACTIVE` | 1 |
+| `PLUS_WITH_CYCLE` | 1 |
+| `PLUS_WITH_SALLA_CUSTOMER` | 1 |
+| `PLUS_WITH_LAST_ORDER` | 1 |
+| `PLUS_WITH_MATCHING_EVENT` | 0 |
+
+The only current Plus case is:
+
+- WP user: `380`
+- plan: `halwa_plus`
+- tier: `guests_100`
+- cycle: `6daa5ee5-5bda-43a6-a392-ad75402b8c21`
+- Salla customer: `1888007575`
+- order: `1576373696`
+
+Salla verification returned Order HTTP 200 for customer `1888007575` with
+status `completed`. List Order Items returned HTTP 200 with one item: product
+`1539650850`, SKU `HALWA-PLUS-100`, name `حلوة بلس`.
+
+Only this exact inspected case is eligible for a verified pre-launch Salla Plus
+activation backfill. It is logically `active_unbound` because no matching event
+exists. This is not a general heuristic: future provider origin must never be
+inferred only from `_pge_salla_customer_id`, `_mon_last_order_id`, or a
+membership-sync row. This decision authorizes the bounded backfill design; this
+documentation update does not execute that backfill.
+
+### DEC-CATALOG-IDEM-01 — Stable Manual Operation Identity
+
+Every new manual activation operation receives a UUID before its first submit.
+Its idempotency key is `manual:{operation_id}`. The same UUID persists across a
+timeout, network retry, double-submit, or resume of that same operation; a newly
+intended operation receives a new UUID.
+
+The server/database idempotency record is the source of truth.
+`sessionStorage` or other browser persistence is transport persistence only.
+
+- Same key and same payload replays or resumes the same activation.
+- Same key with a different user, plan, or tier payload is an idempotency
+  conflict.
+- A nonce, timestamp, or user ID is not a substitute for operation identity.
+
+### DEC-PLUS-REFUND-01 — Terminal Revocation Tombstone
+
+The durable Salla order identity is
+`(provider=salla, merchant_id, external_order_id)`. A trusted, verified refund
+or cancellation applies the following transitions:
+
+| Current state | Result |
+|---|---|
+| `active_unbound` | `revoked` |
+| `active_bound` | `revoked` |
+| `preparing` | `revoked` |
+| `revoked` | `revoked` idempotently |
+| `ended` | `ended` |
+
+If a trusted refund/cancel arrives before activation, the system must create a
+durable `revoked` tombstone for the same order identity. A late activation
+webhook for that order must not create an entitlement or restore Plus group
+membership. No tombstone may be created from an untrusted webhook or an
+ambiguous status.
+
+After revocation, aggregate Salla Plus eligibility is recalculated. Another
+active Salla Plus activation prevents group removal. A later repurchase has a
+new order ID and is therefore an independent activation.
+
+### DEC-SALLA-REMOVAL-SNAPSHOT-01 — Durable Pre-GET Evidence
+
+Before a destructive Plus-group removal PUT, the system must durably persist
+the complete normalized set of non-target groups returned by the immediately
+preceding authoritative Customer Details GET. This removal snapshot belongs to
+the canonical membership identity together with the exact `desired_revision`
+that requested `not_member`; an attempt token is not its durable identity.
+
+For the same `desired_revision`, the snapshot must remain recoverable across a
+process crash, PUT timeout, failed reconciliation GET, lease expiry, and a new
+`attempt_token`. A transition of `desired_state` back to `member` must
+invalidate or clear any older removal snapshot so that a stale `not_member`
+attempt cannot reuse it.
+
+Successful reconciliation still requires the target Plus group to be absent
+and every non-target group captured in the durable pre-GET snapshot to remain
+present. A discrepancy is `reconciliation_conflict`; it never authorizes blind
+repair of non-target groups.
+
+The Phase 7 implementation therefore requires schema support for this durable
+snapshot. Its Customer Details parser must return all of the following as an
+explicit validated result before destructive removal can proceed:
+
+- the complete normalized customer-group list;
+- the current `first_name` used as the recognized unchanged customer field;
+- explicit customer existence;
+- confirmation that the response structure is valid.
+
+This decision defines the storage and parser contract only. No schema change,
+Customer Details request, Update Customer PUT, or removal worker is implemented
+by this documentation update.
+
+### DEC-SALLA-REMOVAL-401-01 — Preserve Existing 401 Policy
+
+Phase 7 uses the existing Token Manager and its current token-acquisition
+policy. It does not add forced or reactive token refresh. If a removal Customer
+Details or Update Customer transport receives HTTP 401 after that policy has
+run, the operation must return `unauthorized_after_token_recovery`.
+
+Phase 7 must not replay a destructive PUT through removal-specific refresh
+logic. Any future centralized reactive-401 enhancement is a separate Token
+Manager change with its own design and verification; it is not part of Phase 7.
+
+### Final Implementation Design blockers
+
+The earlier questions and evidence remain recorded above and in project
+history. Their current disposition is:
+
+| Blocker | Status | Closing decision or evidence |
+|---|---|---|
+| Safe removal without overwriting concurrent non-target group changes | **RESOLVED** | `DEC-SALLA-GROUP-01`: accept the controlled replacement race, require independent reconciliation, and emit `reconciliation_conflict` on discrepancy; never blind-repair non-target groups. |
+| Can Update Customer remove the final customer group with `groups=[]`? | **RESOLVED** | Controlled behavioral verification: PUT HTTP 200, independent `POST_GROUPS=[]`, `EMPTY_GROUPS=YES`. |
+| How should existing pre-launch Plus state enter Activation History? | **RESOLVED** | `DEC-PLUS-MIG-01`: permit only the single fully verified case as `active_unbound`; prohibit a reusable metadata heuristic. |
+| What is the stable idempotency identity for manual activation? | **RESOLVED** | `DEC-CATALOG-IDEM-01`: client-created operation UUID plus authoritative server/database idempotency record. |
+| What happens when trusted refund/cancel precedes or follows activation? | **RESOLVED** | `DEC-PLUS-REFUND-01`: terminal order-identity tombstone, late-activation suppression, and aggregate eligibility recalculation. |
+| What evidence survives a crash or retry before destructive group removal? | **RESOLVED** | `DEC-SALLA-REMOVAL-SNAPSHOT-01`: persist the authoritative pre-GET non-target groups by membership identity and `desired_revision`, invalidate them on return to `member`, and never blind-repair a reconciliation conflict. |
+| How does Phase 7 handle HTTP 401 from removal GET/PUT transports? | **RESOLVED** | `DEC-SALLA-REMOVAL-401-01`: retain the current Token Manager policy, return `unauthorized_after_token_recovery`, and do not add a removal-specific refresh or destructive PUT replay. |
+
+## Phase 8 closure and Phase 9 release preparation (2026-09-26)
+
+Phase 8 is **CLOSED** after its final independent re-gate:
+
+| Inventory | Result |
+|---|---:|
+| PHP Phase 1–8 | `1124/1124 PASS` |
+| JavaScript | `17/17 PASS` |
+| Total | `1141/1141 PASS` |
+| Critical findings | `0` |
+| High findings | `0` |
+
+H8-01 is closed. When removal is disabled and authoritative reconciliation
+confirms that the Plus group remains present while all required non-target
+groups are preserved, the durable snapshot transitions from
+`prepared`/`ambiguous` to `retryable`. The row remains `not_member` at the same
+`desired_revision`, but disabled scheduling no longer repeatedly polls it.
+
+The Phase 9 Design/Audit verdict is **READY WITH NOTES**. Its operational
+decisions are approved with the following deployment constraint:
+
+### DEC-P9-DEPLOY-01 — Atomic where verified
+
+Production deployment must be as atomic as the verified Production filesystem
+and hosting layout permit, and must use maintenance mode, a cron pause, and a
+post-deployment schema gate. A versioned release directory with an atomic
+symlink switch is preferred only if later read-only Production inspection
+proves that this mechanism fits the actual hosting layout. Phase 9 preparation
+must not assume that symlink deployment already exists.
+
+Code deployment, the single verified pre-launch activation backfill, and
+destructive `not_member` removal enablement remain three separately authorized
+operations. Success of one does not authorize the next. The option
+`pge_salla_not_member_removal_enabled` remains missing/disabled by default.
+
+This release-candidate preparation records no Production rollout, Production
+schema mutation, activation backfill, feature enablement, or real Salla HTTP.

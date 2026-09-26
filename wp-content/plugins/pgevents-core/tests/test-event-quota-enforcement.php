@@ -264,6 +264,39 @@ function get_post($post_id)
 
 function get_permalink($post_id) { return 'https://example.test/event/' . $post_id . '/'; }
 
+// Phase 3 durable-binding seam. This suite remains focused on the production
+// quota handler; the binding service itself has dedicated unit/MySQL tests.
+class PGE_Catalog_Event_Binding_Service
+{
+    public static function lock_name($activation_id) { return 'pge_event_bind_' . md5((string) $activation_id); }
+    public static function operation_lock_name($operation_id) { return 'pge_event_operation_' . md5((string) $operation_id); }
+    public static function valid_operation_id($operation_id) { return is_string($operation_id) && (bool) preg_match('/^[0-9a-f-]{36}$/', $operation_id); }
+    public static function resolve_current($user_id)
+    {
+        $cycle = (string) get_user_meta($user_id, '_mon_credit_cycle_id', true);
+        return $cycle === '' ? new WP_Error('event_activation_missing') : [
+            'result' => 'ready',
+            'activation' => ['id' => $user_id, 'activation_id' => $cycle, 'user_id' => $user_id, 'lifecycle_state' => 'active_unbound', 'revision' => 1],
+            'bindings' => [],
+        ];
+    }
+    public static function bind_event(array $activation, $event_id)
+    {
+        return (string) get_post_meta($event_id, '_pge_event_activation_id', true) === (string) $activation['activation_id']
+            ? ['result' => 'bound', 'event_id' => $event_id]
+            : new WP_Error('event_activation_meta_mismatch');
+    }
+    public static function resolve_creation_operation(array $activation, $user_id, $operation_id)
+    {
+        return ['result' => 'new', 'operation_id' => $operation_id];
+    }
+    public static function compensate_new_event($event_id, $activation_id, $operation_id, $created_this_invocation)
+    {
+        if (!$created_this_invocation) return ['result' => 'not_created_here'];
+        return wp_delete_post($event_id, true) ? ['result' => 'compensated'] : ['result' => 'recovery_incident'];
+    }
+}
+
 // ── اعتراض نقطتَي الخروج القياسيتين في ووردبريس ─────────────────────────
 
 class PGE_Test_Json_Success extends Exception
@@ -334,6 +367,7 @@ function run_create_event(array $post_overrides = [])
         'event_location'  => '',
         'event_address'   => 'قاعة الاختبار',
         'invite_code'     => '',
+        'event_creation_operation_id' => '11111111-1111-4111-8111-111111111111',
     ], $post_overrides);
     $_FILES = [];
 
@@ -467,9 +501,15 @@ $GLOBALS['__test_force_wp_insert_post_failure'] = false;
 // user_id فقط — مستخدمون مختلفون استخدموا أسماء أقفال مختلفة بالضرورة (وإلا
 // لكانت النتائج قد تداخلت). نتحقق من عدم وجود تكرار غير متوقَّع بين مستخدمين
 // مختلفين استخدموا نفس الاسم حرفياً (لا ينبغي أن يحدث هذا إطلاقاً بما أن كل
-// اسم = 'pge_event_create_' . md5(user_id) فريد لكل رقم مستخدم مختلف).
+// Legacy remains user-scoped; Catalog is scoped to the durable activation UUID.
 $unique_users_tested = [9601, 9602, 9603, 9604, 9605, 9606, 9607];
-$expected_lock_names = array_map(function ($uid) { return 'pge_event_create_' . md5((string) $uid); }, $unique_users_tested);
+$expected_lock_names = array_map(function ($uid) {
+    $source = (string) get_user_meta($uid, '_mon_package_source', true);
+    $cycle = (string) get_user_meta($uid, '_mon_credit_cycle_id', true);
+    return $source === 'catalog' && $cycle !== ''
+        ? PGE_Catalog_Event_Binding_Service::lock_name($cycle)
+        : 'pge_event_create_' . md5((string) $uid);
+}, $unique_users_tested);
 check_true('7. كل مستخدم من السيناريوهات أعلاه استخدم اسم قفل مختلفاً خاصاً به', count(array_unique($expected_lock_names)) === count($unique_users_tested));
 foreach ($expected_lock_names as $idx => $expected_name) {
     check_true("7. اسم القفل الفعلي المُستخدَم للمستخدم {$unique_users_tested[$idx]} يطابق الاشتقاق المتوقَّع", in_array($expected_name, $wpdb->lock_acquire_log, true));

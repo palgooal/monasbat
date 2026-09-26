@@ -81,196 +81,146 @@ class Mon_Events_Users
     /**
      * تفعيل استحقاق مستوى من Catalog وحفظ Snapshot مستقل عن إعدادات Legacy.
      *
-     * @return true|WP_Error
+     * @return true|array|WP_Error Structured array when the Phase 2 context is supplied.
      */
-    public static function activate_catalog_tier($user_id, $plan_id, $tier_id, $external_order_id = '')
+    public static function activate_catalog_tier($user_id, $plan_id, $tier_id, $external_order_id = '', array $activation_context = [])
+    {
+        if (empty($activation_context['source'])) {
+            return new WP_Error('missing_activation_identity', 'هوية عملية التفعيل مطلوبة.');
+        }
+        if (!class_exists('PGE_Catalog_Activation_Service')) {
+            return new WP_Error('activation_service_unavailable', 'خدمة التفعيل غير متاحة حالياً.');
+        }
+        return PGE_Catalog_Activation_Service::activate($user_id, $plan_id, $tier_id, $activation_context);
+    }
+
+    /** Build the exact user-meta projection persisted by the Phase 2 saga. */
+    public static function build_catalog_activation_projection($user_id, $plan_id, $tier_id, $external_order_id, $activation_id)
     {
         $user_id = self::normalize_positive_id($user_id);
-        if ($user_id === 0) {
-            return new WP_Error('invalid_user_id', 'معرّف المستخدم غير صالح.');
-        }
-
-        if (!get_user_by('id', $user_id)) {
-            return new WP_Error('user_not_found', 'تعذر العثور على المستخدم.');
-        }
-
         $plan_id = self::normalize_positive_id($plan_id);
-        if ($plan_id === 0) {
-            return new WP_Error('invalid_plan_id', 'معرّف الباقة غير صالح.');
-        }
-
         $tier_id = self::normalize_positive_id($tier_id);
-        if ($tier_id === 0) {
-            return new WP_Error('invalid_tier_id', 'معرّف المستوى غير صالح.');
+        $activation_id = is_scalar($activation_id) ? trim((string) $activation_id) : '';
+        if (!$user_id || !$plan_id || !$tier_id || $activation_id === '' || !get_user_by('id', $user_id)) {
+            return new WP_Error('invalid_activation_projection', 'تعذر بناء بيانات تفعيل الباقة.');
         }
-
-        // Manual Reactivation Fix — استُخرِجت قراءة/تحقّق صف Tier/Plan وحساب
-        // الحقول الوصفية (السطور التي كانت هنا سابقاً) إلى
-        // resolve_tier_entitlement_fields() المشتركة، دون أي تغيير في السلوك
-        // أو رسائل الخطأ أو ترتيبها — نقل كود حرفي فقط، ليُعاد استخدامه أيضاً
-        // من refresh_catalog_tier_snapshot() أدناه بلا تكرار لنفس التحقّقات.
         $resolved = self::resolve_tier_entitlement_fields($plan_id, $tier_id);
-        if (is_wp_error($resolved)) {
-            return $resolved;
-        }
+        if (is_wp_error($resolved)) return $resolved;
+        $feature_snapshot = self::build_tier_features_snapshot($tier_id);
+        if (is_wp_error($feature_snapshot)) return $feature_snapshot;
 
+        $invitation_remaining = max(0,
+            absint(get_user_meta($user_id, '_mon_invitation_credit_total', true))
+            - absint(get_user_meta($user_id, '_mon_invitation_credit_used', true))
+        );
+        $replacement_remaining = max(0,
+            absint(get_user_meta($user_id, '_mon_replacement_credit_total', true))
+            - absint(get_user_meta($user_id, '_mon_replacement_credit_used', true))
+        );
+        $order_id = is_scalar($external_order_id) ? trim(sanitize_text_field((string) $external_order_id)) : '';
         $plan = $resolved['plan'];
         $tier = $resolved['tier'];
-        $price = $resolved['price'];
-        $currency = $resolved['currency'];
-        $plan_key = $resolved['plan_key'];
-        $guest_limit = $resolved['guest_limit'];
-        $invitation_credit_limit = $resolved['invitation_credit_limit'];
-        $replacement_credit_limit = $resolved['replacement_credit_limit'];
-        $event_quota_mode = $resolved['event_quota_mode'];
-        $event_quota_limit = $resolved['event_quota_limit'];
-
-        // معرّف دورة الرصيد (Invitation Credits Engine — المرحلة الثانية):
-        // يُولَّد فريداً عند كل كتابة Snapshot فعلية أدناه (لا عند الاستدعاء
-        // المتطابق تماماً الذي يُعيد true مبكراً أسفل هذا السطر — تلك حالة
-        // "تكرار نفس الطلب" لا "تفعيل جديد"، فلا يجوز أن تُبدِّل دورة رصيد
-        // المستخدم بلا سبب). الغرض: فصل استهلاك الاشتراك الحالي عن أي دورة
-        // سابقة لنفس المستخدم — سجل الاستهلاك الذري (PGE_Invitation_Credit_Ledger)
-        // يستخدم credit_cycle_id هذا كجزء من مفتاحه الفريد، لا plan_id/tier_id،
-        // تحديداً لأن نفس الـTier قد يُعاد تفعيله لاحقاً بدورة استهلاك جديدة
-        // بالكامل. لا منطق Webhook idempotency هنا؛ هذا توليد قيمة فقط.
-        $credit_cycle_id = self::generate_credit_cycle_id();
-
-        $external_order_id = is_scalar($external_order_id)
-            ? trim(sanitize_text_field((string) $external_order_id))
-            : '';
-
-        $current_source = (string) get_user_meta($user_id, '_mon_package_source', true);
-        $current_status = (string) get_user_meta($user_id, '_mon_package_status', true);
-        $current_plan_id = absint(get_user_meta($user_id, '_mon_catalog_plan_id', true));
-        $current_tier_id = absint(get_user_meta($user_id, '_mon_catalog_tier_id', true));
-        $current_order_id = (string) get_user_meta($user_id, '_mon_last_order_id', true);
-
-        if (
-            $current_source === 'catalog'
-            && $current_status === 'active'
-            && $current_plan_id === $plan_id
-            && $current_tier_id === $tier_id
-            && $current_order_id === $external_order_id
-        ) {
-            return true;
-        }
-
-        // ====================================================================
-        // Phase 4 — Commit 2: Snapshot Integration (docs/FEATURES-PHASE-4-SPEC.md
-        // §16 "ترتيب البناء والكتابة"). Snapshot الميزات يُبنى ويُكتَب كخطوة
-        // أولى، قبل بدء الحلقة أدناه الخاصة ببيانات Catalog والرصيد بالكامل
-        // (بلا أي تغيير على تلك الحلقة أو محتواها) — لتقليل نافذة رؤية
-        // Resolver لمستخدم Catalog+Active بلا Snapshot ميزات مكتملة (تلك
-        // الحلقة هي من تكتب لاحقاً _mon_package_status = 'active').
-        //
-        // سياسة الفشل (§16، لا Rollback، لا Transaction حقيقية):
-        // - فشل بناء Snapshot (build_tier_features_snapshot() تُعيد WP_Error):
-        //   يُعاد نفس الخطأ فوراً، صفر كتابة من أي نوع.
-        // - فشل كتابة _mon_package_features: WP_Error فوري، لا زيادة Version
-        //   مُعتمَدة، ولا بدء للحلقة الحالية.
-        // - فشل كتابة _mon_package_feature_version (بعد نجاح Snapshot):
-        //   WP_Error فوري، ولا بدء للحلقة الحالية.
-        // ====================================================================
-        $feature_snapshot = self::build_tier_features_snapshot($tier_id);
-        if (is_wp_error($feature_snapshot)) {
-            return $feature_snapshot;
-        }
-
-        $next_feature_version = self::get_next_package_feature_version($user_id);
-
-        if (!self::update_user_meta_safely($user_id, '_mon_package_features', $feature_snapshot)) {
-            return new WP_Error('meta_update_failed', 'تعذر حفظ Snapshot ميزات الباقة للمستخدم.');
-        }
-
-        if (!self::update_user_meta_safely($user_id, '_mon_package_feature_version', $next_feature_version)) {
-            return new WP_Error('meta_update_failed', 'تعذر حفظ رقم إصدار Snapshot ميزات الباقة للمستخدم.');
-        }
-
-        $features = self::normalize_catalog_features($plan['features'] ?? null);
-
-        // ====================================================================
-        // Commit 9 — Invitation Credit Accumulation Across Renewals (تغيير
-        // سياسة تجارية، لا علاقة له بمعمارية Event Quota إطلاقاً — لا لمس هنا
-        // على $event_quota_mode/$event_quota_limit أعلاه ولا على أي من حقولهما
-        // في $snapshot أدناه).
-        //
-        // القاعدة الجديدة: كل تفعيل حقيقي (تجديد/ترقية/تخفيض — أي استدعاء لا
-        // يمر من فرع "تكرار طلب متطابق تماماً" أعلاه، فلا تراكم مضاعف عند
-        // إعادة تسليم نفس الـWebhook) يُضيف رصيد الـTier الجديد إلى المتبقي
-        // الفعلي غير المستهلك من الدورة الحالية، بدل تصفير الرصيد بالكامل كما
-        // كان سابقاً:
-        //   المتبقي الحالي = Total الحالي - Used الحالي (بحد أدنى صفر)
-        //   Total الجديد   = المتبقي الحالي + رصيد الـTier الجديد
-        //   Used الجديد    = 0 دائماً (يبقى هذا الجزء بلا تغيير عن السابق)
-        // ينطبق هذا بالتساوي على رصيد الدعوات الأساسي (invitation) والبديل
-        // (replacement) — نفس الصيغة حرفياً لكليهما.
-        $current_invitation_total = absint(get_user_meta($user_id, '_mon_invitation_credit_total', true));
-        $current_invitation_used  = absint(get_user_meta($user_id, '_mon_invitation_credit_used', true));
-        $current_invitation_remaining = max(0, $current_invitation_total - $current_invitation_used);
-        $new_invitation_credit_total = $current_invitation_remaining + $invitation_credit_limit;
-
-        $current_replacement_total = absint(get_user_meta($user_id, '_mon_replacement_credit_total', true));
-        $current_replacement_used  = absint(get_user_meta($user_id, '_mon_replacement_credit_used', true));
-        $current_replacement_remaining = max(0, $current_replacement_total - $current_replacement_used);
-        $new_replacement_credit_total = $current_replacement_remaining + $replacement_credit_limit;
-
-        $snapshot = [
-            '_mon_package_source'      => 'catalog',
-            '_mon_catalog_plan_id'     => $plan_id,
-            '_mon_catalog_tier_id'     => $tier_id,
-            '_mon_catalog_plan_key'    => $plan_key,
-            '_mon_catalog_plan_name'   => sanitize_text_field((string) ($plan['name'] ?? '')),
-            '_mon_catalog_tier_key'    => sanitize_key((string) ($tier['tier_key'] ?? '')),
-            '_mon_catalog_tier_name'   => sanitize_text_field((string) ($tier['name'] ?? '')),
-            '_mon_package_status'      => 'active',
-            '_mon_package_activated_at'=> current_time('mysql', true),
-            '_mon_package_price'       => $price,
-            '_mon_package_currency'    => $currency,
-            // القيمة الفارغة تمثل NULL في Catalog بوضوح، ولا تتحول إلى صفر.
-            '_mon_guest_limit'         => $guest_limit === null ? '' : $guest_limit,
-            // Event Quota Snapshot (Commit 3) — يُكتَبان معاً دائماً، لا أحدهما
-            // بدون الآخر (راجع التعليق أعلى حساب $event_quota_mode/
-            // $event_quota_limit لسبب "التجميد عند لحظة الشراء" وعزلهما عن أي
-            // تعديل لاحق على صف الـTier). لا قراءة لهذين المفتاحين في أي مكان
-            // آخر من الكود بعد — ذلك خارج نطاق هذا الـCommit تماماً.
-            '_mon_event_quota_mode'    => $event_quota_mode,
-            '_mon_event_quota_limit'   => $event_quota_limit,
-            '_mon_salla_product_id'    => sanitize_text_field((string) ($tier['salla_product_id'] ?? '')),
-            '_mon_catalog_features'    => $features,
-            // Snapshot رصيد الدعوات (Commit 9 — سياسة تراكمية جديدة، راجع
-            // التعليق التفصيلي أعلى $current_invitation_total): كل تفعيل حقيقي
-            // (سواء أول تفعيل أو تجديد/ترقية/تخفيض لاحق) يضيف رصيد الـTier
-            // الجديد إلى المتبقي الفعلي غير المستهلك من الدورة الحالية — لا
-            // تصفير كامل بعد الآن. Used يبقى دائماً صفراً عند كل تفعيل جديد
-            // (بلا تغيير عن السابق). ملاحظة: فرع "نفس البيانات تماماً فمُطابقة
-            // مسبقة" أعلى هذه الدالة (return true المبكرة) لا يمر من هنا
-            // إطلاقاً، فاستدعاء هذه الدالة بنفس المعطيات تماماً (تكرار Webhook
-            // مثلاً) لا يُضيف رصيداً مضاعفاً بالخطأ — التراكم يحدث فقط عند
-            // تفعيل مختلف فعلياً (Duplicate Webhook idempotency بلا تغيير).
-            '_mon_invitation_credit_total'  => $new_invitation_credit_total,
-            '_mon_invitation_credit_used'   => 0,
-            '_mon_replacement_credit_total' => $new_replacement_credit_total,
-            '_mon_replacement_credit_used'  => 0,
-            '_mon_credit_cycle_id'          => $credit_cycle_id,
+        $meta = [
+            '_mon_package_features' => $feature_snapshot,
+            '_mon_package_feature_version' => self::get_next_package_feature_version($user_id),
+            '_mon_package_source' => 'catalog',
+            '_mon_catalog_plan_id' => $plan_id,
+            '_mon_catalog_tier_id' => $tier_id,
+            '_mon_catalog_plan_key' => $resolved['plan_key'],
+            '_mon_catalog_plan_name' => sanitize_text_field((string) ($plan['name'] ?? '')),
+            '_mon_catalog_tier_key' => sanitize_key((string) ($tier['tier_key'] ?? '')),
+            '_mon_catalog_tier_name' => sanitize_text_field((string) ($tier['name'] ?? '')),
+            '_mon_package_status' => 'active',
+            '_mon_package_activated_at' => current_time('mysql', true),
+            '_mon_package_price' => $resolved['price'],
+            '_mon_package_currency' => $resolved['currency'],
+            '_mon_guest_limit' => $resolved['guest_limit'] === null ? '' : $resolved['guest_limit'],
+            '_mon_event_quota_mode' => $resolved['event_quota_mode'],
+            '_mon_event_quota_limit' => $resolved['event_quota_limit'],
+            '_mon_salla_product_id' => sanitize_text_field((string) ($tier['salla_product_id'] ?? '')),
+            '_mon_catalog_features' => self::normalize_catalog_features($plan['features'] ?? null),
+            '_mon_invitation_credit_total' => $invitation_remaining + $resolved['invitation_credit_limit'],
+            '_mon_replacement_credit_total' => $replacement_remaining + $resolved['replacement_credit_limit'],
+            '_mon_credit_cycle_id' => $activation_id,
         ];
+        if ($order_id !== '') $meta['_mon_last_order_id'] = $order_id;
+        return [
+            'meta' => $meta,
+            'credit_cycle' => [
+                'id' => $activation_id,
+                'initial_used' => [
+                    '_mon_invitation_credit_used' => 0,
+                    '_mon_replacement_credit_used' => 0,
+                ],
+            ],
+            'delete' => array_values(array_filter([
+                $order_id === '' ? '_mon_last_order_id' : null,
+                '_mon_package_deactivated_at',
+            ])),
+        ];
+    }
 
-        if ($external_order_id !== '') {
-            $snapshot['_mon_last_order_id'] = $external_order_id;
+    /** Apply a previously stored projection without consulting current tier configuration. */
+    public static function apply_catalog_activation_projection($user_id, array $projection)
+    {
+        $user_id = self::normalize_positive_id($user_id);
+        if (!$user_id || !isset($projection['meta']) || !is_array($projection['meta'])) {
+            return new WP_Error('invalid_projection_snapshot', 'بيانات تفعيل الباقة المخزنة غير صالحة.');
         }
-
-        foreach ($snapshot as $meta_key => $meta_value) {
-            if (!self::update_user_meta_safely($user_id, $meta_key, $meta_value)) {
+        $meta = $projection['meta'];
+        $cycle_id = (string) ($meta['_mon_credit_cycle_id'] ?? '');
+        $same_cycle = $cycle_id !== '' && (string) get_user_meta($user_id, '_mon_credit_cycle_id', true) === $cycle_id;
+        $mutable_keys = ['_mon_invitation_credit_used', '_mon_replacement_credit_used'];
+        $initial_used = isset($projection['credit_cycle']['initial_used']) && is_array($projection['credit_cycle']['initial_used'])
+            ? $projection['credit_cycle']['initial_used'] : [];
+        // Backward compatibility for snapshots written before mutable credit state
+        // was separated from the immutable projection.
+        foreach ($mutable_keys as $key) {
+            if (array_key_exists($key, $meta)) {
+                $initial_used[$key] = $meta[$key];
+                unset($meta[$key]);
+            }
+        }
+        foreach ($meta as $key => $value) {
+            if (!is_string($key) || strpos($key, '_mon_') !== 0 || !self::update_user_meta_safely($user_id, $key, $value)) {
                 return new WP_Error('meta_update_failed', 'تعذر حفظ استحقاق الباقة للمستخدم.');
             }
         }
-
-        if ($external_order_id === '') {
-            delete_user_meta($user_id, '_mon_last_order_id');
+        foreach ($mutable_keys as $key) {
+            $requested = absint($initial_used[$key] ?? 0);
+            $value = $same_cycle ? max(absint(get_user_meta($user_id, $key, true)), $requested) : $requested;
+            if (!self::update_user_meta_safely($user_id, $key, $value)) {
+                return new WP_Error('meta_update_failed', 'تعذر حفظ استحقاق الباقة للمستخدم.');
+            }
         }
-        delete_user_meta($user_id, '_mon_package_deactivated_at');
+        foreach (($projection['delete'] ?? []) as $key) {
+            if (is_string($key) && strpos($key, '_mon_') === 0 && delete_user_meta($user_id, $key) === false && get_user_meta($user_id, $key, true) !== '') {
+                return new WP_Error('meta_delete_failed', 'تعذر إزالة بيانات باقة قديمة.');
+            }
+        }
+        return self::verify_catalog_activation_projection($user_id, $projection);
+    }
 
+    public static function verify_catalog_activation_projection($user_id, array $projection)
+    {
+        $critical = ['_mon_package_source','_mon_catalog_plan_id','_mon_catalog_tier_id','_mon_package_status','_mon_credit_cycle_id'];
+        if (array_key_exists('_mon_last_order_id', $projection['meta'] ?? [])) $critical[] = '_mon_last_order_id';
+        foreach ($critical as $key) {
+            if (!array_key_exists($key, $projection['meta']) || get_user_meta($user_id, $key, true) != $projection['meta'][$key]) {
+                return new WP_Error('projection_verification_failed', 'تعذر التحقق من حفظ استحقاق الباقة.');
+            }
+        }
+        foreach (($projection['delete'] ?? []) as $key) {
+            if (is_string($key) && strpos($key, '_mon_') === 0 && get_user_meta($user_id, $key, true) !== '') {
+                return new WP_Error('projection_verification_failed', 'تعذر التحقق من إزالة بيانات الباقة القديمة.');
+            }
+        }
         return true;
+    }
+
+    public static function generate_catalog_activation_id()
+    {
+        return self::generate_credit_cycle_id();
     }
 
     /**

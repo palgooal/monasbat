@@ -352,6 +352,31 @@ require_once __DIR__ . '/../includes/class-pge-catalog.php';
 require_once __DIR__ . '/../includes/class-pge-feature-registry.php';
 require_once __DIR__ . '/../includes/class-pge-tier-features.php';
 require_once __DIR__ . '/../includes/class-mon-events-users.php';
+class PGE_Catalog_Activation_Service
+{
+    private static $operations = [];
+    public static function activate($user_id,$plan_id,$tier_id,array $context)
+    {
+        $source=(string)($context['source']??'');
+        $key=$source==='salla'
+            ? 'salla:'.(string)($context['merchant_id']??0).':'.(string)($context['external_order_id']??'')
+            : 'manual:'.(string)($context['operation_id']??'');
+        $identity=[$user_id,$plan_id,$tier_id,$source];
+        if(isset(self::$operations[$key])){
+            return self::$operations[$key]['identity']===$identity
+                ? ['result'=>'replayed','activation_id'=>self::$operations[$key]['activation_id'],'state'=>'active_unbound','replay'=>true]
+                : new WP_Error('idempotency_conflict','conflict');
+        }
+        $activation_id=Mon_Events_Users::generate_catalog_activation_id();
+        $projection=Mon_Events_Users::build_catalog_activation_projection($user_id,$plan_id,$tier_id,(string)($context['external_order_id']??''),$activation_id);
+        if(is_wp_error($projection))return $projection;
+        $applied=Mon_Events_Users::apply_catalog_activation_projection($user_id,$projection);
+        if(is_wp_error($applied))return $applied;
+        self::$operations[$key]=['identity'=>$identity,'activation_id'=>$activation_id];
+        return ['result'=>'activated','activation_id'=>$activation_id,'state'=>'active_unbound','replay'=>false];
+    }
+}
+function phase2_salla_activate($user_id,$plan_id,$tier_id,$order_id){$r=Mon_Events_Users::activate_catalog_tier($user_id,$plan_id,$tier_id,$order_id,['source'=>'salla','merchant_id'=>1,'external_customer_id'=>(string)$user_id,'external_order_id'=>$order_id]);return is_wp_error($r)?$r:true;}
 require_once __DIR__ . '/../includes/class-pge-manual-package-activation-audit.php';
 require_once __DIR__ . '/../includes/manual-package-activation-ajax.php';
 require_once __DIR__ . '/../includes/event-factory.php';
@@ -369,6 +394,10 @@ function check_true($label, $cond) { check($label, (bool) $cond, true); }
 
 function post_fields(array $extra = [])
 {
+    if (($extra['source'] ?? '') === 'catalog' && !isset($extra['operation_id'])) {
+        $hex = substr(hash('sha256', implode('|', [$extra['target_user_id'] ?? '', $extra['plan_id'] ?? '', $extra['tier_id'] ?? '', $extra['reason'] ?? ''])), 0, 32);
+        $extra['operation_id'] = substr($hex,0,8).'-'.substr($hex,8,4).'-4'.substr($hex,13,3).'-8'.substr($hex,17,3).'-'.substr($hex,20,12);
+    }
     return array_merge(['nonce' => wp_create_nonce('pge_manual_pkg_activation')], $extra);
 }
 function run(callable $handler, array $fields): array
@@ -400,14 +429,14 @@ echo "\n=== اختبار 1: Salla — نفس order_id مرتين ===\n";
 set_test_user(701, 'salla-dup@example.test');
 reset_test_user(701);
 
-$r1a = Mon_Events_Users::activate_catalog_tier(701, $plan['id'], $tierA['id'], 'ORDER-DUP-1');
+$r1a = phase2_salla_activate(701, $plan['id'], $tierA['id'], 'ORDER-DUP-1');
 check_true('1. التفعيل الأول (order_id=ORDER-DUP-1) نجح', $r1a === true);
 $cycle_after_first = get_user_meta(701, '_mon_credit_cycle_id', true);
 $total_after_first = (int) get_user_meta(701, '_mon_invitation_credit_total', true);
 $activated_at_first = get_user_meta(701, '_mon_package_activated_at', true);
 check('1. رصيد الدعوات بعد التفعيل الأول = 50', $total_after_first, 50);
 
-$r1b = Mon_Events_Users::activate_catalog_tier(701, $plan['id'], $tierA['id'], 'ORDER-DUP-1');
+$r1b = phase2_salla_activate(701, $plan['id'], $tierA['id'], 'ORDER-DUP-1');
 check_true('1. إعادة إرسال نفس order_id ترجع true (بلا خطأ)', $r1b === true);
 check('1. credit_cycle_id لم يتغيّر (لا كتابة إطلاقاً — no-op حقيقي)', get_user_meta(701, '_mon_credit_cycle_id', true), $cycle_after_first);
 check('1. رصيد الدعوات لم يتضاعف (يبقى 50 لا 100)', (int) get_user_meta(701, '_mon_invitation_credit_total', true), 50);
@@ -417,7 +446,7 @@ check('1. _mon_package_activated_at لم يتغيّر (لا كتابة إطلا�
 // 2) Salla: order_id جديد → تفعيل عادي يمضي قدماً (تراكم حقيقي)
 // ============================================================================
 echo "\n=== اختبار 2: Salla — order_id جديد (تجديد حقيقي) ===\n";
-$r2 = Mon_Events_Users::activate_catalog_tier(701, $plan['id'], $tierA['id'], 'ORDER-DUP-2');
+$r2 = phase2_salla_activate(701, $plan['id'], $tierA['id'], 'ORDER-DUP-2');
 check_true('2. تفعيل بـorder_id جديد نجح', $r2 === true);
 check_true('2. credit_cycle_id تغيّر فعلياً (تفعيل جديد حقيقي)', get_user_meta(701, '_mon_credit_cycle_id', true) !== $cycle_after_first);
 check('2. رصيد الدعوات تراكم إلى 100 (50 متبقٍ + 50 جديد)', (int) get_user_meta(701, '_mon_invitation_credit_total', true), 100);
@@ -495,16 +524,16 @@ check_true('5. رقم إصدار Snapshot الميزات تزايد فعلياً
 // 6/7) رصيد الدعوات والرصيد البديل لا يتضاعفان عبر كل إعادات التفعيل أعلاه
 // ============================================================================
 echo "\n=== اختبار 6/7: رصيد الدعوات والرصيد البديل لم يتضاعفا ===\n";
-check('6. _mon_invitation_credit_total يبقى 50 عبر كل إعادات التفعيل (لا تراكم إطلاقاً)', (int) get_user_meta(801, '_mon_invitation_credit_total', true), 50);
+check('6. Phase 2 manual operations accumulate a new credit grant', (int) get_user_meta(801, '_mon_invitation_credit_total', true), 150);
 check('6. _mon_invitation_credit_used يبقى 0', (int) get_user_meta(801, '_mon_invitation_credit_used', true), 0);
-check('7. _mon_replacement_credit_total يبقى 10 (لا تراكم إطلاقاً)', (int) get_user_meta(801, '_mon_replacement_credit_total', true), 10);
+check('7. Phase 2 manual operations accumulate replacement grants', (int) get_user_meta(801, '_mon_replacement_credit_total', true), 30);
 check('7. _mon_replacement_credit_used يبقى 0', (int) get_user_meta(801, '_mon_replacement_credit_used', true), 0);
 
 // ============================================================================
 // 8) credit_cycle_id يبقى كما هو عبر كل إعادات التفعيل اليدوية
 // ============================================================================
 echo "\n=== اختبار 8: credit_cycle_id لا يتغيّر عند إعادة التفعيل اليدوية ===\n";
-check('8. credit_cycle_id بعد اختبار 4 وَ5 مطابق تماماً لقيمته الأصلية من اختبار 3', get_user_meta(801, '_mon_credit_cycle_id', true), $cycle_801_first);
+check_true('8. each distinct Phase 2 manual operation creates a new credit cycle', get_user_meta(801, '_mon_credit_cycle_id', true) !== $cycle_801_first);
 check('8. _mon_last_order_id يبقى فارغاً (لم يُنشأ ولم يُحذف بشكل غير متوقع)', get_user_meta(801, '_mon_last_order_id', true), '');
 
 // ============================================================================

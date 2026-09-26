@@ -474,6 +474,19 @@ check('8. حلّ الحصة بعد الإنشاء الفعلي: remaining = 2', 
 
 // ── الملخص النهائي ───────────────────────────────────────────────────────
 
+echo "\n=== Scenario 9: Archived Catalog event remains within the current credit-cycle quota ===\n";
+
+reset_test_user(9509);
+set_test_user_meta(9509, '_mon_package_source', 'catalog');
+set_test_user_meta(9509, '_mon_credit_cycle_id', 'cycle-archived-E');
+set_test_user_meta(9509, '_mon_event_quota_mode', 'limited');
+set_test_user_meta(9509, '_mon_event_quota_limit', 1);
+seed_event(9509, 'cycle-archived-E', 'private');
+
+$status_9 = pge_resolve_event_quota_status(9509);
+check('9. archived event from the current credit cycle: used = 1', $status_9['used'] ?? null, 1);
+check('9. archiving does not grant a replacement event: remaining = 0', $status_9['remaining'] ?? null, 0);
+
 echo "\n========================================\n";
 echo "النتيجة: $passed / $total نجحت.\n";
 if (!empty($failures)) {

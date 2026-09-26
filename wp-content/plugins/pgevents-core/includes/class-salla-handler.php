@@ -105,11 +105,29 @@ class Mon_Salla_Handler
             $this->process_user_and_plan($order_data, $merchant_id);
             return new WP_REST_Response(['status' => 'success', 'message' => 'Package Activated'], 200);
         } elseif (in_array($status_slug, $deactivation_statuses, true)) {
-            $this->process_order_deactivation($order_data, $merchant_id);
+            $order_id=$this->extract_order_id($order_data);$customer_id=$this->extract_customer_id($order_data);
+            $revocation=class_exists('PGE_Catalog_Order_Revocation_Service')
+                ? PGE_Catalog_Order_Revocation_Service::process_trusted($merchant_id,$order_id,$customer_id,$status_slug)
+                : ['result'=>'unavailable'];
+            $this->log_catalog_event('catalog_order_revocation_'.sanitize_key((string)($revocation['result']??'failed')),['order_id'=>$order_id,'merchant_id'=>absint($merchant_id),'error_code'=>(string)($revocation['reason']??'')]);
+            if($this->catalog_revocation_requires_retry($revocation))return new WP_REST_Response(['status'=>'retry','error'=>'catalog_revocation_unavailable'],503);
+            if(($revocation['result']??'')==='invalid')return new WP_REST_Response(['status'=>'rejected','error'=>'invalid_order_identity'],400);
+            $this->process_order_deactivation($order_data, $merchant_id, true);
             return new WP_REST_Response(['status' => 'deactivated', 'message' => 'Package Revoked'], 200);
         }
 
         return new WP_REST_Response(['status' => 'ignored', 'message' => 'Status: ' . $status_slug], 200);
+    }
+
+    /** Map only incomplete durable outcomes to a retryable webhook response. */
+    private function catalog_revocation_requires_retry(array $result)
+    {
+        $code = (string) ($result['result'] ?? '');
+        if (in_array($code, ['lock_not_acquired', 'db_error', 'stale', 'storage_uncertain', 'unavailable'], true)) {
+            return true;
+        }
+
+        return $code === 'error' && (string) ($result['reason'] ?? '') === 'lock_not_acquired';
     }
 
     // ── S2: حفظ توكنات App Store (يصلنا كل 14 يوم) ──────────────────────
@@ -219,15 +237,15 @@ class Mon_Salla_Handler
         $this->process_order_packages($order_data, 'activate', $merchant_id);
     }
 
-    private function process_order_deactivation($order_data, $merchant_id)
+    private function process_order_deactivation($order_data, $merchant_id, $catalog_revocation_handled = false)
     {
-        $this->process_order_packages($order_data, 'deactivate', $merchant_id);
+        $this->process_order_packages($order_data, 'deactivate', $merchant_id, $catalog_revocation_handled);
     }
 
     /**
      * يصنّف عناصر الطلب مرة واحدة ثم يطبّق أولوية Catalog أو Legacy.
      */
-    private function process_order_packages($order_data, $action, $merchant_id)
+    private function process_order_packages($order_data, $action, $merchant_id, $catalog_revocation_handled = false)
     {
         $order_id = $this->extract_order_id($order_data);
         $matches = $this->classify_order_items($order_data, $order_id, $action);
@@ -253,6 +271,7 @@ class Mon_Salla_Handler
         }
 
         if ($catalog_count === 1) {
+            if ($action === 'deactivate' && $catalog_revocation_handled) return;
             $catalog_match = reset($matches['catalog']);
             $this->process_catalog_match($order_data, $catalog_match, $order_id, $action, $merchant_id);
             return;
@@ -597,7 +616,13 @@ class Mon_Salla_Handler
                 absint($user->ID),
                 absint($plan['id']),
                 $tier_id,
-                $order_id
+                $order_id,
+                [
+                    'source' => 'salla',
+                    'merchant_id' => $merchant_id,
+                    'external_customer_id' => $customer_id,
+                    'external_order_id' => $order_id,
+                ]
             );
         } else {
             $result = Mon_Events_Users::deactivate_catalog_tier(
@@ -619,6 +644,22 @@ class Mon_Salla_Handler
                     'error_code' => $result->get_error_code(),
                 ]
             );
+            return;
+        }
+
+        if (is_array($result) && ($result['result'] ?? '') === 'terminal_replay') {
+            $this->log_catalog_event('catalog_activation_terminal_replay', [
+                'order_id' => $order_id,
+                'plan_id' => $plan_id,
+                'tier_id' => $tier_id,
+                'user_id' => absint($user->ID),
+                'activation_id' => (string) ($result['activation_id'] ?? ''),
+            ]);
+            return;
+        }
+
+        if (is_array($result) && ($result['result'] ?? '') === 'refunded_order') {
+            $this->log_catalog_event('catalog_activation_blocked_by_revocation', ['order_id'=>$order_id,'plan_id'=>$plan_id,'tier_id'=>$tier_id,'user_id'=>absint($user->ID)]);
             return;
         }
 
@@ -828,11 +869,9 @@ class Mon_Salla_Handler
             return 'failed';
         }
 
-        $result = PGE_Salla_Membership_Sync_Store::request_member(
-            (int) $merchant_id,
-            (int) $customer_id,
-            self::SALLA_PLUS_CUSTOMER_GROUP_ID
-        );
+        $result = class_exists('PGE_Salla_Plus_Eligibility_Resolver')
+            ? PGE_Salla_Plus_Eligibility_Resolver::recompute_and_project((int)$merchant_id,(int)$customer_id)
+            : PGE_Salla_Membership_Sync_Store::request_member((int)$merchant_id,(int)$customer_id,self::SALLA_PLUS_CUSTOMER_GROUP_ID);
 
         if (!is_array($result) || ($result['result'] ?? '') === 'error') {
             $context['error_code'] = is_array($result)
@@ -842,7 +881,8 @@ class Mon_Salla_Handler
             return 'failed';
         }
 
-        if (($result['result'] ?? '') !== 'satisfied'
+        if (($result['desired_state'] ?? 'member') === 'member'
+            && ($result['result'] ?? '') !== 'satisfied'
             && class_exists('PGE_Salla_Membership_Sync_Worker')) {
             PGE_Salla_Membership_Sync_Worker::schedule_worker(1);
             PGE_Salla_Membership_Sync_Worker::ensure_recovery_scheduled();
