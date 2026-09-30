@@ -337,3 +337,60 @@ operations. Success of one does not authorize the next. The option
 
 This release-candidate preparation records no Production rollout, Production
 schema mutation, activation backfill, feature enablement, or real Salla HTTP.
+
+## DEC-PLUS-MIG-01 one-off implementation (2026-09-30)
+
+The approved pre-launch backfill is implemented as an explicit CLI-only tool,
+hard-scoped to WP user `380` and the verified Salla order identity documented
+above. It is not registered on plugin activation, `plugins_loaded`, `init`,
+cron, schema upgrade, webhook handling, or any normal web request.
+
+Before writing, the tool requires the exact historical Catalog User Meta,
+including cycle `6daa5ee5-5bda-43a6-a392-ad75402b8c21`, plan/tier `2/6`, order
+`1576373696`, product `1539650850`, active `halwa_plus/guests_100`, and the
+verified quota and credit values. It stops if the user is missing, a trusted
+revocation tombstone exists, an event already owns the cycle, or activation,
+idempotency, provider-origin, or replay state is partial or conflicting.
+
+The lock order is user activation, Salla provider-order, then event activation.
+After all three locks are held, guards are checked again before and inside a
+single transaction. That transaction creates the `backfill` activation in
+`preparing`, creates its exact Salla provider origin, then uses repository CAS
+to transition `preparing -> active_unbound` with historical `activated_at`.
+Any proven failure rolls back both rows. Database uniqueness remains the final
+collision boundary.
+
+The persisted projection snapshot is an explicit whitelist of the verified
+historical entitlement. Mutable invitation and replacement usage is stored in
+`credit_cycle.initial_used`; operational email markers are excluded. The tool
+never invokes `PGE_Catalog_Activation_Service::activate()`, projection building
+or application, User Meta writes, credit grants, event creation/binding,
+membership projection, removal scheduling, feature-flag changes, email, or
+Salla HTTP. An exact matching replay returns `already_backfilled`; any mismatch
+stops instead of repairing data.
+
+### Future Production invocation
+
+Run only after deployment, schema verification, maintenance/cron pause, a
+fresh read-only precondition audit, and separate operator authorization:
+
+```bash
+php wp-content/plugins/pgevents-core/tools/dec-plus-mig-01-backfill.php --execute-dec-plus-mig-01
+```
+
+Success is either `backfilled` on the first run or `already_backfilled` on an
+exact replay. Any `stopped` result is a hard stop; do not edit rows or retry
+blindly. `storage_uncertain` requires incident review before any retry.
+
+### Future read-only verification
+
+From the WordPress root, the following command prints only the bounded durable
+activation, provider origin, event-binding count, selected historical User
+Meta, and removal flag; it performs no writes:
+
+```bash
+wp eval '$a=PGE_Catalog_Activation_Repository::find_by_activation_id("6daa5ee5-5bda-43a6-a392-ad75402b8c21"); $o=is_array($a)?PGE_Catalog_Provider_Origin_Repository::find_by_activation_and_provider((int)$a["id"],"salla"):null; echo wp_json_encode(["activation"=>$a,"origin"=>$o,"binding_count"=>is_array($a)?count(PGE_Catalog_Event_Binding_Repository::find_by_activation_id((int)$a["id"])):null,"meta"=>array_map(fn($k)=>get_user_meta(380,$k,true),["_mon_package_source","_mon_catalog_plan_id","_mon_catalog_tier_id","_mon_catalog_plan_key","_mon_catalog_tier_key","_mon_package_status","_mon_credit_cycle_id","_mon_last_order_id","_mon_salla_product_id","_mon_invitation_credit_total","_mon_invitation_credit_used","_mon_replacement_credit_total","_mon_replacement_credit_used"]),"removal_flag"=>get_option("pge_salla_not_member_removal_enabled","MISSING")],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES).PHP_EOL;'
+```
+
+This documentation records tool availability only. Production backfill has not
+been executed.

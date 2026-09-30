@@ -34,6 +34,8 @@ This release candidate packages the reviewed local implementation for:
 - `wp-content/plugins/pgevents-core/includes/class-pge-catalog-order-revocation-service.php`
 - `wp-content/plugins/pgevents-core/includes/class-pge-salla-not-member-removal-feature.php`
 - `wp-content/plugins/pgevents-core/includes/class-pge-salla-plus-eligibility-resolver.php`
+- `wp-content/plugins/pgevents-core/includes/class-pge-dec-plus-mig-01-backfill.php`
+- `wp-content/plugins/pgevents-core/tools/dec-plus-mig-01-backfill.php`
 
 ### Modified files
 
@@ -114,8 +116,12 @@ an enabled value.
   identity recorded in `docs/integrations/SALLA.md`.
 - The existing `_mon_credit_cycle_id` is the historical activation identity;
   backfill must not generate a new cycle or rewrite existing User Meta credits.
-- Aggregate membership projection occurs after durable backfill commit and does
-  not authorize destructive removal.
+- Any separately authorized aggregate membership projection may occur only
+  after the durable backfill commit and does not authorize destructive removal;
+  the hard-scoped backfill tool itself does not request that projection.
+- The one-off backfill tool is hard-scoped to `DEC-PLUS-MIG-01`, has no automatic
+  hook, and requires an explicit CLI confirmation argument. Its presence in the
+  release does not execute or authorize the Production backfill.
 
 ## Operational prerequisites
 
