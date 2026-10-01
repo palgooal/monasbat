@@ -123,6 +123,33 @@ an enabled value.
   hook, and requires an explicit CLI confirmation argument. Its presence in the
   release does not execute or authorize the Production backfill.
 
+### Phase 9 Production backfill outcome and cron boundary
+
+The separately authorized DEC-PLUS-MIG-01 Production backfill completed on
+2026-10-01 as catalog activation `1`, activation
+`6daa5ee5-5bda-43a6-a392-ad75402b8c21`, in `active_unbound` with source
+`backfill`. User Meta and credits remained unchanged; aggregate eligibility was
+authoritative and active, and the destructive removal flag remained
+missing/disabled. The backfill returned `membership_projection=not_requested`.
+
+Afterward, automatic membership convergence created a membership desired-state
+row for merchant `392732220`, customer `1888007575`, and group `225189340`.
+Code-path review identified eligibility recovery as a path consistent with the
+observed timing, without uniquely attributing the invocation from timestamps
+alone. The row converged to `member/satisfied` with revision `1`, one attempt,
+creation at `2026-10-01 03:36:16 UTC`, and success at
+`2026-10-01 03:38:17 UTC`; removal snapshot fields remained `NULL`.
+
+This is an operational/runbook isolation finding rather than a defect in the
+backfill. Restoring or running WP-Cron while
+`pge_salla_membership_sync_recovery` is enabled implicitly authorizes aggregate
+membership convergence. For future backfills where projection needs a separate
+operator approval, cron and external cron runners must remain paused through
+that approval boundary, unless an explicitly approved recovery gate is in
+place. The durable row proves successful convergence, but retained evidence
+does not prove whether the successful Salla operation was a direct add POST or
+another reconciliation path.
+
 ## Operational prerequisites
 
 Before Production deployment:
@@ -136,7 +163,10 @@ Before Production deployment:
 7. confirm the removal flag is missing/disabled before restoring traffic;
 8. complete the Production read-only state audit before authorizing backfill;
 9. authorize backfill separately;
-10. authorize controlled removal separately after dry-run and Go/No-Go review.
+10. decide whether aggregate membership projection is authorized before
+    restoring WP-Cron or external cron runners; keeping cron paused is required
+    when that authorization remains separate;
+11. authorize controlled removal separately after dry-run and Go/No-Go review.
 
 ## Explicitly not executed
 

@@ -369,14 +369,46 @@ membership projection, removal scheduling, feature-flag changes, email, or
 Salla HTTP. An exact matching replay returns `already_backfilled`; any mismatch
 stops instead of repairing data.
 
-### Future Production invocation
+### Production execution result (2026-10-01)
 
-Run only after deployment, schema verification, maintenance/cron pause, a
-fresh read-only precondition audit, and separate operator authorization:
+The separately authorized Production invocation completed successfully:
 
 ```bash
 php wp-content/plugins/pgevents-core/tools/dec-plus-mig-01-backfill.php --execute-dec-plus-mig-01
 ```
+
+The resulting durable activation is catalog activation `1`, activation
+`6daa5ee5-5bda-43a6-a392-ad75402b8c21`, in `active_unbound`, with
+`activation_source=backfill`. Post-backfill verification confirmed that User
+Meta and credit counters were unchanged. The read-only aggregate resolver was
+authoritative and returned `eligible=true`, `active_activation_count=1`, and
+`reason=active_salla_plus`. The destructive removal feature remained
+missing/disabled.
+
+The tool itself returned `membership_projection=not_requested`. This describes
+the synchronous backfill operation only; it is not a durable suppression of
+the independent eligibility-recovery subsystem.
+
+After WP-Cron resumed, a membership row appeared for merchant `392732220`,
+customer `1888007575`, and Plus group `225189340`. It had
+`desired_state=member`, `desired_revision=1`, `status=satisfied`, and
+`attempt_count=1`; it was created at `2026-10-01 03:36:16 UTC` and recorded
+`last_success_at=2026-10-01 03:38:17 UTC`. All `removal_snapshot_*` fields were
+`NULL`.
+
+This is a Phase 9 operational/runbook isolation finding, not a backfill bug.
+`pge_salla_membership_sync_recovery` can discover durable eligible Salla Plus
+activations and independently invoke aggregate eligibility recomputation and
+membership projection. Consequently, restoring or running WP-Cron while that
+recovery is enabled implicitly permits aggregate membership convergence. If a
+future controlled backfill requires membership projection to remain separately
+operator-authorized, keep WordPress cron and any external cron runner paused
+through that approval boundary, or introduce a separately reviewed recovery
+gate before restoring them.
+
+The durable `satisfied` row proves successful convergence. Available logs did
+not establish whether the successful attempt was a direct add POST success or
+another reconciliation path; no exact Salla HTTP operation is asserted here.
 
 Success is either `backfilled` on the first run or `already_backfilled` on an
 exact replay. Any `stopped` result is a hard stop; do not edit rows or retry
@@ -392,5 +424,5 @@ Meta, and removal flag; it performs no writes:
 wp eval '$a=PGE_Catalog_Activation_Repository::find_by_activation_id("6daa5ee5-5bda-43a6-a392-ad75402b8c21"); $o=is_array($a)?PGE_Catalog_Provider_Origin_Repository::find_by_activation_and_provider((int)$a["id"],"salla"):null; echo wp_json_encode(["activation"=>$a,"origin"=>$o,"binding_count"=>is_array($a)?count(PGE_Catalog_Event_Binding_Repository::find_by_activation_id((int)$a["id"])):null,"meta"=>array_map(fn($k)=>get_user_meta(380,$k,true),["_mon_package_source","_mon_catalog_plan_id","_mon_catalog_tier_id","_mon_catalog_plan_key","_mon_catalog_tier_key","_mon_package_status","_mon_credit_cycle_id","_mon_last_order_id","_mon_salla_product_id","_mon_invitation_credit_total","_mon_invitation_credit_used","_mon_replacement_credit_total","_mon_replacement_credit_used"]),"removal_flag"=>get_option("pge_salla_not_member_removal_enabled","MISSING")],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES).PHP_EOL;'
 ```
 
-This documentation records tool availability only. Production backfill has not
-been executed.
+This verification command remains read-only. The Production backfill execution
+and its post-backfill operational observation are recorded above.
