@@ -818,11 +818,19 @@ class Header_Footer_Elementor {
 			return '';
 		}
 
-		// Check if the current user has permission to edit posts.
+		// Never expose revisions or autosaves: their 'inherit' status can carry a parent's unpublished content.
+		if ( wp_is_post_revision( $id ) || wp_is_post_autosave( $id ) ) {
+			return '';
+		}
+
+		// Users who can edit the post may preview it in any status. For everyone else - including anonymous
+		// visitors - only render a published post of a publicly viewable type. This replaces the previous
+		// status denylist (which let 'future', 'trash' and custom statuses through) and adds the missing
+		// post-type check (which let non-public custom post types through).
 		if ( ! current_user_can( 'edit_post', $id ) ) {
-			$post_status = get_post_status( $id );
-			// Prevent access to drafts, private, pending, and password-protected posts for unauthorized users.
-			if ( in_array( $post_status, [ 'draft', 'private', 'pending' ], true ) || post_password_required( $id ) ) {
+			if ( 'publish' !== get_post_status( $id )
+				|| ! is_post_type_viewable( get_post_type( $id ) )
+				|| post_password_required( $id ) ) {
 				return ''; // Prevent access to restricted posts.
 			}
 		}

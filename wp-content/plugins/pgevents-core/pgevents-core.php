@@ -2060,6 +2060,15 @@ function pge_render_catalog_tiers_page()
 <?php
 }
 
+function pge_catalog_plans_admin_styles($hook_suffix)
+{
+    if ($hook_suffix !== 'toplevel_page_pge-catalog-plans') {
+        return;
+    }
+    wp_enqueue_style('pge-catalog-plans-admin', PGE_URL . 'assets/css/catalog-plans-admin.css', [], '1.0.0');
+}
+add_action('admin_enqueue_scripts', 'pge_catalog_plans_admin_styles');
+
 function pge_render_catalog_plans_page()
 {
     if (!current_user_can('manage_options')) {
@@ -2068,6 +2077,15 @@ function pge_render_catalog_plans_page()
 
     $notice_type = null;
     $notice_message = null;
+
+    $view = isset($_GET['action']) && is_string($_GET['action'])
+        ? wp_unslash($_GET['action']) : 'list';
+    if (!in_array($view, ['list', 'add', 'edit', 'delete'], true)) {
+        $view = 'list';
+    }
+    $plan_post_handled = false;
+    $list_url = add_query_arg(['page' => 'pge-catalog-plans'], admin_url('admin.php'));
+    $add_url = add_query_arg(['action' => 'add'], $list_url);
 
     $form_plan_key = '';
     $form_name = '';
@@ -2078,7 +2096,6 @@ function pge_render_catalog_plans_page()
 
     $edit_plan = null;
     $delete_plan = null;
-    $delete_post_handled = false;
     $edit_features_raw_override = null;
 
     $pge_parse_features_textarea = function ($raw_text) {
@@ -2111,6 +2128,8 @@ function pge_render_catalog_plans_page()
         && isset($_POST['submit_create_plan'])
     ) {
         check_admin_referer('pge_create_catalog_plan', 'pge_catalog_plan_nonce');
+        $plan_post_handled = true;
+        $view = 'add';
 
         $form_plan_key = isset($_POST['plan_key']) ? wp_unslash($_POST['plan_key']) : '';
         $form_name = isset($_POST['name']) ? wp_unslash($_POST['name']) : '';
@@ -2149,6 +2168,8 @@ function pge_render_catalog_plans_page()
         && isset($_POST['submit_update_plan'])
     ) {
         check_admin_referer('pge_update_catalog_plan', 'pge_catalog_update_nonce');
+        $plan_post_handled = true;
+        $view = 'edit';
 
         $update_plan_id = absint(wp_unslash($_POST['plan_id'] ?? 0));
 
@@ -2203,7 +2224,8 @@ function pge_render_catalog_plans_page()
     ) {
         check_admin_referer('pge_delete_catalog_plan', 'pge_catalog_delete_nonce');
 
-        $delete_post_handled = true;
+        $plan_post_handled = true;
+        $view = 'delete';
 
         $delete_plan_id = absint(wp_unslash($_POST['plan_id'] ?? 0));
 
@@ -2228,12 +2250,11 @@ function pge_render_catalog_plans_page()
     }
 
     if (
-        $edit_plan === null
-        && isset($_GET['action'])
-        && isset($_GET['plan_id'])
-        && wp_unslash($_GET['action']) === 'edit'
+        !$plan_post_handled && $view === 'edit'
     ) {
-        $edit_plan_id = absint(wp_unslash($_GET['plan_id']));
+        $edit_plan_id = isset($_GET['plan_id']) && is_string($_GET['plan_id'])
+            && preg_match('/^[1-9][0-9]*$/', $_GET['plan_id'])
+            ? absint($_GET['plan_id']) : 0;
 
         if ($edit_plan_id > 0) {
             $edit_plan = PGE_Catalog::get_plan($edit_plan_id);
@@ -2246,13 +2267,11 @@ function pge_render_catalog_plans_page()
     }
 
     if (
-        !$delete_post_handled
-        && $delete_plan === null
-        && isset($_GET['action'])
-        && isset($_GET['plan_id'])
-        && wp_unslash($_GET['action']) === 'delete'
+        !$plan_post_handled && $view === 'delete'
     ) {
-        $delete_plan_id = absint(wp_unslash($_GET['plan_id']));
+        $delete_plan_id = isset($_GET['plan_id']) && is_string($_GET['plan_id'])
+            && preg_match('/^[1-9][0-9]*$/', $_GET['plan_id'])
+            ? absint($_GET['plan_id']) : 0;
 
         if ($delete_plan_id > 0) {
             $delete_plan = PGE_Catalog::get_plan($delete_plan_id);
@@ -2264,7 +2283,15 @@ function pge_render_catalog_plans_page()
         }
     }
 
-    $plans = PGE_Catalog::get_plans();
+    // Missing records and completed deletions return to the list with the notice intact.
+    if (($view === 'edit' && !is_array($edit_plan))
+        || ($view === 'delete' && !is_array($delete_plan))) {
+        $view = 'list';
+    }
+    $plans = $view === 'list' ? PGE_Catalog::get_plans() : [];
+    $active_plans_count = count(array_filter($plans, static function ($plan) {
+        return ($plan['status'] ?? '') === 'active';
+    }));
 
     $edit_features_text = '';
     if (is_array($edit_plan)) {
@@ -2282,8 +2309,12 @@ function pge_render_catalog_plans_page()
         'inactive' => 'غير نشطة',
     ];
 ?>
-    <div class="wrap">
-        <h1><?php esc_html_e('إدارة الباقات', 'pgevents'); ?></h1>
+    <div class="wrap pge-catalog-plans">
+        <div class="pge-plans-heading">
+        <h1 class="wp-heading-inline"><?php esc_html_e('إدارة الباقات', 'pgevents'); ?></h1>
+        <a href="<?php echo esc_url($add_url); ?>" class="page-title-action"><?php esc_html_e('إضافة باقة', 'pgevents'); ?></a>
+        </div>
+        <hr class="wp-header-end">
 
         <?php if ($notice_type === 'success'): ?>
             <div class="notice notice-success is-dismissible">
@@ -2295,8 +2326,9 @@ function pge_render_catalog_plans_page()
             </div>
         <?php endif; ?>
 
-        <?php if (is_array($edit_plan)): ?>
-            <h2><?php esc_html_e('تعديل الباقة', 'pgevents'); ?></h2>
+        <?php if ($view === 'edit' && is_array($edit_plan)): ?>
+            <section class="pge-plan-panel" aria-labelledby="pge-edit-heading">
+            <h2 id="pge-edit-heading"><?php esc_html_e('تعديل الباقة', 'pgevents'); ?></h2>
             <form method="post">
                 <?php wp_nonce_field('pge_update_catalog_plan', 'pge_catalog_update_nonce'); ?>
                 <input type="hidden" name="pge_catalog_action" value="update_plan">
@@ -2305,15 +2337,15 @@ function pge_render_catalog_plans_page()
                 <table class="form-table" role="presentation">
                     <tr>
                         <th scope="row">
-                            <label for="pge_edit_plan_key"><?php esc_html_e('مفتاح الباقة', 'pgevents'); ?></label>
+                            <label for="pge_edit_plan_key"><?php esc_html_e('مفتاح الباقة (مطلوب)', 'pgevents'); ?></label>
                         </th>
                         <td>
-                            <input type="text" id="pge_edit_plan_key" name="plan_key" class="regular-text" value="<?php echo esc_attr($edit_plan['plan_key']); ?>" required>
+                            <input type="text" id="pge_edit_plan_key" name="plan_key" class="regular-text" dir="ltr" value="<?php echo esc_attr($edit_plan['plan_key']); ?>" required>
                         </td>
                     </tr>
                     <tr>
                         <th scope="row">
-                            <label for="pge_edit_plan_name"><?php esc_html_e('اسم الباقة', 'pgevents'); ?></label>
+                            <label for="pge_edit_plan_name"><?php esc_html_e('اسم الباقة (مطلوب)', 'pgevents'); ?></label>
                         </th>
                         <td>
                             <input type="text" id="pge_edit_plan_name" name="name" class="regular-text" value="<?php echo esc_attr($edit_plan['name']); ?>" required>
@@ -2354,22 +2386,26 @@ function pge_render_catalog_plans_page()
                             <label for="pge-plan-edit-features"><?php esc_html_e('مزايا الباقة', 'pgevents'); ?></label>
                         </th>
                         <td>
-                            <textarea id="pge-plan-edit-features" name="features" rows="10" class="large-text"><?php echo esc_textarea($edit_features_text); ?></textarea>
-                            <p class="description"><?php esc_html_e('كل ميزة في سطر مستقل.', 'pgevents'); ?></p>
+                            <textarea id="pge-plan-edit-features" name="features" rows="8" class="large-text" aria-describedby="pge-edit-features-help"><?php echo esc_textarea($edit_features_text); ?></textarea>
+                            <p class="description" id="pge-edit-features-help"><?php esc_html_e('كل ميزة في سطر مستقل. بحد أقصى 50 ميزة، و255 حرفًا لكل ميزة.', 'pgevents'); ?></p>
                         </td>
                     </tr>
                 </table>
 
+                <div class="pge-plan-actions">
                 <?php submit_button('حفظ التعديلات', 'primary', 'submit_update_plan'); ?>
                 <?php
                 $cancel_url = add_query_arg(['page' => 'pge-catalog-plans'], admin_url('admin.php'));
                 ?>
-                <a href="<?php echo esc_url($cancel_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
+                <a class="button" href="<?php echo esc_url($cancel_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
+                </div>
             </form>
+            </section>
         <?php endif; ?>
 
-        <?php if (is_array($delete_plan)): ?>
-            <h2><?php esc_html_e('تأكيد حذف الباقة', 'pgevents'); ?></h2>
+        <?php if ($view === 'delete' && is_array($delete_plan)): ?>
+            <section class="pge-plan-panel pge-plan-delete" aria-labelledby="pge-delete-heading">
+            <h2 id="pge-delete-heading"><?php esc_html_e('تأكيد حذف الباقة', 'pgevents'); ?></h2>
             <p>
                 <?php
                 printf(
@@ -2381,7 +2417,7 @@ function pge_render_catalog_plans_page()
             </p>
             <p>
                 <?php esc_html_e('مفتاح الباقة:', 'pgevents'); ?>
-                <?php echo esc_html($delete_plan['plan_key']); ?>
+                <bdi dir="ltr"><code><?php echo esc_html($delete_plan['plan_key']); ?></code></bdi>
             </p>
             <p>
                 <strong><?php esc_html_e('لا يمكن حذف الباقة إذا كانت مرتبطة بأي مستوى.', 'pgevents'); ?></strong>
@@ -2391,15 +2427,20 @@ function pge_render_catalog_plans_page()
                 <input type="hidden" name="pge_catalog_action" value="delete_plan">
                 <input type="hidden" name="plan_id" value="<?php echo esc_attr($delete_plan['id']); ?>">
 
+                <div class="pge-plan-actions">
                 <?php submit_button('تأكيد الحذف', 'delete', 'submit_delete_plan'); ?>
                 <?php
                 $delete_cancel_url = add_query_arg(['page' => 'pge-catalog-plans'], admin_url('admin.php'));
                 ?>
-                <a href="<?php echo esc_url($delete_cancel_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
+                <a class="button" href="<?php echo esc_url($delete_cancel_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
+                </div>
             </form>
+            </section>
         <?php endif; ?>
 
-        <h2><?php esc_html_e('إضافة باقة جديدة', 'pgevents'); ?></h2>
+        <?php if ($view === 'add'): ?>
+        <section class="pge-plan-panel" aria-labelledby="pge-add-heading">
+        <h2 id="pge-add-heading"><?php esc_html_e('إضافة باقة جديدة', 'pgevents'); ?></h2>
         <form method="post">
             <?php wp_nonce_field('pge_create_catalog_plan', 'pge_catalog_plan_nonce'); ?>
             <input type="hidden" name="pge_catalog_action" value="create_plan">
@@ -2407,16 +2448,16 @@ function pge_render_catalog_plans_page()
             <table class="form-table" role="presentation">
                 <tr>
                     <th scope="row">
-                        <label for="pge_plan_key"><?php esc_html_e('مفتاح الباقة', 'pgevents'); ?></label>
+                        <label for="pge_plan_key"><?php esc_html_e('مفتاح الباقة (مطلوب)', 'pgevents'); ?></label>
                     </th>
                     <td>
-                        <input type="text" id="pge_plan_key" name="plan_key" class="regular-text" value="<?php echo esc_attr($form_plan_key); ?>" required>
-                        <p class="description"><?php esc_html_e('مفتاح تقني فريد للباقة، مثل: classic أو business-pro.', 'pgevents'); ?></p>
+                        <input type="text" id="pge_plan_key" name="plan_key" class="regular-text" dir="ltr" aria-describedby="pge-plan-key-help" value="<?php echo esc_attr($form_plan_key); ?>" required>
+                        <p class="description" id="pge-plan-key-help"><?php esc_html_e('مفتاح تقني فريد للباقة، مثل:', 'pgevents'); ?> <bdi dir="ltr"><code>classic</code></bdi> / <bdi dir="ltr"><code>business-pro</code></bdi></p>
                     </td>
                 </tr>
                 <tr>
                     <th scope="row">
-                        <label for="pge_plan_name"><?php esc_html_e('اسم الباقة', 'pgevents'); ?></label>
+                        <label for="pge_plan_name"><?php esc_html_e('اسم الباقة (مطلوب)', 'pgevents'); ?></label>
                     </th>
                     <td>
                         <input type="text" id="pge_plan_name" name="name" class="regular-text" value="<?php echo esc_attr($form_name); ?>" required>
@@ -2458,30 +2499,39 @@ function pge_render_catalog_plans_page()
                         <label for="pge-plan-create-features"><?php esc_html_e('مزايا الباقة', 'pgevents'); ?></label>
                     </th>
                     <td>
-                        <textarea id="pge-plan-create-features" name="features" rows="10" class="large-text"><?php echo esc_textarea($form_features); ?></textarea>
-                        <p class="description"><?php esc_html_e('كل ميزة في سطر مستقل.', 'pgevents'); ?></p>
+                        <textarea id="pge-plan-create-features" name="features" rows="8" class="large-text" aria-describedby="pge-create-features-help"><?php echo esc_textarea($form_features); ?></textarea>
+                        <p class="description" id="pge-create-features-help"><?php esc_html_e('كل ميزة في سطر مستقل. بحد أقصى 50 ميزة، و255 حرفًا لكل ميزة.', 'pgevents'); ?></p>
                     </td>
                 </tr>
             </table>
 
+            <div class="pge-plan-actions">
             <?php submit_button('إضافة الباقة', 'primary', 'submit_create_plan'); ?>
+            <a class="button" href="<?php echo esc_url($list_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
+            </div>
         </form>
+        </section>
+        <?php endif; ?>
 
+        <?php if ($view === 'list'): ?>
+        <dl class="pge-plans-stats">
+            <div><dt><?php esc_html_e('إجمالي الباقات', 'pgevents'); ?></dt><dd data-stat="total"><?php echo count($plans); ?></dd></div>
+            <div><dt><?php esc_html_e('الباقات النشطة', 'pgevents'); ?></dt><dd data-stat="active"><?php echo $active_plans_count; ?></dd></div>
+        </dl>
         <h2><?php esc_html_e('الباقات الحالية', 'pgevents'); ?></h2>
         <?php if (empty($plans)): ?>
             <p><?php esc_html_e('لا توجد باقات مضافة حتى الآن.', 'pgevents'); ?></p>
         <?php else: ?>
-            <table class="widefat fixed striped">
+            <table class="widefat striped pge-plans-table" role="table">
+                <caption class="screen-reader-text"><?php esc_html_e('الباقات الحالية وبياناتها وإجراءات إدارتها', 'pgevents'); ?></caption>
                 <thead>
                     <tr>
-                        <th><?php esc_html_e('المعرّف', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('مفتاح الباقة', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('اسم الباقة', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('المزايا', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('النوع', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('الحالة', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('الإجراءات', 'pgevents'); ?></th>
+                        <th scope="col" class="pge-plan-identity"><?php esc_html_e('الباقة', 'pgevents'); ?></th>
+                        <th scope="col"><?php esc_html_e('المزايا', 'pgevents'); ?></th>
+                        <th scope="col"><?php esc_html_e('النوع', 'pgevents'); ?></th>
+                        <th scope="col"><?php esc_html_e('الحالة', 'pgevents'); ?></th>
+                        <th scope="col"><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></th>
+                        <th scope="col"><?php esc_html_e('الإجراءات', 'pgevents'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2496,10 +2546,12 @@ function pge_render_catalog_plans_page()
                         }
                         ?>
                         <tr>
-                            <td><?php echo absint($plan['id']); ?></td>
-                            <td><?php echo esc_html($plan['plan_key']); ?></td>
-                            <td><?php echo esc_html($plan['name']); ?></td>
-                            <td>
+                            <th scope="row" class="pge-plan-identity">
+                                <strong><?php echo esc_html($plan['name']); ?></strong>
+                                <bdi dir="ltr"><code><?php echo esc_html($plan['plan_key']); ?></code></bdi>
+                                <span class="pge-plan-id"><?php esc_html_e('المعرّف:', 'pgevents'); ?> <?php echo absint($plan['id']); ?></span>
+                            </th>
+                            <td><span class="pge-mobile-label" aria-hidden="true"><?php esc_html_e('المزايا', 'pgevents'); ?></span><span>
                                 <?php if ($row_features_count > 0): ?>
                                     <?php
                                     printf(
@@ -2509,13 +2561,13 @@ function pge_render_catalog_plans_page()
                                     );
                                     ?>
                                 <?php else: ?>
-                                    &mdash;
+                                    <?php esc_html_e('لا توجد مزايا', 'pgevents'); ?>
                                 <?php endif; ?>
-                            </td>
-                            <td><?php echo esc_html($plan_type_labels[$plan['plan_type']] ?? $plan['plan_type']); ?></td>
-                            <td><?php echo esc_html($status_labels[$plan['status']] ?? $plan['status']); ?></td>
-                            <td><?php echo absint($plan['sort_order']); ?></td>
-                            <td>
+                            </span></td>
+                            <td><span class="pge-mobile-label" aria-hidden="true"><?php esc_html_e('النوع', 'pgevents'); ?></span><span><?php echo esc_html($plan_type_labels[$plan['plan_type']] ?? $plan['plan_type']); ?></span></td>
+                            <td><span class="pge-mobile-label" aria-hidden="true"><?php esc_html_e('الحالة', 'pgevents'); ?></span><span class="pge-plan-status <?php echo $plan['status'] === 'active' ? 'is-active' : 'is-inactive'; ?>"><?php echo esc_html($status_labels[$plan['status']] ?? $plan['status']); ?></span></td>
+                            <td><span class="pge-mobile-label" aria-hidden="true"><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></span><span><?php echo absint($plan['sort_order']); ?></span></td>
+                            <td><div class="pge-plan-row-actions">
                                 <?php
                                 $edit_url = add_query_arg(
                                     [
@@ -2526,8 +2578,7 @@ function pge_render_catalog_plans_page()
                                     admin_url('admin.php')
                                 );
                                 ?>
-                                <a href="<?php echo esc_url($edit_url); ?>"><?php esc_html_e('تعديل', 'pgevents'); ?></a>
-                                |
+                                <a class="button" href="<?php echo esc_url($edit_url); ?>"><?php esc_html_e('تعديل', 'pgevents'); ?><span class="screen-reader-text">: <?php echo esc_html($plan['name']); ?></span></a>
                                 <?php
                                 $delete_url = add_query_arg(
                                     [
@@ -2538,24 +2589,13 @@ function pge_render_catalog_plans_page()
                                     admin_url('admin.php')
                                 );
                                 ?>
-                                <a href="<?php echo esc_url($delete_url); ?>"><?php esc_html_e('حذف', 'pgevents'); ?></a>
-                            </td>
+                                <a class="button pge-plan-delete-link" href="<?php echo esc_url($delete_url); ?>"><?php esc_html_e('حذف', 'pgevents'); ?><span class="screen-reader-text">: <?php echo esc_html($plan['name']); ?></span></a>
+                            </div></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
-                <tfoot>
-                    <tr>
-                        <th><?php esc_html_e('المعرّف', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('مفتاح الباقة', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('اسم الباقة', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('المزايا', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('النوع', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('الحالة', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></th>
-                        <th><?php esc_html_e('الإجراءات', 'pgevents'); ?></th>
-                    </tr>
-                </tfoot>
             </table>
+        <?php endif; ?>
         <?php endif; ?>
     </div>
 <?php

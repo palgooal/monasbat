@@ -1,0 +1,60 @@
+/* Catalog Plans only: keep WordPress controls, typography and focus styles. */
+.pge-catalog-plans { max-width: 1280px; }
+.pge-catalog-plans .pge-plans-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-block: 16px 20px; }
+.pge-catalog-plans .pge-plans-heading h1 { margin: 0; padding: 0; }
+.pge-catalog-plans .pge-plans-heading .page-title-action { position: static; margin: 0; }
+.pge-catalog-plans .pge-plans-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-block: 20px 28px; }
+.pge-catalog-plans .pge-plans-stats > div { flex: 0 1 180px; padding: 16px 20px; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; }
+.pge-catalog-plans .pge-plans-stats dt { color: #50575e; }
+.pge-catalog-plans .pge-plans-stats dd { margin: 8px 0 0; font-size: 24px; font-weight: 600; line-height: 1.3; color: #1d2327; }
+.pge-catalog-plans .pge-plans-table { table-layout: fixed; }
+.pge-catalog-plans .pge-plans-table th,
+.pge-catalog-plans .pge-plans-table td { padding: 16px 12px; vertical-align: middle; text-align: start; overflow-wrap: anywhere; }
+.pge-catalog-plans .pge-plans-table thead th { font-weight: 600; }
+.pge-catalog-plans .pge-plans-table .pge-plan-identity { width: 30%; }
+.pge-catalog-plans .pge-plan-identity strong { display: block; font-size: 14px; margin-block-end: 8px; color: #1d2327; }
+.pge-catalog-plans bdi { unicode-bidi: isolate; }
+.pge-catalog-plans code { overflow-wrap: anywhere; white-space: normal; }
+.pge-catalog-plans .pge-plan-id { display: block; margin-block-start: 8px; color: #50575e; font-weight: 400; }
+.pge-catalog-plans .pge-plan-status { display: inline-block; padding: 3px 9px; border-radius: 4px; font-weight: 500; }
+.pge-catalog-plans .pge-plan-status.is-active { color: #005c12; background: #edfaef; }
+.pge-catalog-plans .pge-plan-status.is-inactive { color: #50575e; background: #f0f0f1; }
+.pge-catalog-plans .pge-plan-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pge-catalog-plans .pge-plan-delete-link { color: #b32d2e; border-color: #b32d2e; }
+.pge-catalog-plans .pge-plan-delete-link:hover { color: #8a2424; border-color: #8a2424; }
+.pge-catalog-plans .pge-mobile-label { display: none; }
+.pge-catalog-plans .pge-plan-panel { max-width: 880px; margin-block-start: 20px; padding: 24px; background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; }
+.pge-catalog-plans .pge-plan-panel h2 { margin-block: 0 16px; }
+.pge-catalog-plans .pge-plan-panel .form-table { margin: 0; }
+.pge-catalog-plans .pge-plan-panel .form-table th { width: 170px; padding-inline-end: 24px; }
+.pge-catalog-plans .pge-plan-panel .regular-text { width: 100%; max-width: 420px; }
+.pge-catalog-plans .pge-plan-panel input,
+.pge-catalog-plans .pge-plan-panel select,
+.pge-catalog-plans .pge-plan-panel textarea { box-sizing: border-box; max-width: 100%; }
+.pge-catalog-plans .pge-plan-panel textarea { resize: vertical; min-height: 150px; }
+.pge-catalog-plans .pge-plan-panel .description { line-height: 1.7; color: #50575e; }
+.pge-catalog-plans .pge-plan-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-block-start: 1px solid #dcdcde; padding-block-start: 20px; margin-block-start: 16px; }
+.pge-catalog-plans .pge-plan-actions .submit { margin: 0; padding: 0; }
+.pge-catalog-plans .pge-plan-delete { max-width: 640px; }
+.pge-catalog-plans .pge-plan-delete p { line-height: 1.8; overflow-wrap: anywhere; }
+
+@media screen and (max-width: 782px) {
+    .pge-catalog-plans .pge-plans-stats > div { flex: 1 1 100px; padding: 12px; }
+    .pge-catalog-plans .pge-plans-table,
+    .pge-catalog-plans .pge-plans-table tbody { display: block; width: 100%; }
+    /* Retain column headings for assistive technology, without a wide header row. */
+    .pge-catalog-plans .pge-plans-table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .pge-catalog-plans .pge-plans-table tbody tr { display: block; padding: 16px; }
+    .pge-catalog-plans .pge-plans-table tbody tr + tr { border-block-start: 1px solid #c3c4c7; }
+    .pge-catalog-plans .pge-plans-table tbody th.pge-plan-identity { display: block; width: auto; padding: 0 0 12px; }
+    .pge-catalog-plans .pge-plans-table tbody td { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; width: auto; padding: 8px 0; }
+    .pge-catalog-plans .pge-mobile-label { display: inline; flex: 0 0 36%; color: #50575e; }
+    .pge-catalog-plans .pge-plan-row-actions { width: 100%; margin-block-start: 8px; }
+    .pge-catalog-plans .pge-plan-row-actions .button,
+    .pge-catalog-plans .pge-plan-actions .button,
+    .pge-catalog-plans .page-title-action { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding-inline: 16px; }
+    .pge-catalog-plans .pge-plan-panel { padding: 16px; }
+    .pge-catalog-plans .pge-plan-panel .form-table th { width: auto; padding: 16px 0 8px; }
+    .pge-catalog-plans .pge-plan-panel .form-table td { padding: 0 0 12px; }
+    .pge-catalog-plans .pge-plan-panel .regular-text { max-width: none; }
+}
