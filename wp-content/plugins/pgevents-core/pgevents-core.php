@@ -1736,7 +1736,7 @@ function pge_render_catalog_tiers_page()
                 </script>
 
                 <?php if ($tier_view === 'edit' && is_array($editing_tier)): ?>
-                    <section class="pge-tier-panel"><h2><?php esc_html_e('تعديل المستوى', 'pgevents'); ?></h2>
+                    <section class="pge-tier-panel pge-tier-edit"><h2><?php esc_html_e('تعديل المستوى', 'pgevents'); ?></h2>
                     <form method="post" class="pge-tier-form">
                         <?php wp_nonce_field('pge_update_catalog_tier_' . absint($editing_tier['id']), 'pge_catalog_tier_update_nonce'); ?>
                         <input type="hidden" name="pge_catalog_action" value="update_tier">
@@ -1744,7 +1744,7 @@ function pge_render_catalog_tiers_page()
                         <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
 
                         <table class="form-table" role="presentation">
-                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('معلومات المستوى', 'pgevents'); ?></h3></th></tr>
+                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('المعلومات الأساسية', 'pgevents'); ?></h3></th></tr>
                             <tr>
                                 <th scope="row">
                                     <label for="pge-tier-edit-name"><?php esc_html_e('اسم المستوى', 'pgevents'); ?></label>
@@ -1763,7 +1763,6 @@ function pge_render_catalog_tiers_page()
                                     <p class="description"><?php esc_html_e('أحرف إنجليزية صغيرة وأرقام وشرطة أو شرطة سفلية فقط.', 'pgevents'); ?></p>
                                 </td>
                             </tr>
-                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('السعر والعملة', 'pgevents'); ?></h3></th></tr>
                             <tr>
                                 <th scope="row">
                                     <label for="pge_edit_tier_price"><?php esc_html_e('السعر', 'pgevents'); ?></label>
@@ -1782,7 +1781,26 @@ function pge_render_catalog_tiers_page()
                                     </select>
                                 </td>
                             </tr>
-                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('بيانات منتج سلة', 'pgevents'); ?></h3></th></tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="pge_edit_tier_status"><?php esc_html_e('الحالة', 'pgevents'); ?></label>
+                                </th>
+                                <td>
+                                    <select id="pge_edit_tier_status" name="status" required>
+                                        <option value="active" <?php echo selected($tier_edit_form_values['status'], 'active', false); ?>><?php esc_html_e('نشط', 'pgevents'); ?></option>
+                                        <option value="inactive" <?php echo selected($tier_edit_form_values['status'], 'inactive', false); ?>><?php esc_html_e('غير نشط', 'pgevents'); ?></option>
+                                    </select>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="pge_edit_tier_sort_order"><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="number" id="pge_edit_tier_sort_order" name="sort_order" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['sort_order']); ?>" required>
+                                </td>
+                            </tr>
+                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('ربط سلة', 'pgevents'); ?></h3></th></tr>
                             <tr>
                                 <th scope="row">
                                     <label for="pge_edit_tier_salla_product_id"><?php esc_html_e('معرّف منتج سلة', 'pgevents'); ?></label>
@@ -1808,25 +1826,6 @@ function pge_render_catalog_tiers_page()
                                 <td>
                                     <input type="url" id="pge_edit_tier_salla_url" name="salla_url" class="regular-text" value="<?php echo esc_attr($tier_edit_form_values['salla_url']); ?>" maxlength="255" placeholder="https://">
                                     <p class="description"><?php esc_html_e('رابط صفحة المنتج التي سينتقل إليها العميل لإكمال الشراء.', 'pgevents'); ?></p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="pge_edit_tier_status"><?php esc_html_e('الحالة', 'pgevents'); ?></label>
-                                </th>
-                                <td>
-                                    <select id="pge_edit_tier_status" name="status" required>
-                                        <option value="active" <?php echo selected($tier_edit_form_values['status'], 'active', false); ?>><?php esc_html_e('نشط', 'pgevents'); ?></option>
-                                        <option value="inactive" <?php echo selected($tier_edit_form_values['status'], 'inactive', false); ?>><?php esc_html_e('غير نشط', 'pgevents'); ?></option>
-                                    </select>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="pge_edit_tier_sort_order"><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></label>
-                                </th>
-                                <td>
-                                    <input type="number" id="pge_edit_tier_sort_order" name="sort_order" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['sort_order']); ?>" required>
                                 </td>
                             </tr>
                             <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('الأرصدة وحدود الاستخدام', 'pgevents'); ?></h3></th></tr>
@@ -1880,6 +1879,7 @@ function pge_render_catalog_tiers_page()
                             </tr>
                         </table>
 
+                        <div class="pge-tier-form-actions">
                         <?php submit_button('حفظ التعديلات', 'primary', 'submit_update_tier', false); ?>
                         <?php
                         $tier_cancel_url = add_query_arg(
@@ -1891,6 +1891,7 @@ function pge_render_catalog_tiers_page()
                         );
                         ?>
                         <a href="<?php echo esc_url($tier_cancel_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
+                        </div>
                     </form></section>
 
                     <?php
@@ -1917,13 +1918,13 @@ function pge_render_catalog_tiers_page()
                     <?php else: ?>
                         <p class="description"><?php esc_html_e('عند عدم وجود قيمة مخصَّصة لهذا المستوى لميزة ما، تُعرَض القيمة الافتراضية من سجل الميزات (Feature Registry) — هذه قيمة معروضة فقط لأغراض الواجهة، وليست صفاً مخزَّناً فعلياً في قاعدة البيانات إلا إن حُفِظ صراحة.', 'pgevents'); ?></p>
 
-                        <form method="post">
+                        <form method="post" class="pge-tier-feature-form">
                             <?php wp_nonce_field('pge_update_catalog_tier_features_' . $editing_tier_id, 'pge_catalog_tier_features_nonce'); ?>
                             <input type="hidden" name="pge_catalog_action" value="update_tier_features">
                             <input type="hidden" name="tier_id" value="<?php echo esc_attr($editing_tier_id); ?>">
                             <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
 
-                            <table class="form-table" role="presentation">
+                            <table class="form-table pge-tier-feature-grid" role="presentation">
                                 <?php foreach ($pge_tier_features_registry as $pge_feature_key => $pge_feature_def): ?>
                                     <?php
                                     $pge_feature_has_override = array_key_exists($pge_feature_key, $pge_tier_feature_overrides);
@@ -1936,7 +1937,7 @@ function pge_render_catalog_tiers_page()
                                     $pge_feature_display_value = pge_feature_resolver_interpret_by_type($pge_feature_def['type'], $pge_feature_raw_value);
                                     $pge_feature_field_id = 'pge_tier_feature_' . preg_replace('/[^a-z0-9_]/', '_', $pge_feature_key);
                                     ?>
-                                    <tr>
+                                    <tr class="pge-tier-feature-card pge-tier-feature-card--<?php echo esc_attr($pge_feature_def['type']); ?>">
                                         <th scope="row">
                                             <label for="<?php echo esc_attr($pge_feature_field_id); ?>"><?php echo esc_html($pge_feature_def['admin_label']); ?></label>
                                         </th>
@@ -1958,7 +1959,9 @@ function pge_render_catalog_tiers_page()
                                 <?php endforeach; ?>
                             </table>
 
-                            <?php submit_button('حفظ ميزات المستوى', 'primary', 'submit_update_tier_features', false); ?>
+                            <div class="pge-tier-feature-actions">
+                                <?php submit_button('حفظ ميزات المستوى', 'primary', 'submit_update_tier_features', false); ?>
+                            </div>
                         </form>
 
                         <?php
@@ -1970,7 +1973,7 @@ function pge_render_catalog_tiers_page()
                         // التي تصل لهذه النقطة).
                         ?>
                         <?php if (is_array($tiers) && count($tiers) > 1): ?>
-                            <hr>
+                            <div class="pge-tier-copy-features">
                             <h2><?php esc_html_e('نسخ المميزات', 'pgevents'); ?></h2>
                             <p class="description"><?php esc_html_e('انسخ جميع المميزات المحفوظة لهذا المستوى إلى جميع مستويات هذه الباقة.', 'pgevents'); ?></p>
 
@@ -2007,8 +2010,11 @@ function pge_render_catalog_tiers_page()
                                     <?php endif; ?>
                                 <?php endforeach; ?>
 
-                                <?php submit_button('نسخ المميزات إلى جميع المستويات', 'secondary', 'submit_copy_tier_features', false); ?>
+                                <div class="pge-tier-copy-actions">
+                                    <?php submit_button('نسخ المميزات إلى جميع المستويات', 'secondary', 'submit_copy_tier_features', false); ?>
+                                </div>
                             </form>
+                            </div>
                         <?php endif; ?>
                     <?php endif; ?></section>
                 <?php endif; ?>

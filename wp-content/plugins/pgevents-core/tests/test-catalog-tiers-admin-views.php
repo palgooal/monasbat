@@ -161,4 +161,26 @@ $html = render_view(['plan_id' => '1']);
 foreach (['10.00 SAR', 'رصيد الدعوات:', '14', 'الرصيد البديل:', '3', 'المدعوون:', '90', 'المناسبات:', '7', 'ID: product-1', 'SKU: SKU-1', 'فتح المنتج'] as $value) {
     verify(strpos($html, $value) !== false, 'tier table value retained: ' . $value);
 }
+
+$feature_html = render_view(['plan_id' => '1', 'action' => 'edit', 'tier_id' => '1']);
+foreach (['pge-tier-feature-form', 'pge-tier-feature-grid', 'pge-tier-feature-card--integer', 'pge-tier-feature-actions', 'pge-tier-copy-features', 'pge-tier-copy-actions'] as $class_name) {
+    verify(str_contains($feature_html, $class_name), 'feature UI class rendered: ' . $class_name);
+}
+verify(substr_count($feature_html, 'name="tier_features[quota_test]"') === 2, 'feature save and copy forms retain their field contracts');
+preg_match_all('/\bid="([^"]+)"/', $feature_html, $feature_ids);
+verify(count($feature_ids[1]) === count(array_unique($feature_ids[1])), 'edit view has no duplicate HTML IDs');
+preg_match_all('/<\/?form\b[^>]*>/i', $feature_html, $feature_form_tags);
+$feature_form_depth = 0;
+$feature_forms_are_separate = true;
+foreach ($feature_form_tags[0] as $feature_form_tag) {
+    if (str_starts_with(strtolower($feature_form_tag), '</')) {
+        $feature_form_depth--;
+        continue;
+    }
+    $feature_form_depth++;
+    if ($feature_form_depth > 1) {
+        $feature_forms_are_separate = false;
+    }
+}
+verify($feature_forms_are_separate && $feature_form_depth === 0, 'edit, feature save, and feature copy forms are not nested');
 echo "PASS: $checks/$checks assertions; 21 GET cases; 31 POST cases; actual callback, no database\n";

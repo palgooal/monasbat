@@ -207,6 +207,11 @@ function esc_attr($text)
     return (string) $text;
 }
 
+function esc_attr_e($text, $domain = 'default')
+{
+    echo esc_attr($text);
+}
+
 function esc_url($url, $protocols = null)
 {
     return (string) $url;
@@ -220,6 +225,11 @@ function esc_html__($text, $domain = 'default')
 function esc_html_e($text, $domain = 'default')
 {
     echo $text;
+}
+
+function esc_js($text)
+{
+    return addslashes((string) $text);
 }
 
 function selected($a, $b = true, $echo = true)
