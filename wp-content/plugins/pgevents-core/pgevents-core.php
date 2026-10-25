@@ -398,7 +398,7 @@ add_action('admin_menu', function () {
         58
     );
 
-    add_submenu_page(
+    $GLOBALS['pge_catalog_tiers_page_hook'] = add_submenu_page(
         'pge-catalog-plans',
         'مستويات الباقات',
         'مستويات الباقات',
@@ -1141,6 +1141,8 @@ function pge_render_catalog_tiers_page()
                     'invitation_credit_limit'  => $posted_tier['invitation_credit_limit'] ?? '0',
                     'replacement_credit_limit' => $posted_tier['replacement_credit_limit'] ?? '0',
                     'guest_limit'              => ($posted_tier['guest_limit'] ?? null) === null ? '' : (string) $posted_tier['guest_limit'],
+                    'event_quota_mode'         => $posted_tier['event_quota_mode'] ?? 'limited',
+                    'event_quota_limit'        => $posted_tier['event_quota_limit'] ?? '1',
                 ];
 
                 // Phase 6 — Extract Method: منطق الحفظ (قراءة $_POST['tier_features']
@@ -1253,6 +1255,8 @@ function pge_render_catalog_tiers_page()
                     'invitation_credit_limit'  => $posted_tier['invitation_credit_limit'] ?? '0',
                     'replacement_credit_limit' => $posted_tier['replacement_credit_limit'] ?? '0',
                     'guest_limit'              => ($posted_tier['guest_limit'] ?? null) === null ? '' : (string) $posted_tier['guest_limit'],
+                    'event_quota_mode'         => $posted_tier['event_quota_mode'] ?? 'limited',
+                    'event_quota_limit'        => $posted_tier['event_quota_limit'] ?? '1',
                 ];
 
                 // 1) حفظ المستوى المصدر أولاً — نفس دالة الحفظ المستخدمة في
@@ -1370,8 +1374,33 @@ function pge_render_catalog_tiers_page()
         }
     }
 
+    // Route views independently of the existing POST handlers.
+    $tier_view = 'list';
+    $deleting_tier = null;
+    $read_view_id = static function ($value) {
+        return is_scalar($value) && preg_match('/^[1-9][0-9]*$/D', (string) $value) ? absint($value) : 0;
+    };
+    if ($tier_post_handled) {
+        if ($tier_create_post_handled) {
+            $tier_view = 'add';
+        } elseif (is_array($editing_tier)) {
+            $tier_view = 'edit';
+        } elseif (isset($deleted) && $deleted !== true && is_array($posted_tier)) {
+            $tier_view = 'delete';
+            $deleting_tier = $posted_tier;
+        }
+    } else {
+        $requested_view = $_GET['action'] ?? (isset($_GET['edit_tier']) ? 'edit' : 'list');
+        if (is_string($requested_view) && in_array($requested_view, ['list', 'add', 'edit', 'delete'], true)) {
+            $tier_view = $requested_view;
+        } else {
+            $notice_type = 'error';
+            $notice_message = 'الإجراء المطلوب غير معروف.';
+        }
+    }
+
     if (!$tier_post_handled) {
-        $selected_plan_id = absint(wp_unslash($_GET['plan_id'] ?? 0));
+        $selected_plan_id = $read_view_id(wp_unslash($_GET['plan_id'] ?? 0));
 
         if ($selected_plan_id > 0) {
             $selected_plan = PGE_Catalog::get_plan($selected_plan_id);
@@ -1389,7 +1418,12 @@ function pge_render_catalog_tiers_page()
             }
         }
 
-        $editing_tier_id = absint(wp_unslash($_GET['edit_tier'] ?? 0));
+        $editing_tier_id = in_array($tier_view, ['edit', 'delete'], true)
+            ? $read_view_id(wp_unslash($_GET['tier_id'] ?? $_GET['edit_tier'] ?? 0)) : 0;
+        if (is_array($selected_plan) && in_array($tier_view, ['edit', 'delete'], true) && !$editing_tier_id) {
+            $notice_type = 'error';
+            $notice_message = 'معرّف المستوى غير صالح.';
+        }
 
         if (is_array($selected_plan) && $editing_tier_id > 0) {
             $editing_tier = PGE_Catalog::get_tier($editing_tier_id);
@@ -1425,6 +1459,17 @@ function pge_render_catalog_tiers_page()
         }
     }
 
+    if (!$tier_post_handled && $tier_view === 'delete') {
+        $deleting_tier = $editing_tier;
+        $editing_tier = null;
+        $editing_tier_id = 0;
+    }
+    if (($tier_view === 'edit' && !is_array($editing_tier)) || ($tier_view === 'delete' && !is_array($deleting_tier))) {
+        $tier_view = 'list';
+    }
+    $tier_list_url = add_query_arg(['page' => 'pge-catalog-tiers', 'plan_id' => $selected_plan_id], admin_url('admin.php'));
+    $tier_add_url = add_query_arg(['page' => 'pge-catalog-tiers', 'plan_id' => $selected_plan_id, 'action' => 'add'], admin_url('admin.php'));
+
     $plan_type_labels = [
         'personal' => 'شخصية',
         'business' => 'أعمال',
@@ -1437,9 +1482,18 @@ function pge_render_catalog_tiers_page()
         'active' => 'نشط',
         'inactive' => 'غير نشط',
     ];
+    $tier_total = count($tiers);
+    $tier_active_total = count(array_filter($tiers, static function ($tier) {
+        return is_array($tier) && ($tier['status'] ?? '') === 'active';
+    }));
 ?>
-    <div class="wrap">
-        <h1><?php esc_html_e('مستويات الباقات', 'pgevents'); ?></h1>
+    <div class="wrap pge-catalog-tiers" dir="rtl">
+        <div class="pge-tiers-heading">
+            <h1><?php esc_html_e('مستويات الباقات', 'pgevents'); ?></h1>
+            <?php if (is_array($selected_plan) && $tier_view === 'list'): ?>
+                <a class="page-title-action" href="<?php echo esc_url($tier_add_url); ?>"><?php esc_html_e('إضافة مستوى', 'pgevents'); ?></a>
+            <?php endif; ?>
+        </div>
 
         <?php if ($notice_message !== ''): ?>
             <?php if ($notice_type === 'success'): ?>
@@ -1458,7 +1512,7 @@ function pge_render_catalog_tiers_page()
                 <p><?php esc_html_e('لا توجد باقات متاحة لإدارة مستوياتها.', 'pgevents'); ?></p>
             </div>
         <?php else: ?>
-            <form method="get">
+            <form method="get" class="pge-tiers-plan-picker">
                 <input type="hidden" name="page" value="pge-catalog-tiers">
 
                 <label for="pge_tiers_plan_id"><?php esc_html_e('اختر الباقة', 'pgevents'); ?></label>
@@ -1475,31 +1529,32 @@ function pge_render_catalog_tiers_page()
             </form>
 
             <?php if (is_array($selected_plan)): ?>
-                <h2><?php esc_html_e('الباقة المختارة', 'pgevents'); ?></h2>
-                <p>
-                    <?php esc_html_e('اسم الباقة:', 'pgevents'); ?>
-                    <?php echo esc_html($selected_plan['name']); ?>
-                </p>
-                <p>
-                    <?php esc_html_e('مفتاح الباقة:', 'pgevents'); ?>
-                    <?php echo esc_html($selected_plan['plan_key']); ?>
-                </p>
-                <p>
-                    <?php esc_html_e('نوع الباقة:', 'pgevents'); ?>
-                    <?php echo esc_html($plan_type_labels[$selected_plan['plan_type']] ?? $selected_plan['plan_type']); ?>
-                </p>
-                <p>
-                    <?php esc_html_e('الحالة:', 'pgevents'); ?>
-                    <?php echo esc_html($status_labels[$selected_plan['status']] ?? $selected_plan['status']); ?>
-                </p>
+                <section class="pge-tiers-plan-summary" aria-label="<?php esc_attr_e('ملخص الباقة المحددة', 'pgevents'); ?>">
+                    <div>
+                        <h2><?php echo esc_html($selected_plan['name']); ?></h2>
+                        <p><code dir="ltr"><?php echo esc_html($selected_plan['plan_key']); ?></code> · <?php echo esc_html($plan_type_labels[$selected_plan['plan_type']] ?? $selected_plan['plan_type']); ?> · <?php echo esc_html($status_labels[$selected_plan['status']] ?? $selected_plan['status']); ?></p>
+                    </div>
+                    <?php if ($tier_view !== 'list'): ?>
+                        <a class="button" href="<?php echo esc_url($tier_list_url); ?>"><?php esc_html_e('العودة إلى المستويات', 'pgevents'); ?></a>
+                    <?php endif; ?>
+                </section>
 
-                <h2><?php esc_html_e('إضافة مستوى جديد', 'pgevents'); ?></h2>
-                <form method="post">
+                <?php if ($tier_view === 'list'): ?>
+                    <dl class="pge-tiers-stats">
+                        <div><dt><?php esc_html_e('إجمالي المستويات', 'pgevents'); ?></dt><dd><?php echo esc_html((string) $tier_total); ?></dd></div>
+                        <div><dt><?php esc_html_e('المستويات النشطة', 'pgevents'); ?></dt><dd><?php echo esc_html((string) $tier_active_total); ?></dd></div>
+                    </dl>
+                <?php endif; ?>
+
+                <?php if ($tier_view === 'add'): ?>
+                <section class="pge-tier-panel"><h2><?php esc_html_e('إضافة مستوى جديد', 'pgevents'); ?></h2>
+                <form method="post" class="pge-tier-form">
                     <?php wp_nonce_field('pge_create_catalog_tier', 'pge_catalog_tier_nonce'); ?>
                     <input type="hidden" name="pge_catalog_action" value="create_tier">
                     <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
 
                     <table class="form-table" role="presentation">
+                        <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('معلومات المستوى', 'pgevents'); ?></h3></th></tr>
                         <tr>
                             <th scope="row">
                                 <label for="pge-tier-create-name"><?php esc_html_e('اسم المستوى', 'pgevents'); ?></label>
@@ -1518,6 +1573,7 @@ function pge_render_catalog_tiers_page()
                                 <p class="description"><?php esc_html_e('أحرف إنجليزية صغيرة وأرقام وشرطة أو شرطة سفلية فقط.', 'pgevents'); ?></p>
                             </td>
                         </tr>
+                        <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('السعر والعملة', 'pgevents'); ?></h3></th></tr>
                         <tr>
                             <th scope="row">
                                 <label for="pge_tier_price"><?php esc_html_e('السعر', 'pgevents'); ?></label>
@@ -1536,6 +1592,7 @@ function pge_render_catalog_tiers_page()
                                 </select>
                             </td>
                         </tr>
+                        <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('بيانات منتج سلة', 'pgevents'); ?></h3></th></tr>
                         <tr>
                             <th scope="row">
                                 <label for="pge_tier_salla_product_id"><?php esc_html_e('معرّف منتج سلة', 'pgevents'); ?></label>
@@ -1582,6 +1639,7 @@ function pge_render_catalog_tiers_page()
                                 <input type="number" id="pge_tier_sort_order" name="sort_order" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_form_values['sort_order']); ?>" required>
                             </td>
                         </tr>
+                        <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('الأرصدة وحدود الاستخدام', 'pgevents'); ?></h3></th></tr>
                         <tr>
                             <th scope="row">
                                 <label for="pge_tier_invitation_credit_limit"><?php esc_html_e('رصيد الدعوات الأساسي', 'pgevents'); ?></label>
@@ -1633,7 +1691,8 @@ function pge_render_catalog_tiers_page()
                     </table>
 
                     <?php submit_button('إضافة المستوى', 'primary', 'submit_create_tier'); ?>
-                </form>
+                </form></section>
+                <?php endif; ?>
 
                 <?php
                 // Event Quota (Commit 2): تبديل عرض واجهة "حصة المناسبات" فقط —
@@ -1653,30 +1712,39 @@ function pge_render_catalog_tiers_page()
                         var unlimitedRadio = fieldset.querySelector('input[type="radio"][value="unlimited"]');
                         target.disabled = !!(unlimitedRadio && unlimitedRadio.checked);
                     }
-                    var fieldsets = document.querySelectorAll('.pge-event-quota-fieldset');
-                    for (var i = 0; i < fieldsets.length; i++) {
-                        (function (fieldset) {
-                            syncEventQuotaFieldset(fieldset);
-                            var radios = fieldset.querySelectorAll('input[type="radio"]');
-                            for (var j = 0; j < radios.length; j++) {
-                                radios[j].addEventListener('change', function () {
-                                    syncEventQuotaFieldset(fieldset);
-                                });
-                            }
-                        })(fieldsets[i]);
+                    function initEventQuotaFields() {
+                        var fieldsets = document.querySelectorAll('.pge-event-quota-fieldset');
+                        for (var i = 0; i < fieldsets.length; i++) {
+                            (function (fieldset) {
+                                syncEventQuotaFieldset(fieldset);
+                                var radios = fieldset.querySelectorAll('input[type="radio"]');
+                                for (var j = 0; j < radios.length; j++) {
+                                    radios[j].addEventListener('change', function () {
+                                        syncEventQuotaFieldset(fieldset);
+                                    });
+                                }
+                            })(fieldsets[i]);
+                        }
+                    }
+                    // The edit form appears after this script in the document.
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', initEventQuotaFields, { once: true });
+                    } else {
+                        initEventQuotaFields();
                     }
                 })();
                 </script>
 
-                <?php if (is_array($editing_tier)): ?>
-                    <h2><?php esc_html_e('تعديل المستوى', 'pgevents'); ?></h2>
-                    <form method="post">
+                <?php if ($tier_view === 'edit' && is_array($editing_tier)): ?>
+                    <section class="pge-tier-panel"><h2><?php esc_html_e('تعديل المستوى', 'pgevents'); ?></h2>
+                    <form method="post" class="pge-tier-form">
                         <?php wp_nonce_field('pge_update_catalog_tier_' . absint($editing_tier['id']), 'pge_catalog_tier_update_nonce'); ?>
                         <input type="hidden" name="pge_catalog_action" value="update_tier">
                         <input type="hidden" name="tier_id" value="<?php echo esc_attr(absint($editing_tier['id'])); ?>">
                         <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
 
                         <table class="form-table" role="presentation">
+                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('معلومات المستوى', 'pgevents'); ?></h3></th></tr>
                             <tr>
                                 <th scope="row">
                                     <label for="pge-tier-edit-name"><?php esc_html_e('اسم المستوى', 'pgevents'); ?></label>
@@ -1695,6 +1763,7 @@ function pge_render_catalog_tiers_page()
                                     <p class="description"><?php esc_html_e('أحرف إنجليزية صغيرة وأرقام وشرطة أو شرطة سفلية فقط.', 'pgevents'); ?></p>
                                 </td>
                             </tr>
+                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('السعر والعملة', 'pgevents'); ?></h3></th></tr>
                             <tr>
                                 <th scope="row">
                                     <label for="pge_edit_tier_price"><?php esc_html_e('السعر', 'pgevents'); ?></label>
@@ -1713,6 +1782,7 @@ function pge_render_catalog_tiers_page()
                                     </select>
                                 </td>
                             </tr>
+                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('بيانات منتج سلة', 'pgevents'); ?></h3></th></tr>
                             <tr>
                                 <th scope="row">
                                     <label for="pge_edit_tier_salla_product_id"><?php esc_html_e('معرّف منتج سلة', 'pgevents'); ?></label>
@@ -1759,6 +1829,7 @@ function pge_render_catalog_tiers_page()
                                     <input type="number" id="pge_edit_tier_sort_order" name="sort_order" class="small-text" min="0" step="1" value="<?php echo esc_attr($tier_edit_form_values['sort_order']); ?>" required>
                                 </td>
                             </tr>
+                            <tr class="pge-tier-form-section"><th colspan="2"><h3><?php esc_html_e('الأرصدة وحدود الاستخدام', 'pgevents'); ?></h3></th></tr>
                             <tr>
                                 <th scope="row">
                                     <label for="pge_edit_tier_invitation_credit_limit"><?php esc_html_e('رصيد الدعوات الأساسي', 'pgevents'); ?></label>
@@ -1820,7 +1891,7 @@ function pge_render_catalog_tiers_page()
                         );
                         ?>
                         <a href="<?php echo esc_url($tier_cancel_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
-                    </form>
+                    </form></section>
 
                     <?php
                     // Phase 5 — Commit 1 (قراءة/عرض فقط، بلا أي معالجة POST هنا).
@@ -1837,7 +1908,7 @@ function pge_render_catalog_tiers_page()
                     }
                     ?>
 
-                    <h2><?php esc_html_e('إدارة ميزات المستوى', 'pgevents'); ?></h2>
+                    <section class="pge-tier-panel pge-tier-features"><h2><?php esc_html_e('إدارة ميزات المستوى', 'pgevents'); ?></h2>
 
                     <?php if ($pge_tier_features_fetch_failed): ?>
                         <div class="notice notice-error inline">
@@ -1939,39 +2010,47 @@ function pge_render_catalog_tiers_page()
                                 <?php submit_button('نسخ المميزات إلى جميع المستويات', 'secondary', 'submit_copy_tier_features', false); ?>
                             </form>
                         <?php endif; ?>
-                    <?php endif; ?>
+                    <?php endif; ?></section>
                 <?php endif; ?>
 
-                <h2><?php esc_html_e('مستويات الباقة', 'pgevents'); ?></h2>
+                <?php if ($tier_view === 'delete' && is_array($deleting_tier)): ?>
+                    <section class="pge-tier-panel pge-tier-delete"><h2><?php esc_html_e('تأكيد حذف المستوى', 'pgevents'); ?></h2>
+                    <p class="pge-tier-delete-identity"><strong><?php echo esc_html($selected_plan['name']); ?></strong><span><?php echo esc_html($deleting_tier['name']); ?></span><code dir="ltr"><?php echo esc_html($deleting_tier['tier_key']); ?></code></p>
+                    <p><?php esc_html_e('هل تريد حذف هذا المستوى؟', 'pgevents'); ?></p>
+                    <form method="post" class="pge-tier-actions">
+                        <input type="hidden" name="pge_catalog_action" value="delete_tier">
+                        <input type="hidden" name="tier_id" value="<?php echo esc_attr(absint($deleting_tier['id'])); ?>">
+                        <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
+                        <?php wp_nonce_field('pge_delete_catalog_tier_' . absint($deleting_tier['id']), 'pge_catalog_tier_delete_nonce'); ?>
+                        <?php submit_button('حذف', 'delete small', 'submit_delete_tier', false); ?>
+                    </form></section>
+                <?php endif; ?>
+
+                <?php if ($tier_view === 'list'): ?>
+                <h2 class="pge-tiers-list-heading"><?php esc_html_e('مستويات الباقة', 'pgevents'); ?></h2>
                 <?php if (empty($tiers)): ?>
                     <div class="notice notice-info inline">
                         <p><?php esc_html_e('لا توجد مستويات مضافة لهذه الباقة حتى الآن.', 'pgevents'); ?></p>
                     </div>
                 <?php else: ?>
-                    <table class="widefat fixed striped">
+                    <table class="widefat fixed striped pge-tiers-table">
                         <thead>
                             <tr>
-                                <th><?php esc_html_e('المعرّف', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('اسم المستوى', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('مفتاح المستوى', 'pgevents'); ?></th>
+                                <th><?php esc_html_e('المستوى', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('السعر', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('العملة', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('ربط سلة', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('الحالة', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('الحد الأقصى للمدعوين', 'pgevents'); ?></th>
+                                <th><?php esc_html_e('الأرصدة والحدود', 'pgevents'); ?></th>
+                                <th><?php esc_html_e('الترتيب', 'pgevents'); ?></th>
                                 <th><?php esc_html_e('الإجراءات', 'pgevents'); ?></th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($tiers as $tier): ?>
                                 <tr>
-                                    <td><?php echo absint($tier['id']); ?></td>
-                                    <td><?php echo esc_html($tier['name']); ?></td>
-                                    <td><code><?php echo esc_html($tier['tier_key']); ?></code></td>
-                                    <td><?php echo esc_html($tier['price']); ?></td>
-                                    <td><?php echo esc_html($tier['currency']); ?></td>
-                                    <td>
+                                    <th scope="row" class="pge-tier-identity"><strong><?php echo esc_html($tier['name']); ?></strong><code dir="ltr"><?php echo esc_html($tier['tier_key']); ?></code><span><?php echo esc_html__('المعرّف:', 'pgevents'); ?> <?php echo absint($tier['id']); ?></span></th>
+                                    <td data-label="<?php esc_attr_e('السعر', 'pgevents'); ?>"><bdi><?php echo esc_html($tier['price']); ?> <?php echo esc_html($tier['currency']); ?></bdi></td>
+                                    <td data-label="<?php esc_attr_e('ربط سلة', 'pgevents'); ?>">
                                         <?php
                                         $tier_salla_product_id = trim((string) ($tier['salla_product_id'] ?? ''));
                                         $tier_salla_sku = trim((string) ($tier['salla_sku'] ?? ''));
@@ -1987,7 +2066,7 @@ function pge_render_catalog_tiers_page()
                                             && !empty($tier_salla_url_parts['host']);
 
                                         if ($has_salla_product_id && $has_salla_sku && $has_valid_salla_url) {
-                                            $salla_link_status = 'مرتبط بالكامل';
+                                            $salla_link_status = 'بيانات الربط مكتملة';
                                         } elseif ($has_salla_product_id && $has_salla_sku) {
                                             $salla_link_status = 'معرّف وSKU';
                                         } elseif ($has_salla_product_id) {
@@ -2000,60 +2079,52 @@ function pge_render_catalog_tiers_page()
                                             $salla_link_status = 'غير مرتبط';
                                         }
                                         ?>
-                                        <strong<?php echo $has_salla_sku ? ' title="' . esc_attr($tier_salla_sku) . '"' : ''; ?>><?php echo esc_html($salla_link_status); ?></strong>
+                                        <strong><?php echo esc_html($salla_link_status); ?></strong>
+                                        <?php if ($has_salla_product_id): ?><span class="pge-tier-technical" dir="ltr">ID: <?php echo esc_html($tier_salla_product_id); ?></span><?php endif; ?>
+                                        <?php if ($has_salla_sku): ?><span class="pge-tier-technical" dir="ltr">SKU: <?php echo esc_html($tier_salla_sku); ?></span><?php endif; ?>
                                         <?php if ($has_valid_salla_url): ?>
-                                            <br><a href="<?php echo esc_url($tier_salla_url, ['https']); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('فتح المنتج', 'pgevents'); ?></a>
+                                            <br><a class="pge-tier-product-link" dir="ltr" href="<?php echo esc_url($tier_salla_url, ['https']); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('فتح المنتج', 'pgevents'); ?></a>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?php echo esc_html($tier_status_labels[$tier['status']] ?? $tier['status']); ?></td>
-                                    <td><?php echo absint($tier['sort_order']); ?></td>
-                                    <td>
+                                    <td data-label="<?php esc_attr_e('الحالة', 'pgevents'); ?>"><span class="pge-tier-status <?php echo ($tier['status'] ?? '') === 'active' ? 'is-active' : 'is-inactive'; ?>"><?php echo esc_html($tier_status_labels[$tier['status']] ?? $tier['status']); ?></span></td>
+                                    <td data-label="<?php esc_attr_e('الأرصدة والحدود', 'pgevents'); ?>" class="pge-tier-limits">
                                         <?php
                                         $tier_guest_limit_raw = $tier['guest_limit'] ?? null;
-                                        echo (empty($tier_guest_limit_raw))
+                                        $tier_event_quota_mode = $tier['event_quota_mode'] ?? 'limited';
+                                        $tier_event_quota_limit = $tier['event_quota_limit'] ?? '1';
+                                        $tier_guest_limit_display = (empty($tier_guest_limit_raw))
                                             ? esc_html__('بلا حد', 'pgevents')
                                             : esc_html((string) absint($tier_guest_limit_raw));
                                         ?>
+                                        <span><?php esc_html_e('رصيد الدعوات:', 'pgevents'); ?> <?php echo esc_html((string) absint($tier['invitation_credit_limit'] ?? 0)); ?></span>
+                                        <span><?php esc_html_e('الرصيد البديل:', 'pgevents'); ?> <?php echo esc_html((string) absint($tier['replacement_credit_limit'] ?? 0)); ?></span>
+                                        <span><?php esc_html_e('المدعوون:', 'pgevents'); ?> <?php echo $tier_guest_limit_display; ?></span>
+                                        <span><?php esc_html_e('المناسبات:', 'pgevents'); ?> <?php echo $tier_event_quota_mode === 'unlimited' ? esc_html__('غير محدودة', 'pgevents') : esc_html((string) absint($tier_event_quota_limit)); ?></span>
                                     </td>
-                                    <td>
+                                    <td data-label="<?php esc_attr_e('الترتيب', 'pgevents'); ?>"><?php echo absint($tier['sort_order']); ?></td>
+                                    <td data-label="<?php esc_attr_e('الإجراءات', 'pgevents'); ?>">
                                         <?php
                                         $tier_edit_url = add_query_arg(
                                             [
                                                 'page'      => 'pge-catalog-tiers',
                                                 'plan_id'   => $selected_plan_id,
-                                                'edit_tier' => absint($tier['id']),
+                                                'action'    => 'edit',
+                                                'tier_id'   => absint($tier['id']),
                                             ],
                                             admin_url('admin.php')
                                         );
                                         ?>
-                                        <a href="<?php echo esc_url($tier_edit_url); ?>"><?php esc_html_e('تعديل', 'pgevents'); ?></a>
-                                        <form method="post" style="display:inline">
-                                            <input type="hidden" name="pge_catalog_action" value="delete_tier">
-                                            <input type="hidden" name="tier_id" value="<?php echo esc_attr(absint($tier['id'])); ?>">
-                                            <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
-                                            <?php wp_nonce_field('pge_delete_catalog_tier_' . absint($tier['id']), 'pge_catalog_tier_delete_nonce'); ?>
-                                            <?php submit_button('حذف', 'delete small', 'submit_delete_tier', false); ?>
-                                        </form>
+                                        <div class="pge-tier-row-actions"><a class="button button-secondary" href="<?php echo esc_url($tier_edit_url); ?>"><?php esc_html_e('تعديل', 'pgevents'); ?></a>
+                                        <a class="button pge-tier-delete-link" href="<?php echo esc_url(add_query_arg(['page' => 'pge-catalog-tiers', 'plan_id' => $selected_plan_id, 'action' => 'delete', 'tier_id' => absint($tier['id'])], admin_url('admin.php'))); ?>"><?php esc_html_e('حذف', 'pgevents'); ?></a></div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
-                        <tfoot>
-                            <tr>
-                                <th><?php esc_html_e('المعرّف', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('اسم المستوى', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('مفتاح المستوى', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('السعر', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('العملة', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('ربط سلة', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('الحالة', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('ترتيب العرض', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('الحد الأقصى للمدعوين', 'pgevents'); ?></th>
-                                <th><?php esc_html_e('الإجراءات', 'pgevents'); ?></th>
-                            </tr>
-                        </tfoot>
                     </table>
                 <?php endif; ?>
+                <?php endif; ?>
+            <?php else: ?>
+                <div class="notice notice-info inline"><p><?php esc_html_e('اختر باقة لعرض مستوياتها وإدارتها.', 'pgevents'); ?></p></div>
             <?php endif; ?>
         <?php endif; ?>
     </div>
@@ -2068,6 +2139,19 @@ function pge_catalog_plans_admin_styles($hook_suffix)
     wp_enqueue_style('pge-catalog-plans-admin', PGE_URL . 'assets/css/catalog-plans-admin.css', [], '1.0.0');
 }
 add_action('admin_enqueue_scripts', 'pge_catalog_plans_admin_styles');
+
+function pge_catalog_tiers_admin_styles($hook_suffix)
+{
+    $tiers_page_hook = $GLOBALS['pge_catalog_tiers_page_hook'] ?? '';
+    if ($tiers_page_hook === '' || $hook_suffix !== $tiers_page_hook) {
+        return;
+    }
+
+    $stylesheet_path = PGE_PATH . 'assets/css/catalog-tiers-admin.css';
+    $stylesheet_version = file_exists($stylesheet_path) ? (string) filemtime($stylesheet_path) : '1.0.0';
+    wp_enqueue_style('pge-catalog-tiers-admin', PGE_URL . 'assets/css/catalog-tiers-admin.css', [], $stylesheet_version);
+}
+add_action('admin_enqueue_scripts', 'pge_catalog_tiers_admin_styles');
 
 function pge_render_catalog_plans_page()
 {
