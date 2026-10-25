@@ -50,6 +50,14 @@
 .pge-catalog-tiers .pge-tier-form-actions a:hover { color: #1d2327; text-decoration: underline; }
 .pge-catalog-tiers .pge-tier-form-actions a:focus { border-radius: 2px; box-shadow: 0 0 0 2px #2271b1; outline: 1px solid transparent; }
 .pge-catalog-tiers .pge-tier-edit + .pge-tier-features { margin-block-start: 32px; border-block-start-width: 3px; }
+.pge-catalog-tiers .pge-tier-edit-tabs { max-width: 1120px; margin-block: 24px; }
+.pge-catalog-tiers .pge-tier-tablist { display: flex; flex-wrap: wrap; gap: 0 4px; margin-block-end: -1px; padding-inline: 8px; position: relative; z-index: 1; }
+.pge-catalog-tiers .pge-tier-tab { min-height: 38px; margin: 0; padding: 8px 16px; color: #50575e; background: #f6f7f7; border: 1px solid transparent; border-block-end: 0; border-radius: 4px 4px 0 0; font: inherit; font-weight: 600; cursor: pointer; }
+.pge-catalog-tiers .pge-tier-tab[aria-selected="true"] { color: #1d2327; background: #fff; border-color: #c3c4c7; }
+.pge-catalog-tiers .pge-tier-tab:hover { color: #1d2327; background: #fff; }
+.pge-catalog-tiers .pge-tier-tab:focus-visible { outline: 2px solid #2271b1; outline-offset: -2px; }
+.pge-catalog-tiers .pge-tier-edit-tabs .pge-tier-tabpanel > .pge-tier-panel { margin-block: 0; }
+.pge-catalog-tiers .pge-tier-edit-tabs.pge-tier-tabs-ready .pge-tier-tabpanel[hidden] { display: none; }
 .pge-catalog-tiers .pge-tier-features { max-width: 1120px; }
 .pge-catalog-tiers .pge-tier-features > .description { max-width: 75ch; margin-block: 0 22px; }
 .pge-catalog-tiers .pge-tier-feature-grid,
@@ -119,6 +127,9 @@
     .pge-catalog-tiers .pge-tier-edit input[type="number"]:not(.small-text), .pge-catalog-tiers .pge-tier-edit select { width: 100%; max-width: none; }
     .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset { align-items: flex-start; flex-direction: column; }
     .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset .small-text { width: 100%; max-width: none; }
+    .pge-catalog-tiers .pge-tier-tablist { gap: 6px; padding-inline: 0; margin-block-end: 12px; }
+    .pge-catalog-tiers .pge-tier-tab { flex: 1 1 145px; min-height: 44px; border-block-end: 1px solid #c3c4c7; border-radius: 4px; }
+    .pge-catalog-tiers .pge-tier-tab[aria-selected="true"] { border-color: #2271b1; box-shadow: inset 0 -2px 0 #2271b1; }
     .pge-catalog-tiers .pge-tier-form-actions { align-items: stretch; }
     .pge-catalog-tiers .pge-tier-form-actions .button { flex: 1 1 180px; min-height: 44px; }
     .pge-catalog-tiers .pge-tier-form-actions a { display: inline-flex; flex: 1 1 100%; align-items: center; justify-content: center; min-height: 44px; }

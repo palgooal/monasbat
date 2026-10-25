@@ -163,6 +163,9 @@ foreach (['10.00 SAR', 'رصيد الدعوات:', '14', 'الرصيد البد�
 }
 
 $feature_html = render_view(['plan_id' => '1', 'action' => 'edit', 'tier_id' => '1']);
+foreach (['pge-tier-edit-tabs', 'role="tablist"', 'id="pge-tier-tab-details"', 'id="pge-tier-tab-features"', 'id="pge-tier-tabpanel-details"', 'id="pge-tier-tabpanel-features"', 'aria-selected="true"', 'aria-selected="false"'] as $tab_markup) {
+    verify(str_contains($feature_html, $tab_markup), 'edit view tab markup rendered: ' . $tab_markup);
+}
 foreach (['pge-tier-feature-form', 'pge-tier-feature-grid', 'pge-tier-feature-card--integer', 'pge-tier-feature-actions', 'pge-tier-copy-features', 'pge-tier-copy-actions'] as $class_name) {
     verify(str_contains($feature_html, $class_name), 'feature UI class rendered: ' . $class_name);
 }

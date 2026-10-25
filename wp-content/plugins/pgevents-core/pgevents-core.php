@@ -1736,6 +1736,13 @@ function pge_render_catalog_tiers_page()
                 </script>
 
                 <?php if ($tier_view === 'edit' && is_array($editing_tier)): ?>
+                    <div class="pge-tier-edit-tabs" data-pge-tier-tabs>
+                        <div class="pge-tier-tablist" role="tablist" aria-label="<?php esc_attr_e('أقسام تعديل المستوى', 'pgevents'); ?>">
+                            <button type="button" class="pge-tier-tab" id="pge-tier-tab-details" role="tab" aria-selected="true" aria-controls="pge-tier-tabpanel-details" tabindex="0" data-pge-tier-tab="details"><?php esc_html_e('بيانات المستوى', 'pgevents'); ?></button>
+                            <button type="button" class="pge-tier-tab" id="pge-tier-tab-features" role="tab" aria-selected="false" aria-controls="pge-tier-tabpanel-features" tabindex="-1" data-pge-tier-tab="features"><?php esc_html_e('ميزات المستوى', 'pgevents'); ?></button>
+                        </div>
+
+                        <div id="pge-tier-tabpanel-details" class="pge-tier-tabpanel" role="tabpanel" aria-labelledby="pge-tier-tab-details">
                     <section class="pge-tier-panel pge-tier-edit"><h2><?php esc_html_e('تعديل المستوى', 'pgevents'); ?></h2>
                     <form method="post" class="pge-tier-form">
                         <?php wp_nonce_field('pge_update_catalog_tier_' . absint($editing_tier['id']), 'pge_catalog_tier_update_nonce'); ?>
@@ -1893,6 +1900,7 @@ function pge_render_catalog_tiers_page()
                         <a href="<?php echo esc_url($tier_cancel_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
                         </div>
                     </form></section>
+                        </div>
 
                     <?php
                     // Phase 5 — Commit 1 (قراءة/عرض فقط، بلا أي معالجة POST هنا).
@@ -1909,6 +1917,7 @@ function pge_render_catalog_tiers_page()
                     }
                     ?>
 
+                        <div id="pge-tier-tabpanel-features" class="pge-tier-tabpanel" role="tabpanel" aria-labelledby="pge-tier-tab-features">
                     <section class="pge-tier-panel pge-tier-features"><h2><?php esc_html_e('إدارة ميزات المستوى', 'pgevents'); ?></h2>
 
                     <?php if ($pge_tier_features_fetch_failed): ?>
@@ -2017,6 +2026,8 @@ function pge_render_catalog_tiers_page()
                             </div>
                         <?php endif; ?>
                     <?php endif; ?></section>
+                        </div>
+                    </div>
                 <?php endif; ?>
 
                 <?php if ($tier_view === 'delete' && is_array($deleting_tier)): ?>
@@ -2156,6 +2167,10 @@ function pge_catalog_tiers_admin_styles($hook_suffix)
     $stylesheet_path = PGE_PATH . 'assets/css/catalog-tiers-admin.css';
     $stylesheet_version = file_exists($stylesheet_path) ? (string) filemtime($stylesheet_path) : '1.0.0';
     wp_enqueue_style('pge-catalog-tiers-admin', PGE_URL . 'assets/css/catalog-tiers-admin.css', [], $stylesheet_version);
+
+    $script_path = PGE_PATH . 'assets/js/catalog-tiers-admin.js';
+    $script_version = file_exists($script_path) ? (string) filemtime($script_path) : '1.0.0';
+    wp_enqueue_script('pge-catalog-tiers-admin', PGE_URL . 'assets/js/catalog-tiers-admin.js', [], $script_version, true);
 }
 add_action('admin_enqueue_scripts', 'pge_catalog_tiers_admin_styles');
 
