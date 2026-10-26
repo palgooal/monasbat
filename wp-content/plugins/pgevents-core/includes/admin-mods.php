@@ -142,27 +142,6 @@ class PGE_Admin_Controller
      */
     public function render_packages_admin_page()
     {
-        // مصفوفات المفاتيح لضمان معالجة الـ Checkboxes التي لا تُرسل قيمتها إذا لم تكن محددة
-        $media_keys = ['header_img', 'event_barcode', 'event_date', 'countdown', 'google_map', 'stc_pay'];
-        $interact_keys = ['guest_photos', 'guest_video', 'public_chat', 'private_chat', 'prev_events', 'next_events', 'guest_history', 'archive'];
-        $all_checkbox_keys = array_merge($media_keys, $interact_keys);
-
-        if (isset($_POST['mon_save_plans'])) {
-            $submitted_plans = $_POST['plans'];
-
-            // تأمين الـ Checkboxes: إذا لم تكن موجودة في POST، نضع قيمتها 0
-            for ($i = 1; $i <= 4; $i++) {
-                foreach ($all_checkbox_keys as $key) {
-                    if (!isset($submitted_plans["plan_$i"][$key])) {
-                        $submitted_plans["plan_$i"][$key] = 0;
-                    }
-                }
-            }
-
-            update_option('mon_packages_settings', $submitted_plans);
-            echo '<div class="notice notice-success is-dismissible"><p>تم تحديث كافة تفاصيل الباقات والربط التقني بنجاح! ✅</p></div>';
-        }
-
         // حفظ مفتاح Webhook السري
         if (isset($_POST['mon_save_salla_secret']) && check_admin_referer('mon_salla_secret_nonce')) {
             $new_secret = sanitize_text_field(wp_unslash($_POST['pge_salla_webhook_secret'] ?? ''));
@@ -257,7 +236,6 @@ class PGE_Admin_Controller
         }
         echo wp_kses_post($assign_msg);
 
-        $plans = get_option('mon_packages_settings', []);
 ?>
         <style>
             .mon-wrapper {
@@ -276,186 +254,11 @@ class PGE_Admin_Controller
                 padding: 20px;
             }
 
-            .mon-table {
-                width: 100%;
-                border-collapse: collapse;
-                min-width: 1100px;
-            }
-
-            .mon-table th {
-                background: #1d2327;
-                color: #fff;
-                padding: 12px;
-                font-size: 13px;
-                text-align: center;
-            }
-
-            .mon-table td {
-                padding: 8px;
-                border: 1px solid #ddd;
-                text-align: center;
-                vertical-align: middle;
-            }
-
-            .group-header {
-                background: #f1f1f1;
-                font-weight: bold;
-                text-align: right !important;
-                padding: 12px 15px !important;
-                color: #2271b1;
-                border-bottom: 2px solid #2271b1 !important;
-            }
-
-            .mon-input {
-                width: 95%;
-                border: 1px solid #ccc !important;
-                border-radius: 4px !important;
-                padding: 6px !important;
-                text-align: center;
-                font-size: 12px;
-            }
-
-            .salla-field {
-                background: #fff9e6;
-                direction: ltr;
-                border-color: #ffd966 !important;
-            }
-
-            .sticky-footer {
-                position: sticky;
-                bottom: -20px;
-                background: #fff;
-                padding: 15px;
-                border-top: 2px solid #2271b1;
-                text-align: left;
-                z-index: 99;
-                margin-top: 20px;
-                border-radius: 0 0 12px 12px;
-            }
-
-            input[type="checkbox"] {
-                transform: scale(1.2);
-                cursor: pointer;
-            }
         </style>
 
         <div class="wrap mon-wrapper">
-            <h1>📑 الضبط الكامل لباقات "موقع مناسبات" والربط مع سلة</h1>
-            <form method="post">
-                <div class="mon-card">
-                    <table class="mon-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 220px;">الميزة / الخاصية</th>
-                                <?php for ($i = 1; $i <= 4; $i++): ?> <th>باقة <?php echo $i; ?></th> <?php endfor; ?>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td class="group-header" colspan="5">🏷️ التعريف الأساسي</td>
-                            </tr>
-                            <tr>
-                                <td>اسم الباقة في الموقع</td>
-                                <?php for ($i = 1; $i <= 4; $i++): ?>
-                                    <td><input type="text" name="plans[plan_<?php echo $i; ?>][name]" value="<?php echo esc_attr($plans["plan_$i"]['name'] ?? 'باقة ' . $i); ?>" class="mon-input" placeholder="مثلاً: الباقة الماسية"></td>
-                                <?php endfor; ?>
-                            </tr>
-
-                            <tr>
-                                <td class="group-header" colspan="5">🔗 ربط متجر سلة (Salla)</td>
-                            </tr>
-                            <tr>
-                                <td>ID منتج سلة (Product ID)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][salla_id]" value="<?php echo $plans["plan_$i"]['salla_id'] ?? ''; ?>" class="mon-input salla-field"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>رابط الشراء المباشر</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][salla_url]" value="<?php echo $plans["plan_$i"]['salla_url'] ?? ''; ?>" class="mon-input salla-field"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>سعر الباقة (ريال)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][price]" value="<?php echo $plans["plan_$i"]['price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-
-                            <tr>
-                                <td class="group-header" colspan="5">🖼️ العرض والوسائط (Media)</td>
-                            </tr>
-                            <?php
-                            $media_features = [
-                                'header_img' => 'صورة هيدر كبيرة',
-                                'event_barcode' => 'باركود زيارة المناسبة',
-                                'event_date' => 'تاريخ المناسبة',
-                                'countdown' => 'كاونت داون (عد تنازلي)',
-                                'google_map' => 'موقع قوقل ماب',
-                                'stc_pay' => 'باركود STCPay للهدايا'
-                            ];
-                            foreach ($media_features as $key => $label): ?>
-                                <tr>
-                                    <td><?php echo $label; ?></td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="checkbox" name="plans[plan_<?php echo $i; ?>][<?php echo $key; ?>]" value="1" <?php checked($plans["plan_$i"][$key] ?? 0, 1); ?>></td><?php endfor; ?>
-                                </tr>
-                            <?php endforeach; ?>
-
-                            <tr>
-                                <td class="group-header" colspan="5">📊 الحدود والكميات</td>
-                            </tr>
-                            <tr>
-                                <td>عدد المدعوين (Guests)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="number" name="plans[plan_<?php echo $i; ?>][guest_limit]" value="<?php echo $plans["plan_$i"]['guest_limit'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>عدد صور المضيف</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="number" name="plans[plan_<?php echo $i; ?>][host_photos]" value="<?php echo $plans["plan_$i"]['host_photos'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>فيديو برومو (يوتيوب/رفع)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][promo_video]" value="<?php echo $plans["plan_$i"]['promo_video'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>عدد المناسبات في الباقة</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="number" name="plans[plan_<?php echo $i; ?>][events_count]" value="<?php echo $plans["plan_$i"]['events_count'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>حجم الداتا (ميجا)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][data_size]" value="<?php echo $plans["plan_$i"]['data_size'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-
-                            <tr>
-                                <td class="group-header" colspan="5">💬 التفاعل والخصوصية</td>
-                            </tr>
-                            <?php
-                            $interact = [
-                                'guest_photos' => 'رفع صور خاص (للضيف)',
-                                'guest_video' => 'رفع فيديو خاص (للضيف)',
-                                'public_chat' => 'دردشة عامة',
-                                'private_chat' => 'دردشة خاصة',
-                                'prev_events' => 'المناسبات السابقة',
-                                'next_events' => 'المناسبات القادمة',
-                                'guest_history' => 'مناسبات حضرتها كضيف',
-                                'archive' => 'أرشفة المناسبات السابقة'
-                            ];
-                            foreach ($interact as $key => $label): ?>
-                                <tr>
-                                    <td><?php echo $label; ?></td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="checkbox" name="plans[plan_<?php echo $i; ?>][<?php echo $key; ?>]" value="1" <?php checked($plans["plan_$i"][$key] ?? 0, 1); ?>></td><?php endfor; ?>
-                                </tr>
-                            <?php endforeach; ?>
-
-                            <tr>
-                                <td class="group-header" colspan="5">📩 الدعوات والإضافات المدفوعة</td>
-                            </tr>
-                            <tr>
-                                <td>رسائل واتساب (دعوة/تذكير/شكر)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][wa_messages]" value="<?php echo $plans["plan_$i"]['wa_messages'] ?? ''; ?>" class="mon-input" placeholder="عدد الأرقام"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>سعر وضع الخصوصية (OTP)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][otp_price]" value="<?php echo $plans["plan_$i"]['otp_price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>سعر إضافة ضيف (لكل 5)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][extra_guest_price]" value="<?php echo $plans["plan_$i"]['extra_guest_price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>سعر إضافة مدير (بحد أقصى 3)</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][extra_admin_price]" value="<?php echo $plans["plan_$i"]['extra_admin_price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-                            <tr>
-                                <td>سعر التحكم بصلاحيات المدير</td><?php for ($i = 1; $i <= 4; $i++): ?><td><input type="text" name="plans[plan_<?php echo $i; ?>][admin_perms_price]" value="<?php echo $plans["plan_$i"]['admin_perms_price'] ?? ''; ?>" class="mon-input"></td><?php endfor; ?>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="sticky-footer">
-                    <button type="submit" name="mon_save_plans" class="button button-primary button-large">حفظ كافة الإعدادات والربط مع سلة ✨</button>
-                </div>
-            </form>
+            <h1>إعدادات تكامل سلة وصيانة الباقات</h1>
+            <p>تُدار الباقات ومستوياتها من صفحات Catalog الحديثة. تبقى هنا إعدادات تكامل سلة وأدوات الصيانة التشغيلية.</p>
 
             <?php
             // تحديد مصدر المفتاح الحالي
