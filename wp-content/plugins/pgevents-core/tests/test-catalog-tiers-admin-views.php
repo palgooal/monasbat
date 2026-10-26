@@ -162,6 +162,40 @@ foreach (['10.00 SAR', 'رصيد الدعوات:', '14', 'الرصيد البد�
     verify(strpos($html, $value) !== false, 'tier table value retained: ' . $value);
 }
 
+$add_html = render_view(['plan_id' => '1', 'action' => 'add']);
+verify(str_contains($add_html, 'pge-tier-panel pge-tier-add'), 'add form has the dedicated visual class');
+$add_sections = ['المعلومات الأساسية', 'ربط سلة', 'الأرصدة وحدود الاستخدام'];
+$last_section_position = -1;
+foreach ($add_sections as $section_label) {
+    $section_position = strpos($add_html, $section_label);
+    verify($section_position !== false && $section_position > $last_section_position, 'add form section order: ' . $section_label);
+    $last_section_position = $section_position;
+}
+foreach ([
+    'name="pge_catalog_action" value="create_tier"',
+    'name="pge_catalog_tier_nonce" value="pge_create_catalog_tier"',
+    'name="name" class="regular-text" value="" maxlength="190" required',
+    'name="tier_key" class="regular-text" value="" maxlength="64" required',
+    'name="price" min="0" max="99999999.99" step="0.01" value="0.00" required',
+    'name="currency" required',
+    'option value="SAR"  selected="selected"',
+    'name="status" required',
+    'option value="active"  selected="selected"',
+    'name="sort_order" class="small-text" min="0" step="1" value="0" required',
+    'name="salla_product_id" class="regular-text" value="" maxlength="64"',
+    'name="salla_sku" class="regular-text" value="" maxlength="100" pattern="[A-Za-z0-9_-]+"',
+    'name="salla_url" class="regular-text" value="" maxlength="255" placeholder="https://"',
+    'name="invitation_credit_limit" class="small-text" min="0" step="1" value="0"',
+    'name="replacement_credit_limit" class="small-text" min="0" step="1" value="0"',
+    'name="guest_limit" class="small-text" min="0" step="1" value=""',
+    'name="event_quota_mode" value="limited" class="pge-event-quota-mode-radio"  checked="checked"',
+    'name="event_quota_limit" class="small-text" min="1" step="1" value="1"',
+    'name="event_quota_mode" value="unlimited" class="pge-event-quota-mode-radio"',
+    'name="submit_create_tier"',
+] as $add_contract) {
+    verify(str_contains($add_html, $add_contract), 'add form contract/default retained: ' . $add_contract);
+}
+
 $feature_html = render_view(['plan_id' => '1', 'action' => 'edit', 'tier_id' => '1']);
 foreach (['pge-tier-edit-tabs', 'role="tablist"', 'id="pge-tier-tab-details"', 'id="pge-tier-tab-features"', 'id="pge-tier-tabpanel-details"', 'id="pge-tier-tabpanel-features"', 'aria-selected="true"', 'aria-selected="false"'] as $tab_markup) {
     verify(str_contains($feature_html, $tab_markup), 'edit view tab markup rendered: ' . $tab_markup);

@@ -25,25 +25,25 @@
 .pge-catalog-tiers .pge-tier-panel .regular-text { width: 100%; max-width: 440px; }
 .pge-catalog-tiers .pge-tier-panel input[name="tier_key"], .pge-catalog-tiers .pge-tier-panel input[name="salla_product_id"], .pge-catalog-tiers .pge-tier-panel input[name="salla_sku"], .pge-catalog-tiers .pge-tier-panel input[name="salla_url"] { direction: ltr; text-align: left; }
 .pge-catalog-tiers .pge-tier-panel .description { line-height: 1.7; color: #50575e; }
-.pge-catalog-tiers .pge-tier-edit { max-width: 1120px; }
-.pge-catalog-tiers .pge-tier-edit > h2 { margin-block-end: 20px; }
-.pge-catalog-tiers .pge-tier-edit .form-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-.pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > th,
-.pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > td { padding-block: 13px; }
-.pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > th { color: #1d2327; font-weight: 600; }
-.pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > td { padding-inline-start: 12px; }
-.pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) + tr:not(.pge-tier-form-section) > th,
-.pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) + tr:not(.pge-tier-form-section) > td { border-block-start: 1px solid #f0f0f1; }
-.pge-catalog-tiers .pge-tier-edit .pge-tier-form-section th { padding: 26px 14px 10px !important; background: #f6f7f7; border-block-start: 1px solid #dcdcde; }
-.pge-catalog-tiers .pge-tier-edit .pge-tier-form-section:first-child th { padding: 12px 14px 10px !important; background: transparent; }
-.pge-catalog-tiers .pge-tier-edit .pge-tier-form-section h3 { font-size: 15px; line-height: 1.45; }
-.pge-catalog-tiers .pge-tier-edit .regular-text { max-width: 560px; }
-.pge-catalog-tiers .pge-tier-edit input[type="number"], .pge-catalog-tiers .pge-tier-edit select { min-height: 32px; }
-.pge-catalog-tiers .pge-tier-edit input[type="number"]:not(.small-text), .pge-catalog-tiers .pge-tier-edit select { width: min(100%, 240px); }
-.pge-catalog-tiers .pge-tier-edit .description { max-width: 65ch; margin-block: 7px 0; }
-.pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0; }
-.pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset br { display: none; }
-.pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset .small-text { min-height: 32px; }
+.pge-catalog-tiers .pge-tier-add, .pge-catalog-tiers .pge-tier-edit { max-width: 1120px; }
+.pge-catalog-tiers .pge-tier-add > h2, .pge-catalog-tiers .pge-tier-edit > h2 { margin-block-end: 20px; }
+.pge-catalog-tiers .pge-tier-add .form-table, .pge-catalog-tiers .pge-tier-edit .form-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.pge-catalog-tiers .pge-tier-add .form-table > tbody > tr:not(.pge-tier-form-section) > th, .pge-catalog-tiers .pge-tier-add .form-table > tbody > tr:not(.pge-tier-form-section) > td,
+.pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > th, .pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > td { padding-block: 13px; }
+.pge-catalog-tiers .pge-tier-add .form-table > tbody > tr:not(.pge-tier-form-section) > th, .pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > th { color: #1d2327; font-weight: 600; }
+.pge-catalog-tiers .pge-tier-add .form-table > tbody > tr:not(.pge-tier-form-section) > td, .pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > td { padding-inline-start: 12px; }
+.pge-catalog-tiers .pge-tier-add .form-table > tbody > tr:not(.pge-tier-form-section) + tr:not(.pge-tier-form-section) > th, .pge-catalog-tiers .pge-tier-add .form-table > tbody > tr:not(.pge-tier-form-section) + tr:not(.pge-tier-form-section) > td,
+.pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) + tr:not(.pge-tier-form-section) > th, .pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) + tr:not(.pge-tier-form-section) > td { border-block-start: 1px solid #f0f0f1; }
+.pge-catalog-tiers .pge-tier-add .pge-tier-form-section th, .pge-catalog-tiers .pge-tier-edit .pge-tier-form-section th { padding: 26px 14px 10px !important; background: #f6f7f7; border-block-start: 1px solid #dcdcde; }
+.pge-catalog-tiers .pge-tier-add .pge-tier-form-section:first-child th, .pge-catalog-tiers .pge-tier-edit .pge-tier-form-section:first-child th { padding: 12px 14px 10px !important; background: transparent; }
+.pge-catalog-tiers .pge-tier-add .pge-tier-form-section h3, .pge-catalog-tiers .pge-tier-edit .pge-tier-form-section h3 { font-size: 15px; line-height: 1.45; }
+.pge-catalog-tiers .pge-tier-add .regular-text, .pge-catalog-tiers .pge-tier-edit .regular-text { max-width: 560px; }
+.pge-catalog-tiers .pge-tier-add input[type="number"], .pge-catalog-tiers .pge-tier-add select, .pge-catalog-tiers .pge-tier-edit input[type="number"], .pge-catalog-tiers .pge-tier-edit select { min-height: 32px; }
+.pge-catalog-tiers .pge-tier-add input[type="number"]:not(.small-text), .pge-catalog-tiers .pge-tier-add select, .pge-catalog-tiers .pge-tier-edit input[type="number"]:not(.small-text), .pge-catalog-tiers .pge-tier-edit select { width: min(100%, 240px); }
+.pge-catalog-tiers .pge-tier-add .description, .pge-catalog-tiers .pge-tier-edit .description { max-width: 65ch; margin-block: 7px 0; }
+.pge-catalog-tiers .pge-tier-add .pge-event-quota-fieldset, .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0; }
+.pge-catalog-tiers .pge-tier-add .pge-event-quota-fieldset br, .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset br { display: none; }
+.pge-catalog-tiers .pge-tier-add .pge-event-quota-fieldset .small-text, .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset .small-text { min-height: 32px; }
 .pge-catalog-tiers .pge-tier-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block-start: 26px; padding-block-start: 18px; border-block-start: 1px solid #dcdcde; }
 .pge-catalog-tiers .pge-tier-form-actions .button { min-height: 34px; }
 .pge-catalog-tiers .pge-tier-form-actions a { color: #50575e; text-decoration: none; }
@@ -121,12 +121,12 @@
     .pge-catalog-tiers .pge-tier-form .form-table th, .pge-catalog-tiers .pge-tier-features .form-table th { width: auto; padding: 16px 0 8px; }
     .pge-catalog-tiers .pge-tier-form .form-table td, .pge-catalog-tiers .pge-tier-features .form-table td { padding: 0 0 12px; }
     .pge-catalog-tiers .pge-tier-panel .regular-text { max-width: none; }
-    .pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > th,
-    .pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > td { padding-inline: 0; }
-    .pge-catalog-tiers .pge-tier-edit .pge-tier-form-section th { padding-inline: 12px !important; }
-    .pge-catalog-tiers .pge-tier-edit input[type="number"]:not(.small-text), .pge-catalog-tiers .pge-tier-edit select { width: 100%; max-width: none; }
-    .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset { align-items: flex-start; flex-direction: column; }
-    .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset .small-text { width: 100%; max-width: none; }
+    .pge-catalog-tiers .pge-tier-add .form-table > tbody > tr:not(.pge-tier-form-section) > th, .pge-catalog-tiers .pge-tier-add .form-table > tbody > tr:not(.pge-tier-form-section) > td,
+    .pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > th, .pge-catalog-tiers .pge-tier-edit .form-table > tbody > tr:not(.pge-tier-form-section) > td { padding-inline: 0; }
+    .pge-catalog-tiers .pge-tier-add .pge-tier-form-section th, .pge-catalog-tiers .pge-tier-edit .pge-tier-form-section th { padding-inline: 12px !important; }
+    .pge-catalog-tiers .pge-tier-add input[type="number"]:not(.small-text), .pge-catalog-tiers .pge-tier-add select, .pge-catalog-tiers .pge-tier-edit input[type="number"]:not(.small-text), .pge-catalog-tiers .pge-tier-edit select { width: 100%; max-width: none; }
+    .pge-catalog-tiers .pge-tier-add .pge-event-quota-fieldset, .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset { align-items: flex-start; flex-direction: column; }
+    .pge-catalog-tiers .pge-tier-add .pge-event-quota-fieldset .small-text, .pge-catalog-tiers .pge-tier-edit .pge-event-quota-fieldset .small-text { width: 100%; max-width: none; }
     .pge-catalog-tiers .pge-tier-tablist { gap: 6px; padding-inline: 0; margin-block-end: 12px; }
     .pge-catalog-tiers .pge-tier-tab { flex: 1 1 145px; min-height: 44px; border-block-end: 1px solid #c3c4c7; border-radius: 4px; }
     .pge-catalog-tiers .pge-tier-tab[aria-selected="true"] { border-color: #2271b1; box-shadow: inset 0 -2px 0 #2271b1; }

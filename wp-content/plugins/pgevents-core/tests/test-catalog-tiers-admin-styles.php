@@ -22,6 +22,8 @@ verify_tiers_styles(strpos($css, '@media screen and (max-width: 782px)') !== fal
 verify_tiers_styles(strpos($css, 'data-label') !== false, 'mobile table labels');
 verify_tiers_styles(strpos($css, 'min-height: 44px') !== false, 'touch targets');
 verify_tiers_styles(strpos($css, '[dir="ltr"]') !== false, 'technical LTR isolation');
+verify_tiers_styles(strpos($css, '.pge-tier-add') !== false, 'add form styles are page scoped');
+verify_tiers_styles(strpos($css, '.pge-tier-add .pge-event-quota-fieldset') !== false, 'add form retains scoped event quota layout');
 
 $tokens = token_get_all($source);
 $callback = '';
