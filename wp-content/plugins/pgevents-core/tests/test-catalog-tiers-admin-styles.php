@@ -24,6 +24,9 @@ verify_tiers_styles(strpos($css, 'min-height: 44px') !== false, 'touch targets')
 verify_tiers_styles(strpos($css, '[dir="ltr"]') !== false, 'technical LTR isolation');
 verify_tiers_styles(strpos($css, '.pge-tier-add') !== false, 'add form styles are page scoped');
 verify_tiers_styles(strpos($css, '.pge-tier-add .pge-event-quota-fieldset') !== false, 'add form retains scoped event quota layout');
+verify_tiers_styles(strpos($css, '.pge-tier-delete-heading') !== false, 'delete confirmation heading is page scoped');
+verify_tiers_styles(strpos($css, '.pge-tier-delete-identity') !== false, 'delete confirmation identity summary is page scoped');
+verify_tiers_styles(strpos($css, '.pge-tier-delete-actions') !== false, 'delete confirmation actions are page scoped');
 
 $tokens = token_get_all($source);
 $callback = '';

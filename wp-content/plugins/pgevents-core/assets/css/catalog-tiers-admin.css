@@ -81,8 +81,23 @@
 .pge-catalog-tiers .pge-tier-copy-actions { display: flex; align-items: center; margin-block-start: 16px; }
 .pge-catalog-tiers .pge-tier-copy-actions .button { min-height: 34px; }
 .pge-catalog-tiers .pge-tier-actions, .pge-catalog-tiers .pge-tier-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.pge-catalog-tiers .pge-tier-delete { max-width: 640px; }
-.pge-catalog-tiers .pge-tier-delete-identity { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; background: #f6f7f7; border: 1px solid #dcdcde; }
+.pge-catalog-tiers .pge-tier-delete { max-width: 760px; }
+.pge-catalog-tiers .pge-tier-delete-heading { display: flex; align-items: flex-start; gap: 12px; padding-block-end: 18px; border-block-end: 1px solid #dcdcde; }
+.pge-catalog-tiers .pge-tier-delete-heading .dashicons { flex: 0 0 auto; width: 24px; height: 24px; color: #b32d2e; font-size: 24px; line-height: 1; }
+.pge-catalog-tiers .pge-tier-delete-heading h2 { margin: 0 0 6px; }
+.pge-catalog-tiers .pge-tier-delete-heading p { max-width: 62ch; margin: 0; color: #3c434a; line-height: 1.7; }
+.pge-catalog-tiers .pge-tier-delete-identity { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 20px 0 0; background: #f6f7f7; border: 1px solid #dcdcde; border-radius: 4px; }
+.pge-catalog-tiers .pge-tier-delete-identity > div { min-width: 0; padding: 14px 16px; }
+.pge-catalog-tiers .pge-tier-delete-identity > div + div { border-inline-start: 1px solid #dcdcde; }
+.pge-catalog-tiers .pge-tier-delete-identity dt { color: var(--pge-tier-muted); font-size: 12px; font-weight: 500; }
+.pge-catalog-tiers .pge-tier-delete-identity dd { margin: 6px 0 0; color: #1d2327; font-weight: 600; overflow-wrap: anywhere; }
+.pge-catalog-tiers .pge-tier-delete-identity code { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+.pge-catalog-tiers .pge-tier-delete-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-block-start: 24px; padding-block-start: 18px; border-block-start: 1px solid #dcdcde; }
+.pge-catalog-tiers .pge-tier-delete-actions .button { min-height: 34px; margin: 0; }
+.pge-catalog-tiers .pge-tier-delete-actions .pge-tier-actions { margin: 0; }
+.pge-catalog-tiers .pge-tier-delete-actions .button.delete { color: #fff; background: #b32d2e; border-color: #b32d2e; }
+.pge-catalog-tiers .pge-tier-delete-actions .button.delete:hover { background: #8a2424; border-color: #8a2424; }
+.pge-catalog-tiers .pge-tier-delete-actions .button.delete:focus { box-shadow: 0 0 0 1px #fff, 0 0 0 3px #b32d2e; }
 .pge-catalog-tiers .pge-tier-delete-link { color: #b32d2e; border-color: #b32d2e; }
 .pge-catalog-tiers .pge-tiers-list-heading { margin-block: 28px 12px; }
 .pge-catalog-tiers .pge-tiers-table { table-layout: fixed; border-color: var(--pge-tier-border); }
@@ -143,6 +158,12 @@
     .pge-catalog-tiers .pge-tier-feature-actions .button,
     .pge-catalog-tiers .pge-tier-copy-actions .button { width: 100%; min-height: 44px; }
     .pge-catalog-tiers .pge-tier-copy-features { padding: 16px; }
+    .pge-catalog-tiers .pge-tier-delete { max-width: none; }
+    .pge-catalog-tiers .pge-tier-delete-identity { grid-template-columns: 1fr; }
+    .pge-catalog-tiers .pge-tier-delete-identity > div + div { border-inline-start: 0; border-block-start: 1px solid #dcdcde; }
+    .pge-catalog-tiers .pge-tier-delete-actions { align-items: stretch; }
+    .pge-catalog-tiers .pge-tier-delete-actions > .button, .pge-catalog-tiers .pge-tier-delete-actions .pge-tier-actions { flex: 1 1 180px; }
+    .pge-catalog-tiers .pge-tier-delete-actions .button { display: inline-flex; width: 100%; min-height: 44px; align-items: center; justify-content: center; }
     .pge-catalog-tiers .pge-tiers-table, .pge-catalog-tiers .pge-tiers-table tbody { display: block; width: 100%; }
     .pge-catalog-tiers .pge-tiers-table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .pge-catalog-tiers .pge-tiers-table tbody tr { display: block; padding: 16px; }

@@ -196,6 +196,46 @@ foreach ([
     verify(str_contains($add_html, $add_contract), 'add form contract/default retained: ' . $add_contract);
 }
 
+$delete_html = render_view(['plan_id' => '1', 'action' => 'delete', 'tier_id' => '1']);
+foreach ([
+    'pge-tier-delete-heading',
+    'dashicons-warning',
+    'أنت على وشك حذف المستوى التالي. يرجى التأكد من صحة البيانات قبل المتابعة.',
+    'pge-tier-delete-identity',
+    'الباقة',
+    'المستوى',
+    'مفتاح المستوى',
+    'Plan',
+    'Tier One',
+    'tier_one',
+    'pge-tier-delete-actions',
+    'name="pge_catalog_action" value="delete_tier"',
+    'name="pge_catalog_tier_delete_nonce" value="pge_delete_catalog_tier_1"',
+    'name="submit_delete_tier"',
+    'href="/wp-admin/admin.php?page=pge-catalog-tiers&amp;plan_id=1"',
+] as $delete_markup) {
+    verify(str_contains($delete_html, $delete_markup), 'delete confirmation markup/contract retained: ' . $delete_markup);
+}
+verify(PGE_Catalog::$writes === [] && PGE_Tier_Features::$writes === [], 'delete confirmation GET has no writes');
+verify(
+    strpos($delete_html, 'href="/wp-admin/admin.php?page=pge-catalog-tiers&amp;plan_id=1"') < strpos($delete_html, '<form method="post" class="pge-tier-actions">'),
+    'delete cancellation link is independent from the delete form'
+);
+preg_match_all('/<\/?form\b[^>]*>/i', $delete_html, $delete_form_tags);
+$delete_form_depth = 0;
+$delete_forms_are_separate = true;
+foreach ($delete_form_tags[0] as $delete_form_tag) {
+    if (str_starts_with(strtolower($delete_form_tag), '</')) {
+        $delete_form_depth--;
+        continue;
+    }
+    $delete_form_depth++;
+    if ($delete_form_depth > 1) {
+        $delete_forms_are_separate = false;
+    }
+}
+verify($delete_forms_are_separate && $delete_form_depth === 0, 'delete confirmation has no nested forms');
+
 $feature_html = render_view(['plan_id' => '1', 'action' => 'edit', 'tier_id' => '1']);
 foreach (['pge-tier-edit-tabs', 'role="tablist"', 'id="pge-tier-tab-details"', 'id="pge-tier-tab-features"', 'id="pge-tier-tabpanel-details"', 'id="pge-tier-tabpanel-features"', 'aria-selected="true"', 'aria-selected="false"'] as $tab_markup) {
     verify(str_contains($feature_html, $tab_markup), 'edit view tab markup rendered: ' . $tab_markup);

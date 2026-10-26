@@ -2032,16 +2032,32 @@ function pge_render_catalog_tiers_page()
                 <?php endif; ?>
 
                 <?php if ($tier_view === 'delete' && is_array($deleting_tier)): ?>
-                    <section class="pge-tier-panel pge-tier-delete"><h2><?php esc_html_e('تأكيد حذف المستوى', 'pgevents'); ?></h2>
-                    <p class="pge-tier-delete-identity"><strong><?php echo esc_html($selected_plan['name']); ?></strong><span><?php echo esc_html($deleting_tier['name']); ?></span><code dir="ltr"><?php echo esc_html($deleting_tier['tier_key']); ?></code></p>
-                    <p><?php esc_html_e('هل تريد حذف هذا المستوى؟', 'pgevents'); ?></p>
-                    <form method="post" class="pge-tier-actions">
-                        <input type="hidden" name="pge_catalog_action" value="delete_tier">
-                        <input type="hidden" name="tier_id" value="<?php echo esc_attr(absint($deleting_tier['id'])); ?>">
-                        <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
-                        <?php wp_nonce_field('pge_delete_catalog_tier_' . absint($deleting_tier['id']), 'pge_catalog_tier_delete_nonce'); ?>
-                        <?php submit_button('حذف', 'delete small', 'submit_delete_tier', false); ?>
-                    </form></section>
+                    <section class="pge-tier-panel pge-tier-delete">
+                        <div class="pge-tier-delete-heading">
+                            <span class="dashicons dashicons-warning" aria-hidden="true"></span>
+                            <div>
+                                <h2><?php esc_html_e('تأكيد حذف المستوى', 'pgevents'); ?></h2>
+                                <p><?php esc_html_e('أنت على وشك حذف المستوى التالي. يرجى التأكد من صحة البيانات قبل المتابعة.', 'pgevents'); ?></p>
+                            </div>
+                        </div>
+
+                        <dl class="pge-tier-delete-identity">
+                            <div><dt><?php esc_html_e('الباقة', 'pgevents'); ?></dt><dd><?php echo esc_html($selected_plan['name']); ?></dd></div>
+                            <div><dt><?php esc_html_e('المستوى', 'pgevents'); ?></dt><dd><?php echo esc_html($deleting_tier['name']); ?></dd></div>
+                            <div><dt><?php esc_html_e('مفتاح المستوى', 'pgevents'); ?></dt><dd><code dir="ltr"><?php echo esc_html($deleting_tier['tier_key']); ?></code></dd></div>
+                        </dl>
+
+                        <div class="pge-tier-delete-actions">
+                            <a class="button" href="<?php echo esc_url($tier_list_url); ?>"><?php esc_html_e('إلغاء', 'pgevents'); ?></a>
+                            <form method="post" class="pge-tier-actions">
+                                <input type="hidden" name="pge_catalog_action" value="delete_tier">
+                                <input type="hidden" name="tier_id" value="<?php echo esc_attr(absint($deleting_tier['id'])); ?>">
+                                <input type="hidden" name="plan_id" value="<?php echo esc_attr(absint($selected_plan['id'])); ?>">
+                                <?php wp_nonce_field('pge_delete_catalog_tier_' . absint($deleting_tier['id']), 'pge_catalog_tier_delete_nonce'); ?>
+                                <?php submit_button('حذف المستوى', 'delete', 'submit_delete_tier', false); ?>
+                            </form>
+                        </div>
+                    </section>
                 <?php endif; ?>
 
                 <?php if ($tier_view === 'list'): ?>
