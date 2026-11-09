@@ -174,6 +174,8 @@ if (!function_exists('pge_is_elementor_built_page')) {
  * site administrators. This is intentionally a read-only rendering switch:
  * it does not alter Elementor data or any page metadata.
  */
+require_once get_stylesheet_directory() . '/inc/native-home-preview-admin.php';
+
 if (!function_exists('pge_is_native_home_preview')) {
     function pge_is_native_home_preview()
     {
@@ -185,8 +187,7 @@ if (!function_exists('pge_is_native_home_preview')) {
             ? wp_get_environment_type()
             : 'production';
         $production_preview = $environment === 'production'
-            && defined('PGE_NATIVE_HOME_PRODUCTION_PREVIEW')
-            && PGE_NATIVE_HOME_PRODUCTION_PREVIEW === true;
+            && pge_native_home_production_preview_enabled();
         if (!in_array($environment, ['local', 'development'], true) && !$production_preview) {
             return false;
         }
