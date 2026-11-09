@@ -83,6 +83,19 @@ function pgevents_enqueue_assets()
         wp_get_theme()->get('Version'),
         true
     );
+    // مكوّن Hero الصفحة الرئيسية: تسجيل فقط. Elementor يحمّله عبر
+    // get_style_depends() عند إدراج الودجت، لذلك لا يصل CSS أو الخط إلى
+    // أي صفحة لا تعرض المكوّن.
+    $hilwah_hero_css_path = get_stylesheet_directory() . '/assets/css/hilwah-home-hero.css';
+    if (file_exists($hilwah_hero_css_path)) {
+        wp_register_style(
+            'pge-hilwah-home-hero',
+            get_stylesheet_directory_uri() . '/assets/css/hilwah-home-hero.css',
+            [],
+            filemtime($hilwah_hero_css_path)
+        );
+    }
+
 }
 add_action('wp_enqueue_scripts', 'pgevents_enqueue_assets');
 
@@ -153,6 +166,10 @@ add_action('elementor/widgets/register', function ($widgets_manager) {
         [
             'file'  => get_stylesheet_directory() . '/inc/elementor/widgets/class-pge-package-details-widget.php',
             'class' => '\PGE_Package_Details_Widget',
+        ],
+        [
+            'file'  => get_stylesheet_directory() . '/inc/elementor/widgets/class-pge-hilwah-home-hero-widget.php',
+            'class' => '\PGE_Hilwah_Home_Hero_Widget',
         ],
     ];
 
