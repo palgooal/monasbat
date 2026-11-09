@@ -9,6 +9,8 @@ $end = strpos($source, 'function pge_render_native_home_preview_header()', $star
 function is_admin() { return $GLOBALS['admin']; }
 function is_front_page() { return $GLOBALS['front']; }
 function wp_get_environment_type() { return $GLOBALS['environment']; }
+function wp_doing_ajax() { return $GLOBALS['ajax']; }
+function is_user_logged_in() { return $GLOBALS['logged_in']; }
 function current_user_can($cap) { return $cap === 'manage_options' && $GLOBALS['authorized']; }
 function sanitize_text_field($s) { return trim($s); }
 function wp_unslash($s) { return $s; }
@@ -18,13 +20,26 @@ function nocache_headers() { $GLOBALS['nocache'] = true; }
 if (isset($argv[1]) && $argv[1] !== 'absent') {
     define('PGE_NATIVE_HOME_PUBLIC', json_decode($argv[1]));
 }
-eval(substr($source, $start, $end - $start));
+if (isset($argv[2]) && $argv[2] !== 'absent') {
+    define('PGE_NATIVE_HOME_PRODUCTION_PREVIEW', json_decode($argv[2]));
+}
+if (($argv[3] ?? '') === 'rest') { define('REST_REQUEST', true); }
+$ajax = false; $logged_in = true;
+// Capture header calls in CLI; no HTTP server or application bootstrap.
+function capture_header($value, $replace) { $GLOBALS['headers'][] = [$value, $replace]; }
+eval(str_replace('header(', 'capture_header(', substr($source, $start, $end - $start)));
 $public = defined('PGE_NATIVE_HOME_PUBLIC') && PGE_NATIVE_HOME_PUBLIC === true;
+$production = defined('PGE_NATIVE_HOME_PRODUCTION_PREVIEW') && PGE_NATIVE_HOME_PRODUCTION_PREVIEW === true
+    && !(defined('REST_REQUEST') && REST_REQUEST);
 $cases = [
     ['default/public/rollback', 'production', false, '', false, true, $public],
     ['authorized preview', 'local', true, '1', false, true, true],
     ['unauthorized preview', 'local', false, '1', false, true, $public],
-    ['production preview denied', 'production', true, '1', false, true, $public],
+    ['production preview gated', 'production', true, '1', false, true, $public || $production],
+    ['production insufficient capability', 'production', false, '1', false, true, $public],
+    ['production wrong query', 'production', true, '0', false, true, $public],
+    ['production padded query', 'production', true, ' 1 ', false, true, $public],
+    ['production array query', 'production', true, ['1'], false, true, $public],
     ['development preview', 'development', true, '1', false, true, true],
     ['internal page', 'local', true, '1', false, false, false],
     ['admin', 'local', true, '1', true, true, false],
@@ -32,12 +47,23 @@ $cases = [
 foreach ($cases as [$label, $environment, $authorized, $query, $admin, $front, $expected]) {
     $_GET = ['pge_native_home_preview' => $query];
     if (pge_should_render_native_home() !== $expected) { throw new RuntimeException($label); }
-    $filters = []; $nocache = false;
+    $filters = []; $headers = []; $nocache = false;
     pge_protect_native_home_preview();
     if ($nocache !== pge_is_native_home_preview() || (bool)$filters !== $nocache) {
         throw new RuntimeException('preview protections: ' . $label);
     }
+    $expected_headers = $nocache ? [
+        ['Cache-Control: private, no-store, no-cache, must-revalidate', true],
+        ['X-Robots-Tag: noindex, nofollow', true],
+    ] : [];
+    if ($headers !== $expected_headers) { throw new RuntimeException('headers: ' . $label); }
 }
+$environment = 'production'; $admin = false; $front = true; $authorized = true;
+$_GET = ['pge_native_home_preview' => '1'];
+$logged_in = false;
+if (pge_is_native_home_preview()) { throw new RuntimeException('anonymous preview'); }
+$logged_in = true; $ajax = true;
+if (pge_is_native_home_preview()) { throw new RuntimeException('AJAX preview'); }
 $robots = pge_native_home_preview_robots(['index' => true, 'follow' => true]);
 if ($robots !== ['noindex' => true, 'nofollow' => true]) { throw new RuntimeException('robots'); }
 foreach (['front-page.php', 'header.php'] as $file) {
