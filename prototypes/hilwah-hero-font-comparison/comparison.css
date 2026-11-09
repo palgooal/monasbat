@@ -1,0 +1,38 @@
+@import url("../hilwah-hero-01/hero.css");
+
+/* Local WOFF2 copies fetched from the official Google Fonts stylesheet. */
+@font-face { font-family: "Compare IBM Plex Sans Arabic"; src: url("fonts/ibm-plex-sans-arabic-400-arabic.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Compare IBM Plex Sans Arabic"; src: url("fonts/ibm-plex-sans-arabic-500-arabic.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Compare IBM Plex Sans Arabic"; src: url("fonts/ibm-plex-sans-arabic-700-arabic.woff2") format("woff2"); font-weight: 700 900; font-style: normal; font-display: swap; }
+
+@font-face { font-family: "Compare Tajawal"; src: url("fonts/tajawal-400-arabic.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Compare Tajawal"; src: url("fonts/tajawal-500-arabic.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Compare Tajawal"; src: url("fonts/tajawal-700-arabic.woff2") format("woff2"); font-weight: 700 900; font-style: normal; font-display: swap; }
+
+@font-face { font-family: "Compare Cairo"; src: url("fonts/cairo-400-arabic.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Compare Cairo"; src: url("fonts/cairo-500-arabic.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Compare Cairo"; src: url("fonts/cairo-700-arabic.woff2") format("woff2"); font-weight: 700 900; font-style: normal; font-display: swap; }
+
+.comparison-intro { width: min(1200px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 22px; color: var(--ink); }
+.comparison-intro h1 { margin: 0; font-size: clamp(1.5rem, 3vw, 2.5rem); letter-spacing: 0; }
+.comparison-intro p { max-width: 65ch; margin: 10px 0 0; color: var(--muted); font-size: 1rem; line-height: 1.75; }
+.font-label { position: absolute; z-index: 4; top: 18px; left: 24px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--paper); font: 700 .75rem/1 Arial, sans-serif; letter-spacing: .04em; direction: ltr; }
+.hero--ibm, .hero--ibm button, .hero--ibm input { font-family: "Compare IBM Plex Sans Arabic", Tahoma, Arial, sans-serif; font-kerning: normal; }
+.hero--tajawal, .hero--tajawal button, .hero--tajawal input { font-family: "Compare Tajawal", Tahoma, Arial, sans-serif; font-kerning: normal; }
+.hero--cairo, .hero--cairo button, .hero--cairo input { font-family: "Compare Cairo", Tahoma, Arial, sans-serif; font-kerning: normal; }
+
+/* Each value is intentionally less tight than the original generic stack. */
+.hero--ibm h1 { letter-spacing: -.016em; }
+.hero--tajawal h1 { letter-spacing: -.008em; }
+.hero--cairo h1 { letter-spacing: -.012em; }
+.hero--ibm .hero__lead { letter-spacing: .002em; }
+.hero--tajawal .hero__lead { letter-spacing: .004em; }
+.hero--cairo .hero__lead { letter-spacing: 0; }
+.hero--ibm .invitation h2 { letter-spacing: -.018em; }
+.hero--tajawal .invitation h2 { letter-spacing: -.01em; }
+.hero--cairo .invitation h2 { letter-spacing: -.012em; }
+
+@media (max-width: 480px) {
+  .comparison-intro { width: min(100% - 32px, 420px); padding-block: 22px 18px; }
+  .font-label { top: 12px; left: 16px; }
+}

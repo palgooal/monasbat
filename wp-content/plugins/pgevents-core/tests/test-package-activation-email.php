@@ -343,6 +343,10 @@ check_contains('G: نص البريد يحوي اسم المستوى الصحيح
 check_contains('G: نص البريد يحوي حد المدعوين الفعلي (100)', $last_call_a['message'], 'عدد المدعوين: 100');
 check_contains('G: نص البريد يحوي رابط لوحة التحكم الصحيح', $last_call_a['message'], 'https://hilwah.net/dashboard/');
 check_contains('G: نص البريد يحوي زر "الذهاب إلى لوحة التحكم"', $last_call_a['message'], 'الذهاب إلى لوحة التحكم');
+check_contains('G: إرشاد أول دخول شرطي', $last_call_a['message'], 'إذا كانت هذه أول مرة تدخل فيها إلى حلوة');
+check_contains('G: رابط الاستعادة العام الصحيح', $last_call_a['message'], 'href="https://hilwah.net/forgot-password/"');
+check_contains('G: استخدام بريد الحساب لطلب رسالة إعادة التعيين', $last_call_a['message'], 'أدخل البريد المرتبط بحسابك لطلب رسالة تحتوي على رابط إعادة التعيين');
+check_contains('G: الدخول بعد تعيين كلمة المرور', $last_call_a['message'], 'بعد تعيين كلمة المرور، سجّل الدخول إلى لوحة التحكم.');
 check_contains('G: نص البريد يحوي Content-Type: text/html; charset=UTF-8 ضمن الترويسات', implode(',', $last_call_a['headers']), 'text/html; charset=UTF-8');
 
 // حالة "غير محدود" (Tier 21) — نص عربي مناسب بلا رقم، ولا رصيد رسائل غير
@@ -358,14 +362,19 @@ check_not_contains('G (غير محدود): لا يُعرَض "رصيد الرس�
 check_contains('G (اسم عرض فارغ): يُستخدَم user_login كبديل آمن عندما يكون display_name فارغاً', $unlimited_call['message'], 'user503');
 
 // ═══════════════════════════════════════════════════════════════════════
-// H. أمان — لا كلمة مرور، لا رابط إعادة تعيين، لا Nonce، لا Token، لا
+// H. أمان — يسمح بإرشاد الاستعادة العام، دون كلمة مرور أو رابط برمز أو Nonce أو Token أو
 // حمولة Webhook خام في نص البريد إطلاقاً
 // ═══════════════════════════════════════════════════════════════════════
 
-$sensitive_markers = ['password', 'كلمة المرور', 'reset', 'nonce', '_wpnonce', 'auth_cookie', 'wp-login', 'access_token', 'client_secret', 'webhook_secret', 'x_salla_signature'];
+$sensitive_markers = ['password=', 'user_pass', 'pwd=', 'key=', 'action=rp', 'action=resetpass', 'nonce', '_wpnonce', 'auth_cookie', 'wp-login', 'access_token', 'client_secret', 'webhook_secret', 'x_salla_signature'];
 foreach ($sensitive_markers as $marker) {
     check_not_contains("H: لا إشارة لـ\"$marker\" في نص بريد التفعيل", $last_call_a['message'], $marker);
 }
+preg_match_all('/href="([^"]+)"/', $last_call_a['message'], $email_links);
+check('H: وجهات البريد محصورة بالاستعادة العامة ولوحة التحكم بلا رموز', $email_links[1], [
+    'https://hilwah.net/forgot-password/',
+    'https://hilwah.net/dashboard/',
+]);
 
 // ═══════════════════════════════════════════════════════════════════════
 // بيانات غير صالحة — فشل آمن، بلا استثناء، بلا محاولة إرسال

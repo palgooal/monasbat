@@ -23,7 +23,7 @@ defined('ABSPATH') || exit;
  *   حساب/باقة عبر wp_mail() فقط.
  * - لا Hook عريض — استدعاء صريح واحد فقط من نقطة النجاح المُثبَتة في
  *   process_catalog_match().
- * - لا كلمة مرور (Salla أو WordPress)، لا رابط إعادة تعيين كلمة مرور، لا
+ * - لا كلمة مرور (Salla أو WordPress)، لا رابط إعادة تعيين مخصص برمز، لا
  *   Nonce، لا Auth Token، لا أي جزء من الحمولة الخام لطلب الـWebhook (Raw
  *   Salla Payload) يظهر في البريد أو في السجلّات — فقط بيانات Hilwah
  *   الموثوقة بعد التفعيل (اسم العرض، اسم الباقة/المستوى، الحدود، رابط لوحة
@@ -230,6 +230,7 @@ final class PGE_Package_Activation_Email
         $plan_name_html = esc_html($plan_name);
         $tier_name_html = esc_html($tier_name);
         $dashboard_url_attr = esc_url($dashboard_url);
+        $recovery_url_attr = esc_url(home_url('/forgot-password/'));
 
         $guest_limit_line = self::build_guest_limit_line($tier);
         $events_line = self::build_events_line($tier);
@@ -275,6 +276,12 @@ final class PGE_Package_Activation_Email
 </td></tr>
 </table>
 <?php endif; ?>
+<p style="margin:0 0 20px 0;font-size:14px;line-height:1.7;color:#4a3a34;">
+إذا كانت هذه أول مرة تدخل فيها إلى حلوة، يمكنك بدء تعيين كلمة المرور عبر
+<a href="<?php echo $recovery_url_attr; ?>" style="color:#8a4a2f;text-decoration:underline;">صفحة استعادة كلمة المرور</a>.
+أدخل البريد المرتبط بحسابك لطلب رسالة تحتوي على رابط إعادة التعيين، ثم اتبع تعليماتها.
+بعد تعيين كلمة المرور، سجّل الدخول إلى لوحة التحكم.
+</p>
 <p style="margin:0 0 24px 0;text-align:center;">
 <a href="<?php echo $dashboard_url_attr; ?>" style="display:inline-block;background-color:#8a4a2f;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:14px 32px;border-radius:12px;">
 الذهاب إلى لوحة التحكم
