@@ -5,6 +5,8 @@ if (!class_exists('\Elementor\Widget_Base')) {
     return;
 }
 
+require_once dirname(__DIR__, 2) . '/class-pge-catalog-packages-presenter.php';
+
 class PGE_Packages_Widget extends \Elementor\Widget_Base
 {
     public function get_name()
@@ -214,37 +216,10 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
         $this->end_controls_section();
     }
 
-    /**
-     * E2E-02 (Package Catalog CTA → Salla Product): يتحقق أن الرابط https فقط
-     * وله host صالح، بنفس القاعدة الحرفية المستخدَمة فعلاً في
-     * PGE_Package_Details_Widget::get_https_purchase_url() (نُسخة مقصودة، لا
-     * استدعاء عابر للكلاس — كل Widget إليمنتور في هذا المشروع مستقل، بنفس
-     * نمط الاستقلالية المتّبَع مسبقاً بين الأصناف المتوازية الأخرى في هذا
-     * الكود). لا تُستخدَم هذه الدالة إلا لبناء رابط CTA الكتالوج — لا علاقة
-     * لها بمعالجة الـWebhook أو التفعيل إطلاقاً.
-     */
+    /** Compatibility adapter; validation lives in the shared presenter. */
     private function get_https_purchase_url($url)
     {
-        if (!is_string($url)) {
-            return '';
-        }
-
-        $url = trim($url);
-        if ($url === '') {
-            return '';
-        }
-
-        $parts = wp_parse_url($url);
-        if (
-            !is_array($parts)
-            || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
-            || empty($parts['host'])
-        ) {
-            return '';
-        }
-
-        $sanitized_url = esc_url_raw($url, ['https']);
-        return $sanitized_url !== '' ? $sanitized_url : '';
+        return PGE_Catalog_Packages_Presenter::get_https_purchase_url($url);
     }
 
     /**
@@ -329,175 +304,7 @@ class PGE_Packages_Widget extends \Elementor\Widget_Base
      */
     private function build_catalog_packages($settings)
     {
-        if (!class_exists('PGE_Catalog')) {
-            return [];
-        }
-
-        try {
-            $plans = PGE_Catalog::get_plans();
-        } catch (\Throwable $e) {
-            return [];
-        }
-        if (!is_array($plans)) {
-            $plans = [];
-        }
-
-        $fallback_url = !empty($settings['fallback_url']['url'])
-            ? esc_url_raw($settings['fallback_url']['url'])
-            : '';
-        if ($fallback_url === '') {
-            $fallback_url = '#';
-        }
-        $max_features = max(3, (int) ($settings['max_features'] ?? 7));
-
-        $packages = [];
-        foreach ($plans as $plan) {
-            if (!is_array($plan) || ($plan['status'] ?? '') !== 'active') {
-                continue;
-            }
-
-            try {
-                $tiers = PGE_Catalog::get_plan_tiers($plan['id'] ?? 0);
-            } catch (\Throwable $e) {
-                $tiers = [];
-            }
-            if (!is_array($tiers)) {
-                $tiers = [];
-            }
-
-            // E2E-02 FIX PASS 3 (Package Price Correctness): $priced_tier_count
-            // يُميّز "Tier نشط واحد له سعر" عن "أكثر من Tier نشط له سعر" —
-            // العقد المطلوب: Tier واحد → السعر الفعلي بلا بادئة "ابتداءً من"،
-            // عدة Tiers → أقل سعر منها مع بادئة "ابتداءً من". قبل هذا الإصلاح
-            // كانت has_starting_price تُحسَب فقط من ($min_price !== null)، أي
-            // تظهر البادئة حتى لو كان هناك Tier واحد فقط بسعر محدد — وهذا لا
-            // يطابق العقد المطلوب. هذا لا علاقة له بمشكلة "0 ريال" المُبلَّغ
-            // عنها في halwa_classic — تلك القيمة تُقرَأ حرفياً من عمود
-            // mon_plan_tiers.price كما هو مخزَّن، وقد أُثبِت (راجع التقرير
-            // النهائي) أن normalize_price() في class-pge-catalog.php تسمح
-            // بالصفر عمداً كقيمة صالحة، فلا يوجد أي كود هنا يُنتج صفراً من
-            // العدم أو يقرأ من المستوى الخاطئ (Plan بدل Tier) — لا تغيير على
-            // منطق قراءة/حساب السعر نفسه، فقط على قرار عرض بادئة "ابتداءً من".
-            $min_price = null;
-            $min_currency = '';
-            $priced_tier_count = 0;
-            foreach ($tiers as $tier) {
-                if (!is_array($tier) || ($tier['status'] ?? '') !== 'active') {
-                    continue;
-                }
-                if (!isset($tier['price']) || !is_numeric($tier['price'])) {
-                    continue;
-                }
-                $priced_tier_count++;
-                $tier_price = (float) $tier['price'];
-                if ($min_price === null || $tier_price < $min_price) {
-                    $min_price = $tier_price;
-                    $min_currency = trim((string) ($tier['currency'] ?? ''));
-                }
-            }
-
-            if ($min_price === null) {
-                $price_text = __('تواصل معنا', 'pgevents');
-                $currency_text = '';
-            } elseif (floor($min_price) === $min_price) {
-                $price_text = number_format_i18n($min_price, 0);
-                $currency_text = $min_currency;
-            } else {
-                $price_text = number_format_i18n($min_price, 2);
-                if (substr($price_text, -1) === '0') {
-                    $price_text = substr($price_text, 0, -1);
-                }
-                $currency_text = $min_currency;
-            }
-
-            $decoded = null;
-            $features_raw = $plan['features'] ?? null;
-            if (is_string($features_raw) && trim($features_raw) !== '') {
-                $decoded = json_decode($features_raw, true);
-            }
-            $features = [];
-            if (is_array($decoded)) {
-                foreach ($decoded as $item) {
-                    if (is_string($item)) {
-                        $features[] = $item;
-                    }
-                }
-            }
-            $features = array_slice($features, 0, $max_features);
-
-            $plan_key = sanitize_key((string) ($plan['plan_key'] ?? ''));
-            $details_url = $fallback_url;
-            if ($plan_key !== '') {
-                $details_url = add_query_arg(
-                    'plan',
-                    $plan_key,
-                    home_url('/packages/')
-                );
-            }
-
-            // E2E-02 FIX PASS 4 (Shared Salla Product Across Tiers):
-            // salla_product_id وsalla_url يعيشان على مستوى الـTier
-            // (mon_plan_tiers)، لا الـPlan — مُثبَت من CREATE TABLE في
-            // class-mon-catalog-schema.php. توضيح المنتج المُثبَت من صاحب
-            // المشروع: باقة Hilwah واحدة (Plan) قد تحوي عدة Tiers/مستويات،
-            // لكن هذه الـTiers قد تنتمي جميعها لمنتج Salla واحد فعلياً —
-            // العميل يختار المستوى/المتغيّر (Variant) داخل صفحة المنتج على
-            // سلة نفسها. أي: تعدّد الـTiers لا يعني تلقائياً تعدّد منتجات
-            // سلة. لذا "عدد Tiers قابلة للشراء" ليس المعيار الصحيح للالتباس
-            // — المعيار الصحيح هو "عدد وجهات منتج سلة الفريدة (Salla Product
-            // URLs) الفعلية بعد إزالة التكرار". الـSKU يبقى (بلا أي تعديل
-            // هنا) هو ما يميّز المستوى المُشترى فعلياً داخل معالج الـWebhook
-            // (Mon_Salla_Handler في class-salla-handler.php) — لا علاقة
-            // لهذا الإصلاح بذلك الجزء إطلاقاً، ولا تغيير على منطقه هناك.
-            //
-            // لكل Tier قابل للشراء (نشط + salla_product_id غير فارغ + رابط
-            // https صالح) نجمع كلاً من الرابط ومعرّف المنتج معاً، ثم نُزيل
-            // التكرار من كل قائمة على حدة. "منتج واحد لا لبس فيه" يُشترَط
-            // فيه الأمران معاً: رابط فريد واحد فقط + معرّف منتج فريد واحد
-            // فقط (تماشياً مع توضيح المهمة: "نفس رابط المنتج + نفس معرّف
-            // المنتج → شراء مباشر مؤكَّد"). إن تطابقت الروابط لكن اختلفت
-            // معرّفات المنتج (تناقض بيانات حقيقي يخالف نموذج "منتج واحد
-            // بمستويات" المفترَض) نبقى فشلاً آمناً (Fail Closed) على الرابط
-            // الداخلي بدل التخمين — لا إضافة لأي حقل ربط جديد، فقط استخدام
-            // الحقول الثلاثة الموجودة فعلاً كما هي.
-            $purchasable_tier_urls = [];
-            $purchasable_tier_product_ids = [];
-            foreach ($tiers as $tier) {
-                if (!is_array($tier) || ($tier['status'] ?? '') !== 'active') {
-                    continue;
-                }
-                $tier_salla_product_id = is_string($tier['salla_product_id'] ?? null)
-                    ? trim($tier['salla_product_id'])
-                    : '';
-                $tier_salla_url = $this->get_https_purchase_url($tier['salla_url'] ?? '');
-                if ($tier_salla_product_id !== '' && $tier_salla_url !== '') {
-                    $purchasable_tier_urls[] = $tier_salla_url;
-                    $purchasable_tier_product_ids[] = $tier_salla_product_id;
-                }
-            }
-            $unique_purchase_urls = array_values(array_unique($purchasable_tier_urls));
-            $unique_purchase_product_ids = array_values(array_unique($purchasable_tier_product_ids));
-            $is_direct_purchase = count($unique_purchase_urls) === 1 && count($unique_purchase_product_ids) === 1;
-            $card_url = $is_direct_purchase ? $unique_purchase_urls[0] : $details_url;
-
-            $packages[] = [
-                'plan_key'    => $plan_key,
-                'name'        => (string) ($plan['name'] ?? ''),
-                'price_text'  => $price_text,
-                'currency'    => $currency_text,
-                'features'    => $features,
-                'url'         => $card_url,
-                'is_featured' => false,
-                // E2E-02 FIX PASS 3: بادئة "ابتداءً من" فقط عند وجود أكثر من
-                // Tier نشط مسعَّر (التباس حقيقي في السعر الأدنى)، وليس عند
-                // مجرد وجود سعر واحد — Tier نشط واحد يُعرَض بسعره الفعلي دون
-                // أي بادئة، مطابقةً للعقد المطلوب.
-                'has_starting_price' => ($min_price !== null && $priced_tier_count > 1),
-                'is_direct_purchase' => $is_direct_purchase,
-            ];
-        }
-
-        return $packages;
+        return PGE_Catalog_Packages_Presenter::build($settings);
     }
 
     protected function render()

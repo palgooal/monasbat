@@ -2,9 +2,12 @@
 <?php
 $front_page_id = (int) get_queried_object_id();
 $use_elementor_front = function_exists('pge_is_elementor_built_page') && pge_is_elementor_built_page($front_page_id);
+$use_native_home = function_exists('pge_should_render_native_home') && pge_should_render_native_home();
 ?>
 
-<?php if ($use_elementor_front && have_posts()) : ?>
+<?php if ($use_native_home) : ?>
+    <?php get_template_part('template-parts/home-native/page'); ?>
+<?php elseif ($use_elementor_front && have_posts()) : ?>
     <?php while (have_posts()) : the_post(); ?>
         <main class="min-h-screen">
             <?php the_content(); ?>

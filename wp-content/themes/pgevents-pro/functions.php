@@ -83,6 +83,7 @@ function pgevents_enqueue_assets()
         wp_get_theme()->get('Version'),
         true
     );
+
     // مكوّن Hero الصفحة الرئيسية: تسجيل فقط. Elementor يحمّله عبر
     // get_style_depends() عند إدراج الودجت، لذلك لا يصل CSS أو الخط إلى
     // أي صفحة لا تعرض المكوّن.
@@ -96,6 +97,31 @@ function pgevents_enqueue_assets()
         );
     }
 
+    // Native homepage preview assets stay unavailable unless the request has
+    // passed the local/development and administrator gate below.
+    if (pge_should_render_native_home()) {
+        $native_home_css_path = get_stylesheet_directory() . '/assets/css/hilwah-home-native.css';
+        if (file_exists($native_home_css_path)) {
+            wp_enqueue_style(
+                'pge-hilwah-home-native-preview',
+                get_stylesheet_directory_uri() . '/assets/css/hilwah-home-native.css',
+                ['pge-tailwind'],
+                filemtime($native_home_css_path)
+            );
+        }
+
+        $native_home_js_path = get_stylesheet_directory() . '/assets/js/hilwah-home-native.js';
+        if (file_exists($native_home_js_path)) {
+            wp_enqueue_script('pge-login-button');
+            wp_enqueue_script(
+                'pge-hilwah-home-native-preview',
+                get_stylesheet_directory_uri() . '/assets/js/hilwah-home-native.js',
+                ['pge-login-button'],
+                filemtime($native_home_js_path),
+                true
+            );
+        }
+    }
 }
 add_action('wp_enqueue_scripts', 'pgevents_enqueue_assets');
 
@@ -142,6 +168,96 @@ if (!function_exists('pge_is_elementor_built_page')) {
         return $document && method_exists($document, 'is_built_with_elementor') && $document->is_built_with_elementor();
     }
 }
+
+/**
+ * Limits the native homepage preview to explicitly local development work by
+ * site administrators. This is intentionally a read-only rendering switch:
+ * it does not alter Elementor data or any page metadata.
+ */
+if (!function_exists('pge_is_native_home_preview')) {
+    function pge_is_native_home_preview()
+    {
+        if (is_admin() || !is_front_page()) {
+            return false;
+        }
+
+        $environment = function_exists('wp_get_environment_type')
+            ? wp_get_environment_type()
+            : 'production';
+        if (!in_array($environment, ['local', 'development'], true)) {
+            return false;
+        }
+
+        if (!current_user_can('manage_options')) {
+            return false;
+        }
+
+        $preview = isset($_GET['pge_native_home_preview'])
+            ? sanitize_text_field(wp_unslash($_GET['pge_native_home_preview']))
+            : '';
+
+        return $preview === '1';
+    }
+}
+
+/** Server-only release switch: absent, false or non-boolean values stay OFF. */
+function pge_should_render_native_home()
+{
+    if (is_admin() || !is_front_page()) {
+        return false;
+    }
+
+    return (defined('PGE_NATIVE_HOME_PUBLIC') && PGE_NATIVE_HOME_PUBLIC === true)
+        || pge_is_native_home_preview();
+}
+
+// The query is resolved on wp, before template output. Public rendering is
+// deliberately independent of these authorized-preview protections.
+function pge_protect_native_home_preview()
+{
+    if (!pge_is_native_home_preview()) {
+        return;
+    }
+
+    if (!defined('DONOTCACHEPAGE')) {
+        define('DONOTCACHEPAGE', true);
+    }
+    nocache_headers();
+    header('X-Robots-Tag: noindex, nofollow', true);
+    add_filter('wp_robots', 'pge_native_home_preview_robots');
+}
+
+function pge_native_home_preview_robots($robots)
+{
+    unset($robots['index'], $robots['follow']);
+    $robots['noindex'] = true;
+    $robots['nofollow'] = true;
+    return $robots;
+}
+add_action('wp', 'pge_protect_native_home_preview', 1);
+
+function pge_render_native_home_preview_header()
+{
+    get_template_part('template-parts/home-native/header');
+}
+
+// HFE registers its renderer on wp at priority 10. Keep its document wrapper
+// and footer intact, replacing only the header when Native is selected.
+add_action('wp', function () {
+    if (!pge_should_render_native_home()) {
+        return;
+    }
+
+    $priority = has_action('hfe_header', 'hfe_render_header');
+    if ($priority === false) {
+        return;
+    }
+
+    remove_action('hfe_header', 'hfe_render_header', $priority);
+    if (has_action('hfe_header', 'pge_render_native_home_preview_header') === false) {
+        add_action('hfe_header', 'pge_render_native_home_preview_header', $priority);
+    }
+}, 20);
 
 add_action('elementor/theme/register_locations', function ($elementor_theme_manager) {
     if (is_object($elementor_theme_manager) && method_exists($elementor_theme_manager, 'register_all_core_location')) {

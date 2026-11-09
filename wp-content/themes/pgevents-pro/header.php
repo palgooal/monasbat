@@ -17,9 +17,11 @@
 <body <?php body_class('bg-background text-foreground font-arabic'); ?>>
     <?php wp_body_open(); ?>
 
-    <?php if (function_exists('elementor_theme_do_location') && elementor_theme_do_location('header')) : ?>
+    <?php if (function_exists('pge_should_render_native_home') && pge_should_render_native_home()) : ?>
+        <?php get_template_part('template-parts/home-native/header'); ?>
+    <?php elseif (function_exists('elementor_theme_do_location') && elementor_theme_do_location('header')) : ?>
         <?php return; ?>
-    <?php endif; ?>
+    <?php else : ?>
 
     <header class="sticky top-0 z-50 border-b border-gold/25 bg-white font-arabic" dir="rtl">
         <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-10 lg:py-6">
@@ -76,3 +78,4 @@
 
         </div>
     </header>
+    <?php endif; ?>
