@@ -8,6 +8,8 @@ $start = strpos($source, "if (!function_exists('pge_is_native_home_preview'))");
 $end = strpos($source, 'function pge_render_native_home_preview_header()', $start);
 function is_admin() { return $GLOBALS['admin']; }
 function is_front_page() { return $GLOBALS['front']; }
+function is_feed() { return false; }
+function is_404() { return false; }
 function wp_get_environment_type() { return $GLOBALS['environment']; }
 function wp_doing_ajax() { return $GLOBALS['ajax']; }
 function is_user_logged_in() { return $GLOBALS['logged_in']; }
@@ -18,7 +20,7 @@ function add_action(...$args) {}
 function add_filter(...$args) { $GLOBALS['filters'][] = $args; }
 function nocache_headers() { $GLOBALS['nocache'] = true; }
 define('ABSPATH', __DIR__);
-function get_option($key, $default = false) { return $GLOBALS['preview_option'] ?? $default; }
+function get_option($key, $default = false) { return $key === 'pge_native_home_production_preview' ? ($GLOBALS['preview_option'] ?? $default) : $default; }
 $preview_option = isset($argv[4]) ? json_decode($argv[4]) : '0';
 require $theme . 'inc/native-home-preview-admin.php';
 function wp_die($message, $title = '', $args = []) { throw new RuntimeException('denied:' . $args['response']); }

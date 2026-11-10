@@ -213,16 +213,46 @@ if (!function_exists('pge_is_native_home_preview')) {
     }
 }
 
-/** Server-only release switch: absent, false or non-boolean values stay OFF. */
+/** Public opt-in and authorized preview remain independent. */
 function pge_should_render_native_home()
 {
     if (is_admin() || !is_front_page()) {
         return false;
     }
 
-    return (defined('PGE_NATIVE_HOME_PUBLIC') && PGE_NATIVE_HOME_PUBLIC === true)
+    return pge_native_home_public_enabled()
         || pge_is_native_home_preview();
 }
+
+/** Transitional HTML policy, including Elementor while public Native is OFF. */
+function pge_homepage_transition_headers($headers)
+{
+    if (is_admin() || wp_doing_ajax() || (defined('REST_REQUEST') && REST_REQUEST)
+        || !is_front_page() || is_feed() || is_404()
+        || !in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD'], true)) {
+        return $headers;
+    }
+    if (!defined('DONOTCACHEPAGE')) {
+        define('DONOTCACHEPAGE', true);
+    }
+    // Core conditional 304 handling is feed-only; feeds are excluded above.
+    // Do not publish validators that could revalidate an older homepage body.
+    foreach (array_keys($headers) as $name) {
+        if (in_array(strtolower($name), ['etag', 'last-modified', 'cache-control', 'expires', 'pragma'], true)) {
+            unset($headers[$name]);
+        }
+    }
+    if (!headers_sent()) {
+        header_remove('ETag');
+        header_remove('Last-Modified');
+    }
+    $headers['Last-Modified'] = false;
+    $headers['Cache-Control'] = 'private, no-store, no-cache, must-revalidate';
+    $headers['Expires'] = 'Wed, 11 Jan 1984 05:00:00 GMT';
+    $headers['Pragma'] = 'no-cache';
+    return $headers;
+}
+add_filter('wp_headers', 'pge_homepage_transition_headers', PHP_INT_MAX);
 
 // The query is resolved on wp, before template output. Public rendering is
 // deliberately independent of these authorized-preview protections.
